@@ -8,94 +8,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="캠스터디">
+<link rel="stylesheet" href="shared/theme.css">
 <style>
-  :root {
-    --bg: #eef0ec;
-    --surface: #ffffff;
-    --stage-frame: #1b1d19;
-    --ink: #1b1d19;
-    --ink-soft: #5c6058;
-    --hairline: #d3d6cd;
-    --accent: #c8781f;
-    --accent-ink: #2a1600;
-    --danger: #b3341f;
-    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
-    --sans: -apple-system, BlinkMacSystemFont, "Pretendard", "Segoe UI", Roboto, sans-serif;
-    color-scheme: light dark;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --bg: #121310;
-      --surface: #1a1c17;
-      --stage-frame: #0c0d0a;
-      --ink: #eef0ea;
-      --ink-soft: #9a9d92;
-      --hairline: #33362e;
-      --accent: #e0a24a;
-      --accent-ink: #201200;
-      --danger: #e0685a;
-    }
-  }
-  :root[data-theme="dark"] {
-    --bg: #121310;
-    --surface: #1a1c17;
-    --stage-frame: #0c0d0a;
-    --ink: #eef0ea;
-    --ink-soft: #9a9d92;
-    --hairline: #33362e;
-    --accent: #e0a24a;
-    --accent-ink: #201200;
-    --danger: #e0685a;
-  }
-
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    min-height: 100vh;
-    background: var(--bg);
-    color: var(--ink);
-    font-family: var(--sans);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 20px 16px 32px;
-    gap: 18px;
-  }
-
-  header {
-    width: 100%;
-    max-width: 640px;
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 12px;
-  }
-  .brand {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .brand .eyebrow {
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--accent);
-  }
-  h1 {
-    font-size: 20px;
-    font-weight: 700;
-    margin: 0;
-    letter-spacing: -0.01em;
-    text-wrap: balance;
-  }
-  .spec {
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--ink-soft);
-    text-align: right;
-    line-height: 1.5;
-  }
+  :root { --page-max-width: 640px; }
 
   .viewfinder {
     position: relative;
@@ -124,6 +39,14 @@
   }
   #liveCanvas { pointer-events: none; }
   #resultCanvas { display: none; background: #000; }
+
+  .spec {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-soft);
+    text-align: right;
+    line-height: 1.5;
+  }
 
   .bracket {
     position: absolute;
@@ -283,31 +206,6 @@
     gap: 14px;
     justify-content: center;
   }
-  button {
-    font-family: var(--sans);
-    border: 1px solid var(--hairline);
-    background: var(--surface);
-    color: var(--ink);
-    cursor: pointer;
-    transition: opacity 0.15s, transform 0.1s, background 0.15s;
-  }
-  button:active { transform: scale(0.97); }
-  button:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-
-  .btn-icon {
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 17px;
-    flex-shrink: 0;
-    padding: 0;
-  }
 
   /* 셔터 버튼: 조리개형 — 링 안에 원형 앰버 코어 */
   .btn-shutter {
@@ -378,45 +276,11 @@
     min-height: 16px;
     text-align: center;
   }
-  .hidden { display: none !important; }
-
-  .sitenav {
-    width: 100%;
-    max-width: 640px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px;
-    background: var(--surface);
-    border: 1px solid var(--hairline);
-    border-radius: 10px;
-  }
-  .sitenav a {
-    flex: 1 1 0;
-    text-align: center;
-    padding: 9px 12px;
-    border-radius: 7px;
-    font-size: 13px;
-    font-weight: 600;
-    text-decoration: none;
-    color: var(--ink-soft);
-    transition: background 0.15s, color 0.15s;
-  }
-  .sitenav a.active {
-    background: var(--accent);
-    color: var(--accent-ink);
-  }
 </style>
 </head>
 <body>
 
-<nav class="sitenav">
-  <a href="index.html">홈</a>
-  <a href="checker.html" class="active">프레임 체커</a>
-  <a href="report.html" class="auth-only hidden">제보하기</a>
-  <a href="status.html" class="auth-only hidden">내 상태</a>
-  <a href="admin.html" class="admin-only hidden">관리자</a>
-</nav>
+<div id="navSlot" data-active="checker"></div>
 
 <header>
   <div class="brand">
@@ -478,25 +342,8 @@
   <div class="status" id="status">카메라를 시작하려면 브라우저 권한을 허용해주세요.</div>
 </div>
 
-<script>
-(() => {
-  const SESSION_KEY = 'frameCheckerSession';
-  const ADMIN_EMAIL = 'comstralo@gmail.com';
-  try {
-    const raw = sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY);
-    if (raw) {
-      const session = JSON.parse(raw);
-      if (session.token) {
-        document.querySelectorAll('.auth-only').forEach((el) => el.classList.remove('hidden'));
-        if ((session.email || '').toLowerCase() === ADMIN_EMAIL) {
-          document.querySelectorAll('.admin-only').forEach((el) => el.classList.remove('hidden'));
-        }
-      }
-    }
-  } catch {}
-})();
-</script>
-
+<script src="shared/auth.js"></script>
+<script src="shared/nav.js"></script>
 <script>
 (() => {
   const video = document.getElementById('video');

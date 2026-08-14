@@ -1,0 +1,214 @@
+:root {
+  --bg: #eef0ec;
+  --surface: #ffffff;
+  --stage-frame: #1b1d19;
+  --ink: #1b1d19;
+  --ink-soft: #5c6058;
+  --hairline: #d3d6cd;
+  --accent: #c8781f;
+  --accent-ink: #2a1600;
+  --danger: #b3341f;
+  --ok: #4a7c3c;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Pretendard", "Segoe UI", Roboto, sans-serif;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121310;
+    --surface: #1a1c17;
+    --stage-frame: #0c0d0a;
+    --ink: #eef0ea;
+    --ink-soft: #9a9d92;
+    --hairline: #33362e;
+    --accent: #e0a24a;
+    --accent-ink: #201200;
+    --danger: #e0685a;
+    --ok: #7cb36a;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121310;
+  --surface: #1a1c17;
+  --stage-frame: #0c0d0a;
+  --ink: #eef0ea;
+  --ink-soft: #9a9d92;
+  --hairline: #33362e;
+  --accent: #e0a24a;
+  --accent-ink: #201200;
+  --danger: #e0685a;
+  --ok: #7cb36a;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 16px 32px;
+  gap: 18px;
+}
+
+/* --- 사이트 공통 폭: 페이지 콘텐츠는 480px, 카메라 뷰파인더가 있는 checker.html만 640px --- */
+.sitenav, header, .card {
+  width: 100%;
+  max-width: var(--page-max-width, 480px);
+}
+
+.sitenav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+}
+.sitenav a {
+  flex: 1 1 0;
+  text-align: center;
+  padding: 9px 12px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--ink-soft);
+  transition: background 0.15s, color 0.15s;
+}
+.sitenav a.active {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.brand {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.brand .eyebrow {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+h1 {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.session-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--bg);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.session-row .who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+.session-row .who .name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.session-row .who .email {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.logout-link {
+  font-size: 12px;
+  color: var(--ink-soft);
+  text-decoration: underline;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 4px;
+  flex-shrink: 0;
+}
+
+.msg {
+  font-family: var(--mono);
+  font-size: 12px;
+  min-height: 16px;
+  text-align: center;
+}
+.msg.error { color: var(--danger); }
+.msg.ok { color: var(--accent); }
+
+/* --- 공통 버튼 계열: 텍스트 버튼(.btn) / 아이콘 원형 버튼(.btn-icon) --- */
+button {
+  font-family: var(--sans);
+  border: 1px solid var(--hairline);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s, background 0.15s;
+}
+button:active { transform: scale(0.98); }
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn {
+  padding: 13px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  border-radius: 8px;
+}
+.btn.primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
+.btn-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.hidden { display: none !important; }

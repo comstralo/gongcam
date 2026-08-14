@@ -8,162 +8,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="캠스터디">
+<link rel="stylesheet" href="shared/theme.css">
 <style>
-  :root {
-    --bg: #eef0ec;
-    --surface: #ffffff;
-    --stage-frame: #1b1d19;
-    --ink: #1b1d19;
-    --ink-soft: #5c6058;
-    --hairline: #d3d6cd;
-    --accent: #c8781f;
-    --accent-ink: #2a1600;
-    --danger: #b3341f;
-    --ok: #4a7c3c;
-    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
-    --sans: -apple-system, BlinkMacSystemFont, "Pretendard", "Segoe UI", Roboto, sans-serif;
-    color-scheme: light dark;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --bg: #121310;
-      --surface: #1a1c17;
-      --stage-frame: #0c0d0a;
-      --ink: #eef0ea;
-      --ink-soft: #9a9d92;
-      --hairline: #33362e;
-      --accent: #e0a24a;
-      --accent-ink: #201200;
-      --danger: #e0685a;
-      --ok: #7cb36a;
-    }
-  }
-  :root[data-theme="dark"] {
-    --bg: #121310;
-    --surface: #1a1c17;
-    --stage-frame: #0c0d0a;
-    --ink: #eef0ea;
-    --ink-soft: #9a9d92;
-    --hairline: #33362e;
-    --accent: #e0a24a;
-    --accent-ink: #201200;
-    --danger: #e0685a;
-    --ok: #7cb36a;
-  }
-
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    min-height: 100vh;
-    background: var(--bg);
-    color: var(--ink);
-    font-family: var(--sans);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 20px 16px 32px;
-    gap: 18px;
-  }
-
-  .sitenav {
-    width: 100%;
-    max-width: 480px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px;
-    background: var(--surface);
-    border: 1px solid var(--hairline);
-    border-radius: 10px;
-  }
-  .sitenav a {
-    flex: 1 1 0;
-    text-align: center;
-    padding: 9px 12px;
-    border-radius: 7px;
-    font-size: 13px;
-    font-weight: 600;
-    text-decoration: none;
-    color: var(--ink-soft);
-    transition: background 0.15s, color 0.15s;
-  }
-  .sitenav a.active {
-    background: var(--accent);
-    color: var(--accent-ink);
-  }
-
-  header {
-    width: 100%;
-    max-width: 480px;
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 12px;
-  }
-  .brand {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .brand .eyebrow {
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--accent);
-  }
-  h1 {
-    font-size: 20px;
-    font-weight: 700;
-    margin: 0;
-    letter-spacing: -0.01em;
-    text-wrap: balance;
-  }
-
-  .card {
-    width: 100%;
-    max-width: 480px;
-    background: var(--surface);
-    border: 1px solid var(--hairline);
-    border-radius: 10px;
-    padding: 22px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  .session-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 10px 14px;
-    background: var(--bg);
-    border: 1px solid var(--hairline);
-    border-radius: 8px;
-    font-size: 13px;
-  }
-  .session-row .who {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    overflow: hidden;
-  }
-  .session-row .who .name {
-    font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .session-row .who .email {
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--ink-soft);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
   .section-label {
     font-family: var(--mono);
     font-size: 10px;
@@ -192,57 +38,17 @@
   .push-status.on .dot { background: var(--ok); }
   .push-status.off .dot { background: var(--danger); }
 
-  .btn {
-    font-family: var(--sans);
-    padding: 13px 16px;
-    font-size: 14px;
-    font-weight: 700;
-    border-radius: 8px;
-    border: 1px solid var(--hairline);
-    background: var(--surface);
-    color: var(--ink);
-    cursor: pointer;
-    transition: opacity 0.15s, transform 0.1s;
-  }
-  .btn:active { transform: scale(0.98); }
-  .btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-  .btn.primary {
-    background: var(--accent);
-    color: var(--accent-ink);
-    border-color: var(--accent);
-  }
-
-  .msg {
-    font-family: var(--mono);
-    font-size: 12px;
-    min-height: 16px;
-    text-align: center;
-  }
-  .msg.error { color: var(--danger); }
-  .msg.ok { color: var(--accent); }
-
   .denied-copy {
     font-size: 14px;
     line-height: 1.6;
     color: var(--ink-soft);
     text-align: center;
   }
-
-  .hidden { display: none !important; }
 </style>
 </head>
 <body>
 
-<nav class="sitenav">
-  <a href="index.html">홈</a>
-  <a href="checker.html">프레임 체커</a>
-  <a href="report.html" class="auth-only hidden">제보하기</a>
-  <a href="status.html" class="auth-only hidden">내 상태</a>
-  <a href="admin.html" class="admin-only hidden active">관리자</a>
-</nav>
+<div id="navSlot" data-active="admin"></div>
 
 <header>
   <div class="brand">
@@ -261,6 +67,7 @@
       <span class="name" id="sessionName"></span>
       <span class="email" id="sessionEmail"></span>
     </div>
+    <button class="logout-link" id="logoutBtn">로그아웃</button>
   </div>
 
   <span class="section-label">브라우저 푸시 알림</span>
@@ -275,39 +82,19 @@
   <div class="msg" id="pushMsg"></div>
 </div>
 
+<script src="shared/auth.js"></script>
+<script src="shared/nav.js"></script>
 <script>
 (() => {
-  const WORKER_BASE = 'https://frame-checker-worker.comstralo.workers.dev';
-  const SESSION_KEY = 'frameCheckerSession';
   const VAPID_PUBLIC_KEY = 'BNilzFCLuM4JxoD9riCTTP84Rv-xT7ohuNs4l-ZzC9LiNDxQOwhLkHX0qb5ljFAs1pvfMOplTe0Bf0SQ1IZUU04';
-  const ADMIN_EMAIL = 'comstralo@gmail.com';
 
   const deniedCard = document.getElementById('deniedCard');
   const adminCard = document.getElementById('adminCard');
-  const sessionName = document.getElementById('sessionName');
-  const sessionEmail = document.getElementById('sessionEmail');
   const pushStatus = document.getElementById('pushStatus');
   const pushStatusText = document.getElementById('pushStatusText');
   const enablePushBtn = document.getElementById('enablePushBtn');
   const sendTestBtn = document.getElementById('sendTestBtn');
   const pushMsg = document.getElementById('pushMsg');
-
-  function setMsg(text, type) {
-    pushMsg.textContent = text || '';
-    pushMsg.className = 'msg' + (type ? ' ' + type : '');
-  }
-
-  function getSession() {
-    try {
-      const raw = sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      if (!parsed.token || !parsed.email) return null;
-      return parsed;
-    } catch {
-      return null;
-    }
-  }
 
   function urlBase64ToUint8Array(base64String) {
     const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -344,7 +131,7 @@
   async function checkPushState() {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
       updatePushStatus('unsupported');
-      setMsg('이 브라우저/모드는 serviceWorker 또는 PushManager를 지원하지 않습니다. (standalone: ' + (window.navigator.standalone ?? 'n/a') + ')', 'error');
+      Auth.setMsg(pushMsg, '이 브라우저/모드는 serviceWorker 또는 PushManager를 지원하지 않습니다. (standalone: ' + (window.navigator.standalone ?? 'n/a') + ')', 'error');
       return;
     }
     try {
@@ -354,17 +141,16 @@
       updatePushStatus(sub ? 'on' : 'off');
     } catch (err) {
       updatePushStatus('unsupported');
-      setMsg('Service Worker 등록 실패: ' + err.name + ' — ' + err.message, 'error');
+      Auth.setMsg(pushMsg, 'Service Worker 등록 실패: ' + err.name + ' — ' + err.message, 'error');
     }
   }
 
-  async function enablePush() {
-    const session = getSession();
-    setMsg('알림 권한 요청 중...', '');
+  async function enablePush(session) {
+    Auth.setMsg(pushMsg, '알림 권한 요청 중...', '');
     try {
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
-        setMsg('브라우저 알림 권한이 거부되었습니다. (현재 상태: ' + permission + ')', 'error');
+        Auth.setMsg(pushMsg, '브라우저 알림 권한이 거부되었습니다. (현재 상태: ' + permission + ')', 'error');
         return;
       }
       const reg = await navigator.serviceWorker.register(swUrl());
@@ -374,7 +160,7 @@
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
       });
 
-      const res = await fetch(WORKER_BASE + '/push/subscribe', {
+      const res = await fetch(Auth.WORKER_BASE + '/push/subscribe', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -384,60 +170,52 @@
       });
       const data = await res.json();
       if (!res.ok) {
-        setMsg(data.error || '구독 등록에 실패했습니다.', 'error');
+        Auth.setMsg(pushMsg, data.error || '구독 등록에 실패했습니다.', 'error');
         return;
       }
-      setMsg('알림이 켜졌습니다.', 'ok');
+      Auth.setMsg(pushMsg, '알림이 켜졌습니다.', 'ok');
       updatePushStatus('on');
     } catch (err) {
-      setMsg('오류: ' + err.name + ' — ' + err.message, 'error');
+      Auth.setMsg(pushMsg, '오류: ' + err.name + ' — ' + err.message, 'error');
     }
   }
 
-  async function sendTest() {
-    const session = getSession();
+  async function sendTest(session) {
     sendTestBtn.disabled = true;
-    setMsg('테스트 알림 전송 중...', '');
+    Auth.setMsg(pushMsg, '테스트 알림 전송 중...', '');
     try {
-      const res = await fetch(WORKER_BASE + '/push/send-test', {
+      const res = await fetch(Auth.WORKER_BASE + '/push/send-test', {
         method: 'POST',
         headers: { Authorization: 'Bearer ' + session.token },
       });
       const data = await res.json();
       if (!res.ok) {
-        setMsg(data.error || '전송에 실패했습니다.', 'error');
+        Auth.setMsg(pushMsg, data.error || '전송에 실패했습니다.', 'error');
         return;
       }
       const detail = (data.results || [])
         .map((r) => (r.error ? `오류: ${r.error}` : `상태 ${r.status}`))
         .join(' / ');
-      setMsg('전송 완료 — ' + detail, 'ok');
+      Auth.setMsg(pushMsg, '전송 완료 — ' + detail, 'ok');
     } catch (err) {
-      setMsg('오류: ' + err.message, 'error');
+      Auth.setMsg(pushMsg, '오류: ' + err.message, 'error');
     } finally {
       sendTestBtn.disabled = false;
     }
   }
 
-  window.addEventListener('load', () => {
-    const session = getSession();
-    if (!session) {
-      window.location.href = 'index.html';
-      return;
-    }
-    if (session.email.toLowerCase() !== ADMIN_EMAIL) {
+  Auth.requireSession((session) => {
+    if (!Auth.isAdmin(session)) {
       deniedCard.classList.remove('hidden');
       return;
     }
-    document.querySelectorAll('.auth-only').forEach((el) => el.classList.remove('hidden'));
     adminCard.classList.remove('hidden');
-    sessionName.textContent = session.name || session.email;
-    sessionEmail.textContent = session.email;
+    Auth.bindSessionUI(session);
     checkPushState();
-  });
 
-  enablePushBtn.addEventListener('click', enablePush);
-  sendTestBtn.addEventListener('click', sendTest);
+    enablePushBtn.addEventListener('click', () => enablePush(session));
+    sendTestBtn.addEventListener('click', () => sendTest(session));
+  });
 })();
 </script>
 </body>

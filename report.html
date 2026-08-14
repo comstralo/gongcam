@@ -8,169 +8,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="캠스터디">
+<link rel="stylesheet" href="shared/theme.css">
 <style>
-  :root {
-    --bg: #eef0ec;
-    --surface: #ffffff;
-    --stage-frame: #1b1d19;
-    --ink: #1b1d19;
-    --ink-soft: #5c6058;
-    --hairline: #d3d6cd;
-    --accent: #c8781f;
-    --accent-ink: #2a1600;
-    --danger: #b3341f;
-    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
-    --sans: -apple-system, BlinkMacSystemFont, "Pretendard", "Segoe UI", Roboto, sans-serif;
-    color-scheme: light dark;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --bg: #121310;
-      --surface: #1a1c17;
-      --stage-frame: #0c0d0a;
-      --ink: #eef0ea;
-      --ink-soft: #9a9d92;
-      --hairline: #33362e;
-      --accent: #e0a24a;
-      --accent-ink: #201200;
-      --danger: #e0685a;
-    }
-  }
-  :root[data-theme="dark"] {
-    --bg: #121310;
-    --surface: #1a1c17;
-    --stage-frame: #0c0d0a;
-    --ink: #eef0ea;
-    --ink-soft: #9a9d92;
-    --hairline: #33362e;
-    --accent: #e0a24a;
-    --accent-ink: #201200;
-    --danger: #e0685a;
-  }
-
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    min-height: 100vh;
-    background: var(--bg);
-    color: var(--ink);
-    font-family: var(--sans);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 20px 16px 32px;
-    gap: 18px;
-  }
-
-  .sitenav {
-    width: 100%;
-    max-width: 480px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px;
-    background: var(--surface);
-    border: 1px solid var(--hairline);
-    border-radius: 10px;
-  }
-  .sitenav a {
-    flex: 1 1 0;
-    text-align: center;
-    padding: 9px 12px;
-    border-radius: 7px;
-    font-size: 13px;
-    font-weight: 600;
-    text-decoration: none;
-    color: var(--ink-soft);
-    transition: background 0.15s, color 0.15s;
-  }
-  .sitenav a.active {
-    background: var(--accent);
-    color: var(--accent-ink);
-  }
-
-  header {
-    width: 100%;
-    max-width: 480px;
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 12px;
-  }
-  .brand {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .brand .eyebrow {
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--accent);
-  }
-  h1 {
-    font-size: 20px;
-    font-weight: 700;
-    margin: 0;
-    letter-spacing: -0.01em;
-    text-wrap: balance;
-  }
-
-  .card {
-    width: 100%;
-    max-width: 480px;
-    background: var(--surface);
-    border: 1px solid var(--hairline);
-    border-radius: 10px;
-    padding: 22px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  .session-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 10px 14px;
-    background: var(--bg);
-    border: 1px solid var(--hairline);
-    border-radius: 8px;
-    font-size: 13px;
-  }
-  .session-row .who {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    overflow: hidden;
-  }
-  .session-row .who .name {
-    font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .session-row .who .email {
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--ink-soft);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .logout-link {
-    font-size: 12px;
-    color: var(--ink-soft);
-    text-decoration: underline;
-    cursor: pointer;
-    background: none;
-    border: none;
-    padding: 4px;
-    flex-shrink: 0;
-  }
-
   label {
     display: flex;
     flex-direction: column;
@@ -206,15 +45,10 @@
   }
   .roster-refresh select { flex: 1; }
   .roster-refresh button {
-    font-family: var(--sans);
     width: 40px;
     height: 40px;
     flex-shrink: 0;
     border-radius: 8px;
-    border: 1px solid var(--hairline);
-    background: var(--surface);
-    color: var(--ink);
-    cursor: pointer;
     font-size: 15px;
   }
   textarea {
@@ -223,45 +57,12 @@
     font-family: var(--sans);
   }
 
-  button.btn-submit {
-    font-family: var(--sans);
-    padding: 13px 16px;
-    font-size: 15px;
-    font-weight: 700;
-    border-radius: 8px;
-    border: 1px solid var(--accent);
-    background: var(--accent);
-    color: var(--accent-ink);
-    cursor: pointer;
-    transition: opacity 0.15s, transform 0.1s;
-  }
-  button.btn-submit:active { transform: scale(0.98); }
-  button.btn-submit:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-
-  .msg {
-    font-family: var(--mono);
-    font-size: 12px;
-    min-height: 16px;
-    text-align: center;
-  }
-  .msg.error { color: var(--danger); }
-  .msg.ok { color: var(--accent); }
-
-  .hidden { display: none !important; }
+  #submitBtn { width: 100%; }
 </style>
 </head>
 <body>
 
-<nav class="sitenav">
-  <a href="index.html">홈</a>
-  <a href="checker.html">프레임 체커</a>
-  <a href="report.html" class="active">제보하기</a>
-  <a href="status.html">내 상태</a>
-  <a href="admin.html" class="admin-only hidden">관리자</a>
-</nav>
+<div id="navSlot" data-active="report"></div>
 
 <header>
   <div class="brand">
@@ -296,20 +97,15 @@
     <textarea id="reasonInput" placeholder="예: 손이 안 보여요" maxlength="200"></textarea>
   </label>
 
-  <button class="btn-submit" id="submitBtn">제보 접수</button>
+  <button class="btn primary" id="submitBtn">제보 접수</button>
   <div class="msg" id="formMsg"></div>
 </div>
 
+<script src="shared/auth.js"></script>
+<script src="shared/nav.js"></script>
 <script>
 (() => {
-  const WORKER_BASE = 'https://frame-checker-worker.comstralo.workers.dev';
-  const SESSION_KEY = 'frameCheckerSession';
-  const ADMIN_EMAIL = 'comstralo@gmail.com';
-
   const formCard = document.getElementById('formCard');
-  const sessionName = document.getElementById('sessionName');
-  const sessionEmail = document.getElementById('sessionEmail');
-  const logoutBtn = document.getElementById('logoutBtn');
   const nicknameSelect = document.getElementById('nicknameSelect');
   const rosterHint = document.getElementById('rosterHint');
   const rosterRefreshBtn = document.getElementById('rosterRefreshBtn');
@@ -319,43 +115,6 @@
 
   const ROSTER_POLL_MS = 15000;
   let rosterPollTimer = null;
-
-  function setMsg(el, text, type) {
-    el.textContent = text || '';
-    el.className = 'msg' + (type ? ' ' + type : '');
-  }
-
-  function getSession() {
-    try {
-      const raw = sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      if (!parsed.token || !parsed.email) return null;
-      return parsed;
-    } catch {
-      return null;
-    }
-  }
-
-  function clearSession() {
-    localStorage.removeItem(SESSION_KEY);
-    sessionStorage.removeItem(SESSION_KEY);
-  }
-
-  function redirectToLogin() {
-    stopRosterPolling();
-    window.location.href = 'index.html';
-  }
-
-  function showForm(session) {
-    formCard.classList.remove('hidden');
-    sessionName.textContent = session.name || session.email;
-    sessionEmail.textContent = session.email;
-    if ((session.email || '').toLowerCase() === ADMIN_EMAIL) {
-      document.querySelectorAll('.admin-only').forEach((el) => el.classList.remove('hidden'));
-    }
-    startRosterPolling();
-  }
 
   function renderRoster(members, stale) {
     const prevValue = nicknameSelect.value;
@@ -389,18 +148,17 @@
       : '실시간 구루미 접속 명단입니다';
   }
 
-  async function loadRoster() {
-    const session = getSession();
-    if (!session) return;
+  async function loadRoster(session) {
     try {
-      const res = await fetch(WORKER_BASE + '/participants', {
+      const res = await fetch(Auth.WORKER_BASE + '/participants', {
         headers: { Authorization: 'Bearer ' + session.token },
       });
       const data = await res.json();
       if (!res.ok) {
         if (res.status === 401) {
-          clearSession();
-          redirectToLogin();
+          stopRosterPolling();
+          Auth.clearSession();
+          Auth.redirectToLogin();
         }
         rosterHint.textContent = data.error || '명단을 불러오지 못했습니다.';
         return;
@@ -411,10 +169,10 @@
     }
   }
 
-  function startRosterPolling() {
-    loadRoster();
+  function startRosterPolling(session) {
+    loadRoster(session);
     stopRosterPolling();
-    rosterPollTimer = setInterval(loadRoster, ROSTER_POLL_MS);
+    rosterPollTimer = setInterval(() => loadRoster(session), ROSTER_POLL_MS);
   }
 
   function stopRosterPolling() {
@@ -424,67 +182,55 @@
     }
   }
 
-  rosterRefreshBtn.addEventListener('click', loadRoster);
+  const session = Auth.requireSession((session) => {
+    formCard.classList.remove('hidden');
+    Auth.bindSessionUI(session, stopRosterPolling);
+    rosterRefreshBtn.addEventListener('click', () => loadRoster(session));
+    startRosterPolling(session);
 
-  window.addEventListener('load', () => {
-    const session = getSession();
-    if (!session) {
-      redirectToLogin();
-      return;
-    }
-    showForm(session);
-  });
-
-  logoutBtn.addEventListener('click', () => {
-    clearSession();
-    redirectToLogin();
-  });
-
-  submitBtn.addEventListener('click', async () => {
-    const session = getSession();
-    if (!session) {
-      redirectToLogin();
-      return;
-    }
-    const nickname = nicknameSelect.value;
-    if (!nickname) {
-      setMsg(formMsg, '대상 참여자를 선택해주세요.', 'error');
-      nicknameSelect.focus();
-      return;
-    }
-
-    submitBtn.disabled = true;
-    setMsg(formMsg, '제보 접수 중...', '');
-    try {
-      const res = await fetch(WORKER_BASE + '/report', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: session.token,
-          nickname,
-          reason: reasonInput.value.trim(),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        if (res.status === 401) {
-          clearSession();
-          redirectToLogin();
-        }
-        setMsg(formMsg, data.error || '제보 접수에 실패했습니다.', 'error');
+    submitBtn.addEventListener('click', async () => {
+      const nickname = nicknameSelect.value;
+      if (!nickname) {
+        Auth.setMsg(formMsg, '대상 참여자를 선택해주세요.', 'error');
+        nicknameSelect.focus();
         return;
       }
-      setMsg(formMsg, '제보가 접수되었습니다. 잠시 후 확인됩니다.', 'ok');
-      nicknameSelect.value = '';
-      reasonInput.value = '';
-    } catch (err) {
-      setMsg(formMsg, '네트워크 오류: ' + err.message, 'error');
-    } finally {
-      submitBtn.disabled = false;
-    }
+
+      submitBtn.disabled = true;
+      Auth.setMsg(formMsg, '제보 접수 중...', '');
+      try {
+        const res = await fetch(Auth.WORKER_BASE + '/report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token: session.token,
+            nickname,
+            reason: reasonInput.value.trim(),
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          if (res.status === 401) {
+            Auth.clearSession();
+            Auth.redirectToLogin();
+          }
+          Auth.setMsg(formMsg, data.error || '제보 접수에 실패했습니다.', 'error');
+          return;
+        }
+        Auth.setMsg(formMsg, '제보가 접수되었습니다. 잠시 후 확인됩니다.', 'ok');
+        nicknameSelect.value = '';
+        reasonInput.value = '';
+      } catch (err) {
+        Auth.setMsg(formMsg, '네트워크 오류: ' + err.message, 'error');
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
   });
 
-  window.addEventListener('beforeunload', stopRosterPolling);
+  if (session) {
+    window.addEventListener('beforeunload', stopRosterPolling);
+  }
 })();
 </script>
 </body>

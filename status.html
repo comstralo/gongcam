@@ -8,181 +8,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="캠스터디">
+<link rel="stylesheet" href="shared/theme.css">
 <style>
-  :root {
-    --bg: #eef0ec;
-    --surface: #ffffff;
-    --stage-frame: #1b1d19;
-    --ink: #1b1d19;
-    --ink-soft: #5c6058;
-    --hairline: #d3d6cd;
-    --accent: #c8781f;
-    --accent-ink: #2a1600;
-    --danger: #b3341f;
-    --ok: #4a7c3c;
-    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
-    --sans: -apple-system, BlinkMacSystemFont, "Pretendard", "Segoe UI", Roboto, sans-serif;
-    color-scheme: light dark;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --bg: #121310;
-      --surface: #1a1c17;
-      --stage-frame: #0c0d0a;
-      --ink: #eef0ea;
-      --ink-soft: #9a9d92;
-      --hairline: #33362e;
-      --accent: #e0a24a;
-      --accent-ink: #201200;
-      --danger: #e0685a;
-      --ok: #7cb36a;
-    }
-  }
-  :root[data-theme="dark"] {
-    --bg: #121310;
-    --surface: #1a1c17;
-    --stage-frame: #0c0d0a;
-    --ink: #eef0ea;
-    --ink-soft: #9a9d92;
-    --hairline: #33362e;
-    --accent: #e0a24a;
-    --accent-ink: #201200;
-    --danger: #e0685a;
-    --ok: #7cb36a;
-  }
-
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    min-height: 100vh;
-    background: var(--bg);
-    color: var(--ink);
-    font-family: var(--sans);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 20px 16px 32px;
-    gap: 18px;
-  }
-
-  .sitenav {
-    width: 100%;
-    max-width: 480px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px;
-    background: var(--surface);
-    border: 1px solid var(--hairline);
-    border-radius: 10px;
-  }
-  .sitenav a {
-    flex: 1 1 0;
-    text-align: center;
-    padding: 9px 12px;
-    border-radius: 7px;
-    font-size: 13px;
-    font-weight: 600;
-    text-decoration: none;
-    color: var(--ink-soft);
-    transition: background 0.15s, color 0.15s;
-  }
-  .sitenav a.active {
-    background: var(--accent);
-    color: var(--accent-ink);
-  }
-
-  header {
-    width: 100%;
-    max-width: 480px;
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 12px;
-  }
-  .brand {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .brand .eyebrow {
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--accent);
-  }
-  h1 {
-    font-size: 20px;
-    font-weight: 700;
-    margin: 0;
-    letter-spacing: -0.01em;
-    text-wrap: balance;
-  }
-
-  .card {
-    width: 100%;
-    max-width: 480px;
-    background: var(--surface);
-    border: 1px solid var(--hairline);
-    border-radius: 10px;
-    padding: 22px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  .session-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 10px 14px;
-    background: var(--bg);
-    border: 1px solid var(--hairline);
-    border-radius: 8px;
-    font-size: 13px;
-  }
-  .session-row .who {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    overflow: hidden;
-  }
-  .session-row .who .name {
-    font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .session-row .who .email {
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--ink-soft);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .logout-link {
-    font-size: 12px;
-    color: var(--ink-soft);
-    text-decoration: underline;
-    cursor: pointer;
-    background: none;
-    border: none;
-    padding: 4px;
-    flex-shrink: 0;
-  }
-
-  .msg {
-    font-family: var(--mono);
-    font-size: 12px;
-    min-height: 16px;
-    text-align: center;
-  }
-  .msg.error { color: var(--danger); }
-  .msg.ok { color: var(--accent); }
-
   .summary-row {
     display: flex;
     gap: 10px;
@@ -262,19 +89,11 @@
     letter-spacing: 0.04em;
     color: var(--ink-soft);
   }
-
-  .hidden { display: none !important; }
 </style>
 </head>
 <body>
 
-<nav class="sitenav">
-  <a href="index.html">홈</a>
-  <a href="checker.html">프레임 체커</a>
-  <a href="report.html">제보하기</a>
-  <a href="status.html" class="active">내 상태</a>
-  <a href="admin.html" class="admin-only hidden">관리자</a>
-</nav>
+<div id="navSlot" data-active="status"></div>
 
 <header>
   <div class="brand">
@@ -308,57 +127,17 @@
   <div class="msg" id="statusMsg"></div>
 </div>
 
+<script src="shared/auth.js"></script>
+<script src="shared/nav.js"></script>
 <script>
 (() => {
-  const WORKER_BASE = 'https://frame-checker-worker.comstralo.workers.dev';
-  const SESSION_KEY = 'frameCheckerSession';
-  const ADMIN_EMAIL = 'comstralo@gmail.com';
   const TODAY_INDEX = (new Date().getDay() + 6) % 7; // 월=0 ... 일=6
 
   const statusCard = document.getElementById('statusCard');
-  const sessionName = document.getElementById('sessionName');
-  const sessionEmail = document.getElementById('sessionEmail');
-  const logoutBtn = document.getElementById('logoutBtn');
   const goalTypeValue = document.getElementById('goalTypeValue');
   const weekTotalValue = document.getElementById('weekTotalValue');
   const dayList = document.getElementById('dayList');
   const statusMsg = document.getElementById('statusMsg');
-
-  function setMsg(el, text, type) {
-    el.textContent = text || '';
-    el.className = 'msg' + (type ? ' ' + type : '');
-  }
-
-  function getSession() {
-    try {
-      const raw = sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      if (!parsed.token || !parsed.email) return null;
-      return parsed;
-    } catch {
-      return null;
-    }
-  }
-
-  function clearSession() {
-    localStorage.removeItem(SESSION_KEY);
-    sessionStorage.removeItem(SESSION_KEY);
-  }
-
-  function redirectToLogin() {
-    window.location.href = 'index.html';
-  }
-
-  function showStatus(session) {
-    statusCard.classList.remove('hidden');
-    sessionName.textContent = session.name || session.email;
-    sessionEmail.textContent = session.email;
-    if ((session.email || '').toLowerCase() === ADMIN_EMAIL) {
-      document.querySelectorAll('.admin-only').forEach((el) => el.classList.remove('hidden'));
-    }
-    loadStatus();
-  }
 
   function won(n) {
     return '₩' + (n || 0).toLocaleString();
@@ -402,45 +181,32 @@
     });
   }
 
-  async function loadStatus() {
-    const session = getSession();
-    if (!session) {
-      redirectToLogin();
-      return;
-    }
-    setMsg(statusMsg, '불러오는 중...', '');
+  async function loadStatus(session) {
+    Auth.setMsg(statusMsg, '불러오는 중...', '');
     try {
-      const res = await fetch(WORKER_BASE + '/status', {
+      const res = await fetch(Auth.WORKER_BASE + '/status', {
         headers: { Authorization: 'Bearer ' + session.token },
       });
       const data = await res.json();
       if (!res.ok) {
         if (res.status === 401) {
-          clearSession();
-          redirectToLogin();
+          Auth.clearSession();
+          Auth.redirectToLogin();
         }
-        setMsg(statusMsg, data.error || '상태를 불러오지 못했습니다.', 'error');
+        Auth.setMsg(statusMsg, data.error || '상태를 불러오지 못했습니다.', 'error');
         return;
       }
-      setMsg(statusMsg, '', '');
+      Auth.setMsg(statusMsg, '', '');
       renderStatus(data);
     } catch (err) {
-      setMsg(statusMsg, '네트워크 오류: ' + err.message, 'error');
+      Auth.setMsg(statusMsg, '네트워크 오류: ' + err.message, 'error');
     }
   }
 
-  window.addEventListener('load', () => {
-    const session = getSession();
-    if (!session) {
-      redirectToLogin();
-      return;
-    }
-    showStatus(session);
-  });
-
-  logoutBtn.addEventListener('click', () => {
-    clearSession();
-    redirectToLogin();
+  Auth.requireSession((session) => {
+    statusCard.classList.remove('hidden');
+    Auth.bindSessionUI(session);
+    loadStatus(session);
   });
 })();
 </script>
