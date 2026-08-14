@@ -19,6 +19,19 @@ function won(n: number) {
   return "₩" + (n || 0).toLocaleString();
 }
 
+function timeToMinutes(raw: string): number | null {
+  const m = (raw || "").trim().match(/^(\d{1,3}):(\d{2})$/);
+  if (!m) return null;
+  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
+function isGoalMet(studyTime: string, goalTime: string): boolean {
+  const study = timeToMinutes(studyTime);
+  const goal = timeToMinutes(goalTime);
+  if (study === null || goal === null) return false;
+  return study >= goal;
+}
+
 // 관리자가 직접 입력하는 값이라 "00:20"처럼 부호 없이 저장되는 경우 기본을 +로 해석하고,
 // "-00:20"처럼 이미 부호가 붙어 있으면 그 부호를 그대로 존중한다.
 function signedTime(raw: string): string {
@@ -160,7 +173,12 @@ export function StatusPage() {
                       <Timer className="size-3.5 sm:size-4" strokeWidth={2.25} />
                       일간 학습시간
                     </span>
-                    <span className="font-mono text-base font-bold tabular-nums sm:text-lg">
+                    <span
+                      className={cn(
+                        "font-mono text-base font-bold tabular-nums sm:text-lg",
+                        isGoalMet(selected.studyTime, selected.dailyGoalTime) && "text-ok"
+                      )}
+                    >
                       {selected.studyTime || "-"}
                       {selected.dailyGoalTime && (
                         <span className="text-muted-foreground"> / {selected.dailyGoalTime}</span>
