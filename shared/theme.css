@@ -50,47 +50,62 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 20px 16px 32px;
+  padding: 20px 16px calc(32px + var(--tabbar-space, 0px));
   gap: 18px;
+}
+body:has(.tabbar) {
+  --tabbar-space: calc(64px + env(safe-area-inset-bottom, 0px));
 }
 
 /* --- 사이트 공통 폭: 페이지 콘텐츠는 480px, 카메라 뷰파인더가 있는 checker.html만 640px --- */
-.sitenav, header, .card {
+header, .card {
   width: 100%;
   max-width: var(--page-max-width, 480px);
 }
 
-.sitenav {
+/* --- 하단 탭바: 앱처럼 화면 하단에 고정, 아이콘+라벨 --- */
+.tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px;
+  align-items: stretch;
+  gap: 2px;
+  padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0px));
   background: var(--surface);
-  border: 1px solid var(--hairline);
-  border-radius: 10px;
+  border-top: 1px solid var(--hairline);
 }
-.sitenav a {
+.tabbar a {
   flex: 1 1 0;
   min-width: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 44px;
-  text-align: center;
-  padding: 9px 8px;
-  border-radius: 7px;
-  font-size: 12px;
-  font-weight: 600;
+  gap: 2px;
+  min-height: 52px;
+  padding: 4px;
+  border-radius: 10px;
   text-decoration: none;
   color: var(--ink-soft);
+  transition: color 0.15s;
+}
+.tabbar a .tab-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+.tabbar a .tab-label {
+  font-size: 10px;
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: background 0.15s, color 0.15s;
+  max-width: 100%;
 }
-.sitenav a.active {
-  background: var(--accent);
-  color: var(--accent-ink);
+.tabbar a.active {
+  color: var(--accent);
 }
 
 header {

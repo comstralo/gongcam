@@ -1,6 +1,6 @@
 // 공유 네비게이션 — 페이지는 <div id="navSlot" data-active="checker"></div> 하나만 두면 된다.
-// 로그인 전에는 nav 자체를 렌더링하지 않는다(요구사항: 첫 진입 시 메뉴바 없이 프레임 체커/로그인만 노출).
-// 로그인 후에는 관리자 여부에 따라 "관리자" 링크도 자동으로 붙는다.
+// 로그인 전에는 렌더링하지 않는다(첫 진입 시 메뉴 없이 프레임 체커/로그인만 노출).
+// 로그인 후에는 화면 하단 고정 탭바로 표시되며, 관리자 계정에만 "관리자" 탭이 추가로 붙는다.
 
 (function renderNav() {
   const slot = document.getElementById('navSlot');
@@ -16,24 +16,35 @@
 
   const admin = Auth.isAdmin(session);
 
-  const links = [
-    { key: 'home', href: 'index.html', label: '홈' },
-    { key: 'checker', href: 'checker.html', label: '프레임 체커' },
-    { key: 'report', href: 'report.html', label: '제보하기' },
-    { key: 'status', href: 'status.html', label: '내 상태' },
-    { key: 'admin', href: 'admin.html', label: '관리자', adminOnly: true },
+  const tabs = [
+    { key: 'home', href: 'index.html', label: '홈', icon: '🏠' },
+    { key: 'checker', href: 'checker.html', label: '체커', icon: '📐' },
+    { key: 'report', href: 'report.html', label: '제보', icon: '🚩' },
+    { key: 'status', href: 'status.html', label: '내 상태', icon: '📋' },
+    { key: 'admin', href: 'admin.html', label: '관리자', icon: '⚙️', adminOnly: true },
   ];
 
   const nav = document.createElement('nav');
-  nav.className = 'sitenav';
+  nav.className = 'tabbar';
 
-  for (const link of links) {
-    if (link.adminOnly && !admin) continue;
+  for (const tab of tabs) {
+    if (tab.adminOnly && !admin) continue;
 
     const a = document.createElement('a');
-    a.href = link.href;
-    a.textContent = link.label;
-    if (link.key === active) a.classList.add('active');
+    a.href = tab.href;
+    if (tab.key === active) a.classList.add('active');
+
+    const icon = document.createElement('span');
+    icon.className = 'tab-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = tab.icon;
+
+    const label = document.createElement('span');
+    label.className = 'tab-label';
+    label.textContent = tab.label;
+
+    a.appendChild(icon);
+    a.appendChild(label);
     nav.appendChild(a);
   }
 
