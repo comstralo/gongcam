@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>화각 제보</title>
+<title>내 상태</title>
 <style>
   :root {
     --bg: #eef0ec;
@@ -15,6 +15,7 @@
     --accent: #c8781f;
     --accent-ink: #2a1600;
     --danger: #b3341f;
+    --ok: #4a7c3c;
     --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
     --sans: -apple-system, BlinkMacSystemFont, "Pretendard", "Segoe UI", Roboto, sans-serif;
     color-scheme: light dark;
@@ -30,6 +31,7 @@
       --accent: #e0a24a;
       --accent-ink: #201200;
       --danger: #e0685a;
+      --ok: #7cb36a;
     }
   }
   :root[data-theme="dark"] {
@@ -42,6 +44,7 @@
     --accent: #e0a24a;
     --accent-ink: #201200;
     --danger: #e0685a;
+    --ok: #7cb36a;
   }
 
   * { box-sizing: border-box; }
@@ -180,76 +183,6 @@
     flex-shrink: 0;
   }
 
-  label {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    font-size: 13px;
-    font-weight: 600;
-  }
-  label .hint {
-    font-weight: 400;
-    font-size: 11px;
-    color: var(--ink-soft);
-  }
-  input[type=text], textarea, select {
-    font-family: var(--sans);
-    font-size: 15px;
-    padding: 11px 12px;
-    border-radius: 8px;
-    border: 1px solid var(--hairline);
-    background: var(--bg);
-    color: var(--ink);
-  }
-  input[type=text]:focus, textarea:focus, select:focus {
-    outline: 2px solid var(--accent);
-    outline-offset: 1px;
-  }
-  select:disabled {
-    opacity: 0.5;
-  }
-  .roster-refresh {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .roster-refresh select { flex: 1; }
-  .roster-refresh button {
-    font-family: var(--sans);
-    width: 40px;
-    height: 40px;
-    flex-shrink: 0;
-    border-radius: 8px;
-    border: 1px solid var(--hairline);
-    background: var(--surface);
-    color: var(--ink);
-    cursor: pointer;
-    font-size: 15px;
-  }
-  textarea {
-    resize: vertical;
-    min-height: 72px;
-    font-family: var(--sans);
-  }
-
-  button.btn-submit {
-    font-family: var(--sans);
-    padding: 13px 16px;
-    font-size: 15px;
-    font-weight: 700;
-    border-radius: 8px;
-    border: 1px solid var(--accent);
-    background: var(--accent);
-    color: var(--accent-ink);
-    cursor: pointer;
-    transition: opacity 0.15s, transform 0.1s;
-  }
-  button.btn-submit:active { transform: scale(0.98); }
-  button.btn-submit:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-
   .msg {
     font-family: var(--mono);
     font-size: 12px;
@@ -259,6 +192,86 @@
   .msg.error { color: var(--danger); }
   .msg.ok { color: var(--accent); }
 
+  .summary-row {
+    display: flex;
+    gap: 10px;
+  }
+  .summary-tile {
+    flex: 1;
+    padding: 14px;
+    background: var(--bg);
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .summary-tile .label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  .summary-tile .value {
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .summary-tile .value.fine { color: var(--danger); }
+  .summary-tile .value.zero { color: var(--ok); }
+
+  .day-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .day-row {
+    display: flex;
+    gap: 10px;
+    padding: 12px 14px;
+    background: var(--bg);
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
+    align-items: flex-start;
+  }
+  .day-row .day-badge {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    width: 24px;
+    flex-shrink: 0;
+    padding-top: 1px;
+  }
+  .day-row.today { border-color: var(--accent); }
+  .day-row .day-body {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    flex: 1;
+    min-width: 0;
+  }
+  .day-row .day-amount {
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .day-row .day-amount.fine { color: var(--danger); }
+  .day-row .day-amount.zero { color: var(--ok); }
+  .day-row .day-explain {
+    font-size: 12px;
+    color: var(--ink-soft);
+    line-height: 1.5;
+  }
+  .day-row .day-tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    color: var(--ink-soft);
+  }
+
   .hidden { display: none !important; }
 </style>
 </head>
@@ -266,27 +279,27 @@
 
 <nav class="sitenav">
   <a href="index.html">프레임 체커</a>
-  <a href="report.html" class="active">제보하기</a>
-  <a href="status.html">내 상태</a>
+  <a href="report.html">제보하기</a>
+  <a href="status.html" class="active">내 상태</a>
 </nav>
 
 <header>
   <div class="brand">
     <span class="eyebrow">Framing Check</span>
-    <h1>화각 제보</h1>
+    <h1>내 상태</h1>
   </div>
 </header>
 
 <div class="card" id="gateCard">
   <p class="gate-copy">
-    캠스터디 <strong>참여자 명단(스프레드시트 열람 권한)</strong>에 등록된 계정만 제보할 수 있습니다.<br>
-    Google 계정으로 로그인하면 자동으로 확인됩니다.
+    Google 계정으로 로그인하면 <strong>본인의 벌금 현황만</strong> 확인할 수 있습니다.<br>
+    다른 참여자의 정보는 표시되지 않습니다.
   </p>
   <div id="googleBtnSlot"></div>
   <div class="msg" id="gateMsg"></div>
 </div>
 
-<div class="card hidden" id="formCard">
+<div class="card hidden" id="statusCard">
   <div class="session-row">
     <div class="who">
       <span class="name" id="sessionName"></span>
@@ -295,25 +308,20 @@
     <button class="logout-link" id="logoutBtn">로그아웃</button>
   </div>
 
-  <label>
-    대상 참여자
-    <span class="hint" id="rosterHint">실시간 접속 명단을 불러오는 중...</span>
-    <div class="roster-refresh">
-      <select id="nicknameSelect">
-        <option value="">명단을 불러오는 중...</option>
-      </select>
-      <button type="button" id="rosterRefreshBtn" title="명단 새로고침" aria-label="명단 새로고침">⟲</button>
+  <div class="summary-row">
+    <div class="summary-tile">
+      <span class="label">목표 유형</span>
+      <span class="value" id="goalTypeValue" style="font-size:15px;">-</span>
     </div>
-  </label>
+    <div class="summary-tile">
+      <span class="label">이번 주 확정 벌금</span>
+      <span class="value fine" id="weekTotalValue">₩0</span>
+    </div>
+  </div>
 
-  <label>
-    상황 설명 (선택)
-    <span class="hint">화각 이탈, 화면 정지 등 간단히 적어주세요</span>
-    <textarea id="reasonInput" placeholder="예: 손이 안 보여요" maxlength="200"></textarea>
-  </label>
+  <div class="day-list" id="dayList"></div>
 
-  <button class="btn-submit" id="submitBtn">제보 접수</button>
-  <div class="msg" id="formMsg"></div>
+  <div class="msg" id="statusMsg"></div>
 </div>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -322,23 +330,19 @@
   const WORKER_BASE = 'https://frame-checker-worker.comstralo.workers.dev';
   const GOOGLE_CLIENT_ID = '280658144716-4vvnjn23skcshm9t65fibnt0dcuvs3va.apps.googleusercontent.com';
   const SESSION_KEY = 'frameCheckerSession';
+  const TODAY_INDEX = (new Date().getDay() + 6) % 7; // 월=0 ... 일=6
 
   const gateCard = document.getElementById('gateCard');
-  const formCard = document.getElementById('formCard');
+  const statusCard = document.getElementById('statusCard');
   const googleBtnSlot = document.getElementById('googleBtnSlot');
   const gateMsg = document.getElementById('gateMsg');
   const sessionName = document.getElementById('sessionName');
   const sessionEmail = document.getElementById('sessionEmail');
   const logoutBtn = document.getElementById('logoutBtn');
-  const nicknameSelect = document.getElementById('nicknameSelect');
-  const rosterHint = document.getElementById('rosterHint');
-  const rosterRefreshBtn = document.getElementById('rosterRefreshBtn');
-  const reasonInput = document.getElementById('reasonInput');
-  const submitBtn = document.getElementById('submitBtn');
-  const formMsg = document.getElementById('formMsg');
-
-  const ROSTER_POLL_MS = 15000;
-  let rosterPollTimer = null;
+  const goalTypeValue = document.getElementById('goalTypeValue');
+  const weekTotalValue = document.getElementById('weekTotalValue');
+  const dayList = document.getElementById('dayList');
+  const statusMsg = document.getElementById('statusMsg');
 
   function setMsg(el, text, type) {
     el.textContent = text || '';
@@ -365,57 +369,70 @@
     localStorage.removeItem(SESSION_KEY);
   }
 
-  function showForm(session) {
+  function showStatus(session) {
     gateCard.classList.add('hidden');
-    formCard.classList.remove('hidden');
+    statusCard.classList.remove('hidden');
     sessionName.textContent = session.name || session.email;
     sessionEmail.textContent = session.email;
-    startRosterPolling();
+    loadStatus();
   }
 
   function showGate() {
     gateCard.classList.remove('hidden');
-    formCard.classList.add('hidden');
-    stopRosterPolling();
+    statusCard.classList.add('hidden');
   }
 
-  function renderRoster(members, stale) {
-    const prevValue = nicknameSelect.value;
-    nicknameSelect.innerHTML = '';
-
-    if (!members || members.length === 0) {
-      const opt = document.createElement('option');
-      opt.value = '';
-      opt.textContent = '현재 접속 중인 참여자가 없습니다';
-      nicknameSelect.appendChild(opt);
-      nicknameSelect.disabled = true;
-      submitBtn.disabled = true;
-    } else {
-      const placeholder = document.createElement('option');
-      placeholder.value = '';
-      placeholder.textContent = '참여자를 선택하세요';
-      nicknameSelect.appendChild(placeholder);
-      members.forEach((name) => {
-        const opt = document.createElement('option');
-        opt.value = name;
-        opt.textContent = name;
-        nicknameSelect.appendChild(opt);
-      });
-      nicknameSelect.disabled = false;
-      submitBtn.disabled = false;
-      if (members.includes(prevValue)) nicknameSelect.value = prevValue;
-    }
-
-    rosterHint.textContent = stale
-      ? '명단이 최신이 아닐 수 있습니다 (봇 연결 확인 중) · ⟲로 다시 시도'
-      : '실시간 구루미 접속 명단입니다';
+  function won(n) {
+    return '₩' + (n || 0).toLocaleString();
   }
 
-  async function loadRoster() {
+  function renderStatus(data) {
+    goalTypeValue.textContent = data.goalType || '-';
+    weekTotalValue.textContent = won(data.weekTotalConfirmed);
+    weekTotalValue.classList.toggle('zero', data.weekTotalConfirmed === 0);
+
+    dayList.innerHTML = '';
+    data.days.forEach((d, i) => {
+      const row = document.createElement('div');
+      row.className = 'day-row' + (i === TODAY_INDEX ? ' today' : '');
+
+      const badge = document.createElement('div');
+      badge.className = 'day-badge';
+      badge.textContent = d.day;
+      row.appendChild(badge);
+
+      const body = document.createElement('div');
+      body.className = 'day-body';
+
+      const amount = document.createElement('div');
+      amount.className = 'day-amount' + (d.total > 0 ? ' fine' : ' zero');
+      amount.textContent = won(d.total);
+      body.appendChild(amount);
+
+      const explain = document.createElement('div');
+      explain.className = 'day-explain';
+      explain.textContent = d.explain;
+      body.appendChild(explain);
+
+      const tag = document.createElement('div');
+      tag.className = 'day-tag';
+      tag.textContent = d.confirmed ? '확정' : '진행중';
+      body.appendChild(tag);
+
+      row.appendChild(body);
+      dayList.appendChild(row);
+    });
+  }
+
+  async function loadStatus() {
     const session = getSession();
-    if (!session) return;
+    if (!session) {
+      showGate();
+      return;
+    }
+    setMsg(statusMsg, '불러오는 중...', '');
     try {
-      const res = await fetch(WORKER_BASE + '/participants', {
+      const res = await fetch(WORKER_BASE + '/status', {
         headers: { Authorization: 'Bearer ' + session.token },
       });
       const data = await res.json();
@@ -424,29 +441,15 @@
           clearSession();
           showGate();
         }
-        rosterHint.textContent = data.error || '명단을 불러오지 못했습니다.';
+        setMsg(statusMsg, data.error || '상태를 불러오지 못했습니다.', 'error');
         return;
       }
-      renderRoster(data.members, data.stale);
+      setMsg(statusMsg, '', '');
+      renderStatus(data);
     } catch (err) {
-      rosterHint.textContent = '명단 조회 실패: ' + err.message;
+      setMsg(statusMsg, '네트워크 오류: ' + err.message, 'error');
     }
   }
-
-  function startRosterPolling() {
-    loadRoster();
-    stopRosterPolling();
-    rosterPollTimer = setInterval(loadRoster, ROSTER_POLL_MS);
-  }
-
-  function stopRosterPolling() {
-    if (rosterPollTimer) {
-      clearInterval(rosterPollTimer);
-      rosterPollTimer = null;
-    }
-  }
-
-  rosterRefreshBtn.addEventListener('click', loadRoster);
 
   async function handleCredentialResponse(response) {
     setMsg(gateMsg, '확인 중...', '');
@@ -463,7 +466,7 @@
       }
       saveSession(data);
       setMsg(gateMsg, '', '');
-      showForm(data);
+      showStatus(data);
     } catch (err) {
       setMsg(gateMsg, '네트워크 오류: ' + err.message, 'error');
     }
@@ -472,7 +475,7 @@
   window.addEventListener('load', () => {
     const existing = getSession();
     if (existing) {
-      showForm(existing);
+      showStatus(existing);
       return;
     }
     if (window.google && google.accounts && google.accounts.id) {
@@ -494,58 +497,9 @@
 
   logoutBtn.addEventListener('click', () => {
     clearSession();
-    nicknameSelect.innerHTML = '';
-    reasonInput.value = '';
-    setMsg(formMsg, '', '');
     showGate();
     window.location.reload();
   });
-
-  submitBtn.addEventListener('click', async () => {
-    const session = getSession();
-    if (!session) {
-      showGate();
-      return;
-    }
-    const nickname = nicknameSelect.value;
-    if (!nickname) {
-      setMsg(formMsg, '대상 참여자를 선택해주세요.', 'error');
-      nicknameSelect.focus();
-      return;
-    }
-
-    submitBtn.disabled = true;
-    setMsg(formMsg, '제보 접수 중...', '');
-    try {
-      const res = await fetch(WORKER_BASE + '/report', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: session.token,
-          nickname,
-          reason: reasonInput.value.trim(),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        if (res.status === 401) {
-          clearSession();
-          showGate();
-        }
-        setMsg(formMsg, data.error || '제보 접수에 실패했습니다.', 'error');
-        return;
-      }
-      setMsg(formMsg, '제보가 접수되었습니다. 잠시 후 확인됩니다.', 'ok');
-      nicknameSelect.value = '';
-      reasonInput.value = '';
-    } catch (err) {
-      setMsg(formMsg, '네트워크 오류: ' + err.message, 'error');
-    } finally {
-      submitBtn.disabled = false;
-    }
-  });
-
-  window.addEventListener('beforeunload', stopRosterPolling);
 })();
 </script>
 </body>
