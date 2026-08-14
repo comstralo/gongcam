@@ -22,7 +22,7 @@ export default function App() {
           <Route
             path="/checker"
             element={
-              <AppShell compactOnLandscape>
+              <AppShell fitToScreen>
                 <CheckerPage />
               </AppShell>
             }

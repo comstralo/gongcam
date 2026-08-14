@@ -10,24 +10,26 @@ type AppShellProps = {
   /** true면 title은 유지하되 상단 "Framing Check" 라벨을 생략한다. */
   hideEyebrow?: boolean;
   /**
-   * true면 가로 모드에서 하단 탭바를 숨기고 좌우 여백/패딩을 줄인다.
-   * 세로 공간이 극도로 좁은 가로 모드에서(예: 체커의 카메라 뷰파인더)
-   * 화면 전체를 콘텐츠에 내주기 위함. 세로 모드에서는 평소와 동일하다.
+   * true면 화면 높이를 정확히 고정하고(min-height 대신 height), 가로 모드에서
+   * 하단 탭바를 숨기고 좌우 여백/패딩을 줄인다. 체커처럼 콘텐츠가 뷰포트
+   * 안에 정확히 맞아 들어가야 하는(내부에서 flex-1로 남는 공간을 계산하는)
+   * 페이지 전용 — 일반 페이지는 콘텐츠가 넘치면 자연스럽게 스크롤되어야 하므로
+   * 사용하지 않는다.
    */
-  compactOnLandscape?: boolean;
+  fitToScreen?: boolean;
 };
 
-export function AppShell({ children, title, hideEyebrow, compactOnLandscape }: AppShellProps) {
+export function AppShell({ children, title, hideEyebrow, fitToScreen }: AppShellProps) {
   const { session } = useAuth();
 
   return (
     <div
       className={cn(
-        "flex min-h-dvh w-full flex-col items-center gap-4.5 p-4",
-        compactOnLandscape && "landscape:gap-2 landscape:p-2",
-        session && !compactOnLandscape && "pb-[calc(32px+64px+env(safe-area-inset-bottom,0px))]",
+        "flex w-full flex-col items-center gap-4.5 p-4",
+        fitToScreen ? "h-dvh overflow-hidden landscape:gap-2 landscape:p-2" : "min-h-dvh",
+        session && !fitToScreen && "pb-[calc(32px+64px+env(safe-area-inset-bottom,0px))]",
         session &&
-          compactOnLandscape &&
+          fitToScreen &&
           "portrait:pb-[calc(32px+64px+env(safe-area-inset-bottom,0px))] landscape:pb-2"
       )}
     >
@@ -40,7 +42,7 @@ export function AppShell({ children, title, hideEyebrow, compactOnLandscape }: A
         </header>
       )}
       {children}
-      <div className={cn(compactOnLandscape && "landscape:hidden")}>
+      <div className={cn(fitToScreen && "landscape:hidden")}>
         <TabBar />
       </div>
     </div>
