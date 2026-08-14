@@ -3,39 +3,113 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>화각 점검 카메라</title>
+<title>프레임 체커</title>
 <style>
   :root {
-    color-scheme: dark;
+    --bg: #eef0ec;
+    --surface: #ffffff;
+    --stage-frame: #1b1d19;
+    --ink: #1b1d19;
+    --ink-soft: #5c6058;
+    --hairline: #d3d6cd;
+    --accent: #c8781f;
+    --accent-ink: #2a1600;
+    --danger: #b3341f;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Pretendard", "Segoe UI", Roboto, sans-serif;
+    color-scheme: light dark;
   }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121310;
+      --surface: #1a1c17;
+      --stage-frame: #0c0d0a;
+      --ink: #eef0ea;
+      --ink-soft: #9a9d92;
+      --hairline: #33362e;
+      --accent: #e0a24a;
+      --accent-ink: #201200;
+      --danger: #e0685a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #121310;
+    --surface: #1a1c17;
+    --stage-frame: #0c0d0a;
+    --ink: #eef0ea;
+    --ink-soft: #9a9d92;
+    --hairline: #33362e;
+    --accent: #e0a24a;
+    --accent-ink: #201200;
+    --danger: #e0685a;
+  }
+
   * { box-sizing: border-box; }
   body {
     margin: 0;
     min-height: 100vh;
-    background: #0b0d10;
-    color: #e8eaed;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 16px;
+    padding: 20px 16px 32px;
+    gap: 18px;
+  }
+
+  header {
+    width: 100%;
+    max-width: 640px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
     gap: 12px;
   }
+  .brand {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .brand .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
   h1 {
-    font-size: 18px;
-    font-weight: 600;
-    margin: 4px 0;
-    text-align: center;
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  .spec {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-soft);
+    text-align: right;
+    line-height: 1.5;
+  }
+
+  .viewfinder {
+    position: relative;
+    width: 100%;
+    max-width: 640px;
+    aspect-ratio: 16 / 9;
+    background: var(--stage-frame);
+    border-radius: 4px;
+    overflow: hidden;
+    padding: 14px;
   }
   .stage {
     position: relative;
     width: 100%;
-    max-width: 640px;
-    aspect-ratio: 4 / 3;
+    height: 100%;
     background: #000;
-    border-radius: 12px;
+    border-radius: 2px;
     overflow: hidden;
-    box-shadow: 0 0 0 1px #2a2e33;
   }
   video, canvas {
     position: absolute;
@@ -46,19 +120,84 @@
   }
   #liveCanvas { pointer-events: none; }
   #resultCanvas { display: none; background: #000; }
-  .badge {
+
+  .bracket {
     position: absolute;
-    top: 10px;
-    left: 10px;
-    background: rgba(0,0,0,0.55);
-    padding: 6px 10px;
-    border-radius: 8px;
-    font-size: 13px;
-    font-variant-numeric: tabular-nums;
-    z-index: 5;
+    width: 22px;
+    height: 22px;
+    border: 2px solid rgba(238, 240, 234, 0.85);
+    pointer-events: none;
+    z-index: 6;
   }
-  .badge.rec { color: #ff5c5c; }
-  .thumbs {
+  .bracket.tl { top: 10px; left: 10px; border-right: none; border-bottom: none; }
+  .bracket.tr { top: 10px; right: 10px; border-left: none; border-bottom: none; }
+  .bracket.bl { bottom: 10px; left: 10px; border-right: none; border-top: none; }
+  .bracket.br { bottom: 10px; right: 10px; border-left: none; border-top: none; }
+
+  .hud {
+    position: absolute;
+    z-index: 6;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.03em;
+    color: #eef0ea;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  }
+  .hud-top-left { top: 22px; left: 22px; }
+  .hud-top-right {
+    top: 22px; right: 22px;
+    text-align: right;
+  }
+  .hud-rec {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .hud-rec .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--ink-soft);
+  }
+  .hud-rec.live .dot {
+    background: var(--danger);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  .hud-rec.live { color: var(--danger); }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hud-rec.live .dot { animation: none; }
+  }
+  .hud-countdown {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .hud-frame-count {
+    position: absolute;
+    z-index: 6;
+    bottom: 22px;
+    left: 22px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: #eef0ea;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+    display: flex;
+    gap: 4px;
+  }
+  .hud-frame-count .tick {
+    width: 12px;
+    height: 3px;
+    background: rgba(238,240,234,0.3);
+    border-radius: 1px;
+  }
+  .hud-frame-count .tick.filled { background: var(--accent); }
+
+  .filmstrip {
     display: flex;
     gap: 6px;
     width: 100%;
@@ -66,99 +205,271 @@
     overflow-x: auto;
     padding: 2px;
   }
-  .thumbs img {
-    width: 64px;
-    height: 48px;
+  .filmstrip img {
+    width: 68px;
+    height: 51px;
     object-fit: cover;
-    border-radius: 6px;
-    border: 1px solid #2a2e33;
+    border-radius: 3px;
+    border: 1px solid var(--hairline);
     flex-shrink: 0;
   }
-  .controls {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    justify-content: center;
+
+  .panel {
     width: 100%;
     max-width: 640px;
-  }
-  button {
-    flex: 1 1 auto;
-    min-width: 110px;
-    padding: 12px 16px;
-    font-size: 15px;
-    font-weight: 600;
-    border: none;
-    border-radius: 10px;
-    background: #2563eb;
-    color: white;
-    cursor: pointer;
-    transition: opacity 0.15s;
-  }
-  button:active { opacity: 0.75; }
-  button:disabled {
-    background: #3a3f47;
-    color: #7a8087;
-    cursor: not-allowed;
-  }
-  button.secondary { background: #3a3f47; }
-  button.danger { background: #b91c1c; }
-  .row {
     display: flex;
-    gap: 10px;
-    width: 100%;
-    max-width: 640px;
-    align-items: center;
-    justify-content: center;
-    font-size: 13px;
-    color: #9aa0a6;
+    flex-direction: column;
+    gap: 14px;
   }
+
   .opacity-control {
     display: flex;
     align-items: center;
-    gap: 8px;
-    width: 100%;
-    max-width: 640px;
+    gap: 12px;
+    padding: 10px 14px;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 6px;
+  }
+  .opacity-control span {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    white-space: nowrap;
   }
   .opacity-control input[type=range] {
     flex: 1;
+    accent-color: var(--accent);
   }
+
+  .mode-row {
+    display: flex;
+    align-items: stretch;
+    gap: 18px;
+    padding: 16px;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+  }
+  .mode-group {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  .mode-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  .mode-divider {
+    width: 1px;
+    background: var(--hairline);
+    flex-shrink: 0;
+  }
+
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    justify-content: center;
+  }
+  button {
+    font-family: var(--sans);
+    border: 1px solid var(--hairline);
+    background: var(--surface);
+    color: var(--ink);
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s, background 0.15s;
+  }
+  button:active { transform: scale(0.97); }
+  button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .btn-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 17px;
+    flex-shrink: 0;
+    padding: 0;
+  }
+
+  /* 셔터 버튼: 조리개형 — 링 안에 원형 앰버 코어 */
+  .btn-shutter {
+    width: 62px;
+    height: 62px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 3px solid var(--accent);
+    flex-shrink: 0;
+    padding: 0;
+    position: relative;
+  }
+  .btn-shutter::before {
+    content: "";
+    position: absolute;
+    inset: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    transition: inset 0.15s, border-radius 0.15s;
+  }
+  .btn-shutter.recording {
+    border-color: var(--danger);
+  }
+  .btn-shutter.recording::before {
+    background: var(--danger);
+    inset: 20px;
+    border-radius: 4px;
+  }
+
+  /* 녹화 버튼: 캠코더형 — 링 안에 REC 점, 누르면 정지 사각형 */
+  .btn-rec {
+    width: 62px;
+    height: 62px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 3px solid var(--danger);
+    flex-shrink: 0;
+    padding: 0;
+    position: relative;
+  }
+  .btn-rec::before {
+    content: "";
+    position: absolute;
+    inset: 18px;
+    border-radius: 50%;
+    background: var(--danger);
+    transition: inset 0.15s, border-radius 0.15s;
+  }
+  .btn-rec.active {
+    animation: rec-ring 1.4s ease-in-out infinite;
+  }
+  .btn-rec.active::before {
+    border-radius: 4px;
+    inset: 22px;
+  }
+  @keyframes rec-ring {
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 35%, transparent); }
+    50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--danger) 0%, transparent); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .btn-rec.active { animation: none; }
+  }
+
   .status {
-    font-size: 13px;
-    color: #9aa0a6;
-    min-height: 18px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-soft);
+    min-height: 16px;
     text-align: center;
   }
   .hidden { display: none !important; }
+
+  .sitenav {
+    width: 100%;
+    max-width: 640px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+  }
+  .sitenav a {
+    flex: 1 1 0;
+    text-align: center;
+    padding: 9px 12px;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    color: var(--ink-soft);
+    transition: background 0.15s, color 0.15s;
+  }
+  .sitenav a.active {
+    background: var(--accent);
+    color: var(--accent-ink);
+  }
 </style>
 </head>
 <body>
 
-<h1>화각 점검 카메라 — 4x4 격자 · 30초 간격 6컷 오버레이</h1>
+<nav class="sitenav">
+  <a href="index.html" class="active">프레임 체커</a>
+  <a href="report.html">제보하기</a>
+</nav>
 
-<div class="stage" id="stage">
-  <video id="video" autoplay playsinline muted></video>
-  <canvas id="liveCanvas"></canvas>
-  <canvas id="resultCanvas"></canvas>
-  <div class="badge" id="timerBadge">대기 중</div>
+<header>
+  <div class="brand">
+    <span class="eyebrow">Framing Check</span>
+    <h1>프레임 체커</h1>
+  </div>
+  <div class="spec">GRID 4×4<br>6 FRAMES / 30s</div>
+</header>
+
+<div class="viewfinder">
+  <div class="stage" id="stage">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="liveCanvas"></canvas>
+    <canvas id="resultCanvas"></canvas>
+    <div class="bracket tl"></div>
+    <div class="bracket tr"></div>
+    <div class="bracket bl"></div>
+    <div class="bracket br"></div>
+    <div class="hud hud-top-left" id="hudLabel">
+      <span class="hud-rec" id="hudRec"><span class="dot"></span>STANDBY</span>
+    </div>
+    <div class="hud hud-top-right" id="hudCountdown"></div>
+    <div class="hud-frame-count" id="frameTicks"></div>
+  </div>
 </div>
 
-<div class="thumbs" id="thumbs"></div>
+<div class="filmstrip" id="thumbs"></div>
 
-<div class="opacity-control hidden" id="opacityControl">
-  <span>오버레이 투명도</span>
-  <input type="range" id="opacitySlider" min="0.1" max="0.8" step="0.05" value="0.35">
+<div class="panel">
+  <div class="opacity-control hidden" id="opacityControl">
+    <span>Overlay</span>
+    <input type="range" id="opacitySlider" min="0.1" max="0.8" step="0.05" value="0.35">
+  </div>
+
+  <div class="mode-row">
+    <div class="mode-group">
+      <span class="mode-label">Stills · 30s × 6</span>
+      <div class="controls">
+        <button id="switchBtn" class="btn-icon" title="카메라 전환" aria-label="카메라 전환">⟲</button>
+        <button id="startBtn" class="btn-shutter" title="촬영 시작" aria-label="촬영 시작"></button>
+        <button id="stopBtn" class="btn-shutter recording hidden" title="중지" aria-label="중지"></button>
+        <button id="resetBtn" class="btn-icon hidden" title="다시 촬영" aria-label="다시 촬영">↺</button>
+        <button id="downloadBtn" class="btn-icon hidden" title="이미지 저장" aria-label="이미지 저장">⬇</button>
+      </div>
+    </div>
+
+    <div class="mode-divider" aria-hidden="true"></div>
+
+    <div class="mode-group">
+      <span class="mode-label">Video · 1:30</span>
+      <div class="controls">
+        <button id="recordBtn" class="btn-rec" title="화면 녹화 시작 (1분 30초)" aria-label="화면 녹화 시작"></button>
+        <button id="recordStopBtn" class="btn-rec active hidden" title="녹화 중지" aria-label="녹화 중지"></button>
+        <button id="videoDownloadBtn" class="btn-icon hidden" title="영상 저장" aria-label="영상 저장">⬇</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="status" id="status">카메라를 시작하려면 브라우저 권한을 허용해주세요.</div>
 </div>
-
-<div class="controls">
-  <button id="switchBtn">카메라 전환</button>
-  <button id="startBtn">촬영 시작 (30초x6)</button>
-  <button id="stopBtn" class="danger hidden">중지</button>
-  <button id="resetBtn" class="secondary hidden">다시 촬영</button>
-  <button id="downloadBtn" class="secondary hidden">이미지 저장</button>
-</div>
-
-<div class="status" id="status">카메라를 시작하려면 브라우저 권한을 허용해주세요.</div>
 
 <script>
 (() => {
@@ -166,7 +477,9 @@
   const liveCanvas = document.getElementById('liveCanvas');
   const resultCanvas = document.getElementById('resultCanvas');
   const stage = document.getElementById('stage');
-  const timerBadge = document.getElementById('timerBadge');
+  const hudRec = document.getElementById('hudRec');
+  const hudCountdown = document.getElementById('hudCountdown');
+  const frameTicks = document.getElementById('frameTicks');
   const thumbsEl = document.getElementById('thumbs');
   const statusEl = document.getElementById('status');
   const opacityControl = document.getElementById('opacityControl');
@@ -177,6 +490,9 @@
   const stopBtn = document.getElementById('stopBtn');
   const resetBtn = document.getElementById('resetBtn');
   const downloadBtn = document.getElementById('downloadBtn');
+  const recordBtn = document.getElementById('recordBtn');
+  const recordStopBtn = document.getElementById('recordStopBtn');
+  const videoDownloadBtn = document.getElementById('videoDownloadBtn');
 
   const liveCtx = liveCanvas.getContext('2d');
   const resultCtx = resultCanvas.getContext('2d');
@@ -193,9 +509,17 @@
   let shotsLeft = TOTAL_SHOTS;
   let isCapturing = false;
 
+  const RECORD_SEC = 90;
+  let mediaRecorder = null;
+  let recordedChunks = [];
+  let recordedBlobUrl = null;
+  let recordCountdownTimer = null;
+  let recordRemainingSec = RECORD_SEC;
+  let isRecording = false;
+
   function drawGrid(ctx, w, h) {
     ctx.save();
-    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.strokeStyle = 'rgba(238,240,234,0.5)';
     ctx.lineWidth = 1;
     for (let i = 1; i < 4; i++) {
       const x = (w / 4) * i;
@@ -250,7 +574,7 @@
         video: {
           facingMode: facing,
           width: { ideal: 1280 },
-          height: { ideal: 960 }
+          height: { ideal: 720 }
         },
         audio: false
       });
@@ -312,15 +636,29 @@
     }
   });
 
+  function renderFrameTicks() {
+    frameTicks.innerHTML = '';
+    for (let i = 0; i < TOTAL_SHOTS; i++) {
+      const tick = document.createElement('div');
+      tick.className = 'tick' + (i < capturedShots.length ? ' filled' : '');
+      frameTicks.appendChild(tick);
+    }
+  }
+
   function updateBadge() {
+    renderFrameTicks();
     if (isCapturing) {
       const mm = String(Math.floor(remainingSec / 60)).padStart(2, '0');
       const ss = String(remainingSec % 60).padStart(2, '0');
-      timerBadge.textContent = `촬영 ${TOTAL_SHOTS - shotsLeft + 1}/${TOTAL_SHOTS} · 다음 컷까지 ${mm}:${ss}`;
-      timerBadge.classList.add('rec');
+      hudRec.innerHTML = '<span class="dot"></span>REC ' + (TOTAL_SHOTS - shotsLeft) + '/' + TOTAL_SHOTS;
+      hudRec.classList.add('live');
+      hudCountdown.innerHTML = '<span class="hud-countdown">' + mm + ':' + ss + '</span>NEXT FRAME';
+    } else if (!isRecording) {
+      hudRec.innerHTML = '<span class="dot"></span>STANDBY';
+      hudRec.classList.remove('live');
+      hudCountdown.textContent = '';
     } else {
-      timerBadge.textContent = '대기 중';
-      timerBadge.classList.remove('rec');
+      hudCountdown.textContent = '';
     }
   }
 
@@ -333,7 +671,8 @@
     updateBadge();
     startBtn.classList.remove('hidden');
     stopBtn.classList.add('hidden');
-    switchBtn.disabled = false;
+    switchBtn.disabled = isRecording;
+    recordBtn.disabled = false;
   }
 
   function finishSequence() {
@@ -345,6 +684,7 @@
     opacityControl.classList.remove('hidden');
     resetBtn.classList.remove('hidden');
     downloadBtn.classList.remove('hidden');
+    recordBtn.disabled = true;
     renderOverlayResult();
   }
 
@@ -360,6 +700,7 @@
     switchBtn.disabled = true;
     resetBtn.classList.add('hidden');
     downloadBtn.classList.add('hidden');
+    recordBtn.disabled = true;
 
     // 첫 컷은 즉시 촬영
     const first = captureFrame();
@@ -410,6 +751,7 @@
     opacityControl.classList.add('hidden');
     resetBtn.classList.add('hidden');
     downloadBtn.classList.add('hidden');
+    recordBtn.disabled = false;
     statusEl.textContent = '준비 완료. 촬영 시작을 누르세요.';
     updateBadge();
   });
@@ -422,9 +764,107 @@
     link.click();
   });
 
+  function pickRecorderMimeType() {
+    const candidates = [
+      'video/webm;codecs=vp9',
+      'video/webm;codecs=vp8',
+      'video/webm'
+    ];
+    return candidates.find(type => window.MediaRecorder && MediaRecorder.isTypeSupported(type)) || '';
+  }
+
+  function updateRecordHud() {
+    if (isRecording) {
+      const mm = String(Math.floor(recordRemainingSec / 60)).padStart(2, '0');
+      const ss = String(recordRemainingSec % 60).padStart(2, '0');
+      hudRec.innerHTML = '<span class="dot"></span>REC ' + mm + ':' + ss;
+      hudRec.classList.add('live');
+    } else if (!isCapturing) {
+      hudRec.innerHTML = '<span class="dot"></span>STANDBY';
+      hudRec.classList.remove('live');
+    }
+  }
+
+  function startRecording() {
+    if (!liveCanvas.captureStream) {
+      statusEl.textContent = '이 브라우저는 화면 녹화를 지원하지 않습니다.';
+      return;
+    }
+    if (recordedBlobUrl) {
+      URL.revokeObjectURL(recordedBlobUrl);
+      recordedBlobUrl = null;
+    }
+    recordedChunks = [];
+    const canvasStream = liveCanvas.captureStream(30);
+    const mimeType = pickRecorderMimeType();
+    try {
+      mediaRecorder = new MediaRecorder(canvasStream, mimeType ? { mimeType } : undefined);
+    } catch (err) {
+      console.error(err);
+      statusEl.textContent = '녹화를 시작할 수 없습니다: ' + err.message;
+      return;
+    }
+
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+    };
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(recordedChunks, { type: mimeType || 'video/webm' });
+      recordedBlobUrl = URL.createObjectURL(blob);
+      videoDownloadBtn.classList.remove('hidden');
+      statusEl.textContent = `녹화 완료 (${RECORD_SEC}초). 영상을 저장하세요.`;
+    };
+
+    mediaRecorder.start();
+    isRecording = true;
+    recordRemainingSec = RECORD_SEC;
+    recordBtn.classList.add('hidden');
+    recordStopBtn.classList.remove('hidden');
+    videoDownloadBtn.classList.add('hidden');
+    switchBtn.disabled = true;
+    startBtn.disabled = true;
+    statusEl.textContent = `화면 녹화 중... (${RECORD_SEC}초)`;
+    updateRecordHud();
+
+    recordCountdownTimer = setInterval(() => {
+      recordRemainingSec--;
+      updateRecordHud();
+      if (recordRemainingSec <= 0) {
+        stopRecording();
+      }
+    }, 1000);
+  }
+
+  function stopRecording() {
+    if (!isRecording) return;
+    isRecording = false;
+    clearInterval(recordCountdownTimer);
+    recordCountdownTimer = null;
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+    }
+    recordBtn.classList.remove('hidden');
+    recordStopBtn.classList.add('hidden');
+    switchBtn.disabled = isCapturing;
+    startBtn.disabled = false;
+    updateRecordHud();
+  }
+
+  recordBtn.addEventListener('click', startRecording);
+  recordStopBtn.addEventListener('click', stopRecording);
+  videoDownloadBtn.addEventListener('click', () => {
+    if (!recordedBlobUrl) return;
+    const link = document.createElement('a');
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    link.download = `fov-check-recording-${ts}.webm`;
+    link.href = recordedBlobUrl;
+    link.click();
+  });
+
   // 초기화
   resizeCanvases();
   renderLive();
+  updateBadge();
   startCamera(currentFacing);
 })();
 </script>

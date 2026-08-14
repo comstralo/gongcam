@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>화각 제보</title>
+<style>
+  :root {
+    --bg: #eef0ec;
+    --surface: #ffffff;
+    --stage-frame: #1b1d19;
+    --ink: #1b1d19;
+    --ink-soft: #5c6058;
+    --hairline: #d3d6cd;
+    --accent: #c8781f;
+    --accent-ink: #2a1600;
+    --danger: #b3341f;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Pretendard", "Segoe UI", Roboto, sans-serif;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121310;
+      --surface: #1a1c17;
+      --stage-frame: #0c0d0a;
+      --ink: #eef0ea;
+      --ink-soft: #9a9d92;
+      --hairline: #33362e;
+      --accent: #e0a24a;
+      --accent-ink: #201200;
+      --danger: #e0685a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #121310;
+    --surface: #1a1c17;
+    --stage-frame: #0c0d0a;
+    --ink: #eef0ea;
+    --ink-soft: #9a9d92;
+    --hairline: #33362e;
+    --accent: #e0a24a;
+    --accent-ink: #201200;
+    --danger: #e0685a;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 16px 32px;
+    gap: 18px;
+  }
+
+  .sitenav {
+    width: 100%;
+    max-width: 480px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+  }
+  .sitenav a {
+    flex: 1 1 0;
+    text-align: center;
+    padding: 9px 12px;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    color: var(--ink-soft);
+    transition: background 0.15s, color 0.15s;
+  }
+  .sitenav a.active {
+    background: var(--accent);
+    color: var(--accent-ink);
+  }
+
+  header {
+    width: 100%;
+    max-width: 480px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .brand {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .brand .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  h1 {
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+
+  .card {
+    width: 100%;
+    max-width: 480px;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    padding: 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .gate-copy {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--ink-soft);
+  }
+  .gate-copy strong { color: var(--ink); }
+
+  #googleBtnSlot {
+    display: flex;
+    justify-content: center;
+    min-height: 44px;
+  }
+
+  .session-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--bg);
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
+    font-size: 13px;
+  }
+  .session-row .who {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow: hidden;
+  }
+  .session-row .who .name {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .session-row .who .email {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-soft);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .logout-link {
+    font-size: 12px;
+    color: var(--ink-soft);
+    text-decoration: underline;
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 4px;
+    flex-shrink: 0;
+  }
+
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  label .hint {
+    font-weight: 400;
+    font-size: 11px;
+    color: var(--ink-soft);
+  }
+  input[type=text], textarea {
+    font-family: var(--sans);
+    font-size: 15px;
+    padding: 11px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--hairline);
+    background: var(--bg);
+    color: var(--ink);
+  }
+  input[type=text]:focus, textarea:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  textarea {
+    resize: vertical;
+    min-height: 72px;
+    font-family: var(--sans);
+  }
+
+  button.btn-submit {
+    font-family: var(--sans);
+    padding: 13px 16px;
+    font-size: 15px;
+    font-weight: 700;
+    border-radius: 8px;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: var(--accent-ink);
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+  button.btn-submit:active { transform: scale(0.98); }
+  button.btn-submit:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .msg {
+    font-family: var(--mono);
+    font-size: 12px;
+    min-height: 16px;
+    text-align: center;
+  }
+  .msg.error { color: var(--danger); }
+  .msg.ok { color: var(--accent); }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<nav class="sitenav">
+  <a href="index.html">프레임 체커</a>
+  <a href="report.html" class="active">제보하기</a>
+</nav>
+
+<header>
+  <div class="brand">
+    <span class="eyebrow">Framing Check</span>
+    <h1>화각 제보</h1>
+  </div>
+</header>
+
+<div class="card" id="gateCard">
+  <p class="gate-copy">
+    캠스터디 <strong>참여자 명단(스프레드시트 열람 권한)</strong>에 등록된 계정만 제보할 수 있습니다.<br>
+    Google 계정으로 로그인하면 자동으로 확인됩니다.
+  </p>
+  <div id="googleBtnSlot"></div>
+  <div class="msg" id="gateMsg"></div>
+</div>
+
+<div class="card hidden" id="formCard">
+  <div class="session-row">
+    <div class="who">
+      <span class="name" id="sessionName"></span>
+      <span class="email" id="sessionEmail"></span>
+    </div>
+    <button class="logout-link" id="logoutBtn">로그아웃</button>
+  </div>
+
+  <label>
+    대상 참여자 닉네임
+    <span class="hint">구루미 캠스터디에 표시되는 이름 그대로 입력하세요</span>
+    <input type="text" id="nicknameInput" placeholder="예: 현정" maxlength="50" autocomplete="off">
+  </label>
+
+  <label>
+    상황 설명 (선택)
+    <span class="hint">화각 이탈, 화면 정지 등 간단히 적어주세요</span>
+    <textarea id="reasonInput" placeholder="예: 손이 안 보여요" maxlength="200"></textarea>
+  </label>
+
+  <button class="btn-submit" id="submitBtn">제보 접수</button>
+  <div class="msg" id="formMsg"></div>
+</div>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+(() => {
+  const WORKER_BASE = 'https://frame-checker-worker.comstralo.workers.dev';
+  const GOOGLE_CLIENT_ID = '280658144716-4vvnjn23skcshm9t65fibnt0dcuvs3va.apps.googleusercontent.com';
+  const SESSION_KEY = 'frameCheckerSession';
+
+  const gateCard = document.getElementById('gateCard');
+  const formCard = document.getElementById('formCard');
+  const googleBtnSlot = document.getElementById('googleBtnSlot');
+  const gateMsg = document.getElementById('gateMsg');
+  const sessionName = document.getElementById('sessionName');
+  const sessionEmail = document.getElementById('sessionEmail');
+  const logoutBtn = document.getElementById('logoutBtn');
+  const nicknameInput = document.getElementById('nicknameInput');
+  const reasonInput = document.getElementById('reasonInput');
+  const submitBtn = document.getElementById('submitBtn');
+  const formMsg = document.getElementById('formMsg');
+
+  function setMsg(el, text, type) {
+    el.textContent = text || '';
+    el.className = 'msg' + (type ? ' ' + type : '');
+  }
+
+  function getSession() {
+    try {
+      const raw = localStorage.getItem(SESSION_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed.token || !parsed.email) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  function saveSession(session) {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  }
+
+  function clearSession() {
+    localStorage.removeItem(SESSION_KEY);
+  }
+
+  function showForm(session) {
+    gateCard.classList.add('hidden');
+    formCard.classList.remove('hidden');
+    sessionName.textContent = session.name || session.email;
+    sessionEmail.textContent = session.email;
+  }
+
+  function showGate() {
+    gateCard.classList.remove('hidden');
+    formCard.classList.add('hidden');
+  }
+
+  async function handleCredentialResponse(response) {
+    setMsg(gateMsg, '확인 중...', '');
+    try {
+      const res = await fetch(WORKER_BASE + '/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential: response.credential }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMsg(gateMsg, data.error || '로그인에 실패했습니다.', 'error');
+        return;
+      }
+      saveSession(data);
+      setMsg(gateMsg, '', '');
+      showForm(data);
+    } catch (err) {
+      setMsg(gateMsg, '네트워크 오류: ' + err.message, 'error');
+    }
+  }
+
+  window.addEventListener('load', () => {
+    const existing = getSession();
+    if (existing) {
+      showForm(existing);
+      return;
+    }
+    if (window.google && google.accounts && google.accounts.id) {
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleCredentialResponse,
+      });
+      google.accounts.id.renderButton(googleBtnSlot, {
+        type: 'standard',
+        theme: 'outline',
+        size: 'large',
+        text: 'signin_with',
+        shape: 'pill',
+      });
+    } else {
+      setMsg(gateMsg, 'Google 로그인 스크립트를 불러오지 못했습니다. 새로고침해보세요.', 'error');
+    }
+  });
+
+  logoutBtn.addEventListener('click', () => {
+    clearSession();
+    nicknameInput.value = '';
+    reasonInput.value = '';
+    setMsg(formMsg, '', '');
+    showGate();
+    window.location.reload();
+  });
+
+  submitBtn.addEventListener('click', async () => {
+    const session = getSession();
+    if (!session) {
+      showGate();
+      return;
+    }
+    const nickname = nicknameInput.value.trim();
+    if (!nickname) {
+      setMsg(formMsg, '대상 참여자 닉네임을 입력해주세요.', 'error');
+      nicknameInput.focus();
+      return;
+    }
+
+    submitBtn.disabled = true;
+    setMsg(formMsg, '제보 접수 중...', '');
+    try {
+      const res = await fetch(WORKER_BASE + '/report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: session.token,
+          nickname,
+          reason: reasonInput.value.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 401) {
+          clearSession();
+          showGate();
+        }
+        setMsg(formMsg, data.error || '제보 접수에 실패했습니다.', 'error');
+        return;
+      }
+      setMsg(formMsg, '제보가 접수되었습니다. 잠시 후 확인됩니다.', 'ok');
+      nicknameInput.value = '';
+      reasonInput.value = '';
+    } catch (err) {
+      setMsg(formMsg, '네트워크 오류: ' + err.message, 'error');
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>
