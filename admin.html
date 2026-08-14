@@ -392,7 +392,10 @@
         setMsg(data.error || '전송에 실패했습니다.', 'error');
         return;
       }
-      setMsg('전송 완료. 잠시 후 알림이 도착합니다.', 'ok');
+      const detail = (data.results || [])
+        .map((r) => (r.error ? `오류: ${r.error}` : `상태 ${r.status}`))
+        .join(' / ');
+      setMsg('전송 완료 — ' + detail, 'ok');
     } catch (err) {
       setMsg('오류: ' + err.message, 'error');
     } finally {
