@@ -9,8 +9,11 @@ import { ReportPage } from "@/pages/ReportPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { AdminPage } from "@/pages/AdminPage";
+import { useVersionCheck } from "@/hooks/useVersionCheck";
 
 export default function App() {
+  useVersionCheck();
+
   return (
     <AuthProvider>
       <HashRouter>
