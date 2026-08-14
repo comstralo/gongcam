@@ -67,11 +67,6 @@
   }
   :root[data-theme="dark"] #googleBtnSlot { background: transparent; }
 
-  .launch-list {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
   .launch-btn {
     display: flex;
     align-items: center;
@@ -127,16 +122,14 @@
     color: var(--accent);
   }
 
-  /* 로그인 전: 로그인 카드를 화면 세로 중앙에 배치 */
-  body.pre-login {
+  /* 로그인 전 화면을 세로 중앙에 배치 */
+  body {
     justify-content: center;
     min-height: 100dvh;
   }
 </style>
 </head>
-<body class="pre-login">
-
-<div id="navSlot" data-active="home"></div>
+<body>
 
 <header>
   <div class="brand">
@@ -181,57 +174,14 @@
   </a>
 </div>
 
-<div class="card hidden" id="loggedInCard">
-  <div class="session-row">
-    <div class="who">
-      <span class="name" id="sessionName"></span>
-      <span class="email" id="sessionEmail"></span>
-    </div>
-    <button class="logout-link" id="logoutBtn">로그아웃</button>
-  </div>
-
-  <div class="launch-list">
-    <a class="launch-btn" href="report.html">
-      <span class="icon">🚩</span>
-      <span class="body">
-        <span class="title">제보하기</span>
-        <span class="desc">실시간 접속 중인 참여자의 송출 상태를 제보합니다</span>
-      </span>
-    </a>
-    <a class="launch-btn" href="status.html">
-      <span class="icon">📋</span>
-      <span class="body">
-        <span class="title">내 상태</span>
-        <span class="desc">이번 주 벌금 현황과 산출 근거를 확인합니다</span>
-      </span>
-    </a>
-  </div>
-</div>
-
 <script src="shared/auth.js"></script>
-<script src="shared/nav.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
 (() => {
   const GOOGLE_CLIENT_ID = '280658144716-4vvnjn23skcshm9t65fibnt0dcuvs3va.apps.googleusercontent.com';
 
-  const gateCard = document.getElementById('gateCard');
-  const loggedInCard = document.getElementById('loggedInCard');
   const googleBtnSlot = document.getElementById('googleBtnSlot');
   const gateMsg = document.getElementById('gateMsg');
-
-  function showLoggedIn(session) {
-    document.body.classList.remove('pre-login');
-    gateCard.classList.add('hidden');
-    loggedInCard.classList.remove('hidden');
-    Auth.bindSessionUI(session);
-  }
-
-  function showGate() {
-    document.body.classList.add('pre-login');
-    gateCard.classList.remove('hidden');
-    loggedInCard.classList.add('hidden');
-  }
 
   async function handleCredentialResponse(response) {
     Auth.setMsg(gateMsg, '확인 중...', '');
@@ -248,18 +198,15 @@
       }
       const mode = (document.querySelector('input[name="sessionMode"]:checked') || {}).value;
       Auth.saveSession(data, mode);
-      Auth.setMsg(gateMsg, '', '');
-      showLoggedIn(data);
-      window.location.reload(); // nav를 새 로그인 상태로 다시 렌더링
+      window.location.href = 'status.html';
     } catch (err) {
       Auth.setMsg(gateMsg, '네트워크 오류: ' + err.message, 'error');
     }
   }
 
   window.addEventListener('load', () => {
-    const existing = Auth.getSession();
-    if (existing) {
-      showLoggedIn(existing);
+    if (Auth.getSession()) {
+      window.location.href = 'status.html';
       return;
     }
     if (window.google && google.accounts && google.accounts.id) {
