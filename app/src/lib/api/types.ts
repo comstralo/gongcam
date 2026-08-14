@@ -16,6 +16,7 @@ export type StatusDay = {
   morning: number;
   explain: string;
   confirmed: boolean;
+  complete: boolean;
   studyTime: string;
   bonusStudyTime: string;
   paymentStatus: string;

@@ -168,6 +168,11 @@ export function StatusPage() {
                     <span className="inline-flex items-center gap-1.25 text-xs font-semibold text-muted-foreground sm:text-sm">
                       <Wallet className="size-3.5 sm:size-4" strokeWidth={2.25} />
                       일간 총 벌금
+                      {!selected.complete && (
+                        <span className="rounded-full bg-muted-foreground/10 px-1.5 py-0.5 text-[10px] font-medium normal-case text-muted-foreground sm:text-[11px]">
+                          집계 중
+                        </span>
+                      )}
                     </span>
                     <span
                       className={cn(
