@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Clock, CircleCheck, CircleDot, CalendarDays, Award, PalmtreeIcon, HeartHandshake, Timer } from "lucide-react";
+import { Clock, CircleCheck, CircleDot, CalendarDays, Award, PalmtreeIcon, HeartHandshake, Timer, Wallet } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useApi } from "@/hooks/useApi";
@@ -17,6 +17,16 @@ const TODAY_INDEX = (new Date().getDay() + 6) % 7; // 월=0 ... 일=6
 
 function won(n: number) {
   return "₩" + (n || 0).toLocaleString();
+}
+
+// 관리자가 직접 입력하는 값이라 "00:20"처럼 부호 없이 저장되는 경우 기본을 +로 해석하고,
+// "-00:20"처럼 이미 부호가 붙어 있으면 그 부호를 그대로 존중한다.
+function signedTime(raw: string): string {
+  const trimmed = (raw || "").trim();
+  if (!trimmed || trimmed === "00:00" || trimmed.startsWith("+") || trimmed.startsWith("-")) {
+    return trimmed || "-";
+  }
+  return `+${trimmed}`;
 }
 
 export function StatusPage() {
@@ -113,13 +123,7 @@ export function StatusPage() {
                   selected.total > 0 ? "border-destructive/30 bg-destructive/5" : "border-ok/30 bg-ok/5"
                 )}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-bold sm:text-base">
-                    {selected.day}요일
-                    {selectedDay === TODAY_INDEX && (
-                      <span className="ml-1.5 text-xs font-medium text-primary sm:text-sm">오늘</span>
-                    )}
-                  </span>
+                <div className="flex items-center justify-start">
                   <span
                     className={cn(
                       "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold sm:text-xs",
@@ -148,9 +152,11 @@ export function StatusPage() {
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-2 pl-5 sm:pl-5.5">
-                    <span className="text-xs text-muted-foreground sm:text-sm">가산 학습시간</span>
+                    <span className="text-xs text-muted-foreground before:mr-1 before:content-['└'] sm:text-sm">
+                      보정 학습시간
+                    </span>
                     <span className="font-mono text-sm tabular-nums text-muted-foreground sm:text-base">
-                      {selected.bonusStudyTime || "-"}
+                      {signedTime(selected.bonusStudyTime)}
                     </span>
                   </div>
                 </div>
@@ -159,7 +165,10 @@ export function StatusPage() {
 
                 <div className="flex flex-col gap-1.5">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-semibold text-muted-foreground sm:text-sm">일간 총 벌금</span>
+                    <span className="inline-flex items-center gap-1.25 text-xs font-semibold text-muted-foreground sm:text-sm">
+                      <Wallet className="size-3.5 sm:size-4" strokeWidth={2.25} />
+                      일간 총 벌금
+                    </span>
                     <span
                       className={cn(
                         "font-mono text-lg font-bold tabular-nums sm:text-xl",
@@ -170,26 +179,28 @@ export function StatusPage() {
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-2 pl-5 sm:pl-5.5">
-                    <span className="text-xs text-muted-foreground sm:text-sm">일간 목표시간 벌금</span>
+                    <span className="text-xs text-muted-foreground before:mr-1 before:content-['└'] sm:text-sm">
+                      일간 목표시간 벌금
+                    </span>
                     <span className="font-mono text-sm tabular-nums text-muted-foreground sm:text-base">
                       {won(selected.goal)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-2 pl-5 sm:pl-5.5">
-                    <span className="text-xs text-muted-foreground sm:text-sm">오전 목표시간 벌금</span>
+                    <span className="text-xs text-muted-foreground before:mr-1 before:content-['└'] sm:text-sm">
+                      오전 목표시간 벌금
+                    </span>
                     <span className="font-mono text-sm tabular-nums text-muted-foreground sm:text-base">
                       {won(selected.morning)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-2 pl-5 sm:pl-5.5">
-                    <span className="text-xs text-muted-foreground sm:text-sm">납부확인</span>
+                    <span className="text-xs text-muted-foreground before:mr-1 before:content-['└'] sm:text-sm">
+                      납부확인
+                    </span>
                     <span className="text-xs font-semibold sm:text-sm">{selected.paymentStatus || "-"}</span>
                   </div>
                 </div>
-
-                {selected.explain && (
-                  <div className="text-sm leading-relaxed text-muted-foreground sm:text-base">{selected.explain}</div>
-                )}
               </div>
             )}
           </section>
