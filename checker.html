@@ -411,6 +411,7 @@
   <a href="checker.html" class="active">프레임 체커</a>
   <a href="report.html" class="auth-only hidden">제보하기</a>
   <a href="status.html" class="auth-only hidden">내 상태</a>
+  <a href="admin.html" class="admin-only hidden">관리자</a>
 </nav>
 
 <header>
@@ -476,10 +477,17 @@
 <script>
 (() => {
   const SESSION_KEY = 'frameCheckerSession';
+  const ADMIN_EMAIL = 'comstralo@gmail.com';
   try {
     const raw = sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY);
-    if (raw && JSON.parse(raw).token) {
-      document.querySelectorAll('.auth-only').forEach((el) => el.classList.remove('hidden'));
+    if (raw) {
+      const session = JSON.parse(raw);
+      if (session.token) {
+        document.querySelectorAll('.auth-only').forEach((el) => el.classList.remove('hidden'));
+        if ((session.email || '').toLowerCase() === ADMIN_EMAIL) {
+          document.querySelectorAll('.admin-only').forEach((el) => el.classList.remove('hidden'));
+        }
+      }
     }
   } catch {}
 })();

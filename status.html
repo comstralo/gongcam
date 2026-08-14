@@ -269,6 +269,7 @@
   <a href="checker.html">프레임 체커</a>
   <a href="report.html">제보하기</a>
   <a href="status.html" class="active">내 상태</a>
+  <a href="admin.html" class="admin-only hidden">관리자</a>
 </nav>
 
 <header>
@@ -307,6 +308,7 @@
 (() => {
   const WORKER_BASE = 'https://frame-checker-worker.comstralo.workers.dev';
   const SESSION_KEY = 'frameCheckerSession';
+  const ADMIN_EMAIL = 'comstralo@gmail.com';
   const TODAY_INDEX = (new Date().getDay() + 6) % 7; // 월=0 ... 일=6
 
   const statusCard = document.getElementById('statusCard');
@@ -348,6 +350,9 @@
     statusCard.classList.remove('hidden');
     sessionName.textContent = session.name || session.email;
     sessionEmail.textContent = session.email;
+    if ((session.email || '').toLowerCase() === ADMIN_EMAIL) {
+      document.querySelectorAll('.admin-only').forEach((el) => el.classList.remove('hidden'));
+    }
     loadStatus();
   }
 
