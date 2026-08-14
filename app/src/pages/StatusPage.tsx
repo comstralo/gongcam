@@ -25,11 +25,14 @@ function timeToMinutes(raw: string): number | null {
   return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
 }
 
-function isGoalMet(studyTime: string, goalTime: string): boolean {
+type GoalStatus = "met" | "failed" | "pending";
+
+function goalStatus(studyTime: string, goalTime: string, complete: boolean): GoalStatus {
+  if (!complete) return "pending";
   const study = timeToMinutes(studyTime);
   const goal = timeToMinutes(goalTime);
-  if (study === null || goal === null) return false;
-  return study >= goal;
+  if (study === null || goal === null) return "pending";
+  return study >= goal ? "met" : "failed";
 }
 
 // 관리자가 직접 입력하는 값이라 "00:20"처럼 부호 없이 저장되는 경우 기본을 +로 해석하고,
@@ -176,7 +179,10 @@ export function StatusPage() {
                     <span
                       className={cn(
                         "font-mono text-base font-bold tabular-nums sm:text-lg",
-                        isGoalMet(selected.studyTime, selected.dailyGoalTime) && "text-ok"
+                        goalStatus(selected.studyTime, selected.dailyGoalTime, selected.complete) === "met" &&
+                          "text-ok",
+                        goalStatus(selected.studyTime, selected.dailyGoalTime, selected.complete) === "failed" &&
+                          "text-destructive"
                       )}
                     >
                       {selected.studyTime || "-"}
