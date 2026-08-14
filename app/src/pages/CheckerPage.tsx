@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { Link } from "react-router-dom";
-import { RotateCcw, RotateCw, Download, Camera, Video, Square, X } from "lucide-react";
+import { RotateCcw, RotateCw, Download, Camera, Video, Square, X, FlipHorizontal2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCamera } from "@/hooks/useCamera";
 import { useFrameCapture } from "@/hooks/useFrameCapture";
@@ -22,6 +22,7 @@ export function CheckerPage() {
     resultCanvasRef,
     stageRef,
     setStatus: camera.setStatus,
+    mirrored: camera.mirrored,
   });
   const recording = useScreenRecording({ liveCanvasRef, setStatus: camera.setStatus });
 
@@ -169,8 +170,8 @@ export function CheckerPage() {
         )}
 
         <div className="flex flex-col gap-3 rounded-lg border bg-card p-3.5 sm:p-5 landscape:gap-2.5 landscape:p-3">
-          {/* 주 액션 3버튼: 카메라 전환 / 스크린샷 촬영 / 영상 녹화 — 항상 동일 규격 */}
-          <div className="flex items-center justify-center gap-3 sm:gap-4 landscape:flex-col landscape:gap-2.5">
+          {/* 주 액션 4버튼: 카메라 전환 / 좌우 반전 / 스크린샷 촬영 / 영상 녹화 — 항상 동일 규격 */}
+          <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 landscape:flex-col landscape:flex-nowrap landscape:gap-2.5">
             <button
               type="button"
               title="카메라 전환"
@@ -180,6 +181,20 @@ export function CheckerPage() {
               className="flex size-14 shrink-0 flex-col items-center justify-center gap-0.5 rounded-full border bg-card text-foreground disabled:opacity-40 sm:size-16"
             >
               <RotateCw className="size-5 sm:size-5.5" />
+            </button>
+
+            <button
+              type="button"
+              title="좌우 반전"
+              aria-label="좌우 반전"
+              aria-pressed={camera.mirrored}
+              onClick={camera.toggleMirror}
+              className={cn(
+                "flex size-14 shrink-0 flex-col items-center justify-center gap-0.5 rounded-full border bg-card sm:size-16",
+                camera.mirrored ? "border-primary text-primary" : "text-foreground"
+              )}
+            >
+              <FlipHorizontal2 className="size-5 sm:size-5.5" />
             </button>
 
             {!capture.isCapturing && !isCountingDown ? (

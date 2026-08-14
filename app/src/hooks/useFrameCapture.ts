@@ -11,9 +11,10 @@ type UseFrameCaptureArgs = {
   resultCanvasRef: RefObject<HTMLCanvasElement | null>;
   stageRef: RefObject<HTMLDivElement | null>;
   setStatus: (status: string) => void;
+  mirrored: boolean;
 };
 
-export function useFrameCapture({ videoRef, liveCanvasRef, resultCanvasRef, stageRef, setStatus }: UseFrameCaptureArgs) {
+export function useFrameCapture({ videoRef, liveCanvasRef, resultCanvasRef, stageRef, setStatus, mirrored }: UseFrameCaptureArgs) {
   const capturedShotsRef = useRef<HTMLCanvasElement[]>([]);
   const [thumbs, setThumbs] = useState<string[]>([]);
   const [shotsLeft, setShotsLeft] = useState(TOTAL_SHOTS);
@@ -26,6 +27,10 @@ export function useFrameCapture({ videoRef, liveCanvasRef, resultCanvasRef, stag
   const captureTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startCountdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // rAF 루프와 캡처 함수가 항상 최신 mirrored 값을 읽도록 ref로 미러링
+  const mirroredRef = useRef(mirrored);
+  mirroredRef.current = mirrored;
 
   function resizeCanvases() {
     const stage = stageRef.current;
@@ -61,7 +66,13 @@ export function useFrameCapture({ videoRef, liveCanvasRef, resultCanvasRef, stag
           const vh = video.videoHeight;
           if (vw && vh) {
             const { sx, sy, sw, sh } = computeCoverRect(vw, vh, w, h);
+            ctx.save();
+            if (mirroredRef.current) {
+              ctx.translate(w, 0);
+              ctx.scale(-1, 1);
+            }
             ctx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
+            ctx.restore();
           }
           drawGrid(ctx, w, h);
         }
@@ -91,7 +102,13 @@ export function useFrameCapture({ videoRef, liveCanvasRef, resultCanvasRef, stag
     const vh = video.videoHeight;
     if (sctx && vw && vh) {
       const { sx, sy, sw, sh } = computeCoverRect(vw, vh, w, h);
+      sctx.save();
+      if (mirroredRef.current) {
+        sctx.translate(w, 0);
+        sctx.scale(-1, 1);
+      }
       sctx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
+      sctx.restore();
     }
     return shotCanvas;
   }

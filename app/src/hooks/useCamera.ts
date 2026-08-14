@@ -8,6 +8,9 @@ export function useCamera() {
   const [facing, setFacing] = useState<FacingMode>("user");
   const [status, setStatus] = useState("카메라를 시작하려면 브라우저 권한을 허용해주세요.");
   const [isReady, setIsReady] = useState(false);
+  // 전면 카메라는 거울처럼 보이는 게 자연스러워 기본 ON, 후면은 기본 OFF.
+  // 카메라를 전환할 때마다 그 방향의 관례적인 기본값으로 재설정된다.
+  const [mirrored, setMirrored] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,8 +61,16 @@ export function useCamera() {
   }, [facing]);
 
   function switchFacing() {
-    setFacing((prev) => (prev === "user" ? "environment" : "user"));
+    setFacing((prev) => {
+      const next = prev === "user" ? "environment" : "user";
+      setMirrored(next === "user");
+      return next;
+    });
   }
 
-  return { videoRef, status, setStatus, isReady, switchFacing };
+  function toggleMirror() {
+    setMirrored((prev) => !prev);
+  }
+
+  return { videoRef, status, setStatus, isReady, switchFacing, facing, mirrored, toggleMirror };
 }
