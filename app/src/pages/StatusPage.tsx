@@ -1,10 +1,17 @@
 import { useEffect, useState } from "react";
-import { Clock, CircleCheck, CircleDot } from "lucide-react";
+import { Clock, CircleCheck, CircleDot, CalendarDays, Award, PalmtreeIcon, HeartHandshake, Timer } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useApi } from "@/hooks/useApi";
 import type { StatusResponse } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
+
+type SummaryTile = {
+  key: string;
+  icon: typeof Clock;
+  label: string;
+  value: string;
+};
 
 const TODAY_INDEX = (new Date().getDay() + 6) % 7; // 월=0 ... 일=6
 
@@ -41,18 +48,37 @@ export function StatusPage() {
 
   const selected = status?.days[selectedDay];
 
+  const summaryTiles: SummaryTile[] = status
+    ? [
+        { key: "goalType", icon: Clock, label: "목표시간", value: status.goalType || "-" },
+        { key: "joinDate", icon: CalendarDays, label: "가입일자", value: status.joinDate || "-" },
+        { key: "merit", icon: Award, label: "주간 총 상점", value: status.weeklyMerit || "0" },
+        { key: "normalLeave", icon: PalmtreeIcon, label: "일반 반휴 잔여", value: `${status.normalLeaveLeft}회` },
+        { key: "reasonLeave", icon: HeartHandshake, label: "사유 반휴 잔여", value: `${status.reasonLeaveLeft}회` },
+      ]
+    : [];
+
   return (
     <Card className="w-full page-content">
       <CardContent className="flex flex-col gap-5">
-        <section className="flex flex-col gap-2">
-          <div className="flex items-center gap-1.5 text-muted-foreground">
-            <Clock className="size-4 sm:size-4.5" strokeWidth={2.25} />
-            <span className="text-xs font-semibold tracking-wide uppercase sm:text-sm">목표시간</span>
-          </div>
-          <div className="rounded-xl border bg-muted px-4 py-3.5 text-lg font-bold sm:px-5 sm:py-4 sm:text-xl">
-            {status?.goalType || "-"}
-          </div>
-        </section>
+        {status && (
+          <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5">
+            {summaryTiles.map((tile) => {
+              const Icon = tile.icon;
+              return (
+                <div key={tile.key} className="flex flex-col gap-1.5 rounded-xl border bg-muted px-3.5 py-3 sm:px-4 sm:py-3.5">
+                  <div className="flex items-center gap-1.25 text-muted-foreground">
+                    <Icon className="size-3.5 shrink-0 sm:size-4" strokeWidth={2.25} />
+                    <span className="truncate text-[11px] font-semibold tracking-wide uppercase sm:text-xs">
+                      {tile.label}
+                    </span>
+                  </div>
+                  <span className="truncate text-base font-bold sm:text-lg">{tile.value}</span>
+                </div>
+              );
+            })}
+          </section>
+        )}
 
         {status && (
           <section className="flex flex-col gap-2">
@@ -110,13 +136,21 @@ export function StatusPage() {
                     {selected.confirmed ? "확정" : "진행중"}
                   </span>
                 </div>
-                <div
-                  className={cn(
-                    "font-mono text-2xl font-bold tabular-nums sm:text-3xl",
-                    selected.total > 0 ? "text-destructive" : "text-ok"
+                <div className="flex items-baseline gap-3">
+                  <span
+                    className={cn(
+                      "font-mono text-2xl font-bold tabular-nums sm:text-3xl",
+                      selected.total > 0 ? "text-destructive" : "text-ok"
+                    )}
+                  >
+                    {won(selected.total)}
+                  </span>
+                  {selected.studyTime && (
+                    <span className="inline-flex items-center gap-1 font-mono text-sm text-muted-foreground sm:text-base">
+                      <Timer className="size-3.5 sm:size-4" strokeWidth={2.25} />
+                      {selected.studyTime}
+                    </span>
                   )}
-                >
-                  {won(selected.total)}
                 </div>
                 {selected.explain && (
                   <div className="text-sm leading-relaxed text-muted-foreground sm:text-base">{selected.explain}</div>

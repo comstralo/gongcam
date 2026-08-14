@@ -14,10 +14,15 @@ export type StatusDay = {
   total: number;
   explain: string;
   confirmed: boolean;
+  studyTime: string;
 };
 
 export type StatusResponse = {
   goalType: string;
+  joinDate: string;
+  weeklyMerit: string;
+  normalLeaveLeft: string;
+  reasonLeaveLeft: string;
   weekTotalConfirmed: number;
   days: StatusDay[];
 };
