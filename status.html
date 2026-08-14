@@ -396,7 +396,7 @@
   async function loadStatus() {
     const session = getSession();
     if (!session) {
-      showGate();
+      redirectToLogin();
       return;
     }
     setMsg(statusMsg, '불러오는 중...', '');
