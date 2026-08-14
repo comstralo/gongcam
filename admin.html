@@ -333,14 +333,25 @@
     }
   }
 
+  function swUrl() {
+    return new URL('sw.js', document.baseURI).href;
+  }
+
   async function checkPushState() {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
       updatePushStatus('unsupported');
+      setMsg('이 브라우저/모드는 serviceWorker 또는 PushManager를 지원하지 않습니다. (standalone: ' + (window.navigator.standalone ?? 'n/a') + ')', 'error');
       return;
     }
-    const reg = await navigator.serviceWorker.register('sw.js');
-    const sub = await reg.pushManager.getSubscription();
-    updatePushStatus(sub ? 'on' : 'off');
+    try {
+      const reg = await navigator.serviceWorker.register(swUrl());
+      await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      updatePushStatus(sub ? 'on' : 'off');
+    } catch (err) {
+      updatePushStatus('unsupported');
+      setMsg('Service Worker 등록 실패: ' + err.name + ' — ' + err.message, 'error');
+    }
   }
 
   async function enablePush() {
@@ -349,10 +360,11 @@
     try {
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
-        setMsg('브라우저 알림 권한이 거부되었습니다.', 'error');
+        setMsg('브라우저 알림 권한이 거부되었습니다. (현재 상태: ' + permission + ')', 'error');
         return;
       }
-      const reg = await navigator.serviceWorker.register('sw.js');
+      const reg = await navigator.serviceWorker.register(swUrl());
+      await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
@@ -374,7 +386,7 @@
       setMsg('알림이 켜졌습니다.', 'ok');
       updatePushStatus('on');
     } catch (err) {
-      setMsg('오류: ' + err.message, 'error');
+      setMsg('오류: ' + err.name + ' — ' + err.message, 'error');
     }
   }
 
