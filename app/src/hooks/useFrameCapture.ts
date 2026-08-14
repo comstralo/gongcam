@@ -3,6 +3,7 @@ import { computeCoverRect, drawGrid } from "@/lib/checker/drawGrid";
 
 const TOTAL_SHOTS = 6;
 const INTERVAL_SEC = 30;
+const START_COUNTDOWN_SEC = 10;
 
 type UseFrameCaptureArgs = {
   videoRef: RefObject<HTMLVideoElement | null>;
@@ -20,9 +21,11 @@ export function useFrameCapture({ videoRef, liveCanvasRef, resultCanvasRef, stag
   const [isCapturing, setIsCapturing] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
   const [opacity, setOpacity] = useState(0.35);
+  const [startCountdown, setStartCountdown] = useState<number | null>(null);
 
   const captureTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startCountdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   function resizeCanvases() {
     const stage = stageRef.current;
@@ -132,6 +135,10 @@ export function useFrameCapture({ videoRef, liveCanvasRef, resultCanvasRef, stag
       clearInterval(countdownTimerRef.current);
       countdownTimerRef.current = null;
     }
+    if (startCountdownTimerRef.current) {
+      clearInterval(startCountdownTimerRef.current);
+      startCountdownTimerRef.current = null;
+    }
   }
 
   function finishSequence() {
@@ -143,10 +150,7 @@ export function useFrameCapture({ videoRef, liveCanvasRef, resultCanvasRef, stag
     requestAnimationFrame(renderOverlayResult);
   }
 
-  function startSequence() {
-    capturedShotsRef.current = [];
-    setThumbs([]);
-    setIsFinished(false);
+  function beginActualCapture() {
     setIsCapturing(true);
     setRemainingSec(INTERVAL_SEC);
 
@@ -180,8 +184,35 @@ export function useFrameCapture({ videoRef, liveCanvasRef, resultCanvasRef, stag
     }, INTERVAL_SEC * 1000);
   }
 
+  function startSequence() {
+    capturedShotsRef.current = [];
+    setThumbs([]);
+    setIsFinished(false);
+    setStartCountdown(START_COUNTDOWN_SEC);
+    setStatus(`${START_COUNTDOWN_SEC}초 후 촬영이 시작됩니다...`);
+
+    startCountdownTimerRef.current = setInterval(() => {
+      setStartCountdown((prev) => {
+        if (prev === null) return null;
+        const next = prev - 1;
+        if (next <= 0) {
+          if (startCountdownTimerRef.current) {
+            clearInterval(startCountdownTimerRef.current);
+            startCountdownTimerRef.current = null;
+          }
+          setStartCountdown(null);
+          beginActualCapture();
+          return null;
+        }
+        setStatus(`${next}초 후 촬영이 시작됩니다...`);
+        return next;
+      });
+    }, 1000);
+  }
+
   function stopSequence() {
     clearTimers();
+    setStartCountdown(null);
     setIsCapturing(false);
     setStatus("촬영이 중지되었습니다.");
   }
@@ -214,6 +245,7 @@ export function useFrameCapture({ videoRef, liveCanvasRef, resultCanvasRef, stag
     isFinished,
     opacity,
     setOpacity,
+    startCountdown,
     startSequence,
     stopSequence,
     resetSequence,
