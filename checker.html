@@ -124,6 +124,20 @@
   }
   .hud-frame-count .tick.filled { background: var(--accent); }
 
+  /* 좁은 화면: 16:9 뷰파인더 높이가 크게 줄어드므로 HUD를 더 촘촘하게 */
+  @media (max-width: 420px) {
+    .bracket { width: 16px; height: 16px; }
+    .bracket.tl, .bracket.tr { top: 8px; }
+    .bracket.bl, .bracket.br { bottom: 8px; }
+    .bracket.tl, .bracket.bl { left: 8px; }
+    .bracket.tr, .bracket.br { right: 8px; }
+    .hud-top-left, .hud-top-right { top: 14px; }
+    .hud-top-left { left: 14px; }
+    .hud-top-right { right: 14px; }
+    .hud-frame-count { bottom: 14px; left: 14px; }
+    .hud-countdown { font-size: 13px; }
+  }
+
   .filmstrip {
     display: flex;
     gap: 6px;
@@ -182,6 +196,7 @@
   }
   .mode-group {
     flex: 1 1 0;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -203,8 +218,21 @@
   .controls {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 10px;
     justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  /* 좁은 화면: 두 모드 그룹을 세로로 쌓아 버튼이 눌리지 않게 함 */
+  @media (max-width: 420px) {
+    .mode-row {
+      flex-direction: column;
+      gap: 16px;
+    }
+    .mode-divider {
+      width: 100%;
+      height: 1px;
+    }
   }
 
   /* 셔터 버튼: 조리개형 — 링 안에 원형 앰버 코어 */
@@ -284,7 +312,7 @@
 
 <header>
   <div class="brand">
-    <span class="eyebrow">Framing Check</span>
+    <a class="eyebrow" href="index.html">Framing Check</a>
     <h1>프레임 체커</h1>
   </div>
   <div class="spec">GRID 4×4<br>6 FRAMES / 30s</div>

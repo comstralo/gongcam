@@ -58,7 +58,14 @@
     display: flex;
     justify-content: center;
     min-height: 44px;
+    padding: 10px;
+    border-radius: 999px;
+    background: #ffffff;
   }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) #googleBtnSlot { background: transparent; }
+  }
+  :root[data-theme="dark"] #googleBtnSlot { background: transparent; }
 
   .launch-list {
     display: flex;
@@ -252,9 +259,10 @@
         client_id: GOOGLE_CLIENT_ID,
         callback: handleCredentialResponse,
       });
+      const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
       google.accounts.id.renderButton(googleBtnSlot, {
         type: 'standard',
-        theme: 'outline',
+        theme: isDark ? 'filled_black' : 'outline',
         size: 'large',
         text: 'signin_with',
         shape: 'pill',

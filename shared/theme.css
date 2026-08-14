@@ -71,13 +71,21 @@ body {
 }
 .sitenav a {
   flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
   text-align: center;
-  padding: 9px 12px;
+  padding: 9px 8px;
   border-radius: 7px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   text-decoration: none;
   color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   transition: background 0.15s, color 0.15s;
 }
 .sitenav a.active {
@@ -137,6 +145,8 @@ h1 {
   flex-direction: column;
   gap: 2px;
   overflow: hidden;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 .session-row .who .name {
   font-weight: 600;
@@ -153,13 +163,18 @@ h1 {
   text-overflow: ellipsis;
 }
 .logout-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
   font-size: 12px;
   color: var(--ink-soft);
   text-decoration: underline;
   cursor: pointer;
   background: none;
   border: none;
-  padding: 4px;
+  padding: 4px 10px;
   flex-shrink: 0;
 }
 
