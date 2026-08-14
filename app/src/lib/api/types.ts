@@ -21,6 +21,8 @@ export type StatusDay = {
   bonusStudyTime: string;
   dailyGoalTime: string;
   paymentStatus: string;
+  normalLeaveUsed: number;
+  reasonLeaveUsed: number;
 };
 
 export type StatusResponse = {

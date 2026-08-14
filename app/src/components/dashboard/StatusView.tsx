@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Clock, CircleCheck, CircleDot, CalendarDays, Award, PalmtreeIcon, HeartHandshake, Timer, Wallet } from "lucide-react";
+import { Clock, CircleCheck, CircleDot, CalendarDays, Award, PalmtreeIcon, HeartHandshake, Timer, Wallet, BedDouble } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { StatusResponse } from "@/lib/api/types";
 
@@ -30,6 +30,13 @@ function goalStatus(studyTime: string, goalTime: string, complete: boolean): Goa
   const goal = timeToMinutes(goalTime);
   if (study === null || goal === null) return "pending";
   return study >= goal ? "met" : "failed";
+}
+
+function leaveUsageLabel(normalLeaveUsed: number, reasonLeaveUsed: number): string {
+  const parts: string[] = [];
+  if (normalLeaveUsed > 0) parts.push(`일반 ${normalLeaveUsed}회`);
+  if (reasonLeaveUsed > 0) parts.push(`사유 ${reasonLeaveUsed}회`);
+  return parts.length > 0 ? parts.join(" · ") : "미사용";
 }
 
 // 관리자가 직접 입력하는 값이라 "00:20"처럼 부호 없이 저장되는 경우 기본을 +로 해석하고,
@@ -164,6 +171,15 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
                 </span>
                 <span className="font-mono text-sm tabular-nums text-muted-foreground sm:text-base">
                   {signedTime(selected.bonusStudyTime)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2 pl-5 sm:pl-5.5">
+                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground before:mr-0.25 before:content-['└'] sm:text-sm">
+                  <BedDouble className="size-3 sm:size-3.5" strokeWidth={2.25} />
+                  반휴 사용
+                </span>
+                <span className="text-sm text-muted-foreground sm:text-base">
+                  {leaveUsageLabel(selected.normalLeaveUsed, selected.reasonLeaveUsed)}
                 </span>
               </div>
             </div>
