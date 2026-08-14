@@ -44,6 +44,23 @@ export type RosterStatusResponse = {
   members: RosterMember[];
 };
 
+export type SnapshotListResponse = {
+  weeks: string[];
+};
+
+export type SnapshotDetailResponse = {
+  weekOf: string;
+  capturedAt: string;
+  roster: RosterStatusResponse;
+  personal: StatusResponse | null;
+};
+
+export type SnapshotRunNowResponse = {
+  ok: true;
+  weekOf: string;
+  memberCount: number;
+};
+
 export type PushSendTestResult = {
   status?: number;
   error?: string;

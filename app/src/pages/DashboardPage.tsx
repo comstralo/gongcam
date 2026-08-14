@@ -2,19 +2,25 @@ import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatusPage } from "@/pages/StatusPage";
 import { RosterPage } from "@/pages/RosterPage";
+import { SnapshotPage } from "@/pages/SnapshotPage";
 
-type DashboardView = "me" | "all";
+type DashboardView = "me" | "all" | "history";
+
+function normalizeView(raw: string | null): DashboardView {
+  if (raw === "all" || raw === "history") return raw;
+  return "me";
+}
 
 export function DashboardPage() {
   const [params, setParams] = useSearchParams();
-  const view: DashboardView = params.get("view") === "all" ? "all" : "me";
+  const view = normalizeView(params.get("view"));
 
   return (
     <div className="flex w-full page-content flex-col items-center gap-4">
       <Tabs
         value={view}
         onValueChange={(v) => {
-          const next = v === "all" ? "all" : "me";
+          const next = normalizeView(v);
           setParams(next === "me" ? {} : { view: next }, { replace: true });
         }}
         className="w-full"
@@ -26,10 +32,15 @@ export function DashboardPage() {
           <TabsTrigger value="all" className="flex-1">
             전체 대시보드
           </TabsTrigger>
+          <TabsTrigger value="history" className="flex-1">
+            지난 기록
+          </TabsTrigger>
         </TabsList>
       </Tabs>
 
-      {view === "me" ? <StatusPage /> : <RosterPage />}
+      {view === "me" && <StatusPage />}
+      {view === "all" && <RosterPage />}
+      {view === "history" && <SnapshotPage />}
     </div>
   );
 }
