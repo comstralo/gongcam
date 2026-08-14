@@ -95,6 +95,7 @@ export function StatusPage() {
             <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
               {status.days.map((d, i) => {
                 const isSelected = i === selectedDay;
+                const isUnpaid = d.paymentStatus === "미납";
                 return (
                   <button
                     key={d.day}
@@ -103,12 +104,24 @@ export function StatusPage() {
                     className={cn(
                       "relative flex flex-col items-center gap-1 rounded-full border py-2.5 text-sm font-bold transition-all sm:py-3 sm:text-base",
                       isSelected
-                        ? "border-primary bg-primary text-primary-foreground shadow-sm"
-                        : "border-border bg-card text-foreground hover:border-primary/50 hover:bg-muted"
+                        ? isUnpaid
+                          ? "border-destructive bg-destructive text-card shadow-sm"
+                          : "border-primary bg-primary text-primary-foreground shadow-sm"
+                        : isUnpaid
+                          ? "border-destructive/60 bg-destructive/10 text-destructive hover:bg-destructive/15"
+                          : "border-border bg-card text-foreground hover:border-primary/50 hover:bg-muted"
                     )}
                   >
-                    {i === TODAY_INDEX && !isSelected && (
+                    {i === TODAY_INDEX && !isSelected && !isUnpaid && (
                       <span className="absolute -top-1 size-1.25 rounded-full bg-primary sm:size-1.5" />
+                    )}
+                    {isUnpaid && (
+                      <span
+                        className={cn(
+                          "absolute -top-1 size-1.25 rounded-full bg-destructive sm:size-1.5",
+                          isSelected && "bg-card"
+                        )}
+                      />
                     )}
                     {d.day}
                   </button>
@@ -206,7 +219,14 @@ export function StatusPage() {
                     <span className="text-xs text-muted-foreground before:mr-1 before:content-['└'] sm:text-sm">
                       납부확인
                     </span>
-                    <span className="text-xs font-semibold sm:text-sm">{selected.paymentStatus || "-"}</span>
+                    <span
+                      className={cn(
+                        "text-xs font-semibold sm:text-sm",
+                        selected.paymentStatus === "미납" && "text-destructive"
+                      )}
+                    >
+                      {selected.paymentStatus || "-"}
+                    </span>
                   </div>
                 </div>
               </div>
