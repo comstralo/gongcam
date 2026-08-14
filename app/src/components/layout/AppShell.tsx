@@ -6,9 +6,11 @@ type AppShellProps = {
   children: ReactNode;
   /** 지정하면 표준 헤더(Framing Check 라벨 + 제목)를 렌더링한다. 페이지가 자체 헤더를 그릴 경우 생략. */
   title?: string;
+  /** true면 title은 유지하되 상단 "Framing Check" 라벨을 생략한다. */
+  hideEyebrow?: boolean;
 };
 
-export function AppShell({ children, title }: AppShellProps) {
+export function AppShell({ children, title, hideEyebrow }: AppShellProps) {
   const { session } = useAuth();
 
   return (
@@ -18,7 +20,9 @@ export function AppShell({ children, title }: AppShellProps) {
     >
       {title && (
         <header className="flex w-full page-content flex-col gap-0.5">
-          <span className="font-mono text-xs uppercase tracking-widest text-primary sm:text-sm">Framing Check</span>
+          {!hideEyebrow && (
+            <span className="font-mono text-xs uppercase tracking-widest text-primary sm:text-sm">Framing Check</span>
+          )}
           <h1 className="text-xl font-bold sm:text-2xl">{title}</h1>
         </header>
       )}

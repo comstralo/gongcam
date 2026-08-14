@@ -28,7 +28,7 @@ export default function App() {
             path="/"
             element={
               <ProtectedRoute>
-                <AppShell title="대시보드">
+                <AppShell title="대시보드" hideEyebrow>
                   <StatusPage />
                 </AppShell>
               </ProtectedRoute>

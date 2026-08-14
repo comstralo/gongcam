@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
+import { Clock, CircleCheck, CircleDot } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { SessionCard } from "@/components/session/SessionCard";
 import { useApi } from "@/hooks/useApi";
 import type { StatusResponse } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
@@ -40,90 +39,91 @@ export function StatusPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const selected = status?.days[selectedDay];
+
   return (
     <Card className="w-full page-content">
-      <CardContent className="flex flex-col gap-4">
-        <SessionCard />
-
-        <div className="flex gap-2.5">
-          <div className="flex flex-1 flex-col gap-1 rounded-lg border bg-muted p-3.5 sm:p-4.5">
-            <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground sm:text-xs">목표 유형</span>
-            <span className="font-mono text-[15px] font-bold sm:text-lg">{status?.goalType || "-"}</span>
+      <CardContent className="flex flex-col gap-5">
+        <section className="flex flex-col gap-2">
+          <div className="flex items-center gap-1.5 text-muted-foreground">
+            <Clock className="size-4 sm:size-4.5" strokeWidth={2.25} />
+            <span className="text-xs font-semibold tracking-wide uppercase sm:text-sm">목표시간</span>
           </div>
-          <div className="flex flex-1 flex-col gap-1 rounded-lg border bg-muted p-3.5 sm:p-4.5">
-            <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground sm:text-xs">
-              이번 주 확정 벌금
-            </span>
-            <span
-              className={cn(
-                "font-mono text-[22px] font-bold tabular-nums sm:text-3xl",
-                status && status.weekTotalConfirmed > 0 ? "text-destructive" : "text-ok"
-              )}
-            >
-              {won(status?.weekTotalConfirmed ?? 0)}
-            </span>
+          <div className="rounded-xl border bg-muted px-4 py-3.5 text-lg font-bold sm:px-5 sm:py-4 sm:text-xl">
+            {status?.goalType || "-"}
           </div>
-        </div>
+        </section>
 
         {status && (
-          <>
+          <section className="flex flex-col gap-2">
             <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
-              {status.days.map((d, i) => (
-                <button
-                  key={d.day}
-                  type="button"
-                  onClick={() => setSelectedDay(i)}
-                  className={cn(
-                    "flex flex-col items-center gap-1 rounded-lg border bg-muted py-2.5 font-mono text-xs font-bold transition-colors sm:py-3 sm:text-sm",
-                    i === selectedDay
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : i === TODAY_INDEX
-                        ? "border-primary"
-                        : "border-transparent"
-                  )}
-                >
-                  {d.day}
-                  <span
+              {status.days.map((d, i) => {
+                const isSelected = i === selectedDay;
+                return (
+                  <button
+                    key={d.day}
+                    type="button"
+                    onClick={() => setSelectedDay(i)}
                     className={cn(
-                      "size-1.25 rounded-full sm:size-1.5",
-                      i === selectedDay
-                        ? "bg-primary-foreground/70"
-                        : d.total > 0
-                          ? "bg-destructive"
-                          : "bg-ok"
+                      "relative flex flex-col items-center gap-1 rounded-full border py-2.5 text-sm font-bold transition-all sm:py-3 sm:text-base",
+                      isSelected
+                        ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                        : "border-border bg-card text-foreground hover:border-primary/50 hover:bg-muted"
                     )}
-                  />
-                </button>
-              ))}
+                  >
+                    {i === TODAY_INDEX && !isSelected && (
+                      <span className="absolute -top-1 size-1.25 rounded-full bg-primary sm:size-1.5" />
+                    )}
+                    {d.day}
+                  </button>
+                );
+              })}
             </div>
 
-            {status.days[selectedDay] && (
+            {selected && (
               <div
                 className={cn(
-                  "flex flex-col gap-1.5 rounded-lg border bg-muted p-3.5 sm:gap-2 sm:p-4.5",
-                  selectedDay === TODAY_INDEX && "border-primary"
+                  "flex flex-col gap-2 rounded-xl border p-4 sm:gap-2.5 sm:p-5",
+                  selected.total > 0 ? "border-destructive/30 bg-destructive/5" : "border-ok/30 bg-ok/5"
                 )}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-mono text-sm font-bold sm:text-base">{status.days[selectedDay].day}요일</span>
-                  <Badge variant={status.days[selectedDay].confirmed ? "default" : "outline"} className="text-[10px] sm:text-xs">
-                    {status.days[selectedDay].confirmed ? "확정" : "진행중"}
-                  </Badge>
+                  <span className="text-sm font-bold sm:text-base">
+                    {selected.day}요일
+                    {selectedDay === TODAY_INDEX && (
+                      <span className="ml-1.5 text-xs font-medium text-primary sm:text-sm">오늘</span>
+                    )}
+                  </span>
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold sm:text-xs",
+                      selected.confirmed
+                        ? "bg-foreground/8 text-foreground"
+                        : "bg-primary/15 text-primary"
+                    )}
+                  >
+                    {selected.confirmed ? (
+                      <CircleCheck className="size-3 sm:size-3.5" strokeWidth={2.5} />
+                    ) : (
+                      <CircleDot className="size-3 sm:size-3.5" strokeWidth={2.5} />
+                    )}
+                    {selected.confirmed ? "확정" : "진행중"}
+                  </span>
                 </div>
                 <div
                   className={cn(
-                    "font-mono text-xl font-bold tabular-nums sm:text-2xl",
-                    status.days[selectedDay].total > 0 ? "text-destructive" : "text-ok"
+                    "font-mono text-2xl font-bold tabular-nums sm:text-3xl",
+                    selected.total > 0 ? "text-destructive" : "text-ok"
                   )}
                 >
-                  {won(status.days[selectedDay].total)}
+                  {won(selected.total)}
                 </div>
-                <div className="text-sm leading-relaxed text-muted-foreground sm:text-base">
-                  {status.days[selectedDay].explain}
-                </div>
+                {selected.explain && (
+                  <div className="text-sm leading-relaxed text-muted-foreground sm:text-base">{selected.explain}</div>
+                )}
               </div>
             )}
-          </>
+          </section>
         )}
 
         {loading && <p className="text-center font-mono text-xs text-muted-foreground sm:text-sm">불러오는 중...</p>}
