@@ -126,9 +126,15 @@
   .launch-btn.always-open .chip {
     color: var(--accent);
   }
+
+  /* 로그인 전: 로그인 카드를 화면 세로 중앙에 배치 */
+  body.pre-login {
+    justify-content: center;
+    min-height: 100dvh;
+  }
 </style>
 </head>
-<body>
+<body class="pre-login">
 
 <div id="navSlot" data-active="home"></div>
 
@@ -138,17 +144,6 @@
     <h1>공부합시당 캠스터디</h1>
   </div>
 </header>
-
-<div class="card">
-  <a class="launch-btn always-open" href="checker.html">
-    <span class="icon">📐</span>
-    <span class="body">
-      <span class="title">프레임 체커</span>
-      <span class="desc">4×4 격자로 화각을 점검하고 사진/영상을 촬영합니다</span>
-    </span>
-    <span class="chip">누구나</span>
-  </a>
-</div>
 
 <div class="card" id="gateCard">
   <p class="gate-copy">
@@ -173,6 +168,17 @@
   </div>
   <div id="googleBtnSlot"></div>
   <div class="msg" id="gateMsg"></div>
+</div>
+
+<div class="card" id="checkerCard">
+  <a class="launch-btn always-open" href="checker.html">
+    <span class="icon">📐</span>
+    <span class="body">
+      <span class="title">프레임 체커</span>
+      <span class="desc">4×4 격자로 화각을 점검하고 사진/영상을 촬영합니다</span>
+    </span>
+    <span class="chip">누구나</span>
+  </a>
 </div>
 
 <div class="card hidden" id="loggedInCard">
@@ -215,12 +221,14 @@
   const gateMsg = document.getElementById('gateMsg');
 
   function showLoggedIn(session) {
+    document.body.classList.remove('pre-login');
     gateCard.classList.add('hidden');
     loggedInCard.classList.remove('hidden');
     Auth.bindSessionUI(session);
   }
 
   function showGate() {
+    document.body.classList.add('pre-login');
     gateCard.classList.remove('hidden');
     loggedInCard.classList.add('hidden');
   }
