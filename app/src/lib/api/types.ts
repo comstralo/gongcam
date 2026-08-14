@@ -33,6 +33,17 @@ export type StatusResponse = {
   days: StatusDay[];
 };
 
+export type RosterMember = {
+  name: string;
+  timer: string;
+  rank: string;
+  status: string;
+};
+
+export type RosterStatusResponse = {
+  members: RosterMember[];
+};
+
 export type PushSendTestResult = {
   status?: number;
   error?: string;

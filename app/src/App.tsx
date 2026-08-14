@@ -6,7 +6,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { LoginPage } from "@/pages/LoginPage";
 import { CheckerPage } from "@/pages/CheckerPage";
 import { ReportPage } from "@/pages/ReportPage";
-import { StatusPage } from "@/pages/StatusPage";
+import { DashboardPage } from "@/pages/DashboardPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { AdminPage } from "@/pages/AdminPage";
 
@@ -29,7 +29,7 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <AppShell title="대시보드" hideEyebrow>
-                  <StatusPage />
+                  <DashboardPage />
                 </AppShell>
               </ProtectedRoute>
             }

@@ -85,7 +85,7 @@ export function StatusPage() {
     : [];
 
   return (
-    <Card className="w-full page-content">
+    <Card className="w-full">
       <CardContent className="flex flex-col gap-5">
         {status && (
           <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5">
