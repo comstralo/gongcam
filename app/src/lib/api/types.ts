@@ -12,9 +12,13 @@ export type ParticipantsResponse = {
 export type StatusDay = {
   day: string;
   total: number;
+  goal: number;
+  morning: number;
   explain: string;
   confirmed: boolean;
   studyTime: string;
+  bonusStudyTime: string;
+  paymentStatus: string;
 };
 
 export type StatusResponse = {

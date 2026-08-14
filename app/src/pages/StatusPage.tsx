@@ -109,7 +109,7 @@ export function StatusPage() {
             {selected && (
               <div
                 className={cn(
-                  "flex flex-col gap-2 rounded-xl border p-4 sm:gap-2.5 sm:p-5",
+                  "flex flex-col gap-3 rounded-xl border p-4 sm:gap-3.5 sm:p-5",
                   selected.total > 0 ? "border-destructive/30 bg-destructive/5" : "border-ok/30 bg-ok/5"
                 )}
               >
@@ -136,22 +136,57 @@ export function StatusPage() {
                     {selected.confirmed ? "확정" : "진행중"}
                   </span>
                 </div>
-                <div className="flex items-baseline gap-3">
-                  <span
-                    className={cn(
-                      "font-mono text-2xl font-bold tabular-nums sm:text-3xl",
-                      selected.total > 0 ? "text-destructive" : "text-ok"
-                    )}
-                  >
-                    {won(selected.total)}
-                  </span>
-                  {selected.studyTime && (
-                    <span className="inline-flex items-center gap-1 font-mono text-sm text-muted-foreground sm:text-base">
+
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1.25 text-xs font-semibold text-muted-foreground sm:text-sm">
                       <Timer className="size-3.5 sm:size-4" strokeWidth={2.25} />
-                      {selected.studyTime}
+                      일간 학습시간
                     </span>
-                  )}
+                    <span className="font-mono text-base font-bold tabular-nums sm:text-lg">
+                      {selected.studyTime || "-"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 pl-5 sm:pl-5.5">
+                    <span className="text-xs text-muted-foreground sm:text-sm">가산 학습시간</span>
+                    <span className="font-mono text-sm tabular-nums text-muted-foreground sm:text-base">
+                      {selected.bonusStudyTime || "-"}
+                    </span>
+                  </div>
                 </div>
+
+                <div className="h-px w-full bg-border" />
+
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-muted-foreground sm:text-sm">일간 총 벌금</span>
+                    <span
+                      className={cn(
+                        "font-mono text-lg font-bold tabular-nums sm:text-xl",
+                        selected.total > 0 ? "text-destructive" : "text-ok"
+                      )}
+                    >
+                      {won(selected.total)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 pl-5 sm:pl-5.5">
+                    <span className="text-xs text-muted-foreground sm:text-sm">일간 목표시간 벌금</span>
+                    <span className="font-mono text-sm tabular-nums text-muted-foreground sm:text-base">
+                      {won(selected.goal)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 pl-5 sm:pl-5.5">
+                    <span className="text-xs text-muted-foreground sm:text-sm">오전 목표시간 벌금</span>
+                    <span className="font-mono text-sm tabular-nums text-muted-foreground sm:text-base">
+                      {won(selected.morning)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 pl-5 sm:pl-5.5">
+                    <span className="text-xs text-muted-foreground sm:text-sm">납부확인</span>
+                    <span className="text-xs font-semibold sm:text-sm">{selected.paymentStatus || "-"}</span>
+                  </div>
+                </div>
+
                 {selected.explain && (
                   <div className="text-sm leading-relaxed text-muted-foreground sm:text-base">{selected.explain}</div>
                 )}
