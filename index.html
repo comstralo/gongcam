@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>화각 점검 카메라</title>
+<style>
+  :root {
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: #0b0d10;
+    color: #e8eaed;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px;
+    gap: 12px;
+  }
+  h1 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 4px 0;
+    text-align: center;
+  }
+  .stage {
+    position: relative;
+    width: 100%;
+    max-width: 640px;
+    aspect-ratio: 4 / 3;
+    background: #000;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 0 0 1px #2a2e33;
+  }
+  video, canvas {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  #liveCanvas { pointer-events: none; }
+  #resultCanvas { display: none; background: #000; }
+  .badge {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: rgba(0,0,0,0.55);
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    z-index: 5;
+  }
+  .badge.rec { color: #ff5c5c; }
+  .thumbs {
+    display: flex;
+    gap: 6px;
+    width: 100%;
+    max-width: 640px;
+    overflow-x: auto;
+    padding: 2px;
+  }
+  .thumbs img {
+    width: 64px;
+    height: 48px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid #2a2e33;
+    flex-shrink: 0;
+  }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    width: 100%;
+    max-width: 640px;
+  }
+  button {
+    flex: 1 1 auto;
+    min-width: 110px;
+    padding: 12px 16px;
+    font-size: 15px;
+    font-weight: 600;
+    border: none;
+    border-radius: 10px;
+    background: #2563eb;
+    color: white;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  button:active { opacity: 0.75; }
+  button:disabled {
+    background: #3a3f47;
+    color: #7a8087;
+    cursor: not-allowed;
+  }
+  button.secondary { background: #3a3f47; }
+  button.danger { background: #b91c1c; }
+  .row {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+    max-width: 640px;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    color: #9aa0a6;
+  }
+  .opacity-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    max-width: 640px;
+  }
+  .opacity-control input[type=range] {
+    flex: 1;
+  }
+  .status {
+    font-size: 13px;
+    color: #9aa0a6;
+    min-height: 18px;
+    text-align: center;
+  }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<h1>화각 점검 카메라 — 4x4 격자 · 30초 간격 6컷 오버레이</h1>
+
+<div class="stage" id="stage">
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="liveCanvas"></canvas>
+  <canvas id="resultCanvas"></canvas>
+  <div class="badge" id="timerBadge">대기 중</div>
+</div>
+
+<div class="thumbs" id="thumbs"></div>
+
+<div class="opacity-control hidden" id="opacityControl">
+  <span>오버레이 투명도</span>
+  <input type="range" id="opacitySlider" min="0.1" max="0.8" step="0.05" value="0.35">
+</div>
+
+<div class="controls">
+  <button id="switchBtn">카메라 전환</button>
+  <button id="startBtn">촬영 시작 (30초x6)</button>
+  <button id="stopBtn" class="danger hidden">중지</button>
+  <button id="resetBtn" class="secondary hidden">다시 촬영</button>
+  <button id="downloadBtn" class="secondary hidden">이미지 저장</button>
+</div>
+
+<div class="status" id="status">카메라를 시작하려면 브라우저 권한을 허용해주세요.</div>
+
+<script>
+(() => {
+  const video = document.getElementById('video');
+  const liveCanvas = document.getElementById('liveCanvas');
+  const resultCanvas = document.getElementById('resultCanvas');
+  const stage = document.getElementById('stage');
+  const timerBadge = document.getElementById('timerBadge');
+  const thumbsEl = document.getElementById('thumbs');
+  const statusEl = document.getElementById('status');
+  const opacityControl = document.getElementById('opacityControl');
+  const opacitySlider = document.getElementById('opacitySlider');
+
+  const switchBtn = document.getElementById('switchBtn');
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const downloadBtn = document.getElementById('downloadBtn');
+
+  const liveCtx = liveCanvas.getContext('2d');
+  const resultCtx = resultCanvas.getContext('2d');
+
+  const TOTAL_SHOTS = 6;
+  const INTERVAL_SEC = 30;
+
+  let currentFacing = 'user'; // 'user' = 전면, 'environment' = 후면
+  let stream = null;
+  let capturedShots = [];
+  let captureTimer = null;
+  let countdownTimer = null;
+  let remainingSec = 0;
+  let shotsLeft = TOTAL_SHOTS;
+  let isCapturing = false;
+
+  function drawGrid(ctx, w, h) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = 1;
+    for (let i = 1; i < 4; i++) {
+      const x = (w / 4) * i;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+      const y = (h / 4) * i;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function resizeCanvases() {
+    const rect = stage.getBoundingClientRect();
+    const w = Math.round(rect.width);
+    const h = Math.round(rect.height);
+    [liveCanvas, resultCanvas].forEach(c => {
+      c.width = w;
+      c.height = h;
+    });
+  }
+  window.addEventListener('resize', resizeCanvases);
+
+  function renderLive() {
+    if (video.readyState >= 2) {
+      const w = liveCanvas.width, h = liveCanvas.height;
+      liveCtx.clearRect(0, 0, w, h);
+      // object-fit: cover 방식으로 비디오를 캔버스에 맞춤
+      const vw = video.videoWidth, vh = video.videoHeight;
+      if (vw && vh) {
+        const scale = Math.max(w / vw, h / vh);
+        const sw = w / scale, sh = h / scale;
+        const sx = (vw - sw) / 2, sy = (vh - sh) / 2;
+        liveCtx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
+      }
+      drawGrid(liveCtx, w, h);
+    }
+    requestAnimationFrame(renderLive);
+  }
+
+  async function startCamera(facing) {
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop());
+    }
+    statusEl.textContent = '카메라 연결 중...';
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: facing,
+          width: { ideal: 1280 },
+          height: { ideal: 960 }
+        },
+        audio: false
+      });
+      video.srcObject = stream;
+      await video.play();
+      resizeCanvases();
+      statusEl.textContent = '준비 완료. 촬영 시작을 누르세요.';
+      startBtn.disabled = false;
+    } catch (err) {
+      console.error(err);
+      statusEl.textContent = '카메라 접근 실패: ' + err.message + ' (다른 카메라로 전환해보세요)';
+      startBtn.disabled = true;
+    }
+  }
+
+  switchBtn.addEventListener('click', () => {
+    currentFacing = currentFacing === 'user' ? 'environment' : 'user';
+    startCamera(currentFacing);
+  });
+
+  function captureFrame() {
+    const w = liveCanvas.width, h = liveCanvas.height;
+    const shotCanvas = document.createElement('canvas');
+    shotCanvas.width = w;
+    shotCanvas.height = h;
+    const sctx = shotCanvas.getContext('2d');
+    const vw = video.videoWidth, vh = video.videoHeight;
+    const scale = Math.max(w / vw, h / vh);
+    const sw = w / scale, sh = h / scale;
+    const sx = (vw - sw) / 2, sy = (vh - sh) / 2;
+    sctx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
+    return shotCanvas;
+  }
+
+  function addThumb(canvas) {
+    const img = document.createElement('img');
+    img.src = canvas.toDataURL('image/jpeg', 0.7);
+    thumbsEl.appendChild(img);
+  }
+
+  function renderOverlayResult() {
+    const w = resultCanvas.width, h = resultCanvas.height;
+    resultCtx.clearRect(0, 0, w, h);
+    resultCtx.fillStyle = '#000';
+    resultCtx.fillRect(0, 0, w, h);
+
+    const baseAlpha = parseFloat(opacitySlider.value);
+    capturedShots.forEach((shot, idx) => {
+      resultCtx.globalAlpha = idx === 0 ? 1 : baseAlpha;
+      resultCtx.drawImage(shot, 0, 0, w, h);
+    });
+    resultCtx.globalAlpha = 1;
+    drawGrid(resultCtx, w, h);
+  }
+
+  opacitySlider.addEventListener('input', () => {
+    if (capturedShots.length > 0 && resultCanvas.style.display === 'block') {
+      renderOverlayResult();
+    }
+  });
+
+  function updateBadge() {
+    if (isCapturing) {
+      const mm = String(Math.floor(remainingSec / 60)).padStart(2, '0');
+      const ss = String(remainingSec % 60).padStart(2, '0');
+      timerBadge.textContent = `촬영 ${TOTAL_SHOTS - shotsLeft + 1}/${TOTAL_SHOTS} · 다음 컷까지 ${mm}:${ss}`;
+      timerBadge.classList.add('rec');
+    } else {
+      timerBadge.textContent = '대기 중';
+      timerBadge.classList.remove('rec');
+    }
+  }
+
+  function stopSequence() {
+    isCapturing = false;
+    clearInterval(captureTimer);
+    clearInterval(countdownTimer);
+    captureTimer = null;
+    countdownTimer = null;
+    updateBadge();
+    startBtn.classList.remove('hidden');
+    stopBtn.classList.add('hidden');
+    switchBtn.disabled = false;
+  }
+
+  function finishSequence() {
+    stopSequence();
+    statusEl.textContent = `촬영 완료: 총 ${capturedShots.length}장. 오버레이 결과를 확인하세요.`;
+    liveCanvas.style.display = 'none';
+    video.style.display = 'none';
+    resultCanvas.style.display = 'block';
+    opacityControl.classList.remove('hidden');
+    resetBtn.classList.remove('hidden');
+    downloadBtn.classList.remove('hidden');
+    renderOverlayResult();
+  }
+
+  function startSequence() {
+    capturedShots = [];
+    thumbsEl.innerHTML = '';
+    shotsLeft = TOTAL_SHOTS;
+    isCapturing = true;
+    remainingSec = INTERVAL_SEC;
+
+    startBtn.classList.add('hidden');
+    stopBtn.classList.remove('hidden');
+    switchBtn.disabled = true;
+    resetBtn.classList.add('hidden');
+    downloadBtn.classList.add('hidden');
+
+    // 첫 컷은 즉시 촬영
+    const first = captureFrame();
+    capturedShots.push(first);
+    addThumb(first);
+    shotsLeft--;
+    statusEl.textContent = `1번째 사진 촬영됨. 총 ${TOTAL_SHOTS}장 중 ${TOTAL_SHOTS - shotsLeft}장 완료.`;
+    updateBadge();
+
+    countdownTimer = setInterval(() => {
+      remainingSec--;
+      if (remainingSec < 0) remainingSec = 0;
+      updateBadge();
+    }, 1000);
+
+    captureTimer = setInterval(() => {
+      if (shotsLeft <= 0) {
+        finishSequence();
+        return;
+      }
+      const shot = captureFrame();
+      capturedShots.push(shot);
+      addThumb(shot);
+      shotsLeft--;
+      statusEl.textContent = `${capturedShots.length}번째 사진 촬영됨. 총 ${TOTAL_SHOTS}장 중 ${capturedShots.length}장 완료.`;
+      remainingSec = INTERVAL_SEC;
+      updateBadge();
+      if (shotsLeft <= 0) {
+        clearInterval(captureTimer);
+        clearInterval(countdownTimer);
+        finishSequence();
+      }
+    }, INTERVAL_SEC * 1000);
+  }
+
+  startBtn.addEventListener('click', startSequence);
+  stopBtn.addEventListener('click', () => {
+    stopSequence();
+    statusEl.textContent = '촬영이 중지되었습니다.';
+  });
+
+  resetBtn.addEventListener('click', () => {
+    capturedShots = [];
+    thumbsEl.innerHTML = '';
+    resultCanvas.style.display = 'none';
+    liveCanvas.style.display = 'block';
+    video.style.display = 'block';
+    opacityControl.classList.add('hidden');
+    resetBtn.classList.add('hidden');
+    downloadBtn.classList.add('hidden');
+    statusEl.textContent = '준비 완료. 촬영 시작을 누르세요.';
+    updateBadge();
+  });
+
+  downloadBtn.addEventListener('click', () => {
+    const link = document.createElement('a');
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    link.download = `fov-check-${ts}.jpg`;
+    link.href = resultCanvas.toDataURL('image/jpeg', 0.92);
+    link.click();
+  });
+
+  // 초기화
+  resizeCanvases();
+  renderLive();
+  startCamera(currentFacing);
+})();
+</script>
+</body>
+</html>
