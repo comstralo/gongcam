@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { Link } from "react-router-dom";
-import { RotateCcw, Download } from "lucide-react";
+import { RotateCcw, RotateCw, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCamera } from "@/hooks/useCamera";
 import { useFrameCapture } from "@/hooks/useFrameCapture";
@@ -35,21 +35,21 @@ export function CheckerPage() {
 
   return (
     <>
-      <header className="flex w-full max-w-160 items-baseline justify-between gap-3">
+      <header className="flex w-full page-content-wide items-baseline justify-between gap-3">
         <div className="flex flex-col gap-0.5">
-          <Link to="/" className="font-mono text-xs uppercase tracking-widest text-primary">
+          <Link to="/" className="font-mono text-xs uppercase tracking-widest text-primary sm:text-sm">
             Framing Check
           </Link>
-          <h1 className="text-xl font-bold">프레임 체커</h1>
+          <h1 className="text-xl font-bold sm:text-2xl">프레임 체커</h1>
         </div>
-        <div className="text-right font-mono text-[11px] leading-relaxed text-muted-foreground">
+        <div className="text-right font-mono text-[11px] leading-relaxed text-muted-foreground sm:text-sm">
           GRID 4×4
           <br />
           {TOTAL_SHOTS} FRAMES / 30s
         </div>
       </header>
 
-      <div className="relative w-full max-w-160 overflow-hidden rounded-lg bg-[#1b1d19] p-3.5" style={{ aspectRatio: "16/9" }}>
+      <div className="relative w-full page-content-wide overflow-hidden rounded-lg bg-[#1b1d19] p-3.5" style={{ aspectRatio: "16/9" }}>
         <div ref={stageRef} className="relative size-full overflow-hidden rounded-sm bg-black">
           <video ref={camera.videoRef} autoPlay playsInline muted className="absolute inset-0 size-full object-cover" />
           <canvas
@@ -76,11 +76,11 @@ export function CheckerPage() {
           ))}
 
           {/* HUD: 좌상단 REC 상태 */}
-          <div className="absolute top-3.5 left-3.5 z-6 font-mono text-[11px] tracking-wide text-[#eef0ea]" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}>
+          <div className="absolute top-3.5 left-3.5 z-6 font-mono text-[11px] tracking-wide text-[#eef0ea] sm:top-4 sm:left-4 sm:text-sm" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}>
             <span className={cn("inline-flex items-center gap-1.5", (capture.isCapturing || recording.isRecording) && "text-destructive")}>
               <span
                 className={cn(
-                  "size-1.75 rounded-full bg-muted-foreground",
+                  "size-1.75 rounded-full bg-muted-foreground sm:size-2",
                   (capture.isCapturing || recording.isRecording) && "bg-destructive animate-pulse motion-reduce:animate-none"
                 )}
               />
@@ -94,8 +94,8 @@ export function CheckerPage() {
 
           {/* HUD: 우상단 카운트다운 (정지사진 모드에서만) */}
           {capture.isCapturing && (
-            <div className="absolute top-3.5 right-3.5 z-6 text-right font-mono text-[11px] tracking-wide text-[#eef0ea]" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}>
-              <span className="font-mono text-sm font-semibold tabular-nums">
+            <div className="absolute top-3.5 right-3.5 z-6 text-right font-mono text-[11px] tracking-wide text-[#eef0ea] sm:top-4 sm:right-4 sm:text-sm" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}>
+              <span className="font-mono text-sm font-semibold tabular-nums sm:text-lg">
                 {mm}:{ss}
               </span>
               NEXT FRAME
@@ -115,17 +115,17 @@ export function CheckerPage() {
       </div>
 
       {capture.thumbs.length > 0 && (
-        <div className="flex w-full max-w-160 gap-1.5 overflow-x-auto p-0.5">
+        <div className="flex w-full page-content-wide gap-1.5 overflow-x-auto p-0.5 sm:gap-2">
           {capture.thumbs.map((src, i) => (
-            <img key={i} src={src} className="h-13 w-17 shrink-0 rounded-sm border object-cover" alt={`촬영 ${i + 1}`} />
+            <img key={i} src={src} className="h-13 w-17 shrink-0 rounded-sm border object-cover sm:h-16 sm:w-21" alt={`촬영 ${i + 1}`} />
           ))}
         </div>
       )}
 
-      <div className="flex w-full max-w-160 flex-col gap-3.5">
+      <div className="flex w-full page-content-wide flex-col gap-3.5">
         {capture.isFinished && (
-          <div className="flex items-center gap-3 rounded-md border bg-card p-2.5">
-            <span className="font-mono text-[11px] tracking-wide text-muted-foreground uppercase whitespace-nowrap">Overlay</span>
+          <div className="flex items-center gap-3 rounded-md border bg-card p-2.5 sm:p-3.5">
+            <span className="font-mono text-[11px] tracking-wide text-muted-foreground uppercase whitespace-nowrap sm:text-xs">Overlay</span>
             <input
               type="range"
               min={0.1}
@@ -138,19 +138,19 @@ export function CheckerPage() {
           </div>
         )}
 
-        <div className="flex flex-col gap-4 rounded-lg border bg-card p-4 sm:flex-row sm:items-stretch sm:gap-4.5">
+        <div className="flex flex-col gap-4 rounded-lg border bg-card p-4 sm:flex-row sm:items-stretch sm:gap-6 sm:p-5">
           <div className="flex min-w-0 flex-1 flex-col items-center gap-3">
-            <span className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase">Stills · 30s × 6</span>
-            <div className="flex flex-wrap items-center justify-center gap-2.5">
+            <span className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase sm:text-xs">Stills · 30s × 6</span>
+            <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3.5">
               <button
                 type="button"
                 title="카메라 전환"
                 aria-label="카메라 전환"
                 disabled={!canSwitchCamera}
                 onClick={camera.switchFacing}
-                className="flex size-11 shrink-0 items-center justify-center rounded-full border bg-card text-lg disabled:opacity-40"
+                className="flex size-11 shrink-0 items-center justify-center rounded-full border bg-card disabled:opacity-40 sm:size-13"
               >
-                ⟲
+                <RotateCw className="size-4.5 sm:size-5" />
               </button>
 
               {!capture.isCapturing ? (
@@ -160,7 +160,7 @@ export function CheckerPage() {
                   aria-label="촬영 시작"
                   disabled={!canStartSequence}
                   onClick={capture.startSequence}
-                  className="relative size-15.5 shrink-0 rounded-full border-3 border-primary bg-card disabled:opacity-40"
+                  className="relative size-15.5 shrink-0 rounded-full border-3 border-primary bg-card disabled:opacity-40 sm:size-18"
                 >
                   <span className="absolute inset-1.5 rounded-full bg-primary transition-all" />
                 </button>
@@ -170,7 +170,7 @@ export function CheckerPage() {
                   title="중지"
                   aria-label="중지"
                   onClick={capture.stopSequence}
-                  className="relative size-15.5 shrink-0 rounded-full border-3 border-destructive bg-card"
+                  className="relative size-15.5 shrink-0 rounded-full border-3 border-destructive bg-card sm:size-18"
                 >
                   <span className="absolute inset-5 rounded-sm bg-destructive transition-all" />
                 </button>
@@ -183,18 +183,18 @@ export function CheckerPage() {
                     title="다시 촬영"
                     aria-label="다시 촬영"
                     onClick={capture.resetSequence}
-                    className="flex size-11 shrink-0 items-center justify-center rounded-full border bg-card text-lg"
+                    className="flex size-11 shrink-0 items-center justify-center rounded-full border bg-card sm:size-13"
                   >
-                    <RotateCcw className="size-4" />
+                    <RotateCcw className="size-4.5 sm:size-5" />
                   </button>
                   <button
                     type="button"
                     title="이미지 저장"
                     aria-label="이미지 저장"
                     onClick={capture.downloadResult}
-                    className="flex size-11 shrink-0 items-center justify-center rounded-full border bg-card text-lg"
+                    className="flex size-11 shrink-0 items-center justify-center rounded-full border bg-card sm:size-13"
                   >
-                    <Download className="size-4" />
+                    <Download className="size-4.5 sm:size-5" />
                   </button>
                 </>
               )}
@@ -204,8 +204,8 @@ export function CheckerPage() {
           <div className="h-px w-full bg-border sm:h-auto sm:w-px" />
 
           <div className="flex min-w-0 flex-1 flex-col items-center gap-3">
-            <span className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase">Video · 1:30</span>
-            <div className="flex flex-wrap items-center justify-center gap-2.5">
+            <span className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase sm:text-xs">Video · 1:30</span>
+            <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3.5">
               {!recording.isRecording ? (
                 <button
                   type="button"
@@ -213,7 +213,7 @@ export function CheckerPage() {
                   aria-label="화면 녹화 시작"
                   disabled={!canStartRecording}
                   onClick={recording.startRecording}
-                  className="relative size-15.5 shrink-0 rounded-full border-3 border-destructive bg-card disabled:opacity-40"
+                  className="relative size-15.5 shrink-0 rounded-full border-3 border-destructive bg-card disabled:opacity-40 sm:size-18"
                 >
                   <span className="absolute inset-4.5 rounded-full bg-destructive" />
                 </button>
@@ -223,7 +223,7 @@ export function CheckerPage() {
                   title="녹화 중지"
                   aria-label="녹화 중지"
                   onClick={recording.stopRecording}
-                  className="relative size-15.5 shrink-0 animate-pulse rounded-full border-3 border-destructive bg-card motion-reduce:animate-none"
+                  className="relative size-15.5 shrink-0 animate-pulse rounded-full border-3 border-destructive bg-card motion-reduce:animate-none sm:size-18"
                 >
                   <span className="absolute inset-5.5 rounded-sm bg-destructive" />
                 </button>
@@ -235,16 +235,16 @@ export function CheckerPage() {
                   title="영상 저장"
                   aria-label="영상 저장"
                   onClick={recording.downloadRecording}
-                  className="flex size-11 shrink-0 items-center justify-center rounded-full border bg-card text-lg"
+                  className="flex size-11 shrink-0 items-center justify-center rounded-full border bg-card sm:size-13"
                 >
-                  <Download className="size-4" />
+                  <Download className="size-4.5 sm:size-5" />
                 </button>
               )}
             </div>
           </div>
         </div>
 
-        <div className="min-h-4 text-center font-mono text-xs text-muted-foreground">{camera.status}</div>
+        <div className="min-h-4 text-center font-mono text-xs text-muted-foreground sm:text-sm">{camera.status}</div>
       </div>
     </>
   );

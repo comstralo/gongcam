@@ -17,9 +17,9 @@ export function AppShell({ children, title }: AppShellProps) {
       style={{ paddingBottom: session ? "calc(32px + 64px + env(safe-area-inset-bottom, 0px))" : undefined }}
     >
       {title && (
-        <header className="flex w-full max-w-md flex-col gap-0.5">
-          <span className="font-mono text-xs uppercase tracking-widest text-primary">Framing Check</span>
-          <h1 className="text-xl font-bold">{title}</h1>
+        <header className="flex w-full page-content flex-col gap-0.5">
+          <span className="font-mono text-xs uppercase tracking-widest text-primary sm:text-sm">Framing Check</span>
+          <h1 className="text-xl font-bold sm:text-2xl">{title}</h1>
         </header>
       )}
       {children}

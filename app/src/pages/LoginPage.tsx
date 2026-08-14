@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { ScanLine } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
@@ -87,14 +88,14 @@ export function LoginPage() {
 
   return (
     <div className="flex min-h-dvh w-full flex-col items-center justify-center gap-6 p-4">
-      <div className="flex w-full max-w-md flex-col items-center gap-1 text-center">
-        <span className="font-mono text-xs uppercase tracking-widest text-primary">Framing Check</span>
-        <h1 className="text-xl font-bold">공부합시당 캠스터디</h1>
+      <div className="flex w-full page-content flex-col items-center gap-1 text-center">
+        <span className="font-mono text-xs uppercase tracking-widest text-primary sm:text-sm">Framing Check</span>
+        <h1 className="text-xl font-bold sm:text-2xl">공부합시당 캠스터디</h1>
       </div>
 
-      <Card className="w-full max-w-md">
+      <Card className="w-full page-content">
         <CardContent className="flex flex-col gap-4">
-          <p className="text-sm leading-relaxed text-muted-foreground">
+          <p className="text-sm leading-relaxed text-muted-foreground sm:text-base">
             아래 기능은 <strong className="text-foreground">참여자 명단(스프레드시트 열람 권한)</strong>에
             등록된 계정만 이용할 수 있습니다.
             <br />
@@ -104,22 +105,22 @@ export function LoginPage() {
           <RadioGroup value={mode} onValueChange={(v) => setMode(v as SessionMode)} className="gap-2">
             <Label
               htmlFor="mode-persist"
-              className="flex items-start gap-2 rounded-lg border p-3 has-[[data-state=checked]]:border-primary"
+              className="flex items-start gap-2 rounded-lg border p-3 has-[[data-state=checked]]:border-primary sm:p-4"
             >
               <RadioGroupItem value="persist" id="mode-persist" className="mt-0.5" />
               <span className="flex flex-col gap-0.5">
-                <span className="text-sm font-semibold">로그인 상태 유지</span>
-                <span className="text-xs text-muted-foreground">이 브라우저에서 30일 동안 자동 로그인</span>
+                <span className="text-sm font-semibold sm:text-base">로그인 상태 유지</span>
+                <span className="text-xs text-muted-foreground sm:text-sm">이 브라우저에서 30일 동안 자동 로그인</span>
               </span>
             </Label>
             <Label
               htmlFor="mode-once"
-              className="flex items-start gap-2 rounded-lg border p-3 has-[[data-state=checked]]:border-primary"
+              className="flex items-start gap-2 rounded-lg border p-3 has-[[data-state=checked]]:border-primary sm:p-4"
             >
               <RadioGroupItem value="once" id="mode-once" className="mt-0.5" />
               <span className="flex flex-col gap-0.5">
-                <span className="text-sm font-semibold">1회성 로그인 (공공 PC)</span>
-                <span className="text-xs text-muted-foreground">탭을 닫으면 즉시 로그아웃</span>
+                <span className="text-sm font-semibold sm:text-base">1회성 로그인 (공공 PC)</span>
+                <span className="text-xs text-muted-foreground sm:text-sm">탭을 닫으면 즉시 로그아웃</span>
               </span>
             </Label>
           </RadioGroup>
@@ -128,7 +129,7 @@ export function LoginPage() {
             <div ref={googleBtnRef} />
           </div>
 
-          {checking && <p className="text-center font-mono text-xs text-muted-foreground">확인 중...</p>}
+          {checking && <p className="text-center font-mono text-xs text-muted-foreground sm:text-sm">확인 중...</p>}
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
@@ -137,17 +138,17 @@ export function LoginPage() {
         </CardContent>
       </Card>
 
-      <Card className="w-full max-w-md border-primary">
+      <Card className="w-full page-content border-primary">
         <CardContent>
           <Link to="/checker" className="flex items-center gap-3.5">
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-full border bg-card text-lg">
-              📐
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-full border bg-card sm:size-12">
+              <ScanLine className="size-5 text-primary sm:size-6" />
             </span>
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span className="text-[15px] font-bold">프레임 체커</span>
-              <span className="text-xs text-muted-foreground">4×4 격자로 화각을 점검하고 사진/영상을 촬영합니다</span>
+              <span className="text-[15px] font-bold sm:text-lg">프레임 체커</span>
+              <span className="text-xs text-muted-foreground sm:text-sm">4×4 격자로 화각을 점검하고 사진/영상을 촬영합니다</span>
             </span>
-            <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-primary">누구나</span>
+            <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-primary sm:text-xs">누구나</span>
           </Link>
         </CardContent>
       </Card>

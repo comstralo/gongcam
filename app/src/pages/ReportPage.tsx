@@ -46,23 +46,23 @@ export function ReportPage() {
   }
 
   return (
-    <Card className="w-full max-w-md">
+    <Card className="w-full page-content">
       <CardContent className="flex flex-col gap-4">
         <SessionCard />
 
         <div className="flex flex-col gap-1.5">
-          <Label className="text-sm font-semibold">대상 참여자</Label>
-          <span className="text-xs text-muted-foreground">{hint}</span>
+          <Label className="text-sm font-semibold sm:text-base">대상 참여자</Label>
+          <span className="text-xs text-muted-foreground sm:text-sm">{hint}</span>
           <div className="flex items-center gap-2">
             <Select value={nickname} onValueChange={(v) => setNickname(v ?? "")} disabled={noMembers}>
-              <SelectTrigger className="flex-1">
+              <SelectTrigger className="flex-1 sm:h-12 sm:text-base">
                 <SelectValue
                   placeholder={noMembers ? "현재 접속 중인 참여자가 없습니다" : "참여자를 선택하세요"}
                 />
               </SelectTrigger>
               <SelectContent>
                 {members.map((name) => (
-                  <SelectItem key={name} value={name}>
+                  <SelectItem key={name} value={name} className="sm:text-base">
                     {name}
                   </SelectItem>
                 ))}
@@ -72,31 +72,31 @@ export function ReportPage() {
               type="button"
               variant="outline"
               size="icon"
-              className="size-11 shrink-0"
+              className="size-11 shrink-0 sm:size-12"
               onClick={refresh}
               aria-label="명단 새로고침"
             >
-              <RefreshCw className="size-4" />
+              <RefreshCw className="size-4 sm:size-5" />
             </Button>
           </div>
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="reason" className="text-sm font-semibold">
+          <Label htmlFor="reason" className="text-sm font-semibold sm:text-base">
             상황 설명 (선택)
           </Label>
-          <span className="text-xs text-muted-foreground">화각 이탈, 화면 정지 등 간단히 적어주세요</span>
+          <span className="text-xs text-muted-foreground sm:text-sm">화각 이탈, 화면 정지 등 간단히 적어주세요</span>
           <Textarea
             id="reason"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder="예: 손이 안 보여요"
             maxLength={200}
-            className="min-h-18"
+            className="min-h-18 sm:text-base"
           />
         </div>
 
-        <Button className="w-full" disabled={submitting} onClick={handleSubmit}>
+        <Button className="w-full sm:h-12 sm:text-base" disabled={submitting} onClick={handleSubmit}>
           제보 접수
         </Button>
 

@@ -3,6 +3,28 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* 페이지 콘텐츠 최대폭 — 모바일은 좁게, sm 이상(태블릿)부터 단계적으로 넓힘 */
+@utility page-content {
+  max-width: 28rem; /* 448px, 기존 max-w-md */
+  @variant sm {
+    max-width: 40rem; /* 640px */
+  }
+  @variant lg {
+    max-width: 48rem; /* 768px */
+  }
+}
+
+/* checker.html처럼 뷰파인더가 있는 넓은 페이지 */
+@utility page-content-wide {
+  max-width: 40rem; /* 640px, 기존 max-w-160 */
+  @variant sm {
+    max-width: 56rem; /* 896px */
+  }
+  @variant lg {
+    max-width: 64rem; /* 1024px */
+  }
+}
+
 @theme inline {
     --font-sans: -apple-system, BlinkMacSystemFont, "Pretendard", "Segoe UI", Roboto, sans-serif;
     --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;

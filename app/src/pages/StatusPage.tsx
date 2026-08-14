@@ -40,22 +40,22 @@ export function StatusPage() {
   }, []);
 
   return (
-    <Card className="w-full max-w-md">
+    <Card className="w-full page-content">
       <CardContent className="flex flex-col gap-4">
         <SessionCard />
 
         <div className="flex gap-2.5">
-          <div className="flex flex-1 flex-col gap-1 rounded-lg border bg-muted p-3.5">
-            <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">목표 유형</span>
-            <span className="font-mono text-[15px] font-bold">{status?.goalType || "-"}</span>
+          <div className="flex flex-1 flex-col gap-1 rounded-lg border bg-muted p-3.5 sm:p-4.5">
+            <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground sm:text-xs">목표 유형</span>
+            <span className="font-mono text-[15px] font-bold sm:text-lg">{status?.goalType || "-"}</span>
           </div>
-          <div className="flex flex-1 flex-col gap-1 rounded-lg border bg-muted p-3.5">
-            <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+          <div className="flex flex-1 flex-col gap-1 rounded-lg border bg-muted p-3.5 sm:p-4.5">
+            <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground sm:text-xs">
               이번 주 확정 벌금
             </span>
             <span
               className={cn(
-                "font-mono text-[22px] font-bold tabular-nums",
+                "font-mono text-[22px] font-bold tabular-nums sm:text-3xl",
                 status && status.weekTotalConfirmed > 0 ? "text-destructive" : "text-ok"
               )}
             >
@@ -69,17 +69,17 @@ export function StatusPage() {
             <div
               key={d.day}
               className={cn(
-                "flex gap-2.5 rounded-lg border bg-muted p-3",
+                "flex gap-2.5 rounded-lg border bg-muted p-3 sm:gap-3.5 sm:p-4",
                 i === TODAY_INDEX && "border-primary"
               )}
             >
-              <div className="w-6 shrink-0 pt-px font-mono text-xs font-bold">{d.day}</div>
+              <div className="w-6 shrink-0 pt-px font-mono text-xs font-bold sm:w-8 sm:text-sm">{d.day}</div>
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <div className={cn("font-mono text-sm font-bold tabular-nums", d.total > 0 ? "text-destructive" : "text-ok")}>
+                <div className={cn("font-mono text-sm font-bold tabular-nums sm:text-base", d.total > 0 ? "text-destructive" : "text-ok")}>
                   {won(d.total)}
                 </div>
-                <div className="text-xs leading-relaxed text-muted-foreground">{d.explain}</div>
-                <Badge variant={d.confirmed ? "default" : "outline"} className="w-fit text-[10px]">
+                <div className="text-xs leading-relaxed text-muted-foreground sm:text-sm">{d.explain}</div>
+                <Badge variant={d.confirmed ? "default" : "outline"} className="w-fit text-[10px] sm:text-xs">
                   {d.confirmed ? "확정" : "진행중"}
                 </Badge>
               </div>
@@ -87,7 +87,7 @@ export function StatusPage() {
           ))}
         </div>
 
-        {loading && <p className="text-center font-mono text-xs text-muted-foreground">불러오는 중...</p>}
+        {loading && <p className="text-center font-mono text-xs text-muted-foreground sm:text-sm">불러오는 중...</p>}
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>

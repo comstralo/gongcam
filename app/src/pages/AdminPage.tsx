@@ -16,14 +16,14 @@ export function AdminPage() {
   const { state, message, enable, sendTest } = usePushSubscription();
 
   return (
-    <Card className="w-full max-w-md">
+    <Card className="w-full page-content">
       <CardContent className="flex flex-col gap-4">
         <SessionCard />
 
-        <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+        <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground sm:text-xs">
           브라우저 푸시 알림
         </span>
-        <div className="flex items-center gap-2.5 rounded-lg border bg-muted p-3.5 text-sm">
+        <div className="flex items-center gap-2.5 rounded-lg border bg-muted p-3.5 text-sm sm:p-4.5 sm:text-base">
           <span
             className={cn(
               "size-2.5 shrink-0 rounded-full bg-muted-foreground",
@@ -35,12 +35,12 @@ export function AdminPage() {
         </div>
 
         {state === "off" && (
-          <Button className="w-full" onClick={enable}>
+          <Button className="w-full sm:h-12 sm:text-base" onClick={enable}>
             알림 켜기
           </Button>
         )}
         {state === "on" && (
-          <Button className="w-full" variant="outline" onClick={sendTest}>
+          <Button className="w-full sm:h-12 sm:text-base" variant="outline" onClick={sendTest}>
             테스트 알림 보내기
           </Button>
         )}
