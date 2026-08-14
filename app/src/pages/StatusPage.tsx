@@ -18,6 +18,7 @@ export function StatusPage() {
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedDay, setSelectedDay] = useState<number>(TODAY_INDEX);
 
   useEffect(() => {
     let cancelled = false;
@@ -64,28 +65,66 @@ export function StatusPage() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-2">
-          {status?.days.map((d, i) => (
-            <div
-              key={d.day}
-              className={cn(
-                "flex gap-2.5 rounded-lg border bg-muted p-3 sm:gap-3.5 sm:p-4",
-                i === TODAY_INDEX && "border-primary"
-              )}
-            >
-              <div className="w-6 shrink-0 pt-px font-mono text-xs font-bold sm:w-8 sm:text-sm">{d.day}</div>
-              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <div className={cn("font-mono text-sm font-bold tabular-nums sm:text-base", d.total > 0 ? "text-destructive" : "text-ok")}>
-                  {won(d.total)}
-                </div>
-                <div className="text-xs leading-relaxed text-muted-foreground sm:text-sm">{d.explain}</div>
-                <Badge variant={d.confirmed ? "default" : "outline"} className="w-fit text-[10px] sm:text-xs">
-                  {d.confirmed ? "확정" : "진행중"}
-                </Badge>
-              </div>
+        {status && (
+          <>
+            <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+              {status.days.map((d, i) => (
+                <button
+                  key={d.day}
+                  type="button"
+                  onClick={() => setSelectedDay(i)}
+                  className={cn(
+                    "flex flex-col items-center gap-1 rounded-lg border bg-muted py-2.5 font-mono text-xs font-bold transition-colors sm:py-3 sm:text-sm",
+                    i === selectedDay
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : i === TODAY_INDEX
+                        ? "border-primary"
+                        : "border-transparent"
+                  )}
+                >
+                  {d.day}
+                  <span
+                    className={cn(
+                      "size-1.25 rounded-full sm:size-1.5",
+                      i === selectedDay
+                        ? "bg-primary-foreground/70"
+                        : d.total > 0
+                          ? "bg-destructive"
+                          : "bg-ok"
+                    )}
+                  />
+                </button>
+              ))}
             </div>
-          ))}
-        </div>
+
+            {status.days[selectedDay] && (
+              <div
+                className={cn(
+                  "flex flex-col gap-1.5 rounded-lg border bg-muted p-3.5 sm:gap-2 sm:p-4.5",
+                  selectedDay === TODAY_INDEX && "border-primary"
+                )}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono text-sm font-bold sm:text-base">{status.days[selectedDay].day}요일</span>
+                  <Badge variant={status.days[selectedDay].confirmed ? "default" : "outline"} className="text-[10px] sm:text-xs">
+                    {status.days[selectedDay].confirmed ? "확정" : "진행중"}
+                  </Badge>
+                </div>
+                <div
+                  className={cn(
+                    "font-mono text-xl font-bold tabular-nums sm:text-2xl",
+                    status.days[selectedDay].total > 0 ? "text-destructive" : "text-ok"
+                  )}
+                >
+                  {won(status.days[selectedDay].total)}
+                </div>
+                <div className="text-sm leading-relaxed text-muted-foreground sm:text-base">
+                  {status.days[selectedDay].explain}
+                </div>
+              </div>
+            )}
+          </>
+        )}
 
         {loading && <p className="text-center font-mono text-xs text-muted-foreground sm:text-sm">불러오는 중...</p>}
         {error && (
