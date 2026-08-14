@@ -19,6 +19,7 @@ export type StatusDay = {
   complete: boolean;
   studyTime: string;
   bonusStudyTime: string;
+  dailyGoalTime: string;
   paymentStatus: string;
 };
 

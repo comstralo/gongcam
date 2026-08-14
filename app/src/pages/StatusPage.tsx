@@ -149,6 +149,9 @@ export function StatusPage() {
                     </span>
                     <span className="font-mono text-base font-bold tabular-nums sm:text-lg">
                       {selected.studyTime || "-"}
+                      {selected.dailyGoalTime && (
+                        <span className="text-muted-foreground"> / {selected.dailyGoalTime}</span>
+                      )}
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-2 pl-5 sm:pl-5.5">
