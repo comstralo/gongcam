@@ -128,19 +128,6 @@
     gap: 16px;
   }
 
-  .gate-copy {
-    font-size: 14px;
-    line-height: 1.6;
-    color: var(--ink-soft);
-  }
-  .gate-copy strong { color: var(--ink); }
-
-  #googleBtnSlot {
-    display: flex;
-    justify-content: center;
-    min-height: 44px;
-  }
-
   .session-row {
     display: flex;
     align-items: center;
@@ -291,15 +278,6 @@
   </div>
 </header>
 
-<div class="card" id="gateCard">
-  <p class="gate-copy">
-    Google 계정으로 로그인하면 <strong>본인의 벌금 현황만</strong> 확인할 수 있습니다.<br>
-    다른 참여자의 정보는 표시되지 않습니다.
-  </p>
-  <div id="googleBtnSlot"></div>
-  <div class="msg" id="gateMsg"></div>
-</div>
-
 <div class="card hidden" id="statusCard">
   <div class="session-row">
     <div class="who">
@@ -325,18 +303,13 @@
   <div class="msg" id="statusMsg"></div>
 </div>
 
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
 (() => {
   const WORKER_BASE = 'https://frame-checker-worker.comstralo.workers.dev';
-  const GOOGLE_CLIENT_ID = '280658144716-4vvnjn23skcshm9t65fibnt0dcuvs3va.apps.googleusercontent.com';
   const SESSION_KEY = 'frameCheckerSession';
   const TODAY_INDEX = (new Date().getDay() + 6) % 7; // 월=0 ... 일=6
 
-  const gateCard = document.getElementById('gateCard');
   const statusCard = document.getElementById('statusCard');
-  const googleBtnSlot = document.getElementById('googleBtnSlot');
-  const gateMsg = document.getElementById('gateMsg');
   const sessionName = document.getElementById('sessionName');
   const sessionEmail = document.getElementById('sessionEmail');
   const logoutBtn = document.getElementById('logoutBtn');
@@ -352,7 +325,7 @@
 
   function getSession() {
     try {
-      const raw = localStorage.getItem(SESSION_KEY);
+      const raw = sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       if (!parsed.token || !parsed.email) return null;
@@ -362,25 +335,20 @@
     }
   }
 
-  function saveSession(session) {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-  }
-
   function clearSession() {
     localStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem(SESSION_KEY);
+  }
+
+  function redirectToLogin() {
+    window.location.href = 'index.html';
   }
 
   function showStatus(session) {
-    gateCard.classList.add('hidden');
     statusCard.classList.remove('hidden');
     sessionName.textContent = session.name || session.email;
     sessionEmail.textContent = session.email;
     loadStatus();
-  }
-
-  function showGate() {
-    gateCard.classList.remove('hidden');
-    statusCard.classList.add('hidden');
   }
 
   function won(n) {
@@ -440,7 +408,7 @@
       if (!res.ok) {
         if (res.status === 401) {
           clearSession();
-          showGate();
+          redirectToLogin();
         }
         setMsg(statusMsg, data.error || '상태를 불러오지 못했습니다.', 'error');
         return;
@@ -452,54 +420,18 @@
     }
   }
 
-  async function handleCredentialResponse(response) {
-    setMsg(gateMsg, '확인 중...', '');
-    try {
-      const res = await fetch(WORKER_BASE + '/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credential: response.credential }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setMsg(gateMsg, data.error || '로그인에 실패했습니다.', 'error');
-        return;
-      }
-      saveSession(data);
-      setMsg(gateMsg, '', '');
-      showStatus(data);
-    } catch (err) {
-      setMsg(gateMsg, '네트워크 오류: ' + err.message, 'error');
-    }
-  }
-
   window.addEventListener('load', () => {
-    const existing = getSession();
-    if (existing) {
-      showStatus(existing);
+    const session = getSession();
+    if (!session) {
+      redirectToLogin();
       return;
     }
-    if (window.google && google.accounts && google.accounts.id) {
-      google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
-        callback: handleCredentialResponse,
-      });
-      google.accounts.id.renderButton(googleBtnSlot, {
-        type: 'standard',
-        theme: 'outline',
-        size: 'large',
-        text: 'signin_with',
-        shape: 'pill',
-      });
-    } else {
-      setMsg(gateMsg, 'Google 로그인 스크립트를 불러오지 못했습니다. 새로고침해보세요.', 'error');
-    }
+    showStatus(session);
   });
 
   logoutBtn.addEventListener('click', () => {
     clearSession();
-    showGate();
-    window.location.reload();
+    redirectToLogin();
   });
 })();
 </script>

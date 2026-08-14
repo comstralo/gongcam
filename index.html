@@ -132,6 +132,43 @@
   }
   .gate-copy strong { color: var(--ink); }
 
+  .session-mode {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .session-mode-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 11px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--hairline);
+    background: var(--bg);
+    cursor: pointer;
+  }
+  .session-mode-option:has(input:checked) {
+    border-color: var(--accent);
+  }
+  .session-mode-option input {
+    margin-top: 3px;
+    accent-color: var(--accent);
+    flex-shrink: 0;
+  }
+  .session-mode-option .option-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .session-mode-option .option-title {
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .session-mode-option .option-desc {
+    font-size: 11px;
+    color: var(--ink-soft);
+  }
+
   #googleBtnSlot {
     display: flex;
     justify-content: center;
@@ -261,8 +298,8 @@
 <nav class="sitenav">
   <a href="index.html" class="active">홈</a>
   <a href="checker.html">프레임 체커</a>
-  <a href="report.html">제보하기</a>
-  <a href="status.html">내 상태</a>
+  <a href="report.html" class="auth-only hidden">제보하기</a>
+  <a href="status.html" class="auth-only hidden">내 상태</a>
 </nav>
 
 <header>
@@ -288,6 +325,22 @@
     아래 기능은 <strong>참여자 명단(스프레드시트 열람 권한)</strong>에 등록된 계정만 이용할 수 있습니다.<br>
     Google 계정으로 로그인하면 자동으로 확인됩니다.
   </p>
+  <div class="session-mode" role="radiogroup" aria-label="로그인 유지 방식">
+    <label class="session-mode-option">
+      <input type="radio" name="sessionMode" value="persist" checked>
+      <span class="option-body">
+        <span class="option-title">로그인 상태 유지</span>
+        <span class="option-desc">이 브라우저에서 24시간 동안 자동 로그인</span>
+      </span>
+    </label>
+    <label class="session-mode-option">
+      <input type="radio" name="sessionMode" value="once">
+      <span class="option-body">
+        <span class="option-title">1회성 로그인 (공공 PC)</span>
+        <span class="option-desc">탭을 닫으면 즉시 로그아웃</span>
+      </span>
+    </label>
+  </div>
   <div id="googleBtnSlot"></div>
   <div class="msg" id="gateMsg"></div>
 </div>
@@ -341,7 +394,7 @@
 
   function getSession() {
     try {
-      const raw = localStorage.getItem(SESSION_KEY);
+      const raw = sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       if (!parsed.token || !parsed.email) return null;
@@ -351,12 +404,20 @@
     }
   }
 
-  function saveSession(session) {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  function saveSession(session, mode) {
+    const serialized = JSON.stringify(session);
+    if (mode === 'once') {
+      sessionStorage.setItem(SESSION_KEY, serialized);
+      localStorage.removeItem(SESSION_KEY);
+    } else {
+      localStorage.setItem(SESSION_KEY, serialized);
+      sessionStorage.removeItem(SESSION_KEY);
+    }
   }
 
   function clearSession() {
     localStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem(SESSION_KEY);
   }
 
   function showLoggedIn(session) {
@@ -364,11 +425,13 @@
     loggedInCard.classList.remove('hidden');
     sessionName.textContent = session.name || session.email;
     sessionEmail.textContent = session.email;
+    document.querySelectorAll('.auth-only').forEach((el) => el.classList.remove('hidden'));
   }
 
   function showGate() {
     gateCard.classList.remove('hidden');
     loggedInCard.classList.add('hidden');
+    document.querySelectorAll('.auth-only').forEach((el) => el.classList.add('hidden'));
   }
 
   async function handleCredentialResponse(response) {
@@ -384,7 +447,8 @@
         setMsg(gateMsg, data.error || '로그인에 실패했습니다.', 'error');
         return;
       }
-      saveSession(data);
+      const mode = (document.querySelector('input[name="sessionMode"]:checked') || {}).value;
+      saveSession(data, mode);
       setMsg(gateMsg, '', '');
       showLoggedIn(data);
     } catch (err) {

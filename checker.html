@@ -409,8 +409,8 @@
 <nav class="sitenav">
   <a href="index.html">홈</a>
   <a href="checker.html" class="active">프레임 체커</a>
-  <a href="report.html">제보하기</a>
-  <a href="status.html">내 상태</a>
+  <a href="report.html" class="auth-only hidden">제보하기</a>
+  <a href="status.html" class="auth-only hidden">내 상태</a>
 </nav>
 
 <header>
@@ -472,6 +472,18 @@
 
   <div class="status" id="status">카메라를 시작하려면 브라우저 권한을 허용해주세요.</div>
 </div>
+
+<script>
+(() => {
+  const SESSION_KEY = 'frameCheckerSession';
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY);
+    if (raw && JSON.parse(raw).token) {
+      document.querySelectorAll('.auth-only').forEach((el) => el.classList.remove('hidden'));
+    }
+  } catch {}
+})();
+</script>
 
 <script>
 (() => {

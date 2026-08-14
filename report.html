@@ -125,19 +125,6 @@
     gap: 16px;
   }
 
-  .gate-copy {
-    font-size: 14px;
-    line-height: 1.6;
-    color: var(--ink-soft);
-  }
-  .gate-copy strong { color: var(--ink); }
-
-  #googleBtnSlot {
-    display: flex;
-    justify-content: center;
-    min-height: 44px;
-  }
-
   .session-row {
     display: flex;
     align-items: center;
@@ -278,15 +265,6 @@
   </div>
 </header>
 
-<div class="card" id="gateCard">
-  <p class="gate-copy">
-    캠스터디 <strong>참여자 명단(스프레드시트 열람 권한)</strong>에 등록된 계정만 제보할 수 있습니다.<br>
-    Google 계정으로 로그인하면 자동으로 확인됩니다.
-  </p>
-  <div id="googleBtnSlot"></div>
-  <div class="msg" id="gateMsg"></div>
-</div>
-
 <div class="card hidden" id="formCard">
   <div class="session-row">
     <div class="who">
@@ -317,17 +295,12 @@
   <div class="msg" id="formMsg"></div>
 </div>
 
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
 (() => {
   const WORKER_BASE = 'https://frame-checker-worker.comstralo.workers.dev';
-  const GOOGLE_CLIENT_ID = '280658144716-4vvnjn23skcshm9t65fibnt0dcuvs3va.apps.googleusercontent.com';
   const SESSION_KEY = 'frameCheckerSession';
 
-  const gateCard = document.getElementById('gateCard');
   const formCard = document.getElementById('formCard');
-  const googleBtnSlot = document.getElementById('googleBtnSlot');
-  const gateMsg = document.getElementById('gateMsg');
   const sessionName = document.getElementById('sessionName');
   const sessionEmail = document.getElementById('sessionEmail');
   const logoutBtn = document.getElementById('logoutBtn');
@@ -348,7 +321,7 @@
 
   function getSession() {
     try {
-      const raw = localStorage.getItem(SESSION_KEY);
+      const raw = sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       if (!parsed.token || !parsed.email) return null;
@@ -358,26 +331,21 @@
     }
   }
 
-  function saveSession(session) {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-  }
-
   function clearSession() {
     localStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem(SESSION_KEY);
+  }
+
+  function redirectToLogin() {
+    stopRosterPolling();
+    window.location.href = 'index.html';
   }
 
   function showForm(session) {
-    gateCard.classList.add('hidden');
     formCard.classList.remove('hidden');
     sessionName.textContent = session.name || session.email;
     sessionEmail.textContent = session.email;
     startRosterPolling();
-  }
-
-  function showGate() {
-    gateCard.classList.remove('hidden');
-    formCard.classList.add('hidden');
-    stopRosterPolling();
   }
 
   function renderRoster(members, stale) {
@@ -423,7 +391,7 @@
       if (!res.ok) {
         if (res.status === 401) {
           clearSession();
-          showGate();
+          redirectToLogin();
         }
         rosterHint.textContent = data.error || '명단을 불러오지 못했습니다.';
         return;
@@ -449,63 +417,24 @@
 
   rosterRefreshBtn.addEventListener('click', loadRoster);
 
-  async function handleCredentialResponse(response) {
-    setMsg(gateMsg, '확인 중...', '');
-    try {
-      const res = await fetch(WORKER_BASE + '/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credential: response.credential }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setMsg(gateMsg, data.error || '로그인에 실패했습니다.', 'error');
-        return;
-      }
-      saveSession(data);
-      setMsg(gateMsg, '', '');
-      showForm(data);
-    } catch (err) {
-      setMsg(gateMsg, '네트워크 오류: ' + err.message, 'error');
-    }
-  }
-
   window.addEventListener('load', () => {
-    const existing = getSession();
-    if (existing) {
-      showForm(existing);
+    const session = getSession();
+    if (!session) {
+      redirectToLogin();
       return;
     }
-    if (window.google && google.accounts && google.accounts.id) {
-      google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
-        callback: handleCredentialResponse,
-      });
-      google.accounts.id.renderButton(googleBtnSlot, {
-        type: 'standard',
-        theme: 'outline',
-        size: 'large',
-        text: 'signin_with',
-        shape: 'pill',
-      });
-    } else {
-      setMsg(gateMsg, 'Google 로그인 스크립트를 불러오지 못했습니다. 새로고침해보세요.', 'error');
-    }
+    showForm(session);
   });
 
   logoutBtn.addEventListener('click', () => {
     clearSession();
-    nicknameSelect.innerHTML = '';
-    reasonInput.value = '';
-    setMsg(formMsg, '', '');
-    showGate();
-    window.location.reload();
+    redirectToLogin();
   });
 
   submitBtn.addEventListener('click', async () => {
     const session = getSession();
     if (!session) {
-      showGate();
+      redirectToLogin();
       return;
     }
     const nickname = nicknameSelect.value;
@@ -531,7 +460,7 @@
       if (!res.ok) {
         if (res.status === 401) {
           clearSession();
-          showGate();
+          redirectToLogin();
         }
         setMsg(formMsg, data.error || '제보 접수에 실패했습니다.', 'error');
         return;
