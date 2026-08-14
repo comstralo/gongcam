@@ -61,6 +61,16 @@ export type SnapshotRunNowResponse = {
   memberCount: number;
 };
 
+export type AdminMember = {
+  number: string;
+  name: string;
+  email: string;
+};
+
+export type AdminMembersResponse = {
+  members: AdminMember[];
+};
+
 export type PushSendTestResult = {
   status?: number;
   error?: string;
