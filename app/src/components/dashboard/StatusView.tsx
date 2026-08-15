@@ -32,13 +32,6 @@ function goalStatus(studyTime: string, goalTime: string, complete: boolean): Goa
   return study >= goal ? "met" : "failed";
 }
 
-function leaveUsageLabel(normalLeaveUsed: number, reasonLeaveUsed: number): string {
-  const parts: string[] = [];
-  if (normalLeaveUsed > 0) parts.push(`일반 ${normalLeaveUsed}회`);
-  if (reasonLeaveUsed > 0) parts.push(`사유 ${reasonLeaveUsed}회`);
-  return parts.length > 0 ? parts.join(" · ") : "미사용";
-}
-
 // 관리자가 직접 입력하는 값이라 "00:20"처럼 부호 없이 저장되는 경우 기본을 +로 해석하고,
 // "-00:20"처럼 이미 부호가 붙어 있으면 그 부호를 그대로 존중한다.
 function signedTime(raw: string): string {
@@ -173,13 +166,31 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
                   {signedTime(selected.bonusStudyTime)}
                 </span>
               </div>
-              <div className="flex items-center justify-between gap-2 pl-5 sm:pl-5.5">
-                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground before:mr-0.25 before:content-['└'] sm:text-sm">
-                  <BedDouble className="size-3 sm:size-3.5" strokeWidth={2.25} />
+            </div>
+
+            <div className="h-px w-full bg-border" />
+
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="inline-flex items-center gap-1.25 text-xs font-semibold text-muted-foreground sm:text-sm">
+                  <BedDouble className="size-3.5 sm:size-4" strokeWidth={2.25} />
                   반휴 사용
                 </span>
-                <span className="text-sm text-muted-foreground sm:text-base">
-                  {leaveUsageLabel(selected.normalLeaveUsed, selected.reasonLeaveUsed)}
+              </div>
+              <div className="flex items-center justify-between gap-2 pl-5 sm:pl-5.5">
+                <span className="text-xs text-muted-foreground before:mr-1 before:content-['└'] sm:text-sm">
+                  일반반휴
+                </span>
+                <span className="font-mono text-sm tabular-nums text-muted-foreground sm:text-base">
+                  {selected.normalLeaveUsed > 0 ? `${selected.normalLeaveUsed}회` : "-"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2 pl-5 sm:pl-5.5">
+                <span className="text-xs text-muted-foreground before:mr-1 before:content-['└'] sm:text-sm">
+                  사유반휴
+                </span>
+                <span className="font-mono text-sm tabular-nums text-muted-foreground sm:text-base">
+                  {selected.reasonLeaveUsed > 0 ? `${selected.reasonLeaveUsed}회` : "-"}
                 </span>
               </div>
             </div>
