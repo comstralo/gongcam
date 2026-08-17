@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
+import { Bell } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusView } from "@/components/dashboard/StatusView";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/lib/auth/useAuth";
+import { ICON_STROKE } from "@/lib/utils";
 import type { AdminMember, AdminMembersResponse, StatusResponse } from "@/lib/api/types";
 
 // 회원번호로 "본인"을 표시하는 특수값 — 실제 회원번호와 겹치지 않도록 접두사를 둔다.
@@ -55,6 +58,19 @@ export function StatusPage() {
   return (
     <Card className="w-full">
       <CardContent className="flex flex-col gap-5">
+        <div className="flex items-center justify-between gap-3">
+          <span className="font-mono text-micro uppercase tracking-wide text-muted-foreground sm:text-xs">
+            내 대시보드
+          </span>
+          <Button
+            variant="outline"
+            size="icon"
+            className="size-9 shrink-0 rounded-full sm:size-10"
+            aria-label="알림"
+          >
+            <Bell className="size-4 sm:size-4.5" strokeWidth={ICON_STROKE.default} />
+          </Button>
+        </div>
         {isAdmin && (
           <Select value={selected} onValueChange={(v) => setSelected(v ?? SELF_VALUE)}>
             <SelectTrigger className="sm:h-12 sm:text-base">
