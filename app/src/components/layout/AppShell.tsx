@@ -6,11 +6,11 @@ import { cn, ICON_STROKE } from "@/lib/utils";
 
 type AppShellProps = {
   children: ReactNode;
-  /** 지정하면 표준 헤더(Framing Check 라벨 + 제목)를 렌더링한다. 페이지가 자체 헤더를 그릴 경우 생략. */
+  /** 지정하면 표준 헤더("공부합시당 캠스터디" 라벨 + 제목)를 렌더링한다. 페이지가 자체 헤더를 그릴 경우 생략. */
   title?: string;
   /** 지정하면 제목 좌측에 아이콘을 함께 표시한다. */
   titleIcon?: LucideIcon;
-  /** true면 title은 유지하되 상단 "Framing Check" 라벨을 생략한다. */
+  /** true면 title은 유지하되 상단 "공부합시당 캠스터디" 라벨을 생략한다. */
   hideEyebrow?: boolean;
   /**
    * true면 화면 높이를 정확히 고정하고(min-height 대신 height), 가로 모드에서
@@ -39,7 +39,9 @@ export function AppShell({ children, title, titleIcon: TitleIcon, hideEyebrow, f
       {title && (
         <header className="flex w-full page-content flex-col gap-0.5">
           {!hideEyebrow && (
-            <span className="font-mono text-xs uppercase tracking-widest text-primary sm:text-sm">Framing Check</span>
+            <span className="font-mono text-xs uppercase tracking-widest text-primary sm:text-sm">
+              공부합시당 캠스터디
+            </span>
           )}
           <h1 className="flex items-center gap-2 text-xl font-bold sm:text-2xl">
             {TitleIcon && (

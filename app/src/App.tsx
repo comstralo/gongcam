@@ -32,7 +32,7 @@ export default function App() {
             path="/"
             element={
               <ProtectedRoute>
-                <AppShell title="대시보드" titleIcon={LayoutDashboard} hideEyebrow>
+                <AppShell title="대시보드" titleIcon={LayoutDashboard}>
                   <DashboardPage />
                 </AppShell>
               </ProtectedRoute>
