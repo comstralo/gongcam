@@ -42,16 +42,6 @@ export function DepositRefundDialog({
 
         <div className="flex flex-col gap-3">
           <InfoCard className="flex flex-col gap-1.5">
-            <span className="text-xs font-semibold sm:text-sm">판정 근거</span>
-            <SubRow
-              label="가입 후 경과일"
-              value={(breakdown.daysSinceJoin ?? -1) >= 0 ? `D+${breakdown.daysSinceJoin}` : "-"}
-            />
-            <SubRow label="송출 P (금주+누적)" value={`${breakdown.outputPen ?? 0}회`} />
-            <SubRow label="주간 P (누적)" value={`${breakdown.timePen ?? 0}회`} />
-          </InfoCard>
-
-          <InfoCard className="flex flex-col gap-1.5">
             <span className="text-micro-lg font-semibold tracking-wide text-muted-foreground uppercase sm:text-xs">
               예치금 반환 예상액
             </span>
@@ -65,11 +55,22 @@ export function DepositRefundDialog({
             </div>
           </InfoCard>
 
+          <InfoCard className="flex flex-col gap-1.5">
+            <span className="text-xs font-semibold sm:text-sm">차감 원인</span>
+            <SubRow
+              label="가입 후 경과일"
+              value={(breakdown.daysSinceJoin ?? -1) >= 0 ? `D+${breakdown.daysSinceJoin}` : "-"}
+              indent={false}
+            />
+            <SubRow label="송출 P (금주+누적)" value={`${breakdown.outputPen ?? 0}회`} indent={false} />
+            <SubRow label="주간 P (누적)" value={`${breakdown.timePen ?? 0}회`} indent={false} />
+          </InfoCard>
+
           {breakdown.reason && (
             <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
               <div className="flex items-center gap-1.5 text-destructive">
                 <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
-                <span className="text-xs font-semibold sm:text-sm">감액 사유</span>
+                <span className="text-xs font-semibold sm:text-sm">주의사항</span>
               </div>
               <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">{breakdown.reason}</p>
             </InfoCard>

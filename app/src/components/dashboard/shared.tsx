@@ -93,18 +93,29 @@ export function DividedValue({ items }: { items: ReactNode[] }) {
 }
 
 // "└" 접두 트리 표기로 상위 행 아래 들여쓰기된 세부 항목을 표시하는 서브로우.
+// indent: 상위 행 없이 박스 안에 항목만 나열할 때는 false로 꺼서 불필요한
+// 좌측 여백/트리 기호 없이 일반 목록처럼 보이게 한다.
 export function SubRow({
   label,
   value,
   valueClassName,
+  indent = true,
 }: {
   label: string;
   value: ReactNode;
   valueClassName?: string;
+  indent?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between gap-2 pl-5 sm:pl-5.5">
-      <span className="text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">{label}</span>
+    <div className={cn("flex items-center justify-between gap-2", indent && "pl-5 sm:pl-5.5")}>
+      <span
+        className={cn(
+          "text-micro-lg text-muted-foreground sm:text-xs",
+          indent && "before:mr-1 before:content-['└']"
+        )}
+      >
+        {label}
+      </span>
       <span className={cn("font-mono text-xs tabular-nums text-muted-foreground sm:text-sm", valueClassName)}>
         {value}
       </span>
