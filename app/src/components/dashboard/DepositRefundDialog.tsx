@@ -1,4 +1,4 @@
-import { PiggyBank, TriangleAlert } from "lucide-react";
+import { PiggyBank, TrendingDown, TriangleAlert } from "lucide-react";
 import {
   Dialog,
   DialogTrigger,
@@ -42,11 +42,11 @@ export function DepositRefundDialog({
 
         <div className="flex flex-col gap-3">
           <InfoCard className="flex flex-col gap-1.5">
-            <span className="text-micro-lg font-semibold tracking-wide text-muted-foreground uppercase sm:text-xs">
+            <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+              <PiggyBank className="size-3.5 shrink-0 text-primary sm:size-4" />
               예치금 반환 예상액
             </span>
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-sm font-semibold sm:text-base">예상 반환액</span>
+            <div className="flex items-center justify-end gap-2">
               <span
                 className={cn("font-mono text-sm font-bold sm:text-base", isReduced && "text-destructive")}
               >
@@ -56,25 +56,36 @@ export function DepositRefundDialog({
           </InfoCard>
 
           <InfoCard className="flex flex-col gap-1.5">
-            <span className="text-xs font-semibold sm:text-sm">차감 원인</span>
+            <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+              <TrendingDown className="size-3.5 shrink-0 text-primary sm:size-4" />
+              차감 원인
+            </span>
             <SubRow
               label="가입 후 경과일"
               value={(breakdown.daysSinceJoin ?? -1) >= 0 ? `D+${breakdown.daysSinceJoin}` : "-"}
-              indent={false}
             />
-            <SubRow label="송출 P (금주+누적)" value={`${breakdown.outputPen ?? 0}회`} indent={false} />
-            <SubRow label="주간 P (누적)" value={`${breakdown.timePen ?? 0}회`} indent={false} />
+            <SubRow label="송출 P (금주+누적)" value={`${breakdown.outputPen ?? 0}회`} />
+            <SubRow label="주간 P (누적)" value={`${breakdown.timePen ?? 0}회`} />
           </InfoCard>
 
-          {breakdown.reason && (
-            <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
-              <div className="flex items-center gap-1.5 text-destructive">
-                <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
-                <span className="text-xs font-semibold sm:text-sm">주의사항</span>
-              </div>
-              <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">{breakdown.reason}</p>
-            </InfoCard>
-          )}
+          <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
+            <div className="flex items-center gap-1.5 text-destructive">
+              <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
+              <span className="text-xs font-semibold sm:text-sm">주의사항</span>
+            </div>
+            <ul className="flex flex-col gap-1 text-xs leading-relaxed text-muted-foreground sm:text-sm">
+              <li className="flex gap-1.5">
+                <span className="text-destructive/60">•</span>
+                조회 당일 기준입니다. 퇴실일자에는 페널티 등에 의해 달라질 수 있습니다.
+              </li>
+              {breakdown.reason && (
+                <li className="flex gap-1.5">
+                  <span className="text-destructive/60">•</span>
+                  {breakdown.reason}
+                </li>
+              )}
+            </ul>
+          </InfoCard>
 
           {!depositRefundEstimate || depositRefundEstimate === "-" ? (
             <p className="text-micro-lg text-muted-foreground/70">시트에서 값을 불러오지 못했습니다.</p>
