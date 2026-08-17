@@ -41,6 +41,13 @@ function goalStatus(studyTime: string, goalTime: string, complete: boolean): Goa
   return study >= goal ? "met" : "failed";
 }
 
+// 시트 원본 값은 "8H (교시제)"처럼 괄호가 붙어 있어 그대로 노출하면 답답해
+// 보인다 — 괄호만 제거해 "8H 교시제"로 표시한다.
+function formatGoalType(raw: string): string {
+  if (!raw) return "-";
+  return raw.replace(/[()]/g, "").replace(/\s+/g, " ").trim();
+}
+
 // 관리자가 직접 입력하는 값이라 "00:20"처럼 부호 없이 저장되는 경우 기본을 +로 해석하고,
 // "-00:20"처럼 이미 부호가 붙어 있으면 그 부호를 그대로 존중한다.
 function signedTime(raw: string): string {
@@ -61,6 +68,13 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
   const selected = status.days[selectedDay] || status.days[0];
   const effectiveSelectedDay = status.days[selectedDay] ? selectedDay : 0;
 
+  const periodAttendanceValue = parseFloat(status.periodAttendanceRate || "");
+  const periodAttendanceClassName = Number.isNaN(periodAttendanceValue)
+    ? undefined
+    : periodAttendanceValue >= 85
+      ? "text-ok"
+      : "text-destructive";
+
   const outputPen = status.weeklyOutputPen || 0;
   const timePen = status.weeklyTimePen || 0;
   const totalPen = outputPen + timePen;
@@ -75,17 +89,23 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
     wrap?: boolean;
     valueClassName?: string;
   }[] = [
-    { key: "goalType", icon: Clock, label: "목표시간", value: status.goalType || "-" },
+    { key: "goalType", icon: Clock, label: "목표시간", value: formatGoalType(status.goalType) },
     { key: "joinDate", icon: CalendarDays, label: "가입일자", value: status.joinDate || "-" },
     { key: "depositRefund", icon: PiggyBank, label: "예치금 반환 예상액", value: status.depositRefundEstimate || "-" },
     {
       key: "merit",
       icon: Award,
       label: "주간 총 상점",
-      value: `${status.weeklyMerit || "0"} (${status.weeklyMeritRank || "-"})`,
+      value: `${status.weeklyMerit || "0"} · ${status.weeklyMeritRank || "-"}`,
       wrap: true,
     },
-    { key: "periodAttendance", icon: ListChecks, label: "교시 참여율", value: status.periodAttendanceRate || "-" },
+    {
+      key: "periodAttendance",
+      icon: ListChecks,
+      label: "교시 참여율",
+      value: status.periodAttendanceRate || "-",
+      valueClassName: periodAttendanceClassName,
+    },
     {
       key: "totalFine",
       icon: ShieldAlert,
