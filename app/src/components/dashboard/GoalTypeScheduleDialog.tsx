@@ -122,11 +122,13 @@ export function GoalTypeScheduleDialog({
                   <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
                   <span className="text-xs font-semibold sm:text-sm">주의사항</span>
                 </div>
-                <ul className="flex flex-col gap-0.5 text-xs leading-relaxed text-muted-foreground sm:text-sm">
-                  <li className="pl-3.5 before:float-left before:-ml-3.5 before:content-['-']">
+                <ul className="flex flex-col gap-1 text-xs leading-relaxed text-muted-foreground sm:text-sm">
+                  <li className="flex gap-1.5">
+                    <span className="text-destructive/60">•</span>
                     현재 진행 주간의 목표시간은 중도 변경이 불가합니다.
                   </li>
-                  <li className="pl-3.5 before:float-left before:-ml-3.5 before:content-['-']">
+                  <li className="flex gap-1.5">
+                    <span className="text-destructive/60">•</span>
                     위 설정 값은 다음 주 월요일부터 적용됩니다.
                   </li>
                 </ul>
