@@ -21,6 +21,7 @@ import {
 import { cn, ICON_STROKE } from "@/lib/utils";
 import { SummaryTile, SubRow, TintedPill, InfoCard, DividedValue } from "@/components/dashboard/shared";
 import { PeriodAlarmCard } from "@/components/dashboard/PeriodAlarmCard";
+import { MeritBreakdownDialog } from "@/components/dashboard/MeritBreakdownDialog";
 import type { StatusResponse } from "@/lib/api/types";
 
 const TODAY_INDEX = (new Date().getDay() + 6) % 7; // 월=0 ... 일=6
@@ -141,17 +142,31 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
   return (
     <div className="flex flex-col gap-5">
       <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5">
-        {summaryTiles.map((tile) => (
-          <SummaryTile
-            key={tile.key}
-            icon={tile.icon}
-            label={tile.label}
-            value={tile.value}
-            wrap={tile.wrap}
-            valueClassName={tile.valueClassName}
-            hint={tile.hint}
-          />
-        ))}
+        {summaryTiles.map((tile) => {
+          const tileEl = (
+            <SummaryTile
+              icon={tile.icon}
+              label={tile.label}
+              value={tile.value}
+              wrap={tile.wrap}
+              valueClassName={tile.valueClassName}
+              hint={tile.hint}
+            />
+          );
+          if (tile.key === "merit") {
+            return (
+              <MeritBreakdownDialog
+                key={tile.key}
+                weeklyMerit={status.weeklyMerit || "0"}
+                weeklyMeritRank={status.weeklyMeritRank || "-"}
+                breakdown={status.weeklyMeritBreakdown}
+              >
+                {tileEl}
+              </MeritBreakdownDialog>
+            );
+          }
+          return <div key={tile.key}>{tileEl}</div>;
+        })}
       </section>
 
       <section className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-2.5">

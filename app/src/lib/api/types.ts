@@ -25,11 +25,23 @@ export type StatusDay = {
   reasonLeaveUsed: number;
 };
 
+export type WeeklyMeritBreakdown = {
+  isZero: boolean;
+  zeroReason: string | null;
+  studyTimeMerit: number;
+  reportMerit: number;
+  isLeader: boolean;
+  penaltyDeduction: number;
+  fineDeduction: number;
+  weeklyTotalFineAmount: number;
+};
+
 export type StatusResponse = {
   goalType: string;
   joinDate: string;
   weeklyMerit: string;
   weeklyMeritRank: string;
+  weeklyMeritBreakdown: WeeklyMeritBreakdown;
   normalLeaveLeft: string;
   reasonLeaveLeft: string;
   weekTotalConfirmed: number;
