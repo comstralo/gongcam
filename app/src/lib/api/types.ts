@@ -45,6 +45,8 @@ export type DepositRefundBreakdown = {
   outputPen: number;
   timePen: number;
   daysSinceJoin: number;
+  fineUnpaid: boolean;
+  depositAgainStatus: string | null;
 };
 
 export type PeriodAttendanceBreakdown = {

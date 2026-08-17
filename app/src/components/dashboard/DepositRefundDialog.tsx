@@ -61,6 +61,15 @@ export function DepositRefundDialog({
               label={`30일 미만 참여자 (D+${(breakdown.daysSinceJoin ?? -1) >= 0 ? breakdown.daysSinceJoin : "-"})`}
               value={(breakdown.daysSinceJoin ?? -1) >= 0 && breakdown.daysSinceJoin < 30 ? "100%" : "0%"}
             />
+            <SubRow label="벌금 시한 내 미납" value={breakdown.fineUnpaid ? "100%" : "0%"} />
+            <SubRow
+              label="예치금 재납 시한 미납"
+              value={breakdown.depositAgainStatus === "미납" ? "100%" : "0%"}
+            />
+            <SubRow
+              label="예치금 재납 대상자"
+              value={breakdown.depositAgainStatus === "납부" ? "100%" : "0%"}
+            />
             <SubRow
               label={`페널티 (송출 P ${breakdown.outputPen ?? 0}회 + 주간 P ${breakdown.timePen ?? 0}회)`}
               value={
