@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { LucideIcon } from "lucide-react";
+import { SquarePen, type LucideIcon } from "lucide-react";
 import { cn, ICON_STROKE } from "@/lib/utils";
 
 type PillTone = "ok" | "warn" | "muted" | "primary";
@@ -42,6 +42,8 @@ export function TintedPill({
 // 타일만 줄바꿈을 허용한다 — 기본은 다른 타일과 맞춰 한 줄 자르기.
 // valueClassName: 페널티 합계처럼 값 자체의 색상을 상태에 따라 바꿔야 할 때 사용.
 // hint: 라벨을 길게 늘이지 않고 값 옆에 부연 설명("예치금 납부일 기준")을 덧붙일 때 사용.
+// clickable: 타일이 모달을 여는 버튼으로 감싸져 있을 때, 우측 상단에 작은 펜
+// 아이콘을 얹어 클릭 가능하다는 것을 시각적으로 드러낸다.
 export function SummaryTile({
   icon: Icon,
   label,
@@ -49,6 +51,7 @@ export function SummaryTile({
   wrap,
   valueClassName,
   hint,
+  clickable,
 }: {
   icon: LucideIcon;
   label: string;
@@ -56,9 +59,16 @@ export function SummaryTile({
   wrap?: boolean;
   valueClassName?: string;
   hint?: string;
+  clickable?: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-1 rounded-xl border bg-muted px-3.5 py-2.5 shadow-xs sm:px-4 sm:py-3">
+    <div className="relative flex flex-col gap-1 rounded-xl border bg-muted px-3.5 py-2.5 shadow-xs sm:px-4 sm:py-3">
+      {clickable && (
+        <SquarePen
+          className="absolute top-2 right-2 size-2.5 text-muted-foreground/50 sm:size-3"
+          strokeWidth={ICON_STROKE.default}
+        />
+      )}
       <div className="flex items-center gap-1.25 text-muted-foreground">
         <Icon className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
         <span className="truncate text-micro font-semibold tracking-wide uppercase sm:text-micro-lg">{label}</span>

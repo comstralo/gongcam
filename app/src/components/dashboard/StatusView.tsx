@@ -119,8 +119,15 @@ export function StatusView({
     wrap?: boolean;
     valueClassName?: string;
     hint?: string;
+    clickable?: boolean;
   }[] = [
-    { key: "goalType", icon: Clock, label: "목표시간", value: formatGoalType(status.goalType) },
+    {
+      key: "goalType",
+      icon: Clock,
+      label: "목표시간",
+      value: formatGoalType(status.goalType),
+      clickable: allowGoalSchedule,
+    },
     { key: "joinDate", icon: CalendarDays, label: "가입일자", value: status.joinDate || "-" },
     {
       key: "depositRefund",
@@ -173,6 +180,7 @@ export function StatusView({
               wrap={tile.wrap}
               valueClassName={tile.valueClassName}
               hint={tile.hint}
+              clickable={tile.clickable}
             />
           );
           if (tile.key === "merit" && status.weeklyMeritBreakdown) {
