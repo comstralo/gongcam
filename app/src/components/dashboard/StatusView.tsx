@@ -109,7 +109,16 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
       key: "merit",
       icon: Award,
       label: "주간 총 상점",
-      value: <DividedValue items={[status.weeklyMerit || "0", status.weeklyMeritRank || "-"]} />,
+      value: (
+        <DividedValue
+          items={[
+            status.weeklyMeritRank && !status.weeklyMeritRank.startsWith("-")
+              ? `+${status.weeklyMerit || "0"}`
+              : status.weeklyMerit || "0",
+            status.weeklyMeritRank || "-",
+          ]}
+        />
+      ),
       wrap: true,
     },
     {
