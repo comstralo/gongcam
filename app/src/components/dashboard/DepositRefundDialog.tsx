@@ -27,6 +27,35 @@ export function DepositRefundDialog({
   const amount = breakdown.amount ?? 0;
   const isReduced = amount < 10000;
   const penaltyTotal = (breakdown.outputPen ?? 0) + (breakdown.timePen ?? 0);
+  const penaltyRate = penaltyTotal >= 2 ? 100 : penaltyTotal === 1 ? 50 : 0;
+  const daysSinceJoin = breakdown.daysSinceJoin ?? -1;
+
+  // 차감 원인 항목을 차감률 내림차순으로 정렬해서, 실제로 반환액을 깎은
+  // 원인이 위쪽에 오도록 한다. 0%인 항목도 판정 근거를 투명하게 보여주기
+  // 위해 그대로 남긴다.
+  const deductionItems = [
+    {
+      key: "days",
+      label: `30일 미만 참여자 (D+${daysSinceJoin >= 0 ? daysSinceJoin : "-"})`,
+      rate: daysSinceJoin >= 0 && daysSinceJoin < 30 ? 100 : 0,
+    },
+    { key: "fine", label: "벌금 시한 내 미납", rate: breakdown.fineUnpaid ? 100 : 0 },
+    {
+      key: "depositUnpaid",
+      label: "예치금 재납 시한 미납",
+      rate: breakdown.depositAgainStatus === "미납" ? 100 : 0,
+    },
+    {
+      key: "depositAgain",
+      label: "예치금 재납 대상자",
+      rate: breakdown.depositAgainStatus === "납부" ? 100 : 0,
+    },
+    {
+      key: "penalty",
+      label: `페널티 (송출 P ${breakdown.outputPen ?? 0}회 + 주간 P ${breakdown.timePen ?? 0}회)`,
+      rate: penaltyRate,
+    },
+  ].sort((a, b) => b.rate - a.rate);
 
   return (
     <Dialog>
@@ -57,25 +86,14 @@ export function DepositRefundDialog({
               <TrendingDown className="size-3.5 shrink-0 text-primary sm:size-4" />
               차감 원인
             </span>
-            <SubRow
-              label={`30일 미만 참여자 (D+${(breakdown.daysSinceJoin ?? -1) >= 0 ? breakdown.daysSinceJoin : "-"})`}
-              value={(breakdown.daysSinceJoin ?? -1) >= 0 && breakdown.daysSinceJoin < 30 ? "100%" : "0%"}
-            />
-            <SubRow label="벌금 시한 내 미납" value={breakdown.fineUnpaid ? "100%" : "0%"} />
-            <SubRow
-              label="예치금 재납 시한 미납"
-              value={breakdown.depositAgainStatus === "미납" ? "100%" : "0%"}
-            />
-            <SubRow
-              label="예치금 재납 대상자"
-              value={breakdown.depositAgainStatus === "납부" ? "100%" : "0%"}
-            />
-            <SubRow
-              label={`페널티 (송출 P ${breakdown.outputPen ?? 0}회 + 주간 P ${breakdown.timePen ?? 0}회)`}
-              value={
-                penaltyTotal >= 2 ? "100%" : penaltyTotal === 1 ? "50%" : "0%"
-              }
-            />
+            {deductionItems.map((item) => (
+              <SubRow
+                key={item.key}
+                label={item.label}
+                value={`${item.rate}%`}
+                valueClassName={item.rate > 0 ? "text-destructive" : undefined}
+              />
+            ))}
           </InfoCard>
 
           <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
