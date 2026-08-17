@@ -78,3 +78,23 @@ export type PushSendTestResult = {
 export type PushSendTestResponse = {
   results: PushSendTestResult[];
 };
+
+export type AdminOpenSlotsResponse = {
+  slots: string[];
+};
+
+export type CreateMemberRequest = {
+  number: string;
+  name: string;
+  email: string;
+  goalHours: string;
+  goalKind: string;
+  examKind?: string;
+};
+
+export type CreateMemberResponse = {
+  ok: true;
+  number: string;
+  name: string;
+  email: string;
+};

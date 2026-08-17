@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { SessionCard } from "@/components/session/SessionCard";
 import { InfoCard } from "@/components/dashboard/shared";
+import { NewMemberForm } from "@/components/admin/NewMemberForm";
 import { usePushSubscription } from "@/hooks/usePushSubscription";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +21,11 @@ export function AdminPage() {
     <Card className="w-full page-content">
       <CardContent className="flex flex-col gap-4">
         <SessionCard />
+
+        <span className="font-mono text-micro uppercase tracking-wide text-muted-foreground sm:text-xs">
+          신규 스터디원 등록
+        </span>
+        <NewMemberForm />
 
         <span className="font-mono text-micro uppercase tracking-wide text-muted-foreground sm:text-xs">
           브라우저 푸시 알림
