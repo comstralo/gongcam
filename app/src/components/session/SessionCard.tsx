@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { InfoCard } from "@/components/dashboard/shared";
 import { useAuth } from "@/lib/auth/useAuth";
 import { useNavigate } from "react-router-dom";
 
@@ -9,7 +10,7 @@ export function SessionCard({ onLogout }: { onLogout?: () => void }) {
   if (!session) return null;
 
   return (
-    <div className="flex items-center justify-between gap-2.5 rounded-lg border bg-muted p-3.5 sm:p-4.5">
+    <InfoCard className="flex items-center justify-between gap-2.5">
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="truncate text-sm font-semibold sm:text-base">{session.name || session.email}</span>
         <span className="truncate font-mono text-xs text-muted-foreground sm:text-sm">{session.email}</span>
@@ -26,6 +27,6 @@ export function SessionCard({ onLogout }: { onLogout?: () => void }) {
       >
         로그아웃
       </Button>
-    </div>
+    </InfoCard>
   );
 }

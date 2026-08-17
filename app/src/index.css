@@ -25,6 +25,23 @@
   }
 }
 
+/* 라벨/캡션 전용 마이크로 타이포 — text-xs(12px)보다 한 단계 작은 두 단계.
+   기존에 text-[10px]/text-[11px] 임의값으로 흩어져 있던 것을 이름 붙은 토큰으로 승격. */
+@utility text-micro {
+  font-size: 0.625rem; /* 10px */
+  line-height: 0.875rem; /* 14px */
+}
+@utility text-micro-lg {
+  font-size: 0.6875rem; /* 11px */
+  line-height: 1rem; /* 16px */
+}
+
+/* 화면 하단에 고정된 요소(탭바)용 상향 그림자 — 일반 box-shadow는 아래로만 떨어지므로
+   fixed bottom-0 요소를 콘텐츠 위로 살짝 띄우려면 y를 음수로 둔 전용 유틸리티가 필요하다. */
+@utility shadow-lift {
+  box-shadow: 0 -2px 8px -2px rgb(0 0 0 / 0.06);
+}
+
 @theme inline {
     --font-sans: "Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;

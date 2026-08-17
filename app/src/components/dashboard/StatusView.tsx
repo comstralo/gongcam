@@ -1,14 +1,8 @@
 import { useState } from "react";
 import { Clock, CircleCheck, CircleDot, CalendarDays, Award, PalmtreeIcon, HeartHandshake, Timer, Wallet, BedDouble } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, ICON_STROKE } from "@/lib/utils";
+import { SummaryTile, SubRow, TintedPill } from "@/components/dashboard/shared";
 import type { StatusResponse } from "@/lib/api/types";
-
-type SummaryTile = {
-  key: string;
-  icon: typeof Clock;
-  label: string;
-  value: string;
-};
 
 const TODAY_INDEX = (new Date().getDay() + 6) % 7; // 월=0 ... 일=6
 
@@ -52,7 +46,7 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
   const selected = status.days[selectedDay] || status.days[0];
   const effectiveSelectedDay = status.days[selectedDay] ? selectedDay : 0;
 
-  const summaryTiles: SummaryTile[] = [
+  const summaryTiles = [
     { key: "goalType", icon: Clock, label: "목표시간", value: status.goalType || "-" },
     { key: "joinDate", icon: CalendarDays, label: "가입일자", value: status.joinDate || "-" },
     { key: "merit", icon: Award, label: "주간 총 상점", value: status.weeklyMerit || "0" },
@@ -63,20 +57,9 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
   return (
     <div className="flex flex-col gap-5">
       <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5">
-        {summaryTiles.map((tile) => {
-          const Icon = tile.icon;
-          return (
-            <div key={tile.key} className="flex flex-col gap-1.5 rounded-xl border bg-muted px-3.5 py-3 sm:px-4 sm:py-3.5">
-              <div className="flex items-center gap-1.25 text-muted-foreground">
-                <Icon className="size-3.5 shrink-0 sm:size-4" strokeWidth={2.25} />
-                <span className="truncate text-[11px] font-semibold tracking-wide uppercase sm:text-xs">
-                  {tile.label}
-                </span>
-              </div>
-              <span className="truncate text-base font-bold sm:text-lg">{tile.value}</span>
-            </div>
-          );
-        })}
+        {summaryTiles.map((tile) => (
+          <SummaryTile key={tile.key} icon={tile.icon} label={tile.label} value={tile.value} />
+        ))}
       </section>
 
       <section className="flex flex-col gap-2">
@@ -125,25 +108,18 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
             )}
           >
             <div className="flex items-center justify-start">
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold sm:text-xs",
-                  selected.confirmed ? "bg-foreground/8 text-foreground" : "bg-primary/15 text-primary"
-                )}
+              <TintedPill
+                tone={selected.confirmed ? "muted" : "primary"}
+                icon={selected.confirmed ? CircleCheck : CircleDot}
               >
-                {selected.confirmed ? (
-                  <CircleCheck className="size-3 sm:size-3.5" strokeWidth={2.5} />
-                ) : (
-                  <CircleDot className="size-3 sm:size-3.5" strokeWidth={2.5} />
-                )}
                 {selected.confirmed ? "확정" : "진행중"}
-              </span>
+              </TintedPill>
             </div>
 
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between gap-2">
                 <span className="inline-flex items-center gap-1.25 text-xs font-semibold text-muted-foreground sm:text-sm">
-                  <Timer className="size-3.5 sm:size-4" strokeWidth={2.25} />
+                  <Timer className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
                   일간 학습시간
                 </span>
                 <span
@@ -158,14 +134,7 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
                   {selected.dailyGoalTime && <span className="text-muted-foreground"> / {selected.dailyGoalTime}</span>}
                 </span>
               </div>
-              <div className="flex items-center justify-between gap-2 pl-5 sm:pl-5.5">
-                <span className="text-xs text-muted-foreground before:mr-1 before:content-['└'] sm:text-sm">
-                  보정 학습시간
-                </span>
-                <span className="font-mono text-sm tabular-nums text-muted-foreground sm:text-base">
-                  {signedTime(selected.bonusStudyTime)}
-                </span>
-              </div>
+              <SubRow label="보정 학습시간" value={signedTime(selected.bonusStudyTime)} />
             </div>
 
             <div className="h-px w-full bg-border" />
@@ -173,26 +142,18 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between gap-2">
                 <span className="inline-flex items-center gap-1.25 text-xs font-semibold text-muted-foreground sm:text-sm">
-                  <BedDouble className="size-3.5 sm:size-4" strokeWidth={2.25} />
+                  <BedDouble className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
                   반휴 사용
                 </span>
               </div>
-              <div className="flex items-center justify-between gap-2 pl-5 sm:pl-5.5">
-                <span className="text-xs text-muted-foreground before:mr-1 before:content-['└'] sm:text-sm">
-                  일반반휴
-                </span>
-                <span className="font-mono text-sm tabular-nums text-muted-foreground sm:text-base">
-                  {selected.normalLeaveUsed > 0 ? `${selected.normalLeaveUsed}회` : "-"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-2 pl-5 sm:pl-5.5">
-                <span className="text-xs text-muted-foreground before:mr-1 before:content-['└'] sm:text-sm">
-                  사유반휴
-                </span>
-                <span className="font-mono text-sm tabular-nums text-muted-foreground sm:text-base">
-                  {selected.reasonLeaveUsed > 0 ? `${selected.reasonLeaveUsed}회` : "-"}
-                </span>
-              </div>
+              <SubRow
+                label="일반반휴"
+                value={selected.normalLeaveUsed > 0 ? `${selected.normalLeaveUsed}회` : "-"}
+              />
+              <SubRow
+                label="사유반휴"
+                value={selected.reasonLeaveUsed > 0 ? `${selected.reasonLeaveUsed}회` : "-"}
+              />
             </div>
 
             <div className="h-px w-full bg-border" />
@@ -200,10 +161,10 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between gap-2">
                 <span className="inline-flex items-center gap-1.25 text-xs font-semibold text-muted-foreground sm:text-sm">
-                  <Wallet className="size-3.5 sm:size-4" strokeWidth={2.25} />
+                  <Wallet className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
                   일간 총 벌금
                   {!selected.complete && (
-                    <span className="rounded-full bg-muted-foreground/10 px-1.5 py-0.5 text-[10px] font-medium normal-case text-muted-foreground sm:text-[11px]">
+                    <span className="rounded-full bg-muted-foreground/10 px-1.5 py-0.5 text-micro font-medium normal-case text-muted-foreground sm:text-micro-lg">
                       집계 중
                     </span>
                   )}
@@ -217,32 +178,16 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
                   {won(selected.total)}
                 </span>
               </div>
-              <div className="flex items-center justify-between gap-2 pl-5 sm:pl-5.5">
-                <span className="text-xs text-muted-foreground before:mr-1 before:content-['└'] sm:text-sm">
-                  일간 목표시간 벌금
-                </span>
-                <span className="font-mono text-sm tabular-nums text-muted-foreground sm:text-base">
-                  {won(selected.goal)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-2 pl-5 sm:pl-5.5">
-                <span className="text-xs text-muted-foreground before:mr-1 before:content-['└'] sm:text-sm">
-                  오전 목표시간 벌금
-                </span>
-                <span className="font-mono text-sm tabular-nums text-muted-foreground sm:text-base">
-                  {won(selected.morning)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-2 pl-5 sm:pl-5.5">
-                <span className="text-xs text-muted-foreground before:mr-1 before:content-['└'] sm:text-sm">
-                  납부확인
-                </span>
-                <span
-                  className={cn("text-xs font-semibold sm:text-sm", selected.paymentStatus === "미납" && "text-destructive")}
-                >
-                  {selected.paymentStatus || "-"}
-                </span>
-              </div>
+              <SubRow label="일간 목표시간 벌금" value={won(selected.goal)} />
+              <SubRow label="오전 목표시간 벌금" value={won(selected.morning)} />
+              <SubRow
+                label="납부확인"
+                value={selected.paymentStatus || "-"}
+                valueClassName={cn(
+                  "font-sans text-xs font-semibold normal-case sm:text-sm",
+                  selected.paymentStatus === "미납" && "text-destructive"
+                )}
+              />
             </div>
           </div>
         )}

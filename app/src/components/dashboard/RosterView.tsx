@@ -1,5 +1,6 @@
 import { Timer } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { ICON_STROKE } from "@/lib/utils";
+import { InfoCard, TintedPill } from "@/components/dashboard/shared";
 import type { RosterMember } from "@/lib/api/types";
 
 function isMedalRank(rank: string) {
@@ -35,34 +36,21 @@ export function RosterView({ members }: { members: RosterMember[] }) {
 
   return (
     <div className="flex flex-col gap-2 sm:gap-2.5">
-      {members.map((m, i) => {
-        const tone = statusTone(m.status);
-        return (
-          <div
-            key={`${m.name}-${i}`}
-            className="flex items-center gap-3 rounded-xl border bg-muted px-3.5 py-3 sm:gap-4 sm:px-4 sm:py-3.5"
-          >
-            <RankBadge rank={m.rank} />
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span className="truncate text-sm font-bold sm:text-base">{m.name}</span>
-              <span className="inline-flex items-center gap-1 font-mono text-xs tabular-nums text-muted-foreground sm:text-sm">
-                <Timer className="size-3 shrink-0 sm:size-3.5" strokeWidth={2.25} />
-                {m.timer || "-"}
-              </span>
-            </div>
-            <span
-              className={cn(
-                "shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold sm:text-xs",
-                tone === "ok" && "bg-ok/15 text-ok",
-                tone === "warn" && "bg-destructive/15 text-destructive",
-                tone === "muted" && "bg-foreground/8 text-muted-foreground"
-              )}
-            >
-              {m.status || "-"}
+      {members.map((m, i) => (
+        <InfoCard key={`${m.name}-${i}`} className="flex items-center gap-3 sm:gap-4">
+          <RankBadge rank={m.rank} />
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="truncate text-sm font-bold sm:text-base">{m.name}</span>
+            <span className="inline-flex items-center gap-1 font-mono text-xs tabular-nums text-muted-foreground sm:text-sm">
+              <Timer className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+              {m.timer || "-"}
             </span>
           </div>
-        );
-      })}
+          <TintedPill tone={statusTone(m.status)} className="shrink-0">
+            {m.status || "-"}
+          </TintedPill>
+        </InfoCard>
+      ))}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { SessionCard } from "@/components/session/SessionCard";
+import { InfoCard } from "@/components/dashboard/shared";
 import { usePushSubscription } from "@/hooks/usePushSubscription";
 import { cn } from "@/lib/utils";
 
@@ -20,10 +21,10 @@ export function AdminPage() {
       <CardContent className="flex flex-col gap-4">
         <SessionCard />
 
-        <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground sm:text-xs">
+        <span className="font-mono text-micro uppercase tracking-wide text-muted-foreground sm:text-xs">
           브라우저 푸시 알림
         </span>
-        <div className="flex items-center gap-2.5 rounded-lg border bg-muted p-3.5 text-sm sm:p-4.5 sm:text-base">
+        <InfoCard className="flex items-center gap-2.5 text-sm sm:text-base">
           <span
             className={cn(
               "size-2.5 shrink-0 rounded-full bg-muted-foreground",
@@ -32,7 +33,7 @@ export function AdminPage() {
             )}
           />
           <span>{STATE_LABEL[state]}</span>
-        </div>
+        </InfoCard>
 
         {state === "off" && (
           <Button className="w-full sm:h-12 sm:text-base" onClick={enable}>

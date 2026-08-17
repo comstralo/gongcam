@@ -5,7 +5,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { StatusView } from "@/components/dashboard/StatusView";
 import { RosterView } from "@/components/dashboard/RosterView";
 import { useApi } from "@/hooks/useApi";
-import { cn } from "@/lib/utils";
+import { cn, ICON_STROKE } from "@/lib/utils";
 import type { SnapshotDetailResponse, SnapshotListResponse } from "@/lib/api/types";
 
 // weekOf는 백업 파일명에서 온 "YYMMDD"(그 주 월요일) 형식이다.
@@ -93,7 +93,7 @@ export function SnapshotPage() {
 
         {weeks && weeks.length === 0 && (
           <div className="flex flex-col items-center gap-2 py-10 text-center text-muted-foreground">
-            <History className="size-8" strokeWidth={1.75} />
+            <History className="size-8" strokeWidth={ICON_STROKE.large} />
             <p className="text-sm sm:text-base">아직 보관된 기록이 없습니다.</p>
             <p className="text-xs sm:text-sm">매주 초기화 직전 백업된 기록이 있으면 여기에 표시됩니다.</p>
           </div>

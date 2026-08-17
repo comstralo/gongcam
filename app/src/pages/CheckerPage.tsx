@@ -47,7 +47,7 @@ export function CheckerPage() {
           </Link>
           <h1 className="text-xl font-bold sm:text-2xl">프레임 체커</h1>
         </div>
-        <div className="text-right font-mono text-[11px] leading-relaxed text-muted-foreground sm:text-sm">
+        <div className="text-right font-mono text-micro-lg leading-relaxed text-muted-foreground sm:text-sm">
           GRID 4×4
           <br />
           {TOTAL_SHOTS} FRAMES / 30s
@@ -94,7 +94,7 @@ export function CheckerPage() {
             ))}
 
             {/* HUD: 좌상단 REC 상태 */}
-            <div className="absolute top-3.5 left-3.5 z-6 font-mono text-[11px] tracking-wide text-[#eef0ea] sm:top-4 sm:left-4 sm:text-sm" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}>
+            <div className="absolute top-3.5 left-3.5 z-6 font-mono text-micro-lg tracking-wide text-[#eef0ea] sm:top-4 sm:left-4 sm:text-sm" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}>
               <span className={cn("inline-flex items-center gap-1.5", (capture.isCapturing || recording.isRecording) && "text-destructive")}>
                 <span
                   className={cn(
@@ -112,7 +112,7 @@ export function CheckerPage() {
 
             {/* HUD: 우상단 카운트다운 (정지사진 모드에서만) */}
             {capture.isCapturing && (
-              <div className="absolute top-3.5 right-3.5 z-6 text-right font-mono text-[11px] tracking-wide text-[#eef0ea] sm:top-4 sm:right-4 sm:text-sm" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}>
+              <div className="absolute top-3.5 right-3.5 z-6 text-right font-mono text-micro-lg tracking-wide text-[#eef0ea] sm:top-4 sm:right-4 sm:text-sm" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}>
                 <span className="font-mono text-sm font-semibold tabular-nums sm:text-lg">
                   {mm}:{ss}
                 </span>
@@ -156,7 +156,7 @@ export function CheckerPage() {
 
         {capture.isFinished && (
           <div className="flex items-center gap-3 rounded-md border bg-card p-2.5 sm:p-3.5">
-            <span className="font-mono text-[11px] tracking-wide text-muted-foreground uppercase whitespace-nowrap sm:text-xs">Overlay</span>
+            <span className="font-mono text-micro-lg tracking-wide text-muted-foreground uppercase whitespace-nowrap sm:text-xs">Overlay</span>
             <input
               type="range"
               min={0.1}

@@ -148,7 +148,7 @@ export function LoginPage() {
               <span className="text-[15px] font-bold sm:text-lg">프레임 체커</span>
               <span className="text-xs text-muted-foreground sm:text-sm">4×4 격자로 화각을 점검하고 사진/영상을 촬영합니다</span>
             </span>
-            <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-primary sm:text-xs">누구나</span>
+            <span className="shrink-0 font-mono text-micro uppercase tracking-wide text-primary sm:text-xs">누구나</span>
           </Link>
         </CardContent>
       </Card>
