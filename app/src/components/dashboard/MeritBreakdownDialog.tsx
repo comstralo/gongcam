@@ -1,11 +1,10 @@
-import { Award } from "lucide-react";
+import { Award, TrendingDown, TrendingUp, Gauge } from "lucide-react";
 import {
   Dialog,
   DialogTrigger,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "@/components/ui/dialog";
 import { SubRow, InfoCard } from "@/components/dashboard/shared";
 import { cn } from "@/lib/utils";
@@ -43,13 +42,23 @@ export function MeritBreakdownDialog({
             <Award className="size-4 text-primary sm:size-5" />
             주간 총 상점 · 세부사항
           </DialogTitle>
-          <DialogDescription>이번 주 상점이 이렇게 계산되었습니다.</DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-2.5">
+        <div className="flex flex-col gap-3">
+          <InfoCard className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+              <Award className="size-3.5 shrink-0 text-primary sm:size-4" />
+              이번 주 상점 · 순위
+            </span>
+            <span className={cn("font-mono text-sm font-bold sm:text-base", breakdown.isZero && "text-destructive")}>
+              {weeklyMerit} · {weeklyMeritRank}
+            </span>
+          </InfoCard>
+
           <InfoCard className="flex flex-col gap-1.5">
-            <span className="text-micro-lg font-semibold tracking-wide text-muted-foreground uppercase sm:text-xs">
-              상점 적립
+            <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+              <TrendingUp className="size-3.5 shrink-0 text-primary sm:size-4" />
+              적립 원인
             </span>
             <SubRow label="학습시간 상점" value={pt(breakdown.studyTimeMerit)} />
             <SubRow
@@ -65,8 +74,9 @@ export function MeritBreakdownDialog({
           </InfoCard>
 
           <InfoCard className="flex flex-col gap-1.5">
-            <span className="text-micro-lg font-semibold tracking-wide text-muted-foreground uppercase sm:text-xs">
-              상점 차감
+            <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+              <TrendingDown className="size-3.5 shrink-0 text-primary sm:size-4" />
+              차감 원인
             </span>
             <SubRow
               label="벌점 차감"
@@ -81,24 +91,11 @@ export function MeritBreakdownDialog({
           </InfoCard>
 
           <InfoCard className="flex flex-col gap-1.5">
-            <span className="text-micro-lg font-semibold tracking-wide text-muted-foreground uppercase sm:text-xs">
+            <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+              <Gauge className="size-3.5 shrink-0 text-primary sm:size-4" />
               목표시간 배율
             </span>
             <SubRow label="적용 배율" value={`× ${breakdown.multiplier ?? 1}`} />
-          </InfoCard>
-
-          <InfoCard className="flex flex-col gap-1.5">
-            <span className="text-micro-lg font-semibold tracking-wide text-muted-foreground uppercase sm:text-xs">
-              최종 상점
-            </span>
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-sm font-semibold sm:text-base">이번 주 상점 · 순위</span>
-              <span
-                className={cn("font-mono text-sm font-bold sm:text-base", breakdown.isZero && "text-destructive")}
-              >
-                {weeklyMerit} · {weeklyMeritRank}
-              </span>
-            </div>
           </InfoCard>
 
           {breakdown.isZero && breakdown.zeroReason && (
