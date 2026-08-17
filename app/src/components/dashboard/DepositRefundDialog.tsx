@@ -30,25 +30,17 @@ export function DepositRefundDialog({
   const penaltyRate = penaltyTotal >= 2 ? 100 : penaltyTotal === 1 ? 50 : 0;
   const daysSinceJoin = breakdown.daysSinceJoin ?? -1;
 
-  // 차감 원인 항목을 차감률 내림차순으로 정렬해서, 실제로 반환액을 깎은
-  // 원인이 위쪽에 오도록 한다. 0%인 항목도 판정 근거를 투명하게 보여주기
-  // 위해 그대로 남긴다.
-  const deductionItems = [
+  // 차감 원인을 성격별로 세 그룹으로 나눈다. 각 그룹은 차감률 내림차순으로
+  // 정렬하되, 그룹 자체의 순서(일반 차감 → 강제퇴실 계열 → 예치금 재납)는
+  // 고정한다. 0%인 항목도 판정 근거를 투명하게 보여주기 위해 그대로 남긴다.
+  // "직권 P"는 앱스크립트에서 관리자가 퇴실 처리 시 그때그때 입력하는
+  // 사유일 뿐 시트에 상시 저장되지 않아, 지금은 UI만 만들고 항상 0%로
+  // 표시한다 — 감사 기록용 시트 칸이 추가되면 실제 값을 연동할 예정.
+  const generalItems = [
     {
       key: "days",
       label: `30일 미만 참여자 (D+${daysSinceJoin >= 0 ? daysSinceJoin : "-"})`,
       rate: daysSinceJoin >= 0 && daysSinceJoin < 30 ? 100 : 0,
-    },
-    { key: "fine", label: "벌금 시한 내 미납", rate: breakdown.fineUnpaid ? 100 : 0 },
-    {
-      key: "depositUnpaid",
-      label: "예치금 재납 시한 미납",
-      rate: breakdown.depositAgainStatus === "미납" ? 100 : 0,
-    },
-    {
-      key: "depositAgain",
-      label: "예치금 재납 대상자",
-      rate: breakdown.depositAgainStatus === "납부" ? 100 : 0,
     },
     {
       key: "penalty",
@@ -56,6 +48,24 @@ export function DepositRefundDialog({
       rate: penaltyRate,
     },
   ].sort((a, b) => b.rate - a.rate);
+
+  const forcedExitItems = [
+    { key: "fine", label: "벌금 시한 내 미납", rate: breakdown.fineUnpaid ? 100 : 0 },
+    {
+      key: "depositUnpaid",
+      label: "예치금 재납 시한 미납",
+      rate: breakdown.depositAgainStatus === "미납" ? 100 : 0,
+    },
+    { key: "directPen", label: "직권 P (스터디장 직권 강제퇴실)", rate: 0 },
+  ].sort((a, b) => b.rate - a.rate);
+
+  const depositAgainItems = [
+    {
+      key: "depositAgain",
+      label: "예치금 재납 대상자",
+      rate: breakdown.depositAgainStatus === "납부" ? 100 : 0,
+    },
+  ];
 
   return (
     <Dialog>
@@ -86,7 +96,29 @@ export function DepositRefundDialog({
               <TrendingDown className="size-3.5 shrink-0 text-primary sm:size-4" />
               차감 원인
             </span>
-            {deductionItems.map((item) => (
+            {generalItems.map((item) => (
+              <SubRow
+                key={item.key}
+                label={item.label}
+                value={`${item.rate}%`}
+                valueClassName={item.rate > 0 ? "text-destructive" : undefined}
+              />
+            ))}
+
+            <div className="my-0.5 h-px w-full bg-border" />
+
+            {forcedExitItems.map((item) => (
+              <SubRow
+                key={item.key}
+                label={item.label}
+                value={`${item.rate}%`}
+                valueClassName={item.rate > 0 ? "text-destructive" : undefined}
+              />
+            ))}
+
+            <div className="my-0.5 h-px w-full bg-border" />
+
+            {depositAgainItems.map((item) => (
               <SubRow
                 key={item.key}
                 label={item.label}
