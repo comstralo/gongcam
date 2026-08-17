@@ -5,7 +5,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { SessionCard } from "@/components/session/SessionCard";
 import { useRosterPolling } from "@/hooks/useRosterPolling";
 import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
@@ -48,8 +47,6 @@ export function ReportPage() {
   return (
     <Card className="w-full page-content">
       <CardContent className="flex flex-col gap-4">
-        <SessionCard />
-
         <div className="flex flex-col gap-1.5">
           <Label className="text-sm font-semibold sm:text-base">대상 참여자</Label>
           <span className="text-xs text-muted-foreground sm:text-sm">{hint}</span>

@@ -1,7 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { SessionCard } from "@/components/session/SessionCard";
 import { InfoCard } from "@/components/dashboard/shared";
 import { NewMemberForm } from "@/components/admin/NewMemberForm";
 import { usePushSubscription } from "@/hooks/usePushSubscription";
@@ -23,8 +22,6 @@ export function AdminPage() {
   return (
     <Card className="w-full page-content">
       <CardContent className="flex flex-col gap-4">
-        <SessionCard />
-
         <span className="font-mono text-micro uppercase tracking-wide text-muted-foreground sm:text-xs">
           Drive 편집자 권한 위임
         </span>
