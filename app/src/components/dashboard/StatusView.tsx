@@ -102,7 +102,7 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
                 type="button"
                 onClick={() => setSelectedDay(i)}
                 className={cn(
-                  "relative flex flex-col items-center gap-1 rounded-full border py-2.5 text-sm font-bold transition-all sm:py-3 sm:text-base",
+                  "relative flex flex-col items-center gap-1 rounded-full border py-2.5 text-sm font-semibold transition-all sm:py-3 sm:text-base",
                   isSelected
                     ? isUnpaid
                       ? "border-destructive bg-destructive text-card shadow-sm"
@@ -153,7 +153,7 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
                 </span>
                 <span
                   className={cn(
-                    "font-mono text-base font-bold tabular-nums sm:text-lg",
+                    "font-mono text-sm font-semibold tabular-nums sm:text-base",
                     goalStatus(selected.studyTime, selected.dailyGoalTime, selected.complete) === "met" && "text-ok",
                     goalStatus(selected.studyTime, selected.dailyGoalTime, selected.complete) === "failed" &&
                       "text-destructive"
@@ -200,7 +200,7 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
                 </span>
                 <span
                   className={cn(
-                    "font-mono text-lg font-bold tabular-nums sm:text-xl",
+                    "font-mono text-base font-semibold tabular-nums sm:text-lg",
                     selected.total > 0 ? "text-destructive" : "text-ok"
                   )}
                 >

@@ -53,7 +53,7 @@ export function SummaryTile({
         <Icon className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
         <span className="truncate text-micro-lg font-semibold tracking-wide uppercase sm:text-xs">{label}</span>
       </div>
-      <span className="truncate text-base font-bold sm:text-lg">{value}</span>
+      <span className="truncate text-sm font-semibold sm:text-base">{value}</span>
     </div>
   );
 }
