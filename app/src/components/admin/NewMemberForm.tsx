@@ -18,8 +18,9 @@ const GOAL_KINDS = ["교시제", "달성제"];
 
 // "8시간 교시제"(표시용) <-> goalHours="8"/goalKind="교시제"(내부 상태) 조합.
 // 시트에 반영할 때는 handleSubmit에서 "8H (교시제)" 형태로 다시 변환한다.
-const PARTICIPATION_TYPES = GOAL_HOURS.flatMap((hours) =>
-  GOAL_KINDS.map((kind) => ({ value: `${hours}|${kind}`, hours, kind, label: `${hours}시간 ${kind}` }))
+// 표시 순서: 교시제 8/9/10 -> 달성제 8/9/10
+const PARTICIPATION_TYPES = GOAL_KINDS.flatMap((kind) =>
+  GOAL_HOURS.map((hours) => ({ value: `${hours}|${kind}`, hours, kind, label: `${hours}시간 ${kind}` }))
 );
 
 export function NewMemberForm() {
@@ -45,14 +46,17 @@ export function NewMemberForm() {
   function loadSlots() {
     setSlotsError(null);
     call<AdminOpenSlotsResponse>("/admin/open-slots")
-      .then((data) => setSlots(data.slots || []))
+      .then((data) => {
+        const list = data.slots || [];
+        setSlots(list);
+        setNumber(list[0] || "");
+      })
       .catch((err) => setSlotsError(err instanceof Error ? err.message : "빈 자리를 불러오지 못했습니다."));
   }
 
   useEffect(loadSlots, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function resetForm() {
-    setNumber("");
     setName("");
     setEmail("");
     setParticipationType("8|교시제");
@@ -162,7 +166,7 @@ export function NewMemberForm() {
         <div className="flex flex-col gap-1.5">
           <Label className="text-xs font-medium text-muted-foreground sm:text-sm">시트번호</Label>
           <Select value={number} onValueChange={(v) => setNumber(v ?? "")} disabled={!slots || noSlots}>
-            <SelectTrigger className="py-1 sm:h-12 sm:text-base">
+            <SelectTrigger className="py-1 data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base">
               <SelectValue placeholder={noSlots ? "빈 자리 없음" : "선택"} />
             </SelectTrigger>
             <SelectContent>
@@ -178,7 +182,7 @@ export function NewMemberForm() {
         <div className="flex flex-col gap-1.5">
           <Label className="text-xs font-medium text-muted-foreground sm:text-sm">참여유형</Label>
           <Select value={participationType} onValueChange={(v) => setParticipationType(v ?? "8|교시제")}>
-            <SelectTrigger className="py-1 sm:h-12 sm:text-base">
+            <SelectTrigger className="py-1 data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base">
               <SelectValue>{selectedType?.label}</SelectValue>
             </SelectTrigger>
             <SelectContent>
