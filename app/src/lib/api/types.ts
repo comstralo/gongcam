@@ -32,6 +32,9 @@ export type StatusResponse = {
   normalLeaveLeft: string;
   reasonLeaveLeft: string;
   weekTotalConfirmed: number;
+  depositRefundEstimate: string;
+  periodAttendanceRate: string;
+  weeklyTotalFine: string;
   days: StatusDay[];
 };
 

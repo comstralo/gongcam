@@ -1,4 +1,5 @@
 import { HashRouter, Routes, Route } from "react-router-dom";
+import { LayoutDashboard } from "lucide-react";
 import { AuthProvider } from "@/lib/auth/AuthContext";
 import { ProtectedRoute } from "@/lib/auth/ProtectedRoute";
 import { AdminRoute } from "@/lib/auth/AdminRoute";
@@ -31,7 +32,7 @@ export default function App() {
             path="/"
             element={
               <ProtectedRoute>
-                <AppShell title="대시보드" hideEyebrow>
+                <AppShell title="대시보드" titleIcon={LayoutDashboard} hideEyebrow>
                   <DashboardPage />
                 </AppShell>
               </ProtectedRoute>

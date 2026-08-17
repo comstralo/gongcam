@@ -1,7 +1,20 @@
 import { useState } from "react";
-import { Clock, CircleCheck, CircleDot, CalendarDays, Award, PalmtreeIcon, HeartHandshake, Timer, Wallet, BedDouble } from "lucide-react";
+import {
+  Clock,
+  CircleCheck,
+  CircleDot,
+  CalendarDays,
+  Award,
+  Timer,
+  Wallet,
+  BedDouble,
+  PiggyBank,
+  ListChecks,
+  ShieldAlert,
+  DoorOpen,
+} from "lucide-react";
 import { cn, ICON_STROKE } from "@/lib/utils";
-import { SummaryTile, SubRow, TintedPill } from "@/components/dashboard/shared";
+import { SummaryTile, SubRow, TintedPill, InfoCard } from "@/components/dashboard/shared";
 import type { StatusResponse } from "@/lib/api/types";
 
 const TODAY_INDEX = (new Date().getDay() + 6) % 7; // 월=0 ... 일=6
@@ -49,9 +62,10 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
   const summaryTiles = [
     { key: "goalType", icon: Clock, label: "목표시간", value: status.goalType || "-" },
     { key: "joinDate", icon: CalendarDays, label: "가입일자", value: status.joinDate || "-" },
+    { key: "depositRefund", icon: PiggyBank, label: "예치금 반환 예상액", value: status.depositRefundEstimate || "-" },
     { key: "merit", icon: Award, label: "주간 총 상점", value: status.weeklyMerit || "0" },
-    { key: "normalLeave", icon: PalmtreeIcon, label: "일반 반휴 잔여", value: `${status.normalLeaveLeft}회` },
-    { key: "reasonLeave", icon: HeartHandshake, label: "사유 반휴 잔여", value: `${status.reasonLeaveLeft}회` },
+    { key: "periodAttendance", icon: ListChecks, label: "교시 참여율", value: status.periodAttendanceRate || "-" },
+    { key: "totalFine", icon: ShieldAlert, label: "총 페널티", value: status.weeklyTotalFine || "₩0" },
   ];
 
   return (
@@ -61,6 +75,18 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
           <SummaryTile key={tile.key} icon={tile.icon} label={tile.label} value={tile.value} />
         ))}
       </section>
+
+      <InfoCard className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <DoorOpen className="size-4 shrink-0 text-primary sm:size-5" strokeWidth={ICON_STROKE.default} />
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <span className="text-sm font-semibold sm:text-base">퇴실신청</span>
+            <span className="text-xs text-muted-foreground sm:text-sm">
+              퇴실/예치금 재납 처리는 운영진에게 문의해주세요
+            </span>
+          </div>
+        </div>
+      </InfoCard>
 
       <section className="flex flex-col gap-2">
         <div className="grid grid-cols-7 gap-1.5 sm:gap-2">

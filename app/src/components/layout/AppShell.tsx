@@ -1,12 +1,15 @@
 import type { ReactNode } from "react";
+import type { LucideIcon } from "lucide-react";
 import { TabBar } from "./TabBar";
 import { useAuth } from "@/lib/auth/useAuth";
-import { cn } from "@/lib/utils";
+import { cn, ICON_STROKE } from "@/lib/utils";
 
 type AppShellProps = {
   children: ReactNode;
   /** 지정하면 표준 헤더(Framing Check 라벨 + 제목)를 렌더링한다. 페이지가 자체 헤더를 그릴 경우 생략. */
   title?: string;
+  /** 지정하면 제목 좌측에 아이콘을 함께 표시한다. */
+  titleIcon?: LucideIcon;
   /** true면 title은 유지하되 상단 "Framing Check" 라벨을 생략한다. */
   hideEyebrow?: boolean;
   /**
@@ -19,7 +22,7 @@ type AppShellProps = {
   fitToScreen?: boolean;
 };
 
-export function AppShell({ children, title, hideEyebrow, fitToScreen }: AppShellProps) {
+export function AppShell({ children, title, titleIcon: TitleIcon, hideEyebrow, fitToScreen }: AppShellProps) {
   const { session } = useAuth();
 
   return (
@@ -38,7 +41,12 @@ export function AppShell({ children, title, hideEyebrow, fitToScreen }: AppShell
           {!hideEyebrow && (
             <span className="font-mono text-xs uppercase tracking-widest text-primary sm:text-sm">Framing Check</span>
           )}
-          <h1 className="text-xl font-bold sm:text-2xl">{title}</h1>
+          <h1 className="flex items-center gap-2 text-xl font-bold sm:text-2xl">
+            {TitleIcon && (
+              <TitleIcon className="size-5 text-primary sm:size-6" strokeWidth={ICON_STROKE.default} />
+            )}
+            {title}
+          </h1>
         </header>
       )}
       {children}
