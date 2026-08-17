@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { InfoCard } from "@/components/dashboard/shared";
 import { useApi } from "@/hooks/useApi";
 import { ApiError, WORKER_BASE } from "@/lib/api/client";
 import { useAuth } from "@/lib/auth/useAuth";
@@ -124,27 +125,6 @@ export function NewMemberForm() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
-        <Label className="text-sm font-semibold sm:text-base">시트번호</Label>
-        <Select value={number} onValueChange={(v) => setNumber(v ?? "")} disabled={!slots || noSlots}>
-          <SelectTrigger className="sm:h-12 sm:text-base">
-            <SelectValue placeholder={noSlots ? "배정 가능한 자리가 없습니다" : "빈 자리를 선택하세요"} />
-          </SelectTrigger>
-          <SelectContent>
-            {slots?.map((s) => (
-              <SelectItem key={s} value={s} className="sm:text-base">
-                {s}번
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {slotsError && (
-          <Alert variant="destructive">
-            <AlertDescription>{slotsError}</AlertDescription>
-          </Alert>
-        )}
-      </div>
-
-      <div className="flex flex-col gap-1.5">
         <Label htmlFor="new-member-name" className="text-sm font-semibold sm:text-base">
           이름
         </Label>
@@ -171,11 +151,32 @@ export function NewMemberForm() {
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1.5">
-          <Label className="text-sm font-semibold sm:text-base">의무시간</Label>
+      <div className="flex flex-col gap-1.5">
+        <Label className="text-sm font-semibold sm:text-base">시트번호</Label>
+        <Select value={number} onValueChange={(v) => setNumber(v ?? "")} disabled={!slots || noSlots}>
+          <SelectTrigger className="sm:h-12 sm:text-base">
+            <SelectValue placeholder={noSlots ? "배정 가능한 자리가 없습니다" : "빈 자리를 선택하세요"} />
+          </SelectTrigger>
+          <SelectContent>
+            {slots?.map((s) => (
+              <SelectItem key={s} value={s} className="sm:text-base">
+                {s}번
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {slotsError && (
+          <Alert variant="destructive">
+            <AlertDescription>{slotsError}</AlertDescription>
+          </Alert>
+        )}
+      </div>
+
+      <InfoCard className="flex flex-col gap-2.5">
+        <Label className="text-sm font-semibold sm:text-base">참여유형</Label>
+        <div className="grid grid-cols-2 gap-3">
           <Select value={goalHours} onValueChange={(v) => setGoalHours(v ?? "8")}>
-            <SelectTrigger className="sm:h-12 sm:text-base">
+            <SelectTrigger className="bg-card sm:h-12 sm:text-base">
               <SelectValue>{goalHours}시간</SelectValue>
             </SelectTrigger>
             <SelectContent>
@@ -186,12 +187,9 @@ export function NewMemberForm() {
               ))}
             </SelectContent>
           </Select>
-        </div>
 
-        <div className="flex flex-col gap-1.5">
-          <Label className="text-sm font-semibold sm:text-base">타입</Label>
           <Select value={goalKind} onValueChange={(v) => setGoalKind(v ?? "교시제")}>
-            <SelectTrigger className="sm:h-12 sm:text-base">
+            <SelectTrigger className="bg-card sm:h-12 sm:text-base">
               <SelectValue>{goalKind}</SelectValue>
             </SelectTrigger>
             <SelectContent>
@@ -203,11 +201,11 @@ export function NewMemberForm() {
             </SelectContent>
           </Select>
         </div>
-      </div>
+      </InfoCard>
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="new-member-exam" className="text-sm font-semibold sm:text-base">
-          준비 시험 (선택)
+          준비 중인 시험 (선택)
         </Label>
         <Input
           id="new-member-exam"
