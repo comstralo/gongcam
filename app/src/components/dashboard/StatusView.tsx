@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { cn, ICON_STROKE } from "@/lib/utils";
 import { SummaryTile, SubRow, TintedPill, InfoCard } from "@/components/dashboard/shared";
+import { PeriodAlarmCard } from "@/components/dashboard/PeriodAlarmCard";
 import type { StatusResponse } from "@/lib/api/types";
 
 const TODAY_INDEX = (new Date().getDay() + 6) % 7; // 월=0 ... 일=6
@@ -75,6 +76,8 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
           <SummaryTile key={tile.key} icon={tile.icon} label={tile.label} value={tile.value} />
         ))}
       </section>
+
+      <PeriodAlarmCard />
 
       <InfoCard className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
