@@ -141,6 +141,12 @@ export type CreateMemberResponse = {
   number: string;
   name: string;
   email: string;
+  needsReauth?: boolean;
+  grantError?: string;
+};
+
+export type GrantMemberAccessResponse = {
+  ok: true;
 };
 
 export type GoalScheduleResponse = {

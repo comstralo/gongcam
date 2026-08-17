@@ -5,14 +5,20 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useApi } from "@/hooks/useApi";
-import { ApiError } from "@/lib/api/client";
-import type { AdminOpenSlotsResponse, CreateMemberResponse } from "@/lib/api/types";
+import { ApiError, WORKER_BASE } from "@/lib/api/client";
+import { useAuth } from "@/lib/auth/useAuth";
+import type {
+  AdminOpenSlotsResponse,
+  CreateMemberResponse,
+  GrantMemberAccessResponse,
+} from "@/lib/api/types";
 
 const GOAL_HOURS = ["8", "9", "10"];
 const GOAL_KINDS = ["교시제", "달성제"];
 
 export function NewMemberForm() {
   const { call } = useApi();
+  const { session } = useAuth();
 
   const [slots, setSlots] = useState<string[] | null>(null);
   const [slotsError, setSlotsError] = useState<string | null>(null);
@@ -26,6 +32,10 @@ export function NewMemberForm() {
 
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: "error" | "ok" } | null>(null);
+  // Drive 권한 부여만 실패한 경우, 폼을 다시 채우지 않고 이 이메일로만
+  // 재연동 후 권한 재시도를 할 수 있도록 남겨둔다.
+  const [pendingAccessEmail, setPendingAccessEmail] = useState<string | null>(null);
+  const [grantingAccess, setGrantingAccess] = useState(false);
 
   function loadSlots() {
     setSlotsError(null);
@@ -45,6 +55,11 @@ export function NewMemberForm() {
     setExamKind("");
   }
 
+  function openDriveAuthLink() {
+    const url = `${WORKER_BASE}/oauth/authorize?token=${encodeURIComponent(session?.token || "")}`;
+    window.open(url, "_blank", "noreferrer");
+  }
+
   async function handleSubmit() {
     if (!number || !name.trim() || !email.trim()) {
       setMessage({ text: "시트번호, 이름, 이메일은 필수입니다.", type: "error" });
@@ -52,6 +67,7 @@ export function NewMemberForm() {
     }
     setSubmitting(true);
     setMessage(null);
+    setPendingAccessEmail(null);
     try {
       const data = await call<CreateMemberResponse>("/admin/members", {
         method: "POST",
@@ -64,7 +80,17 @@ export function NewMemberForm() {
           examKind: examKind.trim(),
         },
       });
-      setMessage({ text: `${data.name}님(${data.number}번)이 등록되었습니다.`, type: "ok" });
+
+      if (data.needsReauth) {
+        setPendingAccessEmail(data.email);
+        setMessage({
+          text: `${data.name}님(${data.number}번)의 시트 값은 등록되었지만, Drive 편집자 권한 부여에 실패했습니다. 연동 후 아래 버튼으로 권한만 다시 부여해주세요.`,
+          type: "error",
+        });
+        openDriveAuthLink();
+      } else {
+        setMessage({ text: `${data.name}님(${data.number}번)이 등록되었습니다.`, type: "ok" });
+      }
       resetForm();
       loadSlots();
     } catch (err) {
@@ -72,6 +98,24 @@ export function NewMemberForm() {
       setMessage({ text, type: "error" });
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleRetryGrantAccess() {
+    if (!pendingAccessEmail) return;
+    setGrantingAccess(true);
+    try {
+      await call<GrantMemberAccessResponse>("/admin/members/grant-access", {
+        method: "POST",
+        body: { email: pendingAccessEmail },
+      });
+      setMessage({ text: `${pendingAccessEmail}에 Drive 편집자 권한을 부여했습니다.`, type: "ok" });
+      setPendingAccessEmail(null);
+    } catch (err) {
+      const text = err instanceof ApiError ? err.message : "네트워크 오류입니다.";
+      setMessage({ text, type: "error" });
+    } finally {
+      setGrantingAccess(false);
     }
   }
 
@@ -182,6 +226,17 @@ export function NewMemberForm() {
         <Alert variant={message.type === "error" ? "destructive" : "default"}>
           <AlertDescription>{message.text}</AlertDescription>
         </Alert>
+      )}
+
+      {pendingAccessEmail && (
+        <Button
+          variant="outline"
+          className="w-full sm:h-12 sm:text-base"
+          disabled={grantingAccess}
+          onClick={handleRetryGrantAccess}
+        >
+          {pendingAccessEmail} 권한 다시 부여하기
+        </Button>
       )}
     </div>
   );
