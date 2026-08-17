@@ -1,4 +1,4 @@
-import { Award, TrendingDown, TrendingUp, Gauge } from "lucide-react";
+import { Award, TrendingDown, TrendingUp, Gauge, TriangleAlert } from "lucide-react";
 import {
   Dialog,
   DialogTrigger,
@@ -6,18 +6,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { SubRow, InfoCard } from "@/components/dashboard/shared";
+import { SubRow, InfoCard, DividedValue } from "@/components/dashboard/shared";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 import type { WeeklyMeritBreakdown } from "@/lib/api/types";
 
 function pt(n: number | null | undefined) {
-  const value = n ?? 0;
-  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
-  const abs = Math.abs(value)
+  const abs = Math.abs(n ?? 0)
     .toFixed(4)
     .replace(/\.?0+$/, "");
-  return `${sign}${abs}점`;
+  return `${abs}점`;
 }
 
 export function MeritBreakdownDialog({
@@ -48,10 +46,15 @@ export function MeritBreakdownDialog({
           <InfoCard className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
               <Award className="size-3.5 shrink-0 text-primary sm:size-4" />
-              이번 주 상점 · 순위
+              주간 총 상점
             </span>
             <span className={cn("font-mono text-sm font-bold sm:text-base", breakdown.isZero && "text-destructive")}>
-              {weeklyMerit} · {weeklyMeritRank}
+              <DividedValue
+                items={[
+                  weeklyMeritRank && !weeklyMeritRank.startsWith("-") ? `+${weeklyMerit || "0"}` : weeklyMerit || "0",
+                  weeklyMeritRank || "-",
+                ]}
+              />
             </span>
           </InfoCard>
 
@@ -60,17 +63,12 @@ export function MeritBreakdownDialog({
               <TrendingUp className="size-3.5 shrink-0 text-primary sm:size-4" />
               적립 원인
             </span>
-            <SubRow label="학습시간 상점" value={pt(breakdown.studyTimeMerit)} />
+            <SubRow label="학습시간 상점" value={`+${pt(breakdown.studyTimeMerit)}`} valueClassName="text-ok" />
             <SubRow
-              label={breakdown.isLeader ? "제보상점 (스터디장 고정)" : "제보상점"}
-              value={breakdown.reportMeritIncluded ? pt(breakdown.reportMerit) : pt(0)}
-              valueClassName={!breakdown.reportMeritIncluded ? "text-muted-foreground/60" : undefined}
+              label="제보상점"
+              value={breakdown.reportMeritIncluded ? `+${pt(breakdown.reportMerit)}` : pt(0)}
+              valueClassName={breakdown.reportMeritIncluded ? "text-ok" : "text-muted-foreground/60"}
             />
-            {!breakdown.reportMeritIncluded && (
-              <p className="pl-5 text-micro-lg text-muted-foreground/70 sm:pl-5.5">
-                주중(월~금) 기록이 모두 끝나야 이번 주 계산에 포함됩니다 — 현재는 미반영
-              </p>
-            )}
           </InfoCard>
 
           <InfoCard className="flex flex-col gap-1.5">
@@ -79,13 +77,13 @@ export function MeritBreakdownDialog({
               차감 원인
             </span>
             <SubRow
-              label="벌점 차감"
-              value={(breakdown.penaltyDeduction ?? 0) > 0 ? pt(-breakdown.penaltyDeduction) : pt(0)}
+              label="송출 P 벌점"
+              value={(breakdown.penaltyDeduction ?? 0) > 0 ? `-${pt(breakdown.penaltyDeduction)}` : pt(0)}
               valueClassName={(breakdown.penaltyDeduction ?? 0) > 0 ? "text-destructive" : undefined}
             />
             <SubRow
               label={`벌금 차감 (₩${(breakdown.weeklyTotalFineAmount ?? 0).toLocaleString()})`}
-              value={(breakdown.fineDeduction ?? 0) > 0 ? pt(-breakdown.fineDeduction) : pt(0)}
+              value={(breakdown.fineDeduction ?? 0) > 0 ? `-${pt(breakdown.fineDeduction)}` : pt(0)}
               valueClassName={(breakdown.fineDeduction ?? 0) > 0 ? "text-destructive" : undefined}
             />
           </InfoCard>
@@ -93,17 +91,29 @@ export function MeritBreakdownDialog({
           <InfoCard className="flex flex-col gap-1.5">
             <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
               <Gauge className="size-3.5 shrink-0 text-primary sm:size-4" />
-              목표시간 배율
+              상점 배율
             </span>
             <SubRow label="적용 배율" value={`× ${breakdown.multiplier ?? 1}`} />
           </InfoCard>
 
-          {breakdown.isZero && breakdown.zeroReason && (
-            <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
-              <span className="font-semibold text-destructive">순위가 "-"로 표시되는 이유: </span>
-              {breakdown.zeroReason}에 해당해 이번 주 상점이 0점으로 처리되어 순위 계산에서 제외됩니다.
-            </p>
-          )}
+          <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
+            <div className="flex items-center gap-1.5 text-destructive">
+              <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
+              <span className="text-xs font-semibold sm:text-sm">주의사항</span>
+            </div>
+            <ul className="flex flex-col gap-1 text-xs leading-relaxed text-muted-foreground sm:text-sm">
+              <li className="flex gap-1.5">
+                <span className="text-destructive/60">•</span>
+                제보상점은 금요일에 일괄 반영됩니다.
+              </li>
+              {breakdown.isZero && breakdown.zeroReason && (
+                <li className="flex gap-1.5">
+                  <span className="text-destructive/60">•</span>
+                  {breakdown.zeroReason}에 해당해 이번 주 상점이 0점으로 처리되어 순위 계산에서 제외됩니다.
+                </li>
+              )}
+            </ul>
+          </InfoCard>
         </div>
       </DialogContent>
     </Dialog>
