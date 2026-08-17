@@ -41,34 +41,38 @@ export function TintedPill({
 // wrap: 순위 사유("- (사유 반휴 3장 이상 사용)")처럼 값이 길어질 수 있는
 // 타일만 줄바꿈을 허용한다 — 기본은 다른 타일과 맞춰 한 줄 자르기.
 // valueClassName: 페널티 합계처럼 값 자체의 색상을 상태에 따라 바꿔야 할 때 사용.
+// hint: 라벨을 길게 늘이지 않고 값 옆에 부연 설명("예치금 납부일 기준")을 덧붙일 때 사용.
 export function SummaryTile({
   icon: Icon,
   label,
   value,
   wrap,
   valueClassName,
+  hint,
 }: {
   icon: LucideIcon;
   label: string;
   value: string;
   wrap?: boolean;
   valueClassName?: string;
+  hint?: string;
 }) {
   return (
-    <div className="flex flex-col gap-1.5 rounded-xl border bg-muted px-3.5 py-3 shadow-xs sm:px-4 sm:py-3.5">
+    <div className="flex flex-col gap-1 rounded-xl border bg-muted px-3.5 py-2.5 shadow-xs sm:px-4 sm:py-3">
       <div className="flex items-center gap-1.25 text-muted-foreground">
-        <Icon className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
-        <span className="truncate text-micro-lg font-semibold tracking-wide uppercase sm:text-xs">{label}</span>
+        <Icon className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+        <span className="truncate text-micro font-semibold tracking-wide uppercase sm:text-micro-lg">{label}</span>
       </div>
       <span
         className={cn(
-          "text-sm font-semibold sm:text-base",
+          "text-xs font-semibold sm:text-sm",
           wrap ? "break-keep" : "truncate",
           valueClassName
         )}
       >
         {value}
       </span>
+      {hint && <span className="truncate text-micro text-muted-foreground/70">{hint}</span>}
     </div>
   );
 }
@@ -85,8 +89,8 @@ export function SubRow({
 }) {
   return (
     <div className="flex items-center justify-between gap-2 pl-5 sm:pl-5.5">
-      <span className="text-xs text-muted-foreground before:mr-1 before:content-['└'] sm:text-sm">{label}</span>
-      <span className={cn("font-mono text-sm tabular-nums text-muted-foreground sm:text-base", valueClassName)}>
+      <span className="text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">{label}</span>
+      <span className={cn("font-mono text-xs tabular-nums text-muted-foreground sm:text-sm", valueClassName)}>
         {value}
       </span>
     </div>

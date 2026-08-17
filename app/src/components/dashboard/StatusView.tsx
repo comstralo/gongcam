@@ -88,15 +88,22 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
     value: string;
     wrap?: boolean;
     valueClassName?: string;
+    hint?: string;
   }[] = [
     { key: "goalType", icon: Clock, label: "목표시간", value: formatGoalType(status.goalType) },
-    { key: "joinDate", icon: CalendarDays, label: "가입일자", value: status.joinDate || "-" },
+    {
+      key: "joinDate",
+      icon: CalendarDays,
+      label: "가입일자",
+      value: status.joinDate || "-",
+      hint: "예치금 납부일 기준",
+    },
     { key: "depositRefund", icon: PiggyBank, label: "예치금 반환 예상액", value: status.depositRefundEstimate || "-" },
     {
       key: "merit",
       icon: Award,
       label: "주간 총 상점",
-      value: `${status.weeklyMerit || "0"} · ${status.weeklyMeritRank || "-"}`,
+      value: `${status.weeklyMerit || "0"} | ${status.weeklyMeritRank || "-"}`,
       wrap: true,
     },
     {
@@ -127,6 +134,7 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
             value={tile.value}
             wrap={tile.wrap}
             valueClassName={tile.valueClassName}
+            hint={tile.hint}
           />
         ))}
       </section>
@@ -156,7 +164,7 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
                 type="button"
                 onClick={() => setSelectedDay(i)}
                 className={cn(
-                  "relative flex flex-col items-center gap-1 rounded-full border py-2.5 text-sm font-semibold transition-all sm:py-3 sm:text-base",
+                  "relative flex flex-col items-center gap-1 rounded-full border py-2 text-xs font-semibold transition-all sm:py-2.5 sm:text-sm",
                   isSelected
                     ? isUnpaid
                       ? "border-destructive bg-destructive text-card shadow-sm"
@@ -207,7 +215,7 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
                 </span>
                 <span
                   className={cn(
-                    "font-mono text-sm font-semibold tabular-nums sm:text-base",
+                    "font-mono text-xs font-semibold tabular-nums sm:text-sm",
                     goalStatus(selected.studyTime, selected.dailyGoalTime, selected.complete) === "met" && "text-ok",
                     goalStatus(selected.studyTime, selected.dailyGoalTime, selected.complete) === "failed" &&
                       "text-destructive"
@@ -254,7 +262,7 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
                 </span>
                 <span
                   className={cn(
-                    "font-mono text-base font-semibold tabular-nums sm:text-lg",
+                    "font-mono text-sm font-semibold tabular-nums sm:text-base",
                     selected.total > 0 ? "text-destructive" : "text-ok"
                   )}
                 >
