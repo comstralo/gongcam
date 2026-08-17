@@ -52,7 +52,7 @@ export function SummaryTile({
 }: {
   icon: LucideIcon;
   label: string;
-  value: string;
+  value: ReactNode;
   wrap?: boolean;
   valueClassName?: string;
   hint?: string;
@@ -74,6 +74,21 @@ export function SummaryTile({
       </span>
       {hint && <span className="truncate text-micro text-muted-foreground/70">{hint}</span>}
     </div>
+  );
+}
+
+// 텍스트 구분자("|") 대신 은은한 세로선으로 두 값을 나눠 보여준다.
+// 예: 주간 총 상점(수치) │ 순위.
+export function DividedValue({ items }: { items: ReactNode[] }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {items.map((item, i) => (
+        <span key={i} className="inline-flex items-center gap-1.5">
+          {i > 0 && <span className="h-3 w-px bg-border" aria-hidden="true" />}
+          {item}
+        </span>
+      ))}
+    </span>
   );
 }
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Clock,
@@ -15,7 +15,7 @@ import {
   DoorOpen,
 } from "lucide-react";
 import { cn, ICON_STROKE } from "@/lib/utils";
-import { SummaryTile, SubRow, TintedPill, InfoCard } from "@/components/dashboard/shared";
+import { SummaryTile, SubRow, TintedPill, InfoCard, DividedValue } from "@/components/dashboard/shared";
 import { PeriodAlarmCard } from "@/components/dashboard/PeriodAlarmCard";
 import type { StatusResponse } from "@/lib/api/types";
 
@@ -85,7 +85,7 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
     key: string;
     icon: LucideIcon;
     label: string;
-    value: string;
+    value: ReactNode;
     wrap?: boolean;
     valueClassName?: string;
     hint?: string;
@@ -103,7 +103,7 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
       key: "merit",
       icon: Award,
       label: "주간 총 상점",
-      value: `${status.weeklyMerit || "0"} | ${status.weeklyMeritRank || "-"}`,
+      value: <DividedValue items={[status.weeklyMerit || "0", status.weeklyMeritRank || "-"]} />,
       wrap: true,
     },
     {
