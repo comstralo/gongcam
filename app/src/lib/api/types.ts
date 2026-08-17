@@ -31,9 +31,12 @@ export type WeeklyMeritBreakdown = {
   studyTimeMerit: number;
   reportMerit: number;
   isLeader: boolean;
+  reportMeritIncluded: boolean;
+  multiplier: number;
   penaltyDeduction: number;
   fineDeduction: number;
   weeklyTotalFineAmount: number;
+  computedMerit: number;
 };
 
 export type StatusResponse = {

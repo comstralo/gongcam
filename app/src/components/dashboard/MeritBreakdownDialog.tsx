@@ -13,8 +13,11 @@ import type { ReactNode } from "react";
 import type { WeeklyMeritBreakdown } from "@/lib/api/types";
 
 function pt(n: number) {
-  const sign = n > 0 ? "+" : "";
-  return `${sign}${n.toFixed(3).replace(/\.?0+$/, "")}점`;
+  const sign = n > 0 ? "+" : n < 0 ? "-" : "";
+  const abs = Math.abs(n)
+    .toFixed(4)
+    .replace(/\.?0+$/, "");
+  return `${sign}${abs}점`;
 }
 
 export function MeritBreakdownDialog({
@@ -30,7 +33,7 @@ export function MeritBreakdownDialog({
 }) {
   return (
     <Dialog>
-      <DialogTrigger className="w-full text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded-xl">
+      <DialogTrigger className="w-full rounded-xl text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
         {children}
       </DialogTrigger>
       <DialogContent>
@@ -44,22 +47,25 @@ export function MeritBreakdownDialog({
 
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5 rounded-lg border bg-muted p-3.5">
+            <SubRow label="학습시간 상점" value={pt(breakdown.studyTimeMerit)} />
             <SubRow
               label={breakdown.isLeader ? "제보상점 (스터디장 고정)" : "제보상점"}
-              value={pt(breakdown.reportMerit)}
+              value={breakdown.reportMeritIncluded ? pt(breakdown.reportMerit) : pt(0)}
+              valueClassName={!breakdown.reportMeritIncluded ? "text-muted-foreground/60" : undefined}
             />
-            <SubRow label="학습시간 상점" value={pt(breakdown.studyTimeMerit)} />
+            {!breakdown.reportMeritIncluded && (
+              <p className="pl-5 text-micro-lg text-muted-foreground/70 sm:pl-5.5">
+                주중(월~금) 기록이 모두 끝나야 이번 주 계산에 포함됩니다 — 현재는 미반영
+              </p>
+            )}
+            <SubRow label="목표시간 배율" value={`× ${breakdown.multiplier}`} />
             {breakdown.penaltyDeduction > 0 && (
-              <SubRow
-                label="벌점 차감"
-                value={`-${breakdown.penaltyDeduction.toFixed(3).replace(/\.?0+$/, "")}점`}
-                valueClassName="text-destructive"
-              />
+              <SubRow label="벌점 차감" value={pt(-breakdown.penaltyDeduction)} valueClassName="text-destructive" />
             )}
             {breakdown.fineDeduction > 0 && (
               <SubRow
                 label={`벌금 차감 (₩${breakdown.weeklyTotalFineAmount.toLocaleString()})`}
-                value={`-${breakdown.fineDeduction.toFixed(3).replace(/\.?0+$/, "")}점`}
+                value={pt(-breakdown.fineDeduction)}
                 valueClassName="text-destructive"
               />
             )}
@@ -78,10 +84,6 @@ export function MeritBreakdownDialog({
               {breakdown.zeroReason}에 해당해 이번 주 상점이 0점으로 처리되어 순위 계산에서 제외됩니다.
             </p>
           )}
-
-          <p className="text-micro-lg text-muted-foreground/70">
-            학습시간·목표달성 배율 등 세부 가중치는 반영되어 최종 상점(시트 값)과 항목 합계가 다를 수 있습니다.
-          </p>
         </div>
       </DialogContent>
     </Dialog>
