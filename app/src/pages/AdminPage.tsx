@@ -8,7 +8,7 @@ import { StatusView } from "@/components/dashboard/StatusView";
 import { usePushSubscription } from "@/hooks/usePushSubscription";
 import { useApi } from "@/hooks/useApi";
 import { cn } from "@/lib/utils";
-import type { AdminMember, AdminMembersResponse, SnapshotRunNowResponse, StatusResponse } from "@/lib/api/types";
+import type { AdminMember, AdminMembersResponse, StatusResponse } from "@/lib/api/types";
 
 const STATE_LABEL: Record<string, string> = {
   checking: "알림 상태 확인 중...",
@@ -20,8 +20,6 @@ const STATE_LABEL: Record<string, string> = {
 export function AdminPage() {
   const { state, message, enable, sendTest } = usePushSubscription();
   const { call } = useApi();
-  const [snapshotState, setSnapshotState] = useState<"idle" | "running" | "done" | "error">("idle");
-  const [snapshotMessage, setSnapshotMessage] = useState<string | null>(null);
 
   const [members, setMembers] = useState<AdminMember[] | null>(null);
   const [membersError, setMembersError] = useState<string | null>(null);
@@ -58,19 +56,6 @@ export function AdminPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNumber]);
 
-  async function runSnapshotNow() {
-    setSnapshotState("running");
-    setSnapshotMessage(null);
-    try {
-      const res = await call<SnapshotRunNowResponse>("/snapshots/run-now", { method: "POST" });
-      setSnapshotState("done");
-      setSnapshotMessage(`${res.weekOf} 주차 · ${res.memberCount}명 저장 완료`);
-    } catch (err) {
-      setSnapshotState("error");
-      setSnapshotMessage(err instanceof Error ? err.message : "스냅샷 저장에 실패했습니다.");
-    }
-  }
-
   return (
     <Card className="w-full page-content">
       <CardContent className="flex flex-col gap-4">
@@ -104,26 +89,6 @@ export function AdminPage() {
         {message && (
           <Alert variant={message.type === "error" ? "destructive" : "default"}>
             <AlertDescription>{message.text}</AlertDescription>
-          </Alert>
-        )}
-
-        <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground sm:text-xs">
-          주간 스냅샷
-        </span>
-        <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
-          매주 월요일 04:50에 자동으로 저장되지만, 즉시 확인하거나 실패 시 재시도하려면 아래 버튼을 누르세요.
-        </p>
-        <Button
-          className="w-full sm:h-12 sm:text-base"
-          variant="outline"
-          onClick={runSnapshotNow}
-          disabled={snapshotState === "running"}
-        >
-          {snapshotState === "running" ? "저장 중..." : "지금 스냅샷 저장"}
-        </Button>
-        {snapshotMessage && (
-          <Alert variant={snapshotState === "error" ? "destructive" : "default"}>
-            <AlertDescription>{snapshotMessage}</AlertDescription>
           </Alert>
         )}
 

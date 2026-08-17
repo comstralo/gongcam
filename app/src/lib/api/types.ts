@@ -52,15 +52,9 @@ export type SnapshotListResponse = {
 
 export type SnapshotDetailResponse = {
   weekOf: string;
-  capturedAt: string;
+  weekTo: string;
   roster: RosterStatusResponse;
   personal: StatusResponse | null;
-};
-
-export type SnapshotRunNowResponse = {
-  ok: true;
-  weekOf: string;
-  memberCount: number;
 };
 
 export type AdminMember = {

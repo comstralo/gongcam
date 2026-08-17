@@ -8,10 +8,12 @@ import { useApi } from "@/hooks/useApi";
 import { cn } from "@/lib/utils";
 import type { SnapshotDetailResponse, SnapshotListResponse } from "@/lib/api/types";
 
+// weekOf는 백업 파일명에서 온 "YYMMDD"(그 주 월요일) 형식이다.
 function formatWeekLabel(weekOf: string) {
-  const d = new Date(weekOf + "T00:00:00");
-  if (Number.isNaN(d.getTime())) return weekOf;
-  return `${d.getMonth() + 1}월 ${d.getDate()}일 주`;
+  const m = weekOf.match(/^(\d{2})(\d{2})(\d{2})$/);
+  if (!m) return weekOf;
+  const [, , mm, dd] = m;
+  return `${parseInt(mm, 10)}월 ${parseInt(dd, 10)}일 주`;
 }
 
 export function SnapshotPage() {
@@ -93,7 +95,7 @@ export function SnapshotPage() {
           <div className="flex flex-col items-center gap-2 py-10 text-center text-muted-foreground">
             <History className="size-8" strokeWidth={1.75} />
             <p className="text-sm sm:text-base">아직 보관된 기록이 없습니다.</p>
-            <p className="text-xs sm:text-sm">매주 초기화 직전에 자동으로 스냅샷이 저장됩니다.</p>
+            <p className="text-xs sm:text-sm">매주 초기화 직전 백업된 기록이 있으면 여기에 표시됩니다.</p>
           </div>
         )}
 
