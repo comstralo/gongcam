@@ -39,6 +39,14 @@ export type WeeklyMeritBreakdown = {
   computedMerit: number;
 };
 
+export type DepositRefundBreakdown = {
+  amount: number;
+  reason: string | null;
+  outputPen: number;
+  timePen: number;
+  daysSinceJoin: number;
+};
+
 export type StatusResponse = {
   goalType: string;
   joinDate: string;
@@ -49,6 +57,7 @@ export type StatusResponse = {
   reasonLeaveLeft: string;
   weekTotalConfirmed: number;
   depositRefundEstimate: string;
+  depositRefundBreakdown: DepositRefundBreakdown;
   periodAttendanceRate: string;
   weeklyTotalFine: string;
   weeklyOutputPen: number;

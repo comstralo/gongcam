@@ -23,6 +23,7 @@ import { SummaryTile, SubRow, TintedPill, InfoCard, DividedValue } from "@/compo
 import { PeriodAlarmCard } from "@/components/dashboard/PeriodAlarmCard";
 import { MeritBreakdownDialog } from "@/components/dashboard/MeritBreakdownDialog";
 import { GoalTypeScheduleDialog } from "@/components/dashboard/GoalTypeScheduleDialog";
+import { DepositRefundDialog } from "@/components/dashboard/DepositRefundDialog";
 import type { StatusResponse } from "@/lib/api/types";
 
 const TODAY_INDEX = (new Date().getDay() + 6) % 7; // 월=0 ... 일=6
@@ -60,6 +61,13 @@ function goalStatus(studyTime: string, goalTime: string, complete: boolean): Goa
 function formatGoalType(raw: string): string {
   if (!raw) return "-";
   return raw.replace(/[()]/g, "").replace(/\s+/g, " ").trim();
+}
+
+// 시트 원본 값("₩10,000 (송출 P 0회 / 주간 P 0회)")에서 감액 사유 괄호를
+// 떼어낸다 — 사유는 이제 별도 모달에서 보여주므로 타일에는 금액만 노출한다.
+function formatDepositRefund(raw: string): string {
+  if (!raw) return "-";
+  return raw.replace(/\s*\([^)]*\)\s*$/, "").trim();
 }
 
 // 관리자가 직접 입력하는 값이라 "00:20"처럼 부호 없이 저장되는 경우 기본을 +로 해석하고,
@@ -114,7 +122,12 @@ export function StatusView({
   }[] = [
     { key: "goalType", icon: Clock, label: "목표시간", value: formatGoalType(status.goalType) },
     { key: "joinDate", icon: CalendarDays, label: "가입일자", value: status.joinDate || "-" },
-    { key: "depositRefund", icon: PiggyBank, label: "예치금 반환 예상액", value: status.depositRefundEstimate || "-" },
+    {
+      key: "depositRefund",
+      icon: PiggyBank,
+      label: "예치금 반환 예상액",
+      value: formatDepositRefund(status.depositRefundEstimate),
+    },
     {
       key: "merit",
       icon: Award,
@@ -179,6 +192,17 @@ export function StatusView({
               <GoalTypeScheduleDialog key={tile.key}>
                 {tileEl}
               </GoalTypeScheduleDialog>
+            );
+          }
+          if (tile.key === "depositRefund" && status.depositRefundBreakdown) {
+            return (
+              <DepositRefundDialog
+                key={tile.key}
+                depositRefundEstimate={status.depositRefundEstimate}
+                breakdown={status.depositRefundBreakdown}
+              >
+                {tileEl}
+              </DepositRefundDialog>
             );
           }
           return <div key={tile.key}>{tileEl}</div>;
