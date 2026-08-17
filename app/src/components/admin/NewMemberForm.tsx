@@ -4,7 +4,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { InfoCard } from "@/components/dashboard/shared";
 import { useApi } from "@/hooks/useApi";
 import { ApiError, WORKER_BASE } from "@/lib/api/client";
 import { useAuth } from "@/lib/auth/useAuth";
@@ -17,6 +16,12 @@ import type {
 const GOAL_HOURS = ["8", "9", "10"];
 const GOAL_KINDS = ["교시제", "달성제"];
 
+// "8시간 교시제"(표시용) <-> goalHours="8"/goalKind="교시제"(내부 상태) 조합.
+// 시트에 반영할 때는 handleSubmit에서 "8H (교시제)" 형태로 다시 변환한다.
+const PARTICIPATION_TYPES = GOAL_HOURS.flatMap((hours) =>
+  GOAL_KINDS.map((kind) => ({ value: `${hours}|${kind}`, hours, kind, label: `${hours}시간 ${kind}` }))
+);
+
 export function NewMemberForm() {
   const { call } = useApi();
   const { session } = useAuth();
@@ -27,8 +32,7 @@ export function NewMemberForm() {
   const [number, setNumber] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [goalHours, setGoalHours] = useState("8");
-  const [goalKind, setGoalKind] = useState("교시제");
+  const [participationType, setParticipationType] = useState("8|교시제");
   const [examKind, setExamKind] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
@@ -51,8 +55,7 @@ export function NewMemberForm() {
     setNumber("");
     setName("");
     setEmail("");
-    setGoalHours("8");
-    setGoalKind("교시제");
+    setParticipationType("8|교시제");
     setExamKind("");
   }
 
@@ -66,6 +69,7 @@ export function NewMemberForm() {
       setMessage({ text: "시트번호, 이름, 이메일은 필수입니다.", type: "error" });
       return;
     }
+    const [goalHours, goalKind] = participationType.split("|");
     setSubmitting(true);
     setMessage(null);
     setPendingAccessEmail(null);
@@ -121,6 +125,7 @@ export function NewMemberForm() {
   }
 
   const noSlots = slots?.length === 0;
+  const selectedType = PARTICIPATION_TYPES.find((t) => t.value === participationType);
 
   return (
     <div className="flex flex-col gap-4">
@@ -139,15 +144,47 @@ export function NewMemberForm() {
         </div>
 
         <div className="flex flex-col gap-1.5">
+          <Label htmlFor="new-member-email" className="text-xs font-medium text-muted-foreground sm:text-sm">
+            구글 계정
+          </Label>
+          <Input
+            id="new-member-email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="example@gmail.com"
+            className="sm:h-12 sm:text-base"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1.5">
           <Label className="text-xs font-medium text-muted-foreground sm:text-sm">시트번호</Label>
           <Select value={number} onValueChange={(v) => setNumber(v ?? "")} disabled={!slots || noSlots}>
-            <SelectTrigger className="sm:h-12 sm:text-base">
+            <SelectTrigger className="py-1 sm:h-12 sm:text-base">
               <SelectValue placeholder={noSlots ? "빈 자리 없음" : "선택"} />
             </SelectTrigger>
             <SelectContent>
               {slots?.map((s) => (
                 <SelectItem key={s} value={s} className="sm:text-base">
                   {s}번
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-xs font-medium text-muted-foreground sm:text-sm">참여유형</Label>
+          <Select value={participationType} onValueChange={(v) => setParticipationType(v ?? "8|교시제")}>
+            <SelectTrigger className="py-1 sm:h-12 sm:text-base">
+              <SelectValue>{selectedType?.label}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {PARTICIPATION_TYPES.map((t) => (
+                <SelectItem key={t.value} value={t.value} className="sm:text-base">
+                  {t.label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -161,53 +198,8 @@ export function NewMemberForm() {
       )}
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="new-member-email" className="text-xs font-medium text-muted-foreground sm:text-sm">
-          구글 이메일
-        </Label>
-        <Input
-          id="new-member-email"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="example@gmail.com"
-          className="sm:h-12 sm:text-base"
-        />
-      </div>
-
-      <InfoCard className="flex flex-col gap-2.5">
-        <Label className="text-xs font-medium text-muted-foreground sm:text-sm">참여유형</Label>
-        <div className="grid grid-cols-2 gap-3">
-          <Select value={goalHours} onValueChange={(v) => setGoalHours(v ?? "8")}>
-            <SelectTrigger className="bg-card sm:h-12 sm:text-base">
-              <SelectValue>{goalHours}시간</SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {GOAL_HOURS.map((h) => (
-                <SelectItem key={h} value={h} className="sm:text-base">
-                  {h}시간
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={goalKind} onValueChange={(v) => setGoalKind(v ?? "교시제")}>
-            <SelectTrigger className="bg-card sm:h-12 sm:text-base">
-              <SelectValue>{goalKind}</SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {GOAL_KINDS.map((k) => (
-                <SelectItem key={k} value={k} className="sm:text-base">
-                  {k}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </InfoCard>
-
-      <div className="flex flex-col gap-1.5">
         <Label htmlFor="new-member-exam" className="text-xs font-medium text-muted-foreground sm:text-sm">
-          준비 중인 시험 (선택)
+          준비 중인 시험
         </Label>
         <Input
           id="new-member-exam"
