@@ -16,6 +16,11 @@ import { ApiError } from "@/lib/api/client";
 import type { ReactNode } from "react";
 import type { GoalScheduleResponse } from "@/lib/api/types";
 
+// 시트 원본 값("8H (교시제)")의 괄호를 지워 드롭다운에 그대로 노출하지 않는다.
+function formatGoalType(raw: string): string {
+  return raw.replace(/[()]/g, "").replace(/\s+/g, " ").trim();
+}
+
 export function GoalTypeScheduleDialog({
   onScheduled,
   children,
@@ -77,7 +82,7 @@ export function GoalTypeScheduleDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-1.5">
             <Clock className="size-4 text-primary sm:size-5" />
-            목표시간 변경 예약
+            목표시간 · 변경 예약
           </DialogTitle>
         </DialogHeader>
 
@@ -95,17 +100,17 @@ export function GoalTypeScheduleDialog({
                 <span className="text-sm font-semibold sm:text-base">다음 주 목표시간</span>
                 {scheduled && (
                   <span className="text-xs text-muted-foreground sm:text-sm">
-                    현재 예약됨: <span className="font-mono font-semibold">{scheduled}</span>
+                    현재 예약됨: <span className="font-mono font-semibold">{formatGoalType(scheduled)}</span>
                   </span>
                 )}
                 <Select value={selected} onValueChange={(v) => setSelected(v ?? "")}>
                   <SelectTrigger className="sm:h-12 sm:text-base">
-                    <SelectValue>{selected}</SelectValue>
+                    <SelectValue>{selected && formatGoalType(selected)}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {validValues.map((v) => (
                       <SelectItem key={v} value={v} className="sm:text-base">
-                        {v}
+                        {formatGoalType(v)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -117,11 +122,14 @@ export function GoalTypeScheduleDialog({
                   <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
                   <span className="text-xs font-semibold sm:text-sm">주의사항</span>
                 </div>
-                <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
-                  현재 진행중인 주간의 목표시간은 변경할 수 없습니다.
-                  <br />
-                  지금 설정하는 값은 다음 주 월요일부터 적용됩니다.
-                </p>
+                <ul className="flex flex-col gap-0.5 text-xs leading-relaxed text-muted-foreground sm:text-sm">
+                  <li className="pl-3.5 before:float-left before:-ml-3.5 before:content-['-']">
+                    현재 진행 주간의 목표시간은 중도 변경이 불가합니다.
+                  </li>
+                  <li className="pl-3.5 before:float-left before:-ml-3.5 before:content-['-']">
+                    위 설정 값은 다음 주 월요일부터 적용됩니다.
+                  </li>
+                </ul>
               </div>
 
               <Button className="w-full sm:h-12 sm:text-base" disabled={submitting} onClick={handleSubmit}>
