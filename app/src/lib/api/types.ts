@@ -36,6 +36,8 @@ export type StatusResponse = {
   depositRefundEstimate: string;
   periodAttendanceRate: string;
   weeklyTotalFine: string;
+  weeklyOutputPen: number;
+  weeklyTimePen: number;
   days: StatusDay[];
 };
 

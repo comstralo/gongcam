@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { LucideIcon } from "lucide-react";
 import {
   Clock,
   CircleCheck,
@@ -60,7 +61,20 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
   const selected = status.days[selectedDay] || status.days[0];
   const effectiveSelectedDay = status.days[selectedDay] ? selectedDay : 0;
 
-  const summaryTiles = [
+  const outputPen = status.weeklyOutputPen || 0;
+  const timePen = status.weeklyTimePen || 0;
+  const totalPen = outputPen + timePen;
+  const totalPenClassName =
+    totalPen >= 2 ? "text-destructive" : totalPen === 1 ? "text-amber-600 dark:text-amber-400" : undefined;
+
+  const summaryTiles: {
+    key: string;
+    icon: LucideIcon;
+    label: string;
+    value: string;
+    wrap?: boolean;
+    valueClassName?: string;
+  }[] = [
     { key: "goalType", icon: Clock, label: "목표시간", value: status.goalType || "-" },
     { key: "joinDate", icon: CalendarDays, label: "가입일자", value: status.joinDate || "-" },
     { key: "depositRefund", icon: PiggyBank, label: "예치금 반환 예상액", value: status.depositRefundEstimate || "-" },
@@ -72,14 +86,28 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
       wrap: true,
     },
     { key: "periodAttendance", icon: ListChecks, label: "교시 참여율", value: status.periodAttendanceRate || "-" },
-    { key: "totalFine", icon: ShieldAlert, label: "총 페널티", value: status.weeklyTotalFine || "₩0" },
+    {
+      key: "totalFine",
+      icon: ShieldAlert,
+      label: "총 페널티",
+      value: `송출 P ${outputPen}회 + 주간 P ${timePen}회`,
+      wrap: true,
+      valueClassName: totalPenClassName,
+    },
   ];
 
   return (
     <div className="flex flex-col gap-5">
       <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5">
         {summaryTiles.map((tile) => (
-          <SummaryTile key={tile.key} icon={tile.icon} label={tile.label} value={tile.value} wrap={tile.wrap} />
+          <SummaryTile
+            key={tile.key}
+            icon={tile.icon}
+            label={tile.label}
+            value={tile.value}
+            wrap={tile.wrap}
+            valueClassName={tile.valueClassName}
+          />
         ))}
       </section>
 
