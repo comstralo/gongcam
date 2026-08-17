@@ -162,7 +162,7 @@ export function StatusView({
               hint={tile.hint}
             />
           );
-          if (tile.key === "merit") {
+          if (tile.key === "merit" && status.weeklyMeritBreakdown) {
             return (
               <MeritBreakdownDialog
                 key={tile.key}

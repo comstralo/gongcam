@@ -12,9 +12,10 @@ import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 import type { WeeklyMeritBreakdown } from "@/lib/api/types";
 
-function pt(n: number) {
-  const sign = n > 0 ? "+" : n < 0 ? "-" : "";
-  const abs = Math.abs(n)
+function pt(n: number | null | undefined) {
+  const value = n ?? 0;
+  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+  const abs = Math.abs(value)
     .toFixed(4)
     .replace(/\.?0+$/, "");
   return `${sign}${abs}점`;
@@ -69,13 +70,13 @@ export function MeritBreakdownDialog({
             </span>
             <SubRow
               label="벌점 차감"
-              value={breakdown.penaltyDeduction > 0 ? pt(-breakdown.penaltyDeduction) : pt(0)}
-              valueClassName={breakdown.penaltyDeduction > 0 ? "text-destructive" : undefined}
+              value={(breakdown.penaltyDeduction ?? 0) > 0 ? pt(-breakdown.penaltyDeduction) : pt(0)}
+              valueClassName={(breakdown.penaltyDeduction ?? 0) > 0 ? "text-destructive" : undefined}
             />
             <SubRow
-              label={`벌금 차감 (₩${breakdown.weeklyTotalFineAmount.toLocaleString()})`}
-              value={breakdown.fineDeduction > 0 ? pt(-breakdown.fineDeduction) : pt(0)}
-              valueClassName={breakdown.fineDeduction > 0 ? "text-destructive" : undefined}
+              label={`벌금 차감 (₩${(breakdown.weeklyTotalFineAmount ?? 0).toLocaleString()})`}
+              value={(breakdown.fineDeduction ?? 0) > 0 ? pt(-breakdown.fineDeduction) : pt(0)}
+              valueClassName={(breakdown.fineDeduction ?? 0) > 0 ? "text-destructive" : undefined}
             />
           </div>
 
@@ -83,7 +84,7 @@ export function MeritBreakdownDialog({
             <span className="text-micro-lg font-semibold tracking-wide text-muted-foreground uppercase sm:text-xs">
               목표시간 배율
             </span>
-            <SubRow label="적용 배율" value={`× ${breakdown.multiplier}`} />
+            <SubRow label="적용 배율" value={`× ${breakdown.multiplier ?? 1}`} />
           </div>
 
           <div className="flex flex-col gap-1.5 rounded-lg border bg-muted p-3.5">
