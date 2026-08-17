@@ -1,10 +1,12 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { SessionCard } from "@/components/session/SessionCard";
 import { InfoCard } from "@/components/dashboard/shared";
 import { NewMemberForm } from "@/components/admin/NewMemberForm";
 import { usePushSubscription } from "@/hooks/usePushSubscription";
+import { useAuth } from "@/lib/auth/useAuth";
+import { WORKER_BASE } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
 const STATE_LABEL: Record<string, string> = {
@@ -16,11 +18,30 @@ const STATE_LABEL: Record<string, string> = {
 
 export function AdminPage() {
   const { state, message, enable, sendTest } = usePushSubscription();
+  const { session } = useAuth();
 
   return (
     <Card className="w-full page-content">
       <CardContent className="flex flex-col gap-4">
         <SessionCard />
+
+        <span className="font-mono text-micro uppercase tracking-wide text-muted-foreground sm:text-xs">
+          Drive 편집자 권한 위임
+        </span>
+        <InfoCard className="flex flex-col gap-2">
+          <span className="text-sm text-muted-foreground sm:text-base">
+            신규 스터디원 등록 시 구글 시트 편집자 권한을 자동으로 부여하려면, 관리자 계정으로 1회
+            연동이 필요합니다.
+          </span>
+          <a
+            href={`${WORKER_BASE}/oauth/authorize?token=${encodeURIComponent(session?.token || "")}`}
+            target="_blank"
+            rel="noreferrer"
+            className={cn(buttonVariants({ variant: "outline" }), "w-full sm:h-12 sm:text-base")}
+          >
+            Drive 권한 연동하기
+          </a>
+        </InfoCard>
 
         <span className="font-mono text-micro uppercase tracking-wide text-muted-foreground sm:text-xs">
           신규 스터디원 등록
