@@ -1,5 +1,6 @@
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard } from "@/components/dashboard/shared";
 import { NewMemberForm } from "@/components/admin/NewMemberForm";
 import { usePushSubscription } from "@/hooks/usePushSubscription";
@@ -38,10 +39,16 @@ export function AdminMemberTab() {
         </a>
       </InfoCard>
 
-      <span className="font-mono text-micro uppercase tracking-wide text-muted-foreground sm:text-xs">
-        신규 스터디원 등록
-      </span>
-      <NewMemberForm />
+      <Collapsible defaultOpen={false} className="flex flex-col gap-2">
+        <CollapsibleTrigger>
+          <span className="font-mono text-micro uppercase tracking-wide text-muted-foreground sm:text-xs">
+            신규 스터디원 등록
+          </span>
+        </CollapsibleTrigger>
+        <CollapsiblePanel>
+          <NewMemberForm />
+        </CollapsiblePanel>
+      </Collapsible>
 
       <span className="font-mono text-micro uppercase tracking-wide text-muted-foreground sm:text-xs">
         브라우저 푸시 알림
