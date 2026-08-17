@@ -124,21 +124,44 @@ export function NewMemberForm() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="new-member-name" className="text-sm font-semibold sm:text-base">
-          이름
-        </Label>
-        <Input
-          id="new-member-name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="예: 길동"
-          className="sm:h-12 sm:text-base"
-        />
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="new-member-name" className="text-xs font-medium text-muted-foreground sm:text-sm">
+            이름
+          </Label>
+          <Input
+            id="new-member-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="예: 길동"
+            className="sm:h-12 sm:text-base"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-xs font-medium text-muted-foreground sm:text-sm">시트번호</Label>
+          <Select value={number} onValueChange={(v) => setNumber(v ?? "")} disabled={!slots || noSlots}>
+            <SelectTrigger className="sm:h-12 sm:text-base">
+              <SelectValue placeholder={noSlots ? "빈 자리 없음" : "선택"} />
+            </SelectTrigger>
+            <SelectContent>
+              {slots?.map((s) => (
+                <SelectItem key={s} value={s} className="sm:text-base">
+                  {s}번
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
+      {slotsError && (
+        <Alert variant="destructive">
+          <AlertDescription>{slotsError}</AlertDescription>
+        </Alert>
+      )}
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="new-member-email" className="text-sm font-semibold sm:text-base">
+        <Label htmlFor="new-member-email" className="text-xs font-medium text-muted-foreground sm:text-sm">
           구글 이메일
         </Label>
         <Input
@@ -151,29 +174,8 @@ export function NewMemberForm() {
         />
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <Label className="text-sm font-semibold sm:text-base">시트번호</Label>
-        <Select value={number} onValueChange={(v) => setNumber(v ?? "")} disabled={!slots || noSlots}>
-          <SelectTrigger className="sm:h-12 sm:text-base">
-            <SelectValue placeholder={noSlots ? "배정 가능한 자리가 없습니다" : "빈 자리를 선택하세요"} />
-          </SelectTrigger>
-          <SelectContent>
-            {slots?.map((s) => (
-              <SelectItem key={s} value={s} className="sm:text-base">
-                {s}번
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {slotsError && (
-          <Alert variant="destructive">
-            <AlertDescription>{slotsError}</AlertDescription>
-          </Alert>
-        )}
-      </div>
-
       <InfoCard className="flex flex-col gap-2.5">
-        <Label className="text-sm font-semibold sm:text-base">참여유형</Label>
+        <Label className="text-xs font-medium text-muted-foreground sm:text-sm">참여유형</Label>
         <div className="grid grid-cols-2 gap-3">
           <Select value={goalHours} onValueChange={(v) => setGoalHours(v ?? "8")}>
             <SelectTrigger className="bg-card sm:h-12 sm:text-base">
@@ -204,7 +206,7 @@ export function NewMemberForm() {
       </InfoCard>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="new-member-exam" className="text-sm font-semibold sm:text-base">
+        <Label htmlFor="new-member-exam" className="text-xs font-medium text-muted-foreground sm:text-sm">
           준비 중인 시험 (선택)
         </Label>
         <Input

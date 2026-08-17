@@ -26,6 +26,7 @@ export function AdminMemberTab() {
             신규 스터디원 등록
           </span>
         </CollapsibleTrigger>
+        <div className="h-px w-full bg-border" />
         <CollapsiblePanel>
           <NewMemberForm />
         </CollapsiblePanel>
