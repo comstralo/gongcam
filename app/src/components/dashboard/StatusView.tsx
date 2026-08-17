@@ -13,6 +13,10 @@ import {
   ListChecks,
   ShieldAlert,
   DoorOpen,
+  MessageCircle,
+  FileText,
+  Table,
+  Megaphone,
 } from "lucide-react";
 import { cn, ICON_STROKE } from "@/lib/utils";
 import { SummaryTile, SubRow, TintedPill, InfoCard, DividedValue } from "@/components/dashboard/shared";
@@ -20,6 +24,14 @@ import { PeriodAlarmCard } from "@/components/dashboard/PeriodAlarmCard";
 import type { StatusResponse } from "@/lib/api/types";
 
 const TODAY_INDEX = (new Date().getDay() + 6) % 7; // 월=0 ... 일=6
+
+// 스터디 바로가기 — 링크 값은 추후 실제 URL로 교체 예정.
+const quickLinks: { key: string; icon: LucideIcon; label: string; href: string }[] = [
+  { key: "chat", icon: MessageCircle, label: "단체 채팅방", href: "#" },
+  { key: "rules", icon: FileText, label: "스터디 규정", href: "#" },
+  { key: "sheet", icon: Table, label: "원본 시트", href: "#" },
+  { key: "notice", icon: Megaphone, label: "공지사항", href: "#" },
+];
 
 function won(n: number) {
   return "₩" + (n || 0).toLocaleString();
@@ -91,13 +103,7 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
     hint?: string;
   }[] = [
     { key: "goalType", icon: Clock, label: "목표시간", value: formatGoalType(status.goalType) },
-    {
-      key: "joinDate",
-      icon: CalendarDays,
-      label: "가입일자",
-      value: status.joinDate || "-",
-      hint: "예치금 납부일 기준",
-    },
+    { key: "joinDate", icon: CalendarDays, label: "가입일자", value: status.joinDate || "-" },
     { key: "depositRefund", icon: PiggyBank, label: "예치금 반환 예상액", value: status.depositRefundEstimate || "-" },
     {
       key: "merit",
@@ -139,19 +145,36 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
         ))}
       </section>
 
-      <PeriodAlarmCard />
+      <section className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-2.5">
+        <PeriodAlarmCard />
 
-      <InfoCard className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <DoorOpen className="size-4 shrink-0 text-primary sm:size-5" strokeWidth={ICON_STROKE.default} />
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <span className="text-sm font-semibold sm:text-base">퇴실신청</span>
-            <span className="text-xs text-muted-foreground sm:text-sm">
-              퇴실/예치금 재납 처리는 운영진에게 문의해주세요
-            </span>
+        <InfoCard className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <DoorOpen className="size-4 shrink-0 text-primary sm:size-5" strokeWidth={ICON_STROKE.default} />
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <span className="text-sm font-semibold sm:text-base">퇴실신청</span>
+              <span className="truncate text-xs text-muted-foreground sm:text-sm">
+                운영진에게 문의해주세요
+              </span>
+            </div>
           </div>
-        </div>
-      </InfoCard>
+        </InfoCard>
+      </section>
+
+      <section className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-2.5">
+        {quickLinks.map((link) => (
+          <a
+            key={link.key}
+            href={link.href}
+            target="_blank"
+            rel="noreferrer"
+            className="flex flex-col items-center gap-1.5 rounded-xl border bg-muted px-3 py-3 text-center shadow-xs transition-colors hover:bg-accent sm:py-3.5"
+          >
+            <link.icon className="size-4 shrink-0 text-primary sm:size-5" strokeWidth={ICON_STROKE.default} />
+            <span className="truncate text-xs font-semibold sm:text-sm">{link.label}</span>
+          </a>
+        ))}
+      </section>
 
       <section className="flex flex-col gap-2">
         <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
