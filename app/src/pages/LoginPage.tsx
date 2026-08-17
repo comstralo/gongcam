@@ -89,7 +89,7 @@ export function LoginPage() {
   return (
     <div className="flex min-h-dvh w-full flex-col items-center justify-center gap-6 p-4">
       <div className="flex w-full page-content flex-col items-center gap-1 text-center">
-        <span className="font-mono text-xs uppercase tracking-widest text-primary sm:text-sm">
+        <span className="text-xs font-semibold tracking-tight text-primary sm:text-sm">
           공부합시당 캠스터디
         </span>
         <h1 className="text-xl font-bold sm:text-2xl">스터디 대시보드</h1>

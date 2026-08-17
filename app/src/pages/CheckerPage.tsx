@@ -42,7 +42,7 @@ export function CheckerPage() {
     <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-3 landscape:min-w-0 landscape:flex-row landscape:gap-3">
       <header className="flex w-full page-content-wide items-baseline justify-between gap-3 landscape:hidden">
         <div className="flex flex-col gap-0.5">
-          <Link to="/" className="font-mono text-xs uppercase tracking-widest text-primary sm:text-sm">
+          <Link to="/" className="text-xs font-semibold tracking-tight text-primary sm:text-sm">
             공부합시당 캠스터디
           </Link>
           <h1 className="text-xl font-bold sm:text-2xl">프레임 체커</h1>

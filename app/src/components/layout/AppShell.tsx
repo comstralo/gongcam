@@ -39,7 +39,7 @@ export function AppShell({ children, title, titleIcon: TitleIcon, hideEyebrow, f
       {title && (
         <header className="flex w-full page-content flex-col gap-0.5">
           {!hideEyebrow && (
-            <span className="font-mono text-xs uppercase tracking-widest text-primary sm:text-sm">
+            <span className="text-xs font-semibold tracking-tight text-primary sm:text-sm">
               공부합시당 캠스터디
             </span>
           )}
