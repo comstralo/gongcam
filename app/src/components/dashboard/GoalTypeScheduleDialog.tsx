@@ -120,7 +120,7 @@ export function GoalTypeScheduleDialog({
                 </Select>
               </InfoCard>
 
-              <div className="flex flex-col gap-1 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+              <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
                 <div className="flex items-center gap-1.5 text-destructive">
                   <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
                   <span className="text-xs font-semibold sm:text-sm">주의사항</span>
@@ -139,7 +139,7 @@ export function GoalTypeScheduleDialog({
                     위 설정 값은 다음 주 월요일부터 적용됩니다.
                   </li>
                 </ul>
-              </div>
+              </InfoCard>
 
               <Button className="w-full sm:h-12 sm:text-base" disabled={submitting} onClick={handleSubmit}>
                 다음 주 예약 저장

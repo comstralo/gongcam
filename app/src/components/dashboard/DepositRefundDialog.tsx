@@ -51,7 +51,7 @@ export function DepositRefundDialog({
             <SubRow label="주간 P (누적)" value={`${breakdown.timePen ?? 0}회`} />
           </InfoCard>
 
-          <div className="flex flex-col gap-1.5 rounded-lg border bg-muted p-3.5">
+          <InfoCard className="flex flex-col gap-1.5">
             <span className="text-micro-lg font-semibold tracking-wide text-muted-foreground uppercase sm:text-xs">
               예치금 반환 예상액
             </span>
@@ -63,16 +63,16 @@ export function DepositRefundDialog({
                 {won(amount)}
               </span>
             </div>
-          </div>
+          </InfoCard>
 
           {breakdown.reason && (
-            <div className="flex flex-col gap-1 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+            <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
               <div className="flex items-center gap-1.5 text-destructive">
                 <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
                 <span className="text-xs font-semibold sm:text-sm">감액 사유</span>
               </div>
               <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">{breakdown.reason}</p>
-            </div>
+            </InfoCard>
           )}
 
           {!depositRefundEstimate || depositRefundEstimate === "-" ? (

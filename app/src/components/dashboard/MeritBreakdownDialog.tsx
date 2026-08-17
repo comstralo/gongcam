@@ -7,7 +7,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { SubRow } from "@/components/dashboard/shared";
+import { SubRow, InfoCard } from "@/components/dashboard/shared";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 import type { WeeklyMeritBreakdown } from "@/lib/api/types";
@@ -47,7 +47,7 @@ export function MeritBreakdownDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-2.5">
-          <div className="flex flex-col gap-1.5 rounded-lg border bg-muted p-3.5">
+          <InfoCard className="flex flex-col gap-1.5">
             <span className="text-micro-lg font-semibold tracking-wide text-muted-foreground uppercase sm:text-xs">
               상점 적립
             </span>
@@ -62,9 +62,9 @@ export function MeritBreakdownDialog({
                 주중(월~금) 기록이 모두 끝나야 이번 주 계산에 포함됩니다 — 현재는 미반영
               </p>
             )}
-          </div>
+          </InfoCard>
 
-          <div className="flex flex-col gap-1.5 rounded-lg border bg-muted p-3.5">
+          <InfoCard className="flex flex-col gap-1.5">
             <span className="text-micro-lg font-semibold tracking-wide text-muted-foreground uppercase sm:text-xs">
               상점 차감
             </span>
@@ -78,16 +78,16 @@ export function MeritBreakdownDialog({
               value={(breakdown.fineDeduction ?? 0) > 0 ? pt(-breakdown.fineDeduction) : pt(0)}
               valueClassName={(breakdown.fineDeduction ?? 0) > 0 ? "text-destructive" : undefined}
             />
-          </div>
+          </InfoCard>
 
-          <div className="flex flex-col gap-1.5 rounded-lg border bg-muted p-3.5">
+          <InfoCard className="flex flex-col gap-1.5">
             <span className="text-micro-lg font-semibold tracking-wide text-muted-foreground uppercase sm:text-xs">
               목표시간 배율
             </span>
             <SubRow label="적용 배율" value={`× ${breakdown.multiplier ?? 1}`} />
-          </div>
+          </InfoCard>
 
-          <div className="flex flex-col gap-1.5 rounded-lg border bg-muted p-3.5">
+          <InfoCard className="flex flex-col gap-1.5">
             <span className="text-micro-lg font-semibold tracking-wide text-muted-foreground uppercase sm:text-xs">
               최종 상점
             </span>
@@ -99,7 +99,7 @@ export function MeritBreakdownDialog({
                 {weeklyMerit} · {weeklyMeritRank}
               </span>
             </div>
-          </div>
+          </InfoCard>
 
           {breakdown.isZero && breakdown.zeroReason && (
             <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
