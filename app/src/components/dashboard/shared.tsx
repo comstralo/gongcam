@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { SquarePen, type LucideIcon } from "lucide-react";
+import { Search, SquarePen, type LucideIcon } from "lucide-react";
 import { cn, ICON_STROKE } from "@/lib/utils";
 
 type PillTone = "ok" | "warn" | "muted" | "primary";
@@ -42,8 +42,9 @@ export function TintedPill({
 // 타일만 줄바꿈을 허용한다 — 기본은 다른 타일과 맞춰 한 줄 자르기.
 // valueClassName: 페널티 합계처럼 값 자체의 색상을 상태에 따라 바꿔야 할 때 사용.
 // hint: 라벨을 길게 늘이지 않고 값 옆에 부연 설명("예치금 납부일 기준")을 덧붙일 때 사용.
-// clickable: 타일이 모달을 여는 버튼으로 감싸져 있을 때, 우측 상단에 작은 펜
-// 아이콘을 얹어 클릭 가능하다는 것을 시각적으로 드러낸다.
+// clickable: 타일이 모달을 여는 버튼으로 감싸져 있을 때, 우측 상단에 작은 아이콘을
+// 얹어 클릭 가능하다는 것을 시각적으로 드러낸다. "edit"는 값을 바꿀 수 있는 타일
+// (목표시간 예약), "view"는 조회 전용 세부사항 모달(예치금 반환/상점/페널티 등)에 사용.
 export function SummaryTile({
   icon: Icon,
   label,
@@ -59,12 +60,13 @@ export function SummaryTile({
   wrap?: boolean;
   valueClassName?: string;
   hint?: string;
-  clickable?: boolean;
+  clickable?: "edit" | "view";
 }) {
+  const ClickIcon = clickable === "edit" ? SquarePen : Search;
   return (
     <div className="relative flex flex-col gap-1 rounded-xl border bg-muted px-3.5 py-2.5 shadow-xs sm:px-4 sm:py-3">
       {clickable && (
-        <SquarePen
+        <ClickIcon
           className="absolute top-2 right-2 size-2.5 text-muted-foreground/50 sm:size-3"
           strokeWidth={ICON_STROKE.default}
         />

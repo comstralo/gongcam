@@ -119,14 +119,14 @@ export function StatusView({
     wrap?: boolean;
     valueClassName?: string;
     hint?: string;
-    clickable?: boolean;
+    clickable?: "edit" | "view";
   }[] = [
     {
       key: "goalType",
       icon: Clock,
       label: "목표시간",
       value: formatGoalType(status.goalType),
-      clickable: allowGoalSchedule,
+      clickable: allowGoalSchedule ? "edit" : undefined,
     },
     { key: "joinDate", icon: CalendarDays, label: "가입일자", value: status.joinDate || "-" },
     {
@@ -134,6 +134,7 @@ export function StatusView({
       icon: PiggyBank,
       label: "예치금 반환 예상액",
       value: formatDepositRefund(status.depositRefundEstimate),
+      clickable: "view",
     },
     {
       key: "merit",
@@ -150,6 +151,7 @@ export function StatusView({
         />
       ),
       wrap: true,
+      clickable: "view",
     },
     {
       key: "periodAttendance",
@@ -157,6 +159,7 @@ export function StatusView({
       label: "교시 참여율",
       value: status.periodAttendanceRate || "-",
       valueClassName: periodAttendanceClassName,
+      clickable: "view",
     },
     {
       key: "totalFine",
@@ -165,6 +168,7 @@ export function StatusView({
       value: `송출 P ${outputPen}회 + 주간 P ${timePen}회`,
       wrap: true,
       valueClassName: totalPenClassName,
+      clickable: "view",
     },
   ];
 
