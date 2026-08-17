@@ -80,7 +80,7 @@ export function StatusPage() {
           </Alert>
         )}
 
-        <StatusView status={status} />
+        <StatusView status={status} allowGoalSchedule={selected === SELF_VALUE} />
         {loading && <p className="text-center font-mono text-xs text-muted-foreground sm:text-sm">불러오는 중...</p>}
         {error && (
           <Alert variant="destructive">

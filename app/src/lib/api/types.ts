@@ -116,3 +116,13 @@ export type CreateMemberResponse = {
   name: string;
   email: string;
 };
+
+export type GoalScheduleResponse = {
+  scheduled: string | null;
+  validValues: string[];
+};
+
+export type SetGoalScheduleResponse = {
+  ok: true;
+  scheduled: string;
+};

@@ -22,6 +22,7 @@ import { cn, ICON_STROKE } from "@/lib/utils";
 import { SummaryTile, SubRow, TintedPill, InfoCard, DividedValue } from "@/components/dashboard/shared";
 import { PeriodAlarmCard } from "@/components/dashboard/PeriodAlarmCard";
 import { MeritBreakdownDialog } from "@/components/dashboard/MeritBreakdownDialog";
+import { GoalTypeScheduleDialog } from "@/components/dashboard/GoalTypeScheduleDialog";
 import type { StatusResponse } from "@/lib/api/types";
 
 const TODAY_INDEX = (new Date().getDay() + 6) % 7; // 월=0 ... 일=6
@@ -73,7 +74,15 @@ function signedTime(raw: string): string {
 
 // 실시간 조회(StatusPage)와 지난 주 스냅샷(SnapshotPage) 모두 같은 형태로
 // 데이터를 보여줘야 해서, fetch 로직과 표시 로직을 분리해 이 컴포넌트를 공유한다.
-export function StatusView({ status }: { status: StatusResponse | null }) {
+// allowGoalSchedule: 목표시간 예약은 로그인한 본인 계정에만 적용되므로, 관리자가
+// 다른 회원을 조회 중이거나 지난 주 기록을 볼 때는 반드시 false로 꺼야 한다.
+export function StatusView({
+  status,
+  allowGoalSchedule = false,
+}: {
+  status: StatusResponse | null;
+  allowGoalSchedule?: boolean;
+}) {
   const [selectedDay, setSelectedDay] = useState<number>(TODAY_INDEX);
 
   if (!status) return null;
@@ -163,6 +172,13 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
               >
                 {tileEl}
               </MeritBreakdownDialog>
+            );
+          }
+          if (tile.key === "goalType" && allowGoalSchedule) {
+            return (
+              <GoalTypeScheduleDialog key={tile.key} currentGoalType={formatGoalType(status.goalType)}>
+                {tileEl}
+              </GoalTypeScheduleDialog>
             );
           }
           return <div key={tile.key}>{tileEl}</div>;
