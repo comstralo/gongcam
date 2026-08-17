@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { createContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { PERIODS, getPeriodPhase, formatRemaining, type PeriodPhase } from "@/lib/periods";
 
 const SOUND_PREF_KEY = "periodAlarmSoundEnabled";
@@ -28,7 +28,19 @@ function todayMidnightMs(): number {
   return d.getTime();
 }
 
-export function usePeriodAlarm() {
+export type PeriodAlarmContextValue = {
+  phase: PeriodPhase;
+  remainingLabel: string;
+  soundEnabled: boolean;
+  setSoundEnabled: (enabled: boolean) => void;
+};
+
+export const PeriodAlarmContext = createContext<PeriodAlarmContextValue | null>(null);
+
+// 앱 최상단(App.tsx)에서 한 번만 마운트해 대시보드 탭을 벗어나도 타이머와
+// 차임벨 재생이 계속되도록 한다. 이전에는 PeriodAlarmCard 안에서 직접
+// setInterval을 돌려서, 다른 탭으로 이동해 카드가 언마운트되면 알람도 함께 멎었다.
+export function PeriodAlarmProvider({ children }: { children: ReactNode }) {
   const [soundEnabled, setSoundEnabledState] = useState(loadSoundPref);
   const [phase, setPhase] = useState<PeriodPhase>(() => getPeriodPhase(todayMidnightMs(), Date.now()));
   const [remainingLabel, setRemainingLabel] = useState("");
@@ -59,9 +71,7 @@ export function usePeriodAlarm() {
       const nowMinutes = (now - midnight) / 60_000;
       const next = getPeriodPhase(midnight, now);
       setPhase(next);
-      setRemainingLabel(
-        next.kind === "outside" ? "" : formatRemaining(next.remainingMs)
-      );
+      setRemainingLabel(next.kind === "outside" ? "" : formatRemaining(next.remainingMs));
 
       const nowMinuteFloor = Math.floor(nowMinutes);
       for (const period of PERIODS) {
@@ -81,5 +91,7 @@ export function usePeriodAlarm() {
     return () => clearInterval(id);
   }, []);
 
-  return { phase, remainingLabel, soundEnabled, setSoundEnabled };
+  const value: PeriodAlarmContextValue = { phase, remainingLabel, soundEnabled, setSoundEnabled };
+
+  return <PeriodAlarmContext.Provider value={value}>{children}</PeriodAlarmContext.Provider>;
 }
