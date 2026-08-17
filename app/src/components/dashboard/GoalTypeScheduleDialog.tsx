@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Clock, TriangleAlert } from "lucide-react";
+import { CalendarClock, Clock, TriangleAlert } from "lucide-react";
 import {
   Dialog,
   DialogTrigger,
@@ -97,7 +97,10 @@ export function GoalTypeScheduleDialog({
           {!loading && !loadError && (
             <>
               <InfoCard className="flex flex-col gap-1.5">
-                <span className="text-xs font-semibold sm:text-sm">다음 주 목표시간</span>
+                <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+                  <CalendarClock className="size-3.5 shrink-0 text-primary sm:size-4" />
+                  다음 주 목표시간
+                </span>
                 {scheduled && (
                   <span className="text-xs text-muted-foreground sm:text-sm">
                     현재 예약됨: <span className="font-mono font-semibold">{formatGoalType(scheduled)}</span>
@@ -125,7 +128,7 @@ export function GoalTypeScheduleDialog({
                 <ul className="flex flex-col gap-1 text-xs leading-relaxed text-muted-foreground sm:text-sm">
                   <li className="flex gap-1.5">
                     <span className="text-destructive/60">•</span>
-                    설정하지 않으면 기존 설정 값이 계속 유지됩니다.
+                    변경하지 않으면 기존 설정 값이 계속 유지됩니다.
                   </li>
                   <li className="flex gap-1.5">
                     <span className="text-destructive/60">•</span>
