@@ -26,14 +26,14 @@ export function DashboardPage() {
         className="w-full"
       >
         <TabsList className="w-full">
-          <TabsTrigger value="me" className="flex-1">
-            내 대시보드
+          <TabsTrigger value="me" className="flex-1 font-mono text-xs tracking-wide uppercase">
+            My
           </TabsTrigger>
-          <TabsTrigger value="all" className="flex-1">
-            전체 대시보드
+          <TabsTrigger value="all" className="flex-1 font-mono text-xs tracking-wide uppercase">
+            All
           </TabsTrigger>
-          <TabsTrigger value="history" className="flex-1">
-            지난 기록
+          <TabsTrigger value="history" className="flex-1 font-mono text-xs tracking-wide uppercase">
+            History
           </TabsTrigger>
         </TabsList>
       </Tabs>

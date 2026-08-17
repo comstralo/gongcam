@@ -39,8 +39,8 @@ export function CheckerPage() {
   const recSs = String(recording.remainingSec % 60).padStart(2, "0");
 
   return (
-    <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-3 landscape:min-w-0 landscape:flex-row landscape:gap-3">
-      <header className="flex w-full page-content-wide items-baseline justify-between gap-3 landscape:hidden">
+    <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-3 mobile-landscape:min-w-0 mobile-landscape:flex-row mobile-landscape:gap-3">
+      <header className="flex w-full page-content-wide items-baseline justify-between gap-3 mobile-landscape:hidden">
         <div className="flex flex-col gap-0.5">
           <Link to="/" className="text-xs font-semibold tracking-tight text-primary sm:text-sm">
             공부합시당 캠스터디
@@ -58,10 +58,10 @@ export function CheckerPage() {
           16:9를 유지한 채 정확히 안에 맞는 px 크기를 계산한다. */}
       <div
         ref={containerRef}
-        className="flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden landscape:h-full landscape:w-0 landscape:flex-1"
+        className="flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden mobile-landscape:h-full mobile-landscape:w-0 mobile-landscape:flex-1"
       >
         <div
-          className="relative overflow-hidden rounded-lg bg-[#1b1d19] p-3.5 landscape:p-2"
+          className="relative overflow-hidden rounded-lg bg-[#1b1d19] p-3.5 mobile-landscape:p-2"
           style={
             size
               ? { width: size.width, height: size.height }
@@ -145,9 +145,9 @@ export function CheckerPage() {
         </div>
       </div>
 
-      <div className="flex w-full shrink-0 page-content-wide flex-col gap-3 landscape:h-full landscape:w-56 landscape:justify-center landscape:gap-2.5 landscape:overflow-y-auto">
+      <div className="flex w-full shrink-0 page-content-wide flex-col gap-3 mobile-landscape:h-full mobile-landscape:w-56 mobile-landscape:justify-center mobile-landscape:gap-2.5 mobile-landscape:overflow-y-auto">
         {capture.thumbs.length > 0 && (
-          <div className="flex w-full gap-1.5 overflow-x-auto p-0.5 sm:gap-2 landscape:flex-wrap landscape:overflow-visible">
+          <div className="flex w-full gap-1.5 overflow-x-auto p-0.5 sm:gap-2 mobile-landscape:flex-wrap mobile-landscape:overflow-visible">
             {capture.thumbs.map((src, i) => (
               <img key={i} src={src} className="h-13 w-17 shrink-0 rounded-sm border object-cover sm:h-16 sm:w-21" alt={`촬영 ${i + 1}`} />
             ))}
@@ -169,9 +169,9 @@ export function CheckerPage() {
           </div>
         )}
 
-        <div className="flex flex-col gap-3 rounded-lg border bg-card p-3.5 sm:p-5 landscape:gap-2.5 landscape:p-3">
+        <div className="flex flex-col gap-3 rounded-lg border bg-card p-3.5 sm:p-5 mobile-landscape:gap-2.5 mobile-landscape:p-3">
           {/* 주 액션 4버튼: 카메라 전환 / 좌우 반전 / 스크린샷 촬영 / 영상 녹화 — 항상 동일 규격 */}
-          <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 landscape:flex-col landscape:flex-nowrap landscape:gap-2.5">
+          <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 mobile-landscape:flex-col mobile-landscape:flex-nowrap mobile-landscape:gap-2.5">
             <button
               type="button"
               title="카메라 전환"
@@ -246,7 +246,7 @@ export function CheckerPage() {
 
           {/* 보조 버튼: 결과물이 있을 때만 표시 */}
           {(capture.isFinished || recording.recordedBlobUrl) && (
-            <div className="flex items-center justify-center gap-2.5 border-t pt-3 sm:gap-3.5 landscape:flex-col landscape:gap-2">
+            <div className="flex items-center justify-center gap-2.5 border-t pt-3 sm:gap-3.5 mobile-landscape:flex-col mobile-landscape:gap-2">
               {capture.isFinished && (
                 <>
                   <button

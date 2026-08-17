@@ -1,5 +1,5 @@
 import { HashRouter, Routes, Route } from "react-router-dom";
-import { LayoutDashboard } from "lucide-react";
+import { LayoutDashboard, ScanLine, Settings, ShieldCheck } from "lucide-react";
 import { AuthProvider } from "@/lib/auth/AuthContext";
 import { ProtectedRoute } from "@/lib/auth/ProtectedRoute";
 import { AdminRoute } from "@/lib/auth/AdminRoute";
@@ -42,7 +42,7 @@ export default function App() {
             path="/report"
             element={
               <ProtectedRoute>
-                <AppShell title="화각 제보">
+                <AppShell title="화각 제보" titleIcon={ScanLine}>
                   <ReportPage />
                 </AppShell>
               </ProtectedRoute>
@@ -52,7 +52,7 @@ export default function App() {
             path="/settings"
             element={
               <ProtectedRoute>
-                <AppShell title="설정">
+                <AppShell title="설정" titleIcon={Settings}>
                   <SettingsPage />
                 </AppShell>
               </ProtectedRoute>
@@ -62,7 +62,7 @@ export default function App() {
             path="/admin"
             element={
               <AdminRoute>
-                <AppShell title="관리자">
+                <AppShell title="관리자" titleIcon={ShieldCheck}>
                   <AdminPage />
                 </AppShell>
               </AdminRoute>

@@ -29,11 +29,11 @@ export function AppShell({ children, title, titleIcon: TitleIcon, hideEyebrow, f
     <div
       className={cn(
         "flex w-full flex-col items-center gap-4.5 p-4",
-        fitToScreen ? "h-dvh overflow-hidden landscape:gap-2 landscape:p-2" : "min-h-dvh",
+        fitToScreen ? "h-dvh overflow-hidden mobile-landscape:gap-2 mobile-landscape:p-2" : "min-h-dvh",
         session && !fitToScreen && "pb-[calc(32px+64px+env(safe-area-inset-bottom,0px))]",
         session &&
           fitToScreen &&
-          "portrait:pb-[calc(32px+64px+env(safe-area-inset-bottom,0px))] landscape:pb-2"
+          "mobile-portrait:pb-[calc(32px+64px+env(safe-area-inset-bottom,0px))] mobile-landscape:pb-2"
       )}
     >
       {title && (
@@ -52,7 +52,7 @@ export function AppShell({ children, title, titleIcon: TitleIcon, hideEyebrow, f
         </header>
       )}
       {children}
-      <div className={cn(fitToScreen && "landscape:hidden")}>
+      <div className={cn(fitToScreen && "mobile-landscape:hidden")}>
         <TabBar />
       </div>
     </div>

@@ -3,6 +3,13 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* 체커 페이지가 "휴대폰을 눕혔을 때" 레이아웃을 전환하기 위한 variant.
+   순수 orientation:landscape만 쓰면 가로가 넓은 데스크탑 창도 걸려버려서
+   PC에서 헤더/제목이 통째로 숨는 문제가 있었다 — 화면 높이 상한을 더해
+   실제 휴대폰 가로모드(짧은 세로 길이)만 겨냥한다. */
+@custom-variant mobile-landscape (@media (orientation: landscape) and (max-height: 32rem));
+@custom-variant mobile-portrait (@media (orientation: portrait) and (max-width: 32rem));
+
 /* 페이지 콘텐츠 최대폭 — 모바일은 좁게, sm 이상(태블릿)부터 단계적으로 넓힘 */
 @utility page-content {
   max-width: 28rem; /* 448px, 기존 max-w-md */
