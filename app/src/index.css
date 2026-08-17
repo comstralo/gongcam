@@ -61,66 +61,66 @@
     --radius-xl: calc(var(--radius) * 1.4);
 }
 
-/* 프레임 체커 팔레트를 shadcn 표준 토큰 이름에 매핑 (기존 shared/theme.css 색상 값 그대로 이식) */
+/* 산뜻하고 활기찬 톤 — 밝은 웜그레이 배경 + 비비드 코랄 포인트 컬러 */
 :root {
-    --background: #eef0ec;
-    --foreground: #1b1d19;
+    --background: #fafaf9;
+    --foreground: #1c1917;
     --card: #ffffff;
-    --card-foreground: #1b1d19;
+    --card-foreground: #1c1917;
     --popover: #ffffff;
-    --popover-foreground: #1b1d19;
-    --primary: #c8781f;
-    --primary-foreground: #2a1600;
-    --secondary: #eef0ec;
-    --secondary-foreground: #1b1d19;
-    --muted: #eef0ec;
-    --muted-foreground: #5c6058;
-    --accent: #eef0ec;
-    --accent-foreground: #1b1d19;
-    --destructive: #b3341f;
-    --ok: #4a7c3c;
-    --border: #d3d6cd;
-    --input: #d3d6cd;
-    --ring: #c8781f;
-    --radius: 0.625rem;
+    --popover-foreground: #1c1917;
+    --primary: #ff5a36;
+    --primary-foreground: #ffffff;
+    --secondary: #f5f4f2;
+    --secondary-foreground: #1c1917;
+    --muted: #f5f4f2;
+    --muted-foreground: #78716c;
+    --accent: #fff1ec;
+    --accent-foreground: #c83e1f;
+    --destructive: #dc2626;
+    --ok: #16a34a;
+    --border: #e7e5e3;
+    --input: #e7e5e3;
+    --ring: #ff5a36;
+    --radius: 0.75rem;
     --sidebar: #ffffff;
-    --sidebar-foreground: #1b1d19;
-    --sidebar-primary: #c8781f;
-    --sidebar-primary-foreground: #2a1600;
-    --sidebar-accent: #eef0ec;
-    --sidebar-accent-foreground: #1b1d19;
-    --sidebar-border: #d3d6cd;
-    --sidebar-ring: #c8781f;
+    --sidebar-foreground: #1c1917;
+    --sidebar-primary: #ff5a36;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #fff1ec;
+    --sidebar-accent-foreground: #c83e1f;
+    --sidebar-border: #e7e5e3;
+    --sidebar-ring: #ff5a36;
 }
 
 .dark {
-    --background: #121310;
-    --foreground: #eef0ea;
-    --card: #1a1c17;
-    --card-foreground: #eef0ea;
-    --popover: #1a1c17;
-    --popover-foreground: #eef0ea;
-    --primary: #e0a24a;
-    --primary-foreground: #201200;
-    --secondary: #1a1c17;
-    --secondary-foreground: #eef0ea;
-    --muted: #1a1c17;
-    --muted-foreground: #9a9d92;
-    --accent: #1a1c17;
-    --accent-foreground: #eef0ea;
-    --destructive: #e0685a;
-    --ok: #7cb36a;
-    --border: #33362e;
-    --input: #33362e;
-    --ring: #e0a24a;
-    --sidebar: #1a1c17;
-    --sidebar-foreground: #eef0ea;
-    --sidebar-primary: #e0a24a;
-    --sidebar-primary-foreground: #201200;
-    --sidebar-accent: #1a1c17;
-    --sidebar-accent-foreground: #eef0ea;
-    --sidebar-border: #33362e;
-    --sidebar-ring: #e0a24a;
+    --background: #1c1917;
+    --foreground: #fafaf9;
+    --card: #292524;
+    --card-foreground: #fafaf9;
+    --popover: #292524;
+    --popover-foreground: #fafaf9;
+    --primary: #ff7a5c;
+    --primary-foreground: #1c1917;
+    --secondary: #292524;
+    --secondary-foreground: #fafaf9;
+    --muted: #292524;
+    --muted-foreground: #a8a29e;
+    --accent: #3a241d;
+    --accent-foreground: #ff9478;
+    --destructive: #f87171;
+    --ok: #4ade80;
+    --border: #3a3532;
+    --input: #3a3532;
+    --ring: #ff7a5c;
+    --sidebar: #292524;
+    --sidebar-foreground: #fafaf9;
+    --sidebar-primary: #ff7a5c;
+    --sidebar-primary-foreground: #1c1917;
+    --sidebar-accent: #3a241d;
+    --sidebar-accent-foreground: #ff9478;
+    --sidebar-border: #3a3532;
+    --sidebar-ring: #ff7a5c;
 }
 
 @layer base {
