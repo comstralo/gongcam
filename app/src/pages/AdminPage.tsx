@@ -1,14 +1,9 @@
-import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SessionCard } from "@/components/session/SessionCard";
-import { StatusView } from "@/components/dashboard/StatusView";
 import { usePushSubscription } from "@/hooks/usePushSubscription";
-import { useApi } from "@/hooks/useApi";
 import { cn } from "@/lib/utils";
-import type { AdminMember, AdminMembersResponse, StatusResponse } from "@/lib/api/types";
 
 const STATE_LABEL: Record<string, string> = {
   checking: "알림 상태 확인 중...",
@@ -19,42 +14,6 @@ const STATE_LABEL: Record<string, string> = {
 
 export function AdminPage() {
   const { state, message, enable, sendTest } = usePushSubscription();
-  const { call } = useApi();
-
-  const [members, setMembers] = useState<AdminMember[] | null>(null);
-  const [membersError, setMembersError] = useState<string | null>(null);
-  const [selectedNumber, setSelectedNumber] = useState<string>("");
-  const [memberStatus, setMemberStatus] = useState<StatusResponse | null>(null);
-  const [memberStatusError, setMemberStatusError] = useState<string | null>(null);
-  const [loadingMemberStatus, setLoadingMemberStatus] = useState(false);
-
-  useEffect(() => {
-    call<AdminMembersResponse>("/admin/members")
-      .then((data) => setMembers(data.members || []))
-      .catch((err) => setMembersError(err instanceof Error ? err.message : "회원 목록을 불러오지 못했습니다."));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (!selectedNumber) return;
-    let cancelled = false;
-    setLoadingMemberStatus(true);
-    setMemberStatusError(null);
-    call<StatusResponse>(`/admin/members/${encodeURIComponent(selectedNumber)}`)
-      .then((data) => {
-        if (!cancelled) setMemberStatus(data);
-      })
-      .catch((err) => {
-        if (!cancelled) setMemberStatusError(err instanceof Error ? err.message : "회원 기록을 불러오지 못했습니다.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingMemberStatus(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedNumber]);
 
   return (
     <Card className="w-full page-content">
@@ -90,48 +49,6 @@ export function AdminPage() {
           <Alert variant={message.type === "error" ? "destructive" : "default"}>
             <AlertDescription>{message.text}</AlertDescription>
           </Alert>
-        )}
-
-        <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground sm:text-xs">
-          스터디원 기록 조회
-        </span>
-        <Select value={selectedNumber} onValueChange={(v) => setSelectedNumber(v ?? "")}>
-          <SelectTrigger className="sm:h-12 sm:text-base">
-            <SelectValue
-              placeholder={
-                membersError ? "회원 목록을 불러오지 못했습니다" : members === null ? "불러오는 중..." : "스터디원을 선택하세요"
-              }
-            >
-              {selectedNumber ? members?.find((m) => m.number === selectedNumber)?.name : undefined}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {members?.map((m) => (
-              <SelectItem key={m.number} value={m.number} className="sm:text-base">
-                {m.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {membersError && (
-          <Alert variant="destructive">
-            <AlertDescription>{membersError}</AlertDescription>
-          </Alert>
-        )}
-
-        {selectedNumber && (
-          <div className="flex flex-col gap-3">
-            {loadingMemberStatus && (
-              <p className="text-center font-mono text-xs text-muted-foreground sm:text-sm">불러오는 중...</p>
-            )}
-            {memberStatusError && (
-              <Alert variant="destructive">
-                <AlertDescription>{memberStatusError}</AlertDescription>
-              </Alert>
-            )}
-            {memberStatus && <StatusView status={memberStatus} />}
-          </div>
         )}
       </CardContent>
     </Card>
