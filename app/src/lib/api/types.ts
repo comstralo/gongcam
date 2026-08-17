@@ -47,6 +47,19 @@ export type DepositRefundBreakdown = {
   daysSinceJoin: number;
 };
 
+export type PeriodAttendanceBreakdown = {
+  applicable: boolean;
+  achievedCount: number;
+  errorCount: number;
+  targetPeriods: number;
+  rate: number | null;
+};
+
+export type TotalPenaltyBreakdown = {
+  outputPenReasons: string[];
+  timePenReasons: string[];
+};
+
 export type StatusResponse = {
   goalType: string;
   joinDate: string;
@@ -59,9 +72,11 @@ export type StatusResponse = {
   depositRefundEstimate: string;
   depositRefundBreakdown: DepositRefundBreakdown;
   periodAttendanceRate: string;
+  periodAttendanceBreakdown: PeriodAttendanceBreakdown;
   weeklyTotalFine: string;
   weeklyOutputPen: number;
   weeklyTimePen: number;
+  totalPenaltyBreakdown: TotalPenaltyBreakdown;
   days: StatusDay[];
 };
 

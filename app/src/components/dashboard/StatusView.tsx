@@ -24,6 +24,8 @@ import { PeriodAlarmCard } from "@/components/dashboard/PeriodAlarmCard";
 import { MeritBreakdownDialog } from "@/components/dashboard/MeritBreakdownDialog";
 import { GoalTypeScheduleDialog } from "@/components/dashboard/GoalTypeScheduleDialog";
 import { DepositRefundDialog } from "@/components/dashboard/DepositRefundDialog";
+import { PeriodAttendanceDialog } from "@/components/dashboard/PeriodAttendanceDialog";
+import { TotalPenaltyDialog } from "@/components/dashboard/TotalPenaltyDialog";
 import type { StatusResponse } from "@/lib/api/types";
 
 const TODAY_INDEX = (new Date().getDay() + 6) % 7; // 월=0 ... 일=6
@@ -215,6 +217,29 @@ export function StatusView({
               >
                 {tileEl}
               </DepositRefundDialog>
+            );
+          }
+          if (tile.key === "periodAttendance" && status.periodAttendanceBreakdown) {
+            return (
+              <PeriodAttendanceDialog
+                key={tile.key}
+                periodAttendanceRate={status.periodAttendanceRate || "-"}
+                breakdown={status.periodAttendanceBreakdown}
+              >
+                {tileEl}
+              </PeriodAttendanceDialog>
+            );
+          }
+          if (tile.key === "totalFine" && status.totalPenaltyBreakdown) {
+            return (
+              <TotalPenaltyDialog
+                key={tile.key}
+                outputPen={outputPen}
+                timePen={timePen}
+                breakdown={status.totalPenaltyBreakdown}
+              >
+                {tileEl}
+              </TotalPenaltyDialog>
             );
           }
           return <div key={tile.key}>{tileEl}</div>;
