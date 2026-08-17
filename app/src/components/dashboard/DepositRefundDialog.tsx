@@ -26,6 +26,7 @@ export function DepositRefundDialog({
 }) {
   const amount = breakdown.amount ?? 0;
   const isReduced = amount < 10000;
+  const penaltyTotal = (breakdown.outputPen ?? 0) + (breakdown.timePen ?? 0);
 
   return (
     <Dialog>
@@ -41,18 +42,14 @@ export function DepositRefundDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
-          <InfoCard className="flex flex-col gap-1.5">
+          <InfoCard className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
               <PiggyBank className="size-3.5 shrink-0 text-primary sm:size-4" />
               예치금 반환 예상액
             </span>
-            <div className="flex items-center justify-end gap-2">
-              <span
-                className={cn("font-mono text-sm font-bold sm:text-base", isReduced && "text-destructive")}
-              >
-                {won(amount)}
-              </span>
-            </div>
+            <span className={cn("font-mono text-sm font-bold sm:text-base", isReduced && "text-destructive")}>
+              {won(amount)}
+            </span>
           </InfoCard>
 
           <InfoCard className="flex flex-col gap-1.5">
@@ -61,11 +58,15 @@ export function DepositRefundDialog({
               차감 원인
             </span>
             <SubRow
-              label="가입 후 경과일"
-              value={(breakdown.daysSinceJoin ?? -1) >= 0 ? `D+${breakdown.daysSinceJoin}` : "-"}
+              label={`30일 미만 참여자 (D+${(breakdown.daysSinceJoin ?? -1) >= 0 ? breakdown.daysSinceJoin : "-"})`}
+              value={(breakdown.daysSinceJoin ?? -1) >= 0 && breakdown.daysSinceJoin < 30 ? "100%" : "0%"}
             />
-            <SubRow label="송출 P (금주+누적)" value={`${breakdown.outputPen ?? 0}회`} />
-            <SubRow label="주간 P (누적)" value={`${breakdown.timePen ?? 0}회`} />
+            <SubRow
+              label={`페널티 (송출 P ${breakdown.outputPen ?? 0}회 + 주간 P ${breakdown.timePen ?? 0}회)`}
+              value={
+                penaltyTotal >= 2 ? "100%" : penaltyTotal === 1 ? "50%" : "0%"
+              }
+            />
           </InfoCard>
 
           <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
@@ -78,7 +79,7 @@ export function DepositRefundDialog({
                 <span className="text-destructive/60">•</span>
                 조회 당일 기준입니다. 퇴실일자에는 페널티 등에 의해 달라질 수 있습니다.
               </li>
-              {breakdown.reason && (
+              {breakdown.reason && breakdown.reason !== "가입 30일 미만" && (
                 <li className="flex gap-1.5">
                   <span className="text-destructive/60">•</span>
                   {breakdown.reason}
