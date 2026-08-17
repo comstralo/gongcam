@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
-import { Clock } from "lucide-react";
+import { Clock, TriangleAlert } from "lucide-react";
 import {
   Dialog,
   DialogTrigger,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -18,10 +17,10 @@ import type { ReactNode } from "react";
 import type { GoalScheduleResponse } from "@/lib/api/types";
 
 export function GoalTypeScheduleDialog({
-  currentGoalType,
+  onScheduled,
   children,
 }: {
-  currentGoalType: string;
+  onScheduled?: (goalType: string) => void;
   children: ReactNode;
 }) {
   const { call } = useApi();
@@ -59,6 +58,7 @@ export function GoalTypeScheduleDialog({
     try {
       await call("/goal-schedule", { method: "POST", body: { goalType: selected } });
       setScheduled(selected);
+      onScheduled?.(selected);
       setMessage({ text: "다음 주 월요일부터 적용되도록 예약되었습니다.", type: "ok" });
     } catch (err) {
       const text = err instanceof ApiError ? err.message : "네트워크 오류입니다.";
@@ -79,20 +79,9 @@ export function GoalTypeScheduleDialog({
             <Clock className="size-4 text-primary sm:size-5" />
             목표시간 변경 예약
           </DialogTitle>
-          <DialogDescription>다음 주 월요일부터 적용할 목표시간을 미리 설정할 수 있습니다.</DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
-          <InfoCard className="flex items-center justify-between gap-3">
-            <span className="text-sm font-semibold sm:text-base">이번 주 목표시간</span>
-            <span className="font-mono text-sm font-bold text-muted-foreground sm:text-base">
-              {currentGoalType}
-            </span>
-          </InfoCard>
-          <p className="text-micro-lg text-muted-foreground/70">
-            규정상 이번 주 값은 변경할 수 없습니다. 지금 예약하면 다음 주 월요일에 자동 반영됩니다.
-          </p>
-
           {loading && <p className="text-center font-mono text-xs text-muted-foreground sm:text-sm">불러오는 중...</p>}
           {loadError && (
             <Alert variant="destructive">
@@ -102,8 +91,8 @@ export function GoalTypeScheduleDialog({
 
           {!loading && !loadError && (
             <>
-              <div className="flex flex-col gap-1.5">
-                <span className="text-sm font-semibold sm:text-base">다음 주 예약</span>
+              <InfoCard className="flex flex-col gap-1.5">
+                <span className="text-sm font-semibold sm:text-base">다음 주 목표시간</span>
                 {scheduled && (
                   <span className="text-xs text-muted-foreground sm:text-sm">
                     현재 예약됨: <span className="font-mono font-semibold">{scheduled}</span>
@@ -121,6 +110,18 @@ export function GoalTypeScheduleDialog({
                     ))}
                   </SelectContent>
                 </Select>
+              </InfoCard>
+
+              <div className="flex flex-col gap-1 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+                <div className="flex items-center gap-1.5 text-destructive">
+                  <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
+                  <span className="text-xs font-semibold sm:text-sm">주의사항</span>
+                </div>
+                <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
+                  현재 진행중인 주간의 목표시간은 변경할 수 없습니다.
+                  <br />
+                  지금 설정하는 값은 다음 주 월요일부터 적용됩니다.
+                </p>
               </div>
 
               <Button className="w-full sm:h-12 sm:text-base" disabled={submitting} onClick={handleSubmit}>

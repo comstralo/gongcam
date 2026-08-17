@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Clock,
@@ -23,7 +23,8 @@ import { SummaryTile, SubRow, TintedPill, InfoCard, DividedValue } from "@/compo
 import { PeriodAlarmCard } from "@/components/dashboard/PeriodAlarmCard";
 import { MeritBreakdownDialog } from "@/components/dashboard/MeritBreakdownDialog";
 import { GoalTypeScheduleDialog } from "@/components/dashboard/GoalTypeScheduleDialog";
-import type { StatusResponse } from "@/lib/api/types";
+import { useApi } from "@/hooks/useApi";
+import type { GoalScheduleResponse, StatusResponse } from "@/lib/api/types";
 
 const TODAY_INDEX = (new Date().getDay() + 6) % 7; // 월=0 ... 일=6
 
@@ -83,7 +84,30 @@ export function StatusView({
   status: StatusResponse | null;
   allowGoalSchedule?: boolean;
 }) {
+  const { call } = useApi();
   const [selectedDay, setSelectedDay] = useState<number>(TODAY_INDEX);
+  const [scheduledGoalType, setScheduledGoalType] = useState<string | null>(null);
+
+  // "목표시간" 타일에 예약값을 함께 보여주기 위해, 본인 대시보드 조회 시에만
+  // 예약 상태를 미리 불러온다(다른 사람 조회/지난 기록에서는 예약 개념이 없음).
+  useEffect(() => {
+    if (!allowGoalSchedule) {
+      setScheduledGoalType(null);
+      return;
+    }
+    let cancelled = false;
+    call<GoalScheduleResponse>("/goal-schedule")
+      .then((data) => {
+        if (!cancelled) setScheduledGoalType(data.scheduled);
+      })
+      .catch(() => {
+        if (!cancelled) setScheduledGoalType(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allowGoalSchedule]);
 
   if (!status) return null;
 
@@ -112,7 +136,17 @@ export function StatusView({
     valueClassName?: string;
     hint?: string;
   }[] = [
-    { key: "goalType", icon: Clock, label: "목표시간", value: formatGoalType(status.goalType) },
+    {
+      key: "goalType",
+      icon: Clock,
+      label: "목표시간",
+      value: scheduledGoalType ? (
+        <DividedValue items={[formatGoalType(status.goalType), `다음 주 ${formatGoalType(scheduledGoalType)}`]} />
+      ) : (
+        formatGoalType(status.goalType)
+      ),
+      wrap: true,
+    },
     { key: "joinDate", icon: CalendarDays, label: "가입일자", value: status.joinDate || "-" },
     { key: "depositRefund", icon: PiggyBank, label: "예치금 반환 예상액", value: status.depositRefundEstimate || "-" },
     {
@@ -176,7 +210,7 @@ export function StatusView({
           }
           if (tile.key === "goalType" && allowGoalSchedule) {
             return (
-              <GoalTypeScheduleDialog key={tile.key} currentGoalType={formatGoalType(status.goalType)}>
+              <GoalTypeScheduleDialog key={tile.key} onScheduled={setScheduledGoalType}>
                 {tileEl}
               </GoalTypeScheduleDialog>
             );
