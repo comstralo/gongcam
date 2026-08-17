@@ -64,7 +64,13 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
     { key: "goalType", icon: Clock, label: "목표시간", value: status.goalType || "-" },
     { key: "joinDate", icon: CalendarDays, label: "가입일자", value: status.joinDate || "-" },
     { key: "depositRefund", icon: PiggyBank, label: "예치금 반환 예상액", value: status.depositRefundEstimate || "-" },
-    { key: "merit", icon: Award, label: "주간 총 상점", value: status.weeklyMerit || "0" },
+    {
+      key: "merit",
+      icon: Award,
+      label: "주간 총 상점",
+      value: `${status.weeklyMerit || "0"} (${status.weeklyMeritRank || "-"})`,
+      wrap: true,
+    },
     { key: "periodAttendance", icon: ListChecks, label: "교시 참여율", value: status.periodAttendanceRate || "-" },
     { key: "totalFine", icon: ShieldAlert, label: "총 페널티", value: status.weeklyTotalFine || "₩0" },
   ];
@@ -73,7 +79,7 @@ export function StatusView({ status }: { status: StatusResponse | null }) {
     <div className="flex flex-col gap-5">
       <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5">
         {summaryTiles.map((tile) => (
-          <SummaryTile key={tile.key} icon={tile.icon} label={tile.label} value={tile.value} />
+          <SummaryTile key={tile.key} icon={tile.icon} label={tile.label} value={tile.value} wrap={tile.wrap} />
         ))}
       </section>
 

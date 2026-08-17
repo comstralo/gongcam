@@ -29,6 +29,7 @@ export type StatusResponse = {
   goalType: string;
   joinDate: string;
   weeklyMerit: string;
+  weeklyMeritRank: string;
   normalLeaveLeft: string;
   reasonLeaveLeft: string;
   weekTotalConfirmed: number;
