@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Wallet, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { InfoCard } from "@/components/dashboard/shared";
+import { InfoCard, TintedPill } from "@/components/dashboard/shared";
 import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
 import { ICON_STROKE, cn } from "@/lib/utils";
@@ -90,11 +90,9 @@ export function AdminMoneyTab() {
             const isPending = pendingKey === key;
             return (
               <InfoCard key={key} className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-baseline gap-2">
+                <div className="flex items-center gap-2">
                   <span className="text-sm font-bold sm:text-base">{f.name}</span>
-                  <span className="text-xs text-muted-foreground sm:text-sm">
-                    {f.number}번 · {f.day}요일
-                  </span>
+                  <TintedPill tone="warn">미납 · {f.day}</TintedPill>
                 </div>
                 <div className="flex gap-1.5">
                   {STATUS_OPTIONS.map((status) => (
