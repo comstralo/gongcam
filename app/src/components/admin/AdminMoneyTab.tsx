@@ -165,7 +165,7 @@ function FineList() {
                     {detail === "error" && (
                       <p className="py-4 text-center text-sm text-destructive">정보를 불러오지 못했습니다.</p>
                     )}
-                    {day && <DayDetailCard day={day} />}
+                    {day && <DayDetailCard day={day} dayLabel={`${f.day}요일`} />}
                   </>
                 )}
               </InfoCard>

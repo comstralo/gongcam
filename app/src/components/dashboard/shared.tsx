@@ -177,7 +177,9 @@ function signedTime(raw: string): string {
 
 // 내 대시보드(StatusView)의 요일 상세 카드 — 관리자가 벌금 미납 현황에서
 // 특정 인원/요일을 펼쳐볼 때도 동일한 형태로 재사용한다.
-export function DayDetailCard({ day }: { day: StatusDay }) {
+// dayLabel: MY 대시보드는 요일 선택 버튼이 이미 있어 생략하지만, 관리자 화면처럼
+// 별도 요일 선택 UI 없이 이 카드만 보여줄 때는 어느 요일인지 표시해줘야 한다.
+export function DayDetailCard({ day, dayLabel }: { day: StatusDay; dayLabel?: string }) {
   return (
     <div
       className={cn(
@@ -185,7 +187,8 @@ export function DayDetailCard({ day }: { day: StatusDay }) {
         day.total > 0 ? "border-destructive/30 bg-destructive/5" : "border-ok/30 bg-ok/5"
       )}
     >
-      <div className="flex items-center justify-start">
+      <div className="flex items-center justify-start gap-2">
+        {dayLabel && <span className="text-sm font-semibold sm:text-base">{dayLabel}</span>}
         <TintedPill tone={day.confirmed ? "muted" : "primary"} icon={day.confirmed ? CircleCheck : CircleDot}>
           {day.confirmed ? "확정" : "진행중"}
         </TintedPill>
