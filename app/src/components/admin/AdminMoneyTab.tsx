@@ -107,6 +107,10 @@ export function AdminMoneyTab() {
                       {status}
                     </Button>
                   ))}
+                  {/* 강제퇴실 처리 — 아직 미구현, 버튼만 우선 배치 */}
+                  <Button size="sm" variant="outline" disabled className="flex-1 sm:flex-none">
+                    직권
+                  </Button>
                 </div>
               </InfoCard>
             );
