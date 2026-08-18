@@ -149,6 +149,31 @@ export type GrantMemberAccessResponse = {
   ok: true;
 };
 
+export type FineStatus = "미납" | "납부" | "면제";
+
+export type UnpaidFine = {
+  number: string;
+  name: string;
+  day: string;
+};
+
+export type AdminFinesUnpaidResponse = {
+  unpaid: UnpaidFine[];
+};
+
+export type SetFineStatusRequest = {
+  number: string;
+  day: string;
+  status: FineStatus;
+};
+
+export type SetFineStatusResponse = {
+  ok: true;
+  number: string;
+  day: string;
+  status: FineStatus;
+};
+
 export type GoalScheduleResponse = {
   scheduled: string | null;
   validValues: string[];
