@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Wallet, PiggyBank, RotateCw, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { InfoCard, DayDetailCard } from "@/components/dashboard/shared";
+import { InfoCard, DayDetailCard, TintedPill } from "@/components/dashboard/shared";
 import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
 import { ICON_STROKE, cn } from "@/lib/utils";
@@ -126,18 +126,11 @@ function FineList() {
             return (
               <InfoCard key={key} className="flex flex-col gap-2.5">
                 <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-                  <button
-                    type="button"
-                    onClick={() => toggleExpand(f)}
-                    className="flex items-center gap-1.5 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded"
-                  >
+                  <div className="flex items-center gap-2">
                     <span className="text-sm font-bold sm:text-base">{f.name}</span>
-                    <ChevronDown
-                      className={cn("size-3.5 text-muted-foreground transition-transform", isExpanded && "rotate-180")}
-                      strokeWidth={ICON_STROKE.default}
-                    />
-                  </button>
-                  <div className="flex gap-1.5">
+                    <TintedPill tone="warn">{f.day}요일</TintedPill>
+                  </div>
+                  <div className="flex items-center gap-1.5">
                     {FINE_STATUS_OPTIONS.map((status) => (
                       <Button
                         key={status}
@@ -154,6 +147,17 @@ function FineList() {
                     <Button size="sm" variant="outline" disabled className="flex-1 sm:flex-none">
                       직권
                     </Button>
+                    <Button
+                      variant="outline"
+                      size="icon-sm"
+                      onClick={() => toggleExpand(f)}
+                      aria-label={isExpanded ? "상세 접기" : "상세 펼치기"}
+                    >
+                      <ChevronDown
+                        className={cn("size-3.5 transition-transform", isExpanded && "rotate-180")}
+                        strokeWidth={ICON_STROKE.default}
+                      />
+                    </Button>
                   </div>
                 </div>
 
@@ -165,7 +169,7 @@ function FineList() {
                     {detail === "error" && (
                       <p className="py-4 text-center text-sm text-destructive">정보를 불러오지 못했습니다.</p>
                     )}
-                    {day && <DayDetailCard day={day} dayLabel={`${f.day}요일`} />}
+                    {day && <DayDetailCard day={day} />}
                   </>
                 )}
               </InfoCard>
