@@ -174,6 +174,28 @@ export type SetFineStatusResponse = {
   status: FineStatus;
 };
 
+export type DepositStatus = "미납" | "납부";
+
+export type UnpaidDeposit = {
+  number: string;
+  name: string;
+};
+
+export type AdminDepositsUnpaidResponse = {
+  unpaid: UnpaidDeposit[];
+};
+
+export type SetDepositStatusRequest = {
+  number: string;
+  status: DepositStatus;
+};
+
+export type SetDepositStatusResponse = {
+  ok: true;
+  number: string;
+  status: DepositStatus;
+};
+
 export type GoalScheduleResponse = {
   scheduled: string | null;
   validValues: string[];

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import { Search, SquarePen, type LucideIcon } from "lucide-react";
+import { Search, SquarePen, CircleCheck, CircleDot, Timer, BedDouble, Wallet, type LucideIcon } from "lucide-react";
 import { cn, ICON_STROKE } from "@/lib/utils";
+import type { StatusDay } from "@/lib/api/types";
 
 type PillTone = "ok" | "warn" | "muted" | "primary";
 
@@ -140,6 +141,122 @@ export function InfoCard({ className, children, ...props }: React.ComponentProps
   return (
     <div className={cn("rounded-lg border bg-muted p-3.5 shadow-xs sm:p-4.5", className)} {...props}>
       {children}
+    </div>
+  );
+}
+
+function won(n: number) {
+  return "₩" + (n || 0).toLocaleString();
+}
+
+function timeToMinutes(raw: string): number | null {
+  const m = (raw || "").trim().match(/^(\d{1,3}):(\d{2})$/);
+  if (!m) return null;
+  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
+type GoalStatus = "met" | "failed" | "pending";
+
+function goalStatus(studyTime: string, goalTime: string, complete: boolean): GoalStatus {
+  if (!complete) return "pending";
+  const study = timeToMinutes(studyTime);
+  const goal = timeToMinutes(goalTime);
+  if (study === null || goal === null) return "pending";
+  return study >= goal ? "met" : "failed";
+}
+
+// 관리자가 직접 입력하는 값이라 "00:20"처럼 부호 없이 저장되는 경우 기본을 +로 해석하고,
+// "-00:20"처럼 이미 부호가 붙어 있으면 그 부호를 그대로 존중한다.
+function signedTime(raw: string): string {
+  const trimmed = (raw || "").trim();
+  if (!trimmed || trimmed === "00:00" || trimmed.startsWith("+") || trimmed.startsWith("-")) {
+    return trimmed || "-";
+  }
+  return `+${trimmed}`;
+}
+
+// 내 대시보드(StatusView)의 요일 상세 카드 — 관리자가 벌금 미납 현황에서
+// 특정 인원/요일을 펼쳐볼 때도 동일한 형태로 재사용한다.
+export function DayDetailCard({ day }: { day: StatusDay }) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-3 rounded-xl border p-4 sm:gap-3.5 sm:p-5",
+        day.total > 0 ? "border-destructive/30 bg-destructive/5" : "border-ok/30 bg-ok/5"
+      )}
+    >
+      <div className="flex items-center justify-start">
+        <TintedPill tone={day.confirmed ? "muted" : "primary"} icon={day.confirmed ? CircleCheck : CircleDot}>
+          {day.confirmed ? "확정" : "진행중"}
+        </TintedPill>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-1.25 text-xs font-semibold text-muted-foreground sm:text-sm">
+            <Timer className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
+            일간 학습시간
+          </span>
+          <span
+            className={cn(
+              "font-mono text-xs font-semibold tabular-nums sm:text-sm",
+              goalStatus(day.studyTime, day.dailyGoalTime, day.complete) === "met" && "text-ok",
+              goalStatus(day.studyTime, day.dailyGoalTime, day.complete) === "failed" && "text-destructive"
+            )}
+          >
+            {day.studyTime || "-"}
+            {day.dailyGoalTime && <span className="text-muted-foreground"> / {day.dailyGoalTime}</span>}
+          </span>
+        </div>
+        <SubRow label="보정 학습시간" value={signedTime(day.bonusStudyTime)} />
+      </div>
+
+      <div className="h-px w-full bg-border" />
+
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-1.25 text-xs font-semibold text-muted-foreground sm:text-sm">
+            <BedDouble className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
+            반휴 사용
+          </span>
+        </div>
+        <SubRow label="일반반휴" value={day.normalLeaveUsed > 0 ? `${day.normalLeaveUsed}회` : "-"} />
+        <SubRow label="사유반휴" value={day.reasonLeaveUsed > 0 ? `${day.reasonLeaveUsed}회` : "-"} />
+      </div>
+
+      <div className="h-px w-full bg-border" />
+
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-1.25 text-xs font-semibold text-muted-foreground sm:text-sm">
+            <Wallet className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
+            일간 총 벌금
+            {!day.complete && (
+              <span className="rounded-full bg-muted-foreground/10 px-1.5 py-0.5 text-micro font-medium normal-case text-muted-foreground sm:text-micro-lg">
+                집계 중
+              </span>
+            )}
+          </span>
+          <span
+            className={cn(
+              "font-mono text-sm font-semibold tabular-nums sm:text-base",
+              day.total > 0 ? "text-destructive" : "text-ok"
+            )}
+          >
+            {won(day.total)}
+          </span>
+        </div>
+        <SubRow label="일간 목표시간 벌금" value={won(day.goal)} />
+        <SubRow label="오전 목표시간 벌금" value={won(day.morning)} />
+        <SubRow
+          label="납부확인"
+          value={day.paymentStatus || "-"}
+          valueClassName={cn(
+            "font-sans text-xs font-semibold normal-case sm:text-sm",
+            day.paymentStatus === "미납" && "text-destructive"
+          )}
+        />
+      </div>
     </div>
   );
 }
