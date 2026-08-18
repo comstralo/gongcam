@@ -53,6 +53,10 @@ export function PeriodAlarmProvider({ children }: { children: ReactNode }) {
     startIndex: null,
     endIndex: null,
   });
+  // 직전 tick 이후 이 간격보다 오래 멈췄다 재개되면(맥북 잠자기 등) 그 사이 지나간
+  // 알람은 밀려서 재생하지 않고 건너뛴다. setInterval(1000ms) 정상 지연을 여유 있게
+  // 허용하기 위해 5초로 잡는다.
+  const lastTickAtRef = useRef<number>(Date.now());
 
   useEffect(() => {
     startAudioRef.current = new Audio(START_CHIME_SRC);
@@ -73,15 +77,18 @@ export function PeriodAlarmProvider({ children }: { children: ReactNode }) {
       setPhase(next);
       setRemainingLabel(next.kind === "outside" ? "" : formatRemaining(next.remainingMs));
 
+      const wasAsleep = now - lastTickAtRef.current > 5000;
+      lastTickAtRef.current = now;
+
       const nowMinuteFloor = Math.floor(nowMinutes);
       for (const period of PERIODS) {
         if (nowMinuteFloor === period.startMinutes && lastFiredRef.current.startIndex !== period.index) {
           lastFiredRef.current.startIndex = period.index;
-          if (soundEnabledRef.current) startAudioRef.current?.play().catch(() => {});
+          if (soundEnabledRef.current && !wasAsleep) startAudioRef.current?.play().catch(() => {});
         }
         if (nowMinuteFloor === period.endMinutes && lastFiredRef.current.endIndex !== period.index) {
           lastFiredRef.current.endIndex = period.index;
-          if (soundEnabledRef.current) endAudioRef.current?.play().catch(() => {});
+          if (soundEnabledRef.current && !wasAsleep) endAudioRef.current?.play().catch(() => {});
         }
       }
     }
