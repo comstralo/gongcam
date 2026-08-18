@@ -187,8 +187,8 @@ export function DayDetailCard({ day, dayLabel }: { day: StatusDay; dayLabel?: st
         day.total > 0 ? "border-destructive/30 bg-destructive/5" : "border-ok/30 bg-ok/5"
       )}
     >
-      <div className="flex items-center justify-start gap-2">
-        {dayLabel && <span className="text-sm font-semibold sm:text-base">{dayLabel}</span>}
+      <div className="flex items-center justify-start gap-1.5">
+        {dayLabel && <TintedPill tone="warn">{dayLabel}</TintedPill>}
         <TintedPill tone={day.confirmed ? "muted" : "primary"} icon={day.confirmed ? CircleCheck : CircleDot}>
           {day.confirmed ? "확정" : "진행중"}
         </TintedPill>

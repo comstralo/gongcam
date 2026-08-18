@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Wallet, PiggyBank, RotateCw, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { InfoCard, DayDetailCard, TintedPill } from "@/components/dashboard/shared";
+import { InfoCard, DayDetailCard } from "@/components/dashboard/shared";
 import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
 import { ICON_STROKE, cn } from "@/lib/utils";
@@ -126,10 +126,7 @@ function FineList() {
             return (
               <InfoCard key={key} className="flex flex-col gap-2.5">
                 <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold sm:text-base">{f.name}</span>
-                    <TintedPill tone="warn">{f.day}요일</TintedPill>
-                  </div>
+                  <span className="text-sm font-bold sm:text-base">{f.name}</span>
                   <div className="flex items-center gap-1.5">
                     {FINE_STATUS_OPTIONS.map((status) => (
                       <Button
@@ -169,7 +166,7 @@ function FineList() {
                     {detail === "error" && (
                       <p className="py-4 text-center text-sm text-destructive">정보를 불러오지 못했습니다.</p>
                     )}
-                    {day && <DayDetailCard day={day} />}
+                    {day && <DayDetailCard day={day} dayLabel={`${f.day}요일`} />}
                   </>
                 )}
               </InfoCard>
