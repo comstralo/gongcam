@@ -171,27 +171,6 @@ function MemberReorderSection() {
       .finally(() => setExecuting(false));
   }
 
-  // 🔧 [임시] moveMemberSlot의 B2/C38 갱신 누락 버그(수정 완료)로 이미 "0번"이
-  // 된 5/11번 슬롯을 복구하는 일회성 버튼. 사용 후 제거할 것.
-  const [fixing, setFixing] = useState(false);
-  function fixBrokenLabels() {
-    setFixing(true);
-    setError(null);
-    call<{ ok: boolean }>("/admin/members/fix-slot-labels", { method: "POST", body: { numbers: ["5", "11"] } })
-      .then(() => setResult("5번, 11번 라벨/C38을 복구했습니다."))
-      .catch((err) => setError(err instanceof Error ? err.message : "복구에 실패했습니다."))
-      .finally(() => setFixing(false));
-  }
-
-  // 🔧 [임시] 탭 순서 재배치 로직 설계용 디버그 버튼. 사용 후 제거할 것.
-  const [sheetOrder, setSheetOrder] = useState<string | null>(null);
-  function checkSheetOrder() {
-    setError(null);
-    call<{ sheets: { title: string; index: number; sheetId: number }[] }>("/admin/debug/sheet-order")
-      .then((data) => setSheetOrder(JSON.stringify(data.sheets, null, 2)))
-      .catch((err) => setError(err instanceof Error ? err.message : "조회 실패."));
-  }
-
   return (
     <SectionCard>
       <Collapsible defaultOpen className="flex flex-col gap-4">
@@ -216,19 +195,6 @@ function MemberReorderSection() {
           <Button variant="outline" disabled={loading} onClick={loadPreview} className="w-full sm:h-11">
             {loading ? <RotateCw className="size-4 animate-spin" strokeWidth={ICON_STROKE.default} /> : "이동 계획 미리보기"}
           </Button>
-
-          <Button variant="outline" disabled={fixing} onClick={fixBrokenLabels} className="w-full sm:h-11">
-            {fixing ? <RotateCw className="size-4 animate-spin" strokeWidth={ICON_STROKE.default} /> : "5/11번 라벨 복구 (임시)"}
-          </Button>
-
-          <Button variant="outline" onClick={checkSheetOrder} className="w-full sm:h-11">
-            탭 순서 확인 (임시)
-          </Button>
-          {sheetOrder && (
-            <pre className="max-h-64 overflow-y-auto rounded-lg border border-border bg-muted p-2.5 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
-              {sheetOrder}
-            </pre>
-          )}
 
           {plan && plan.length === 0 && (
             <p className="py-4 text-center text-sm text-muted-foreground sm:text-base">이미 정렬되어 있습니다.</p>
