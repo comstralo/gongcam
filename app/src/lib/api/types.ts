@@ -161,6 +161,17 @@ export type AdminFinesUnpaidResponse = {
   unpaid: UnpaidFine[];
 };
 
+export type PaidFine = {
+  number: string;
+  name: string;
+  day: string;
+};
+
+export type AdminFinesPaidResponse = {
+  paid: PaidFine[];
+  totalAmount: number;
+};
+
 export type SetFineStatusRequest = {
   number: string;
   day: string;

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Wallet, PiggyBank, RotateCw, ChevronDown } from "lucide-react";
+import { Wallet, PiggyBank, RotateCw, ChevronDown, CircleDollarSign } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { InfoCard, DayDetailCard } from "@/components/dashboard/shared";
@@ -8,12 +8,14 @@ import { ApiError } from "@/lib/api/client";
 import { ICON_STROKE, cn } from "@/lib/utils";
 import type {
   AdminFinesUnpaidResponse,
+  AdminFinesPaidResponse,
   AdminDepositsUnpaidResponse,
   FineStatus,
   DepositStatus,
   SetFineStatusResponse,
   SetDepositStatusResponse,
   UnpaidFine,
+  PaidFine,
   UnpaidDeposit,
   StatusResponse,
 } from "@/lib/api/types";
@@ -24,6 +26,140 @@ const STATUS_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
 
 function fineKey(f: Pick<UnpaidFine, "number" | "day">) {
   return `${f.number}-${f.day}`;
+}
+
+function won(n: number) {
+  return "₩" + (n || 0).toLocaleString();
+}
+
+// 같은 회원의 여러 "납부" 요일을 인원별로 하나로 묶는다.
+function groupByMember(items: PaidFine[]) {
+  const map = new Map<string, { number: string; name: string; days: string[] }>();
+  for (const item of items) {
+    const existing = map.get(item.number);
+    if (existing) existing.days.push(item.day);
+    else map.set(item.number, { number: item.number, name: item.name, days: [item.day] });
+  }
+  return Array.from(map.values());
+}
+
+function PaidFineList() {
+  const { call } = useApi();
+
+  const [paid, setPaid] = useState<PaidFine[] | null>(null);
+  const [totalAmount, setTotalAmount] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [expandedNumber, setExpandedNumber] = useState<string | null>(null);
+  const [dayDetail, setDayDetail] = useState<Record<string, StatusResponse | "loading" | "error">>({});
+
+  function load() {
+    setLoading(true);
+    setError(null);
+    call<AdminFinesPaidResponse>("/admin/fines/paid")
+      .then((data) => {
+        setPaid(data.paid || []);
+        setTotalAmount(data.totalAmount || 0);
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : "벌금 납부 목록을 불러오지 못했습니다."))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function toggleExpand(number: string) {
+    if (expandedNumber === number) {
+      setExpandedNumber(null);
+      return;
+    }
+    setExpandedNumber(number);
+    if (!dayDetail[number]) {
+      setDayDetail((prev) => ({ ...prev, [number]: "loading" }));
+      call<StatusResponse>(`/admin/members/${encodeURIComponent(number)}`)
+        .then((data) => setDayDetail((prev) => ({ ...prev, [number]: data })))
+        .catch(() => setDayDetail((prev) => ({ ...prev, [number]: "error" })));
+    }
+  }
+
+  const grouped = groupByMember(paid || []);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
+          <CircleDollarSign className="size-4 shrink-0 text-primary sm:size-5" strokeWidth={ICON_STROKE.default} />
+          벌금 납부 현황
+        </span>
+        <Button variant="outline" size="icon-sm" onClick={load} disabled={loading} aria-label="새로고침">
+          <RotateCw className={cn("size-3.5", loading && "animate-spin")} strokeWidth={ICON_STROKE.default} />
+        </Button>
+      </div>
+      <div className="h-px w-full bg-border" />
+
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      <InfoCard className="flex items-center justify-between gap-2">
+        <span className="text-sm font-semibold text-muted-foreground sm:text-base">납부된 총 벌금액</span>
+        <span className="font-mono text-base font-bold tabular-nums text-ok sm:text-lg">{won(totalAmount)}</span>
+      </InfoCard>
+
+      {loading && !paid && (
+        <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">불러오는 중...</p>
+      )}
+
+      {!loading && paid && grouped.length === 0 && (
+        <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">납부 항목이 없습니다.</p>
+      )}
+
+      {grouped.length > 0 && (
+        <div className="flex flex-col gap-2 sm:gap-2.5">
+          {grouped.map((m) => {
+            const isExpanded = expandedNumber === m.number;
+            const detail = dayDetail[m.number];
+
+            return (
+              <InfoCard key={m.number} className="flex flex-col gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => toggleExpand(m.number)}
+                  className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded"
+                >
+                  <span className="text-sm font-bold sm:text-base">{m.name}</span>
+                  <ChevronDown
+                    className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", isExpanded && "rotate-180")}
+                    strokeWidth={ICON_STROKE.default}
+                  />
+                </button>
+
+                {isExpanded && (
+                  <div className="flex flex-col gap-2.5">
+                    {detail === "loading" && (
+                      <p className="py-4 text-center text-sm text-muted-foreground">불러오는 중...</p>
+                    )}
+                    {detail === "error" && (
+                      <p className="py-4 text-center text-sm text-destructive">정보를 불러오지 못했습니다.</p>
+                    )}
+                    {detail &&
+                      detail !== "loading" &&
+                      detail !== "error" &&
+                      m.days.map((day) => {
+                        const dayIndex = STATUS_DAYS.indexOf(day);
+                        const dayData = detail.days[dayIndex];
+                        return dayData ? <DayDetailCard key={day} day={dayData} dayLabel={`${day}요일`} /> : null;
+                      })}
+                  </div>
+                )}
+              </InfoCard>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function FineList() {
@@ -279,6 +415,8 @@ function DepositList() {
 export function AdminMoneyTab() {
   return (
     <div className="flex flex-col gap-6">
+      <PaidFineList />
+      <div className="h-px w-full bg-border" />
       <FineList />
       <div className="h-px w-full bg-border" />
       <DepositList />
