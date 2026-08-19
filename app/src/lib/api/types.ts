@@ -224,12 +224,18 @@ export type ExitReasonCode = {
   label: string;
 };
 
+// met: 이 조건에 실제로 해당하는지. allChecks는 해당 여부와 무관하게
+// 강제퇴실 조건 전체(4개)를 담아, UI가 모든 케이스를 나열하고 해당되는
+// 것만 강조 표시할 수 있게 한다.
+export type ExitCheckItem = ExitReasonCode & { met: boolean };
+
 export type ExitCandidate = {
   number: string;
   name: string;
   suggestedKind: Exclude<ExitKind, "deposit_again" | "admin_forced">;
   reasons: string[];
   reasonCodes?: ExitReasonCode[];
+  allChecks?: ExitCheckItem[];
 };
 
 export type AdminExitCandidatesResponse = {
@@ -244,6 +250,7 @@ export type MemberRosterEntry = {
   suggestedKind: Exclude<ExitKind, "deposit_again" | "admin_forced">;
   reasons: string[];
   reasonCodes?: ExitReasonCode[];
+  allChecks?: ExitCheckItem[];
 };
 
 export type AdminMembersRosterResponse = {
@@ -261,6 +268,7 @@ export type ExitPreviewResponse = {
   discountRatio: number;
   resultStr: string[];
   reasons: ExitReasonCode[];
+  allChecks: ExitCheckItem[];
   resultMsg: string;
   newFineOuter: number;
   newDepositOuter: number;

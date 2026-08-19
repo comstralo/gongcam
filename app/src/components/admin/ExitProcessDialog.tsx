@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { DoorOpen, TriangleAlert } from "lucide-react";
+import { DoorOpen, TriangleAlert, CircleCheck, Circle } from "lucide-react";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import { FieldValue } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
-import type { ExitCandidate, ExitKind, ExitPreviewResponse, ExitConfirmResponse } from "@/lib/api/types";
+import type { ExitCandidate, ExitCheckItem, ExitKind, ExitPreviewResponse, ExitConfirmResponse } from "@/lib/api/types";
 
 const KIND_LABEL: Record<ExitKind, string> = {
   forced: "강제 퇴실자",
@@ -19,6 +19,32 @@ const KIND_LABEL: Record<ExitKind, string> = {
   settle: "정산 퇴실자",
   deposit_again: "예치금 재납자",
 };
+
+// 강제퇴실 조건 전체(해당 여부 무관)를 체크리스트 형태로 보여준다.
+// 해당되는 항목만 강조(체크 아이콘, destructive 색)하고, 나머지는 무채색으로
+// 그대로 나열해 관리자가 "왜 이 사람이 대상이 됐는지/안 됐는지"를 한눈에 본다.
+function ForcedExitChecklist({ checks }: { checks: ExitCheckItem[] }) {
+  return (
+    <ul className="flex flex-col gap-1">
+      {checks.map((c) => (
+        <li
+          key={c.code}
+          className={cn(
+            "flex items-start gap-1.5 text-xs sm:text-sm",
+            c.met ? "text-destructive" : "text-muted-foreground"
+          )}
+        >
+          {c.met ? (
+            <CircleCheck className="size-3.5 shrink-0 translate-y-0.5" />
+          ) : (
+            <Circle className="size-3.5 shrink-0 translate-y-0.5" />
+          )}
+          <span>{c.label}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export function ExitProcessDialog({
   candidate,
@@ -166,22 +192,12 @@ export function ExitProcessDialog({
                   </div>
                 )}
 
-                {kind === "forced" && candidate.reasonCodes && candidate.reasonCodes.length > 0 && (
+                {kind === "forced" && candidate.allChecks && candidate.allChecks.length > 0 && (
                   <div className="flex flex-col gap-1.5">
                     <Label className="text-xs font-medium text-muted-foreground sm:text-sm">
-                      감지된 강제퇴실 조건
+                      강제퇴실 조건 (해당 항목만 적용됨)
                     </Label>
-                    <ul className="flex flex-col gap-1">
-                      {candidate.reasonCodes.map((r) => (
-                        <li
-                          key={r.code}
-                          className="flex items-start gap-1.5 text-xs text-destructive sm:text-sm"
-                        >
-                          <TriangleAlert className="size-3.5 shrink-0 translate-y-0.5" />
-                          <span>{r.label}</span>
-                        </li>
-                      ))}
-                    </ul>
+                    <ForcedExitChecklist checks={candidate.allChecks} />
                   </div>
                 )}
               </InfoCard>
@@ -193,19 +209,7 @@ export function ExitProcessDialog({
               {preview && (
                 <InfoCard className="flex flex-col gap-2">
                   <span className="text-xs font-semibold sm:text-sm">{preview.kindStr} 처리 결과</span>
-                  {preview.reasons.length > 0 && (
-                    <ul className="flex flex-col gap-1">
-                      {preview.reasons.map((r) => (
-                        <li
-                          key={r.code}
-                          className="flex items-start gap-1.5 text-xs text-destructive sm:text-sm"
-                        >
-                          <TriangleAlert className="size-3.5 shrink-0 translate-y-0.5" />
-                          <span>{r.label}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                  {preview.allChecks.length > 0 && <ForcedExitChecklist checks={preview.allChecks} />}
                   <pre className="whitespace-pre-wrap font-mono text-xs text-muted-foreground sm:text-sm">
                     {preview.resultMsg}
                   </pre>
