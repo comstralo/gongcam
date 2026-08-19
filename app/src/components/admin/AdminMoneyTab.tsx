@@ -72,13 +72,24 @@ function groupByMember(items: PaidFine[]) {
   return Array.from(map.values());
 }
 
-function PaidFineList({ refreshToken }: { refreshToken?: number }) {
+// 납부 현황은 이미 납부된 항목만 다루므로 "납부" 버튼은 불필요하다.
+const FINE_UNDO_PAID_OPTIONS: Exclude<FineStatus, "납부">[] = ["미납", "면제"];
+
+function PaidFineList({
+  refreshToken,
+  onResolved,
+}: {
+  refreshToken?: number;
+  onResolved?: (status: FineStatus) => void;
+}) {
   const { call } = useApi();
 
   const [paid, setPaid] = useState<PaidFine[] | null>(null);
   const [totalAmount, setTotalAmount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
+  const [resolvedKeys, setResolvedKeys] = useState<Set<string>>(new Set());
   const [expandedNumber, setExpandedNumber] = useState<string | null>(null);
   const [dayDetail, setDayDetail] = useState<Record<string, StatusResponse | "loading" | "error">>({});
 
@@ -89,12 +100,31 @@ function PaidFineList({ refreshToken }: { refreshToken?: number }) {
       .then((data) => {
         setPaid(data.paid || []);
         setTotalAmount(data.totalAmount || 0);
+        setResolvedKeys(new Set());
       })
       .catch((err) => setError(err instanceof Error ? err.message : "벌금 납부 목록을 불러오지 못했습니다."))
       .finally(() => setLoading(false));
   }
 
   useEffect(load, [refreshToken]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleSetStatus(f: PaidFine, status: FineStatus) {
+    const key = fineKey(f);
+    setPendingKey(key);
+    setError(null);
+    try {
+      await call<SetFineStatusResponse>("/admin/fines/status", {
+        method: "POST",
+        body: { number: f.number, day: f.day, status },
+      });
+      setResolvedKeys((prev) => new Set(prev).add(key));
+      onResolved?.(status);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "납부 상태 변경에 실패했습니다.");
+    } finally {
+      setPendingKey(null);
+    }
+  }
 
   function toggleExpand(number: string) {
     if (expandedNumber === number) {
@@ -110,7 +140,8 @@ function PaidFineList({ refreshToken }: { refreshToken?: number }) {
     }
   }
 
-  const grouped = groupByMember(paid || []);
+  const visible = (paid || []).filter((f) => !resolvedKeys.has(fineKey(f)));
+  const grouped = groupByMember(visible);
 
   return (
     <div className="flex flex-col gap-4">
@@ -178,7 +209,31 @@ function PaidFineList({ refreshToken }: { refreshToken?: number }) {
                       m.days.map((day) => {
                         const dayIndex = STATUS_DAYS.indexOf(day);
                         const dayData = detail.days[dayIndex];
-                        return dayData ? <DayDetailCard key={day} day={dayData} dayLabel={`${day}요일`} /> : null;
+                        const f = { number: m.number, name: m.name, day };
+                        const key = fineKey(f);
+                        const isPending = pendingKey === key;
+                        return (
+                          <div key={day} className="flex flex-col gap-2.5 rounded-lg border bg-card p-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-sm font-semibold sm:text-base">{day}요일</span>
+                              <div className="flex items-center gap-1.5">
+                                {FINE_UNDO_PAID_OPTIONS.map((status) => (
+                                  <Button
+                                    key={status}
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={isPending}
+                                    onClick={() => handleSetStatus(f, status)}
+                                    className="flex-1 sm:flex-none"
+                                  >
+                                    {status}
+                                  </Button>
+                                ))}
+                              </div>
+                            </div>
+                            {dayData && <DayDetailCard day={dayData} />}
+                          </div>
+                        );
                       })}
                   </div>
                 )}
@@ -191,7 +246,13 @@ function PaidFineList({ refreshToken }: { refreshToken?: number }) {
   );
 }
 
-function FineList({ onResolved }: { onResolved?: (status: FineStatus) => void }) {
+function FineList({
+  refreshToken,
+  onResolved,
+}: {
+  refreshToken?: number;
+  onResolved?: (status: FineStatus) => void;
+}) {
   const { call } = useApi();
 
   const [unpaid, setUnpaid] = useState<UnpaidFine[] | null>(null);
@@ -215,7 +276,7 @@ function FineList({ onResolved }: { onResolved?: (status: FineStatus) => void })
       .finally(() => setLoading(false));
   }
 
-  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(load, [refreshToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleSetStatus(f: UnpaidFine, status: FineStatus) {
     const key = fineKey(f);
@@ -374,7 +435,13 @@ function FineList({ onResolved }: { onResolved?: (status: FineStatus) => void })
   );
 }
 
-function ExemptFineList({ refreshToken }: { refreshToken?: number }) {
+function ExemptFineList({
+  refreshToken,
+  onResolved,
+}: {
+  refreshToken?: number;
+  onResolved?: (status: FineStatus) => void;
+}) {
   const { call } = useApi();
 
   const [exempt, setExempt] = useState<ExemptFine[] | null>(null);
@@ -410,6 +477,7 @@ function ExemptFineList({ refreshToken }: { refreshToken?: number }) {
         body: { number: f.number, day: f.day, status },
       });
       setResolvedKeys((prev) => new Set(prev).add(key));
+      onResolved?.(status);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "납부 상태 변경에 실패했습니다.");
     } finally {
@@ -651,23 +719,25 @@ function DepositList() {
 }
 
 export function AdminMoneyTab() {
-  // 미납 현황에서 납부/면제 처리를 하면 그 즉시 납부 현황/면제 현황이 새 항목을
-  // 반영하도록, 두 값을 각각 증가시켜 자식 목록의 재조회를 트리거한다.
+  // 세 현황(납부/미납/면제) 중 어느 하나에서 상태를 바꾸면, 그 값이 향하는
+  // 다른 현황이 즉시 새 항목을 반영하도록 재조회를 트리거한다.
   const [paidRefresh, setPaidRefresh] = useState(0);
+  const [unpaidRefresh, setUnpaidRefresh] = useState(0);
   const [exemptRefresh, setExemptRefresh] = useState(0);
 
   function handleFineResolved(status: FineStatus) {
     if (status === "납부") setPaidRefresh((n) => n + 1);
+    if (status === "미납") setUnpaidRefresh((n) => n + 1);
     if (status === "면제") setExemptRefresh((n) => n + 1);
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <PaidFineList refreshToken={paidRefresh} />
+      <PaidFineList refreshToken={paidRefresh} onResolved={handleFineResolved} />
       <div className="h-px w-full bg-border" />
-      <FineList onResolved={handleFineResolved} />
+      <FineList refreshToken={unpaidRefresh} onResolved={handleFineResolved} />
       <div className="h-px w-full bg-border" />
-      <ExemptFineList refreshToken={exemptRefresh} />
+      <ExemptFineList refreshToken={exemptRefresh} onResolved={handleFineResolved} />
       <div className="h-px w-full bg-border" />
       <DepositList />
     </div>
