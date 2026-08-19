@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Bot, RotateCw, Table } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard } from "@/components/dashboard/shared";
 import { SectionHeader, SectionCard, FieldLabel, FieldValue } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
@@ -60,79 +61,92 @@ function BotStatusSection() {
   const browserState = status?.browserState;
 
   return (
-    <SectionCard className="flex flex-col gap-4">
-      <SectionHeader icon={Bot} title="도움봇 상태" loading={loading} onRefresh={load} />
-      <div className="h-px w-full bg-border" />
-
-      {error && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      {message && (
-        <Alert>
-          <AlertDescription>{message}</AlertDescription>
-        </Alert>
-      )}
-
-      <InfoCard className="flex flex-col gap-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <FieldLabel>연결 상태</FieldLabel>
-          <span className="inline-flex items-center gap-1.5">
-            <span className={cn("size-2.5 shrink-0 rounded-full", online ? "bg-ok" : "bg-destructive")} />
-            <FieldValue className={online ? "text-ok" : "text-destructive"}>
-              {online ? "온라인" : "오프라인"}
-            </FieldValue>
-          </span>
-        </div>
-
-        <div className="flex items-center justify-between gap-2">
-          <FieldLabel>브라우저</FieldLabel>
-          <FieldValue>
-            {browserState === "running" ? "실행 중" : browserState === "stopped" ? "정지됨" : "-"}
-          </FieldValue>
-        </div>
-
-        <div className="flex items-center justify-between gap-2">
-          <FieldLabel>마지막 신호</FieldLabel>
-          <FieldValue>{status?.lastSeenAt ? timeAgo(status.lastSeenAt) : "-"}</FieldValue>
-        </div>
-      </InfoCard>
-
-      <div className="grid grid-cols-3 gap-2">
-        <Button variant="outline" disabled={pendingCommand !== null} onClick={() => sendCommand("start")} className="sm:h-11">
-          {pendingCommand === "start" ? (
-            <RotateCw className="size-4 animate-spin" strokeWidth={ICON_STROKE.default} />
-          ) : (
-            "ON"
+    <SectionCard>
+      <Collapsible defaultOpen className="flex flex-col gap-4">
+        <SectionHeader icon={Bot} title="도움봇 상태" loading={loading} onRefresh={load} />
+        <div className="h-px w-full bg-border" />
+        <CollapsiblePanel className="flex flex-col gap-4">
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           )}
-        </Button>
-        <Button variant="outline" disabled={pendingCommand !== null} onClick={() => sendCommand("stop")} className="sm:h-11">
-          {pendingCommand === "stop" ? (
-            <RotateCw className="size-4 animate-spin" strokeWidth={ICON_STROKE.default} />
-          ) : (
-            "OFF"
-          )}
-        </Button>
-        <Button
-          variant="outline"
-          disabled={pendingCommand !== null}
-          onClick={() => sendCommand("restart")}
-          className="sm:h-11"
-        >
-          {pendingCommand === "restart" ? (
-            <RotateCw className="size-4 animate-spin" strokeWidth={ICON_STROKE.default} />
-          ) : (
-            "재시작"
-          )}
-        </Button>
-      </div>
 
-      <p className="text-xs text-muted-foreground sm:text-sm">
-        OFF는 봇 프로세스를 완전히 종료하지 않고 브라우저만 끕니다. 다시 ON 또는 재시작을 누르면
-        브라우저를 새로 열고 스터디룸에 재입장합니다.
-      </p>
+          {message && (
+            <Alert>
+              <AlertDescription>{message}</AlertDescription>
+            </Alert>
+          )}
+
+          <InfoCard className="flex flex-col gap-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <FieldLabel>연결 상태</FieldLabel>
+              <span className="inline-flex items-center gap-1.5">
+                <span className={cn("size-2.5 shrink-0 rounded-full", online ? "bg-ok" : "bg-destructive")} />
+                <FieldValue className={online ? "text-ok" : "text-destructive"}>
+                  {online ? "온라인" : "오프라인"}
+                </FieldValue>
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
+              <FieldLabel>브라우저</FieldLabel>
+              <FieldValue>
+                {browserState === "running" ? "실행 중" : browserState === "stopped" ? "정지됨" : "-"}
+              </FieldValue>
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
+              <FieldLabel>마지막 신호</FieldLabel>
+              <FieldValue>{status?.lastSeenAt ? timeAgo(status.lastSeenAt) : "-"}</FieldValue>
+            </div>
+          </InfoCard>
+
+          <div className="grid grid-cols-3 gap-2">
+            <Button
+              variant="outline"
+              disabled={pendingCommand !== null}
+              onClick={() => sendCommand("start")}
+              className="sm:h-11"
+            >
+              {pendingCommand === "start" ? (
+                <RotateCw className="size-4 animate-spin" strokeWidth={ICON_STROKE.default} />
+              ) : (
+                "ON"
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              disabled={pendingCommand !== null}
+              onClick={() => sendCommand("stop")}
+              className="sm:h-11"
+            >
+              {pendingCommand === "stop" ? (
+                <RotateCw className="size-4 animate-spin" strokeWidth={ICON_STROKE.default} />
+              ) : (
+                "OFF"
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              disabled={pendingCommand !== null}
+              onClick={() => sendCommand("restart")}
+              className="sm:h-11"
+            >
+              {pendingCommand === "restart" ? (
+                <RotateCw className="size-4 animate-spin" strokeWidth={ICON_STROKE.default} />
+              ) : (
+                "재시작"
+              )}
+            </Button>
+          </div>
+
+          <p className="text-xs text-muted-foreground sm:text-sm">
+            OFF는 봇 프로세스를 완전히 종료하지 않고 브라우저만 끕니다. 다시 ON 또는 재시작을 누르면
+            브라우저를 새로 열고 스터디룸에 재입장합니다.
+          </p>
+        </CollapsiblePanel>
+      </Collapsible>
     </SectionCard>
   );
 }
