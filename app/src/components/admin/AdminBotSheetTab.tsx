@@ -98,13 +98,19 @@ function BotStatusSection() {
             </div>
           </InfoCard>
 
-          <Button variant="outline" disabled={restarting} onClick={sendRestart} className="w-full sm:h-11">
-            {restarting ? (
-              <RotateCw className="size-4 animate-spin" strokeWidth={ICON_STROKE.default} />
-            ) : (
-              "재시작"
-            )}
-          </Button>
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="outline" disabled={restarting} onClick={sendRestart} className="w-full sm:h-11">
+              {restarting ? (
+                <RotateCw className="size-4 animate-spin" strokeWidth={ICON_STROKE.default} />
+              ) : (
+                "재시작"
+              )}
+            </Button>
+            <Button variant="outline" disabled={loading} onClick={load} className="w-full sm:h-11">
+              <RotateCw className={cn("size-4", loading && "animate-spin")} strokeWidth={ICON_STROKE.default} />
+              새로고침
+            </Button>
+          </div>
 
           <p className="text-xs text-muted-foreground sm:text-sm">
             재시작을 누르면 브라우저를 새로 열고 스터디룸에 재입장합니다.
