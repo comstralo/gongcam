@@ -1,12 +1,13 @@
 import { UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
+import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard } from "@/components/dashboard/shared";
+import { SectionHeader, SectionCard } from "@/components/admin/shared";
 import { NewMemberForm } from "@/components/admin/NewMemberForm";
 import { MemberRosterList } from "@/components/admin/MemberRosterList";
 import { usePushSubscription } from "@/hooks/usePushSubscription";
-import { cn, ICON_STROKE } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 const STATE_LABEL: Record<string, string> = {
   checking: "알림 상태 확인 중...",
@@ -20,24 +21,19 @@ export function AdminMemberTab() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Collapsible defaultOpen={false} className="flex flex-col gap-3">
-        <CollapsibleTrigger>
-          <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
-            <UserPlus className="size-4 shrink-0 text-primary sm:size-5" strokeWidth={ICON_STROKE.default} />
-            신규 스터디원 등록
-          </span>
-        </CollapsibleTrigger>
-        <div className="h-px w-full bg-border" />
-        <CollapsiblePanel>
-          <NewMemberForm />
-        </CollapsiblePanel>
-      </Collapsible>
+      <SectionCard>
+        <Collapsible defaultOpen={false} className="flex flex-col gap-3">
+          <SectionHeader icon={UserPlus} title="신규 스터디원 등록" />
+          <div className="h-px w-full bg-border" />
+          <CollapsiblePanel>
+            <NewMemberForm />
+          </CollapsiblePanel>
+        </Collapsible>
+      </SectionCard>
 
-      <div className="h-px w-full bg-border" />
-
-      <MemberRosterList />
-
-      <div className="h-px w-full bg-border" />
+      <SectionCard>
+        <MemberRosterList />
+      </SectionCard>
 
       <span className="font-mono text-micro uppercase tracking-wide text-muted-foreground sm:text-xs">
         브라우저 푸시 알림

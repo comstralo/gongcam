@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, DayDetailCard } from "@/components/dashboard/shared";
-import { SectionHeader, ItemTitle, FieldLabel } from "@/components/admin/shared";
+import { SectionHeader, ItemTitle, FieldLabel, SectionCard } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
 import { ICON_STROKE, cn } from "@/lib/utils";
@@ -620,12 +620,16 @@ export function AdminMoneyTab() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <PaidFineList refreshToken={paidRefresh} onResolved={handleFineResolved} />
-      <div className="h-px w-full bg-border" />
-      <FineList refreshToken={unpaidRefresh} onResolved={handleFineResolved} />
-      <div className="h-px w-full bg-border" />
-      <ExemptFineList refreshToken={exemptRefresh} onResolved={handleFineResolved} />
+    <div className="flex flex-col gap-4">
+      <SectionCard>
+        <PaidFineList refreshToken={paidRefresh} onResolved={handleFineResolved} />
+      </SectionCard>
+      <SectionCard>
+        <FineList refreshToken={unpaidRefresh} onResolved={handleFineResolved} />
+      </SectionCard>
+      <SectionCard>
+        <ExemptFineList refreshToken={exemptRefresh} onResolved={handleFineResolved} />
+      </SectionCard>
     </div>
   );
 }
