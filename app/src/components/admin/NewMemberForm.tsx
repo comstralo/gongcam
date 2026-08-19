@@ -143,7 +143,7 @@ export function NewMemberForm() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="예: 길동"
-            className="sm:h-12 sm:text-base"
+            className="sm:h-12 sm:text-base md:text-base"
           />
         </div>
 
@@ -157,7 +157,7 @@ export function NewMemberForm() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="example@gmail.com"
-            className="sm:h-12 sm:text-base"
+            className="sm:h-12 sm:text-base md:text-base"
           />
         </div>
       </div>
@@ -166,7 +166,7 @@ export function NewMemberForm() {
         <div className="flex flex-col gap-1.5">
           <Label className="text-xs font-medium text-muted-foreground sm:text-sm">시트번호</Label>
           <Select value={number} onValueChange={(v) => setNumber(v ?? "")} disabled={!slots || noSlots}>
-            <SelectTrigger className="py-1 data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base">
+            <SelectTrigger className="py-1 text-base data-[size=default]:h-8 sm:data-[size=default]:h-12 md:text-base">
               <SelectValue placeholder={noSlots ? "빈 자리 없음" : "선택"} />
             </SelectTrigger>
             <SelectContent>
@@ -182,7 +182,7 @@ export function NewMemberForm() {
         <div className="flex flex-col gap-1.5">
           <Label className="text-xs font-medium text-muted-foreground sm:text-sm">참여유형</Label>
           <Select value={participationType} onValueChange={(v) => setParticipationType(v ?? "8|교시제")}>
-            <SelectTrigger className="py-1 data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base">
+            <SelectTrigger className="py-1 text-base data-[size=default]:h-8 sm:data-[size=default]:h-12 md:text-base">
               <SelectValue>{selectedType?.label}</SelectValue>
             </SelectTrigger>
             <SelectContent>
@@ -210,7 +210,7 @@ export function NewMemberForm() {
           value={examKind}
           onChange={(e) => setExamKind(e.target.value)}
           placeholder="예: 공시, CPA"
-          className="sm:h-12 sm:text-base"
+          className="sm:h-12 sm:text-base md:text-base"
         />
       </div>
 
