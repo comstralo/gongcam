@@ -26,13 +26,11 @@ export function FieldValue({ children, className }: { children: ReactNode; class
   return <span className={cn("text-xs font-semibold sm:text-sm", className)}>{children}</span>;
 }
 
-// 관리자 탭에서 접이식 섹션 하나를 감싸는 카드. AdminPage가 이미 전체를
-// Card(bg-card)로 감싸고 있어, bg-muted/40으로 옅게 톤을 낮춰 섹션 경계를
-// 뚜렷이 드러내면서도 내부 리스트 아이템의 InfoCard(bg-muted)와는 밝기 차이를 둔다.
+// 관리자 탭에서 접이식 섹션 하나를 감싸는 카드. 회색 배경(bg-muted)을 쓰면
+// 내용물이 흐리게 보여 비활성화된 것처럼 착시가 생기므로, 배경은 부모
+// Card와 같은 흰 바탕(bg-card)을 유지하고 테두리로만 섹션 경계를 드러낸다.
 export function SectionCard({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <div className={cn("rounded-xl border border-border bg-muted/40 p-3.5 sm:p-4", className)}>{children}</div>
-  );
+  return <div className={cn("rounded-xl border border-border bg-card p-3.5 sm:p-4", className)}>{children}</div>;
 }
 
 // 관리자 탭의 각 현황 섹션 공통 헤더 — 제목(펼침/접힘 토글 겸)과 새로고침 버튼.
