@@ -172,6 +172,16 @@ export type AdminFinesPaidResponse = {
   totalAmount: number;
 };
 
+export type ExemptFine = {
+  number: string;
+  name: string;
+  day: string;
+};
+
+export type AdminFinesExemptResponse = {
+  exempt: ExemptFine[];
+};
+
 export type SetFineStatusRequest = {
   number: string;
   day: string;
