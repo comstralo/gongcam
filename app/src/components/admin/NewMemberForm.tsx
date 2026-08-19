@@ -215,7 +215,7 @@ export function NewMemberForm() {
       </div>
 
       <Button className="w-full sm:h-12 sm:text-base" disabled={submitting || noSlots} onClick={handleSubmit}>
-        신규 스터디원 등록
+        등록하기
       </Button>
 
       {message && (

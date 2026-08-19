@@ -1,4 +1,4 @@
-import { UserPlus } from "lucide-react";
+import { UserPlus, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
@@ -23,7 +23,7 @@ export function AdminMemberTab() {
     <div className="flex flex-col gap-4">
       <SectionCard>
         <Collapsible defaultOpen={false} className="flex flex-col gap-3">
-          <SectionHeader icon={UserPlus} title="신규 스터디원 등록" />
+          <SectionHeader icon={UserPlus} title="스터디원 등록" />
           <div className="h-px w-full bg-border" />
           <CollapsiblePanel>
             <NewMemberForm />
@@ -35,36 +35,41 @@ export function AdminMemberTab() {
         <MemberRosterList />
       </SectionCard>
 
-      <span className="font-mono text-micro uppercase tracking-wide text-muted-foreground sm:text-xs">
-        브라우저 푸시 알림
-      </span>
-      <InfoCard className="flex items-center gap-2.5 text-sm sm:text-base">
-        <span
-          className={cn(
-            "size-2.5 shrink-0 rounded-full bg-muted-foreground",
-            state === "on" && "bg-ok",
-            state === "off" && "bg-destructive"
-          )}
-        />
-        <span>{STATE_LABEL[state]}</span>
-      </InfoCard>
+      <SectionCard>
+        <Collapsible defaultOpen className="flex flex-col gap-3">
+          <SectionHeader icon={Bell} title="브라우저 푸시 알림" />
+          <div className="h-px w-full bg-border" />
+          <CollapsiblePanel className="flex flex-col gap-3">
+            <InfoCard className="flex items-center gap-2.5 text-sm sm:text-base">
+              <span
+                className={cn(
+                  "size-2.5 shrink-0 rounded-full bg-muted-foreground",
+                  state === "on" && "bg-ok",
+                  state === "off" && "bg-destructive"
+                )}
+              />
+              <span>{STATE_LABEL[state]}</span>
+            </InfoCard>
 
-      {state === "off" && (
-        <Button className="w-full sm:h-12 sm:text-base" onClick={enable}>
-          알림 켜기
-        </Button>
-      )}
-      {state === "on" && (
-        <Button className="w-full sm:h-12 sm:text-base" variant="outline" onClick={sendTest}>
-          테스트 알림 보내기
-        </Button>
-      )}
+            {state === "off" && (
+              <Button className="w-full sm:h-12 sm:text-base" onClick={enable}>
+                알림 켜기
+              </Button>
+            )}
+            {state === "on" && (
+              <Button className="w-full sm:h-12 sm:text-base" variant="outline" onClick={sendTest}>
+                테스트 알림 보내기
+              </Button>
+            )}
 
-      {message && (
-        <Alert variant={message.type === "error" ? "destructive" : "default"}>
-          <AlertDescription>{message.text}</AlertDescription>
-        </Alert>
-      )}
+            {message && (
+              <Alert variant={message.type === "error" ? "destructive" : "default"}>
+                <AlertDescription>{message.text}</AlertDescription>
+              </Alert>
+            )}
+          </CollapsiblePanel>
+        </Collapsible>
+      </SectionCard>
     </div>
   );
 }

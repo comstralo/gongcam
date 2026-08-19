@@ -4,7 +4,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard } from "@/components/dashboard/shared";
-import { SectionHeader, ItemTitle, FieldLabel } from "@/components/admin/shared";
+import { SectionHeader, ItemTitle } from "@/components/admin/shared";
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
 import { useApi } from "@/hooks/useApi";
 import { ICON_STROKE, cn } from "@/lib/utils";
@@ -54,12 +54,7 @@ export function MemberRosterList() {
                 key={m.number}
                 className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between"
               >
-                <div className="flex flex-col gap-0.5">
-                  <ItemTitle>{m.name}</ItemTitle>
-                  <FieldLabel>
-                    가입일자 {m.joinDate || "-"} · 총 페널티 {m.totalPenalty}회
-                  </FieldLabel>
-                </div>
+                <ItemTitle>{m.name}</ItemTitle>
                 <ExitProcessDialog
                   candidate={m}
                   onConfirmed={load}
