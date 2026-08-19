@@ -217,13 +217,19 @@ export type SetDepositStatusResponse = {
   status: DepositStatus;
 };
 
-export type ExitKind = "forced" | "settle" | "deposit_again";
+export type ExitKind = "forced" | "admin_forced" | "settle" | "deposit_again";
+
+export type ExitReasonCode = {
+  code: string;
+  label: string;
+};
 
 export type ExitCandidate = {
   number: string;
   name: string;
-  suggestedKind: Exclude<ExitKind, "deposit_again">;
+  suggestedKind: Exclude<ExitKind, "deposit_again" | "admin_forced">;
   reasons: string[];
+  reasonCodes?: ExitReasonCode[];
 };
 
 export type AdminExitCandidatesResponse = {
@@ -235,8 +241,9 @@ export type MemberRosterEntry = {
   name: string;
   joinDate: string;
   totalPenalty: number;
-  suggestedKind: Exclude<ExitKind, "deposit_again">;
+  suggestedKind: Exclude<ExitKind, "deposit_again" | "admin_forced">;
   reasons: string[];
+  reasonCodes?: ExitReasonCode[];
 };
 
 export type AdminMembersRosterResponse = {
@@ -253,6 +260,7 @@ export type ExitPreviewResponse = {
   ok: true;
   discountRatio: number;
   resultStr: string[];
+  reasons: ExitReasonCode[];
   resultMsg: string;
   newFineOuter: number;
   newDepositOuter: number;

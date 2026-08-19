@@ -15,6 +15,7 @@ import type { ExitCandidate, ExitKind, ExitPreviewResponse, ExitConfirmResponse 
 
 const KIND_LABEL: Record<ExitKind, string> = {
   forced: "강제 퇴실자",
+  admin_forced: "직권 퇴실자",
   settle: "정산 퇴실자",
   deposit_again: "예치금 재납자",
 };
@@ -58,7 +59,7 @@ export function ExitProcessDialog({
     try {
       const data = await call<ExitPreviewResponse>("/admin/exit/preview", {
         method: "POST",
-        body: { number: candidate.number, kind, forcedReason: kind === "forced" ? forcedReason : undefined },
+        body: { number: candidate.number, kind, forcedReason: kind === "admin_forced" ? forcedReason : undefined },
       });
       setPreview(data);
     } catch (err) {
@@ -74,7 +75,7 @@ export function ExitProcessDialog({
     try {
       await call<ExitConfirmResponse>("/admin/exit/confirm", {
         method: "POST",
-        body: { number: candidate.number, kind, forcedReason: kind === "forced" ? forcedReason : undefined },
+        body: { number: candidate.number, kind, forcedReason: kind === "admin_forced" ? forcedReason : undefined },
       });
       setConfirmed(true);
       onConfirmed?.();
@@ -137,6 +138,9 @@ export function ExitProcessDialog({
                       <SelectItem value="forced" className="sm:text-base">
                         {KIND_LABEL.forced}
                       </SelectItem>
+                      <SelectItem value="admin_forced" className="sm:text-base">
+                        {KIND_LABEL.admin_forced}
+                      </SelectItem>
                       <SelectItem value="settle" className="sm:text-base">
                         {KIND_LABEL.settle}
                       </SelectItem>
@@ -147,10 +151,10 @@ export function ExitProcessDialog({
                   </Select>
                 )}
 
-                {kind === "forced" && (
+                {kind === "admin_forced" && (
                   <div className="flex flex-col gap-1.5">
                     <Label htmlFor="forced-reason" className="text-xs font-medium text-muted-foreground sm:text-sm">
-                      기타 직권 사유 (해당 없으면 비워두세요)
+                      직권 퇴실 사유
                     </Label>
                     <Input
                       id="forced-reason"
@@ -162,10 +166,23 @@ export function ExitProcessDialog({
                   </div>
                 )}
 
-                {candidate.reasons.length > 0 && (
-                  <p className="text-xs text-muted-foreground sm:text-sm">
-                    자동 감지된 사유: {candidate.reasons.join(", ")}
-                  </p>
+                {kind === "forced" && candidate.reasonCodes && candidate.reasonCodes.length > 0 && (
+                  <div className="flex flex-col gap-1.5">
+                    <Label className="text-xs font-medium text-muted-foreground sm:text-sm">
+                      감지된 강제퇴실 조건
+                    </Label>
+                    <ul className="flex flex-col gap-1">
+                      {candidate.reasonCodes.map((r) => (
+                        <li
+                          key={r.code}
+                          className="flex items-start gap-1.5 text-xs text-destructive sm:text-sm"
+                        >
+                          <TriangleAlert className="size-3.5 shrink-0 translate-y-0.5" />
+                          <span>{r.label}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
               </InfoCard>
 
@@ -174,8 +191,21 @@ export function ExitProcessDialog({
               </Button>
 
               {preview && (
-                <InfoCard className="flex flex-col gap-1.5">
+                <InfoCard className="flex flex-col gap-2">
                   <span className="text-xs font-semibold sm:text-sm">{preview.kindStr} 처리 결과</span>
+                  {preview.reasons.length > 0 && (
+                    <ul className="flex flex-col gap-1">
+                      {preview.reasons.map((r) => (
+                        <li
+                          key={r.code}
+                          className="flex items-start gap-1.5 text-xs text-destructive sm:text-sm"
+                        >
+                          <TriangleAlert className="size-3.5 shrink-0 translate-y-0.5" />
+                          <span>{r.label}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   <pre className="whitespace-pre-wrap font-mono text-xs text-muted-foreground sm:text-sm">
                     {preview.resultMsg}
                   </pre>
