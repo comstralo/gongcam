@@ -217,6 +217,42 @@ export type SetDepositStatusResponse = {
   status: DepositStatus;
 };
 
+export type ExitKind = "forced" | "settle" | "deposit_again";
+
+export type ExitCandidate = {
+  number: string;
+  name: string;
+  suggestedKind: Exclude<ExitKind, "deposit_again">;
+  reasons: string[];
+};
+
+export type AdminExitCandidatesResponse = {
+  candidates: ExitCandidate[];
+};
+
+export type ExitPreviewRequest = {
+  number: string;
+  kind: ExitKind;
+  forcedReason?: string;
+};
+
+export type ExitPreviewResponse = {
+  ok: true;
+  discountRatio: number;
+  resultStr: string[];
+  resultMsg: string;
+  newFineOuter: number;
+  newDepositOuter: number;
+  kindStr: string;
+};
+
+export type ExitConfirmResponse = {
+  ok: true;
+  number: string;
+  name: string;
+  resultMsg: string;
+};
+
 export type GoalScheduleResponse = {
   scheduled: string | null;
   validValues: string[];
