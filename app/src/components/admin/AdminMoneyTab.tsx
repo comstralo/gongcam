@@ -32,6 +32,30 @@ function won(n: number) {
   return "₩" + (n || 0).toLocaleString();
 }
 
+// 오늘 날짜 기준 이번 주(월~일)의 각 요일 실제 날짜를 "8월 19일" 형태로 계산한다.
+function thisWeekDateLabel(dayKr: string): string {
+  const dayIndex = STATUS_DAYS.indexOf(dayKr); // 월=0 ... 일=6
+  if (dayIndex === -1) return "";
+  const now = new Date();
+  const todayIndex = (now.getDay() + 6) % 7; // JS getDay()는 일=0 → 월=0으로 보정
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - todayIndex);
+  const target = new Date(monday);
+  target.setDate(monday.getDate() + dayIndex);
+  return `${target.getMonth() + 1}월 ${target.getDate()}일`;
+}
+
+// 같은 요일의 여러 미납자를 요일별로 하나로 묶는다.
+function groupByDay(items: UnpaidFine[]) {
+  const map = new Map<string, UnpaidFine[]>();
+  for (const item of items) {
+    const existing = map.get(item.day);
+    if (existing) existing.push(item);
+    else map.set(item.day, [item]);
+  }
+  return STATUS_DAYS.filter((d) => map.has(d)).map((day) => ({ day, members: map.get(day)! }));
+}
+
 // 같은 회원의 여러 "납부" 요일을 인원별로 하나로 묶는다.
 function groupByMember(items: PaidFine[]) {
   const map = new Map<string, { number: string; name: string; days: string[] }>();
@@ -170,6 +194,7 @@ function FineList() {
   const [loading, setLoading] = useState(true);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [resolvedKeys, setResolvedKeys] = useState<Set<string>>(new Set());
+  const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [dayDetail, setDayDetail] = useState<Record<string, StatusResponse | "loading" | "error">>({});
 
@@ -204,22 +229,23 @@ function FineList() {
     }
   }
 
-  function toggleExpand(f: UnpaidFine) {
+  function toggleMember(f: UnpaidFine) {
     const key = fineKey(f);
     if (expandedKey === key) {
       setExpandedKey(null);
       return;
     }
     setExpandedKey(key);
-    if (!dayDetail[key]) {
-      setDayDetail((prev) => ({ ...prev, [key]: "loading" }));
+    if (!dayDetail[f.number]) {
+      setDayDetail((prev) => ({ ...prev, [f.number]: "loading" }));
       call<StatusResponse>(`/admin/members/${encodeURIComponent(f.number)}`)
-        .then((data) => setDayDetail((prev) => ({ ...prev, [key]: data })))
-        .catch(() => setDayDetail((prev) => ({ ...prev, [key]: "error" })));
+        .then((data) => setDayDetail((prev) => ({ ...prev, [f.number]: data })))
+        .catch(() => setDayDetail((prev) => ({ ...prev, [f.number]: "error" })));
     }
   }
 
   const visible = (unpaid || []).filter((f) => !resolvedKeys.has(fineKey(f)));
+  const groups = groupByDay(visible);
 
   return (
     <div className="flex flex-col gap-4">
@@ -244,66 +270,94 @@ function FineList() {
         <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">불러오는 중...</p>
       )}
 
-      {!loading && unpaid && visible.length === 0 && (
+      {!loading && unpaid && groups.length === 0 && (
         <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">미납 항목이 없습니다.</p>
       )}
 
-      {visible.length > 0 && (
+      {groups.length > 0 && (
         <div className="flex flex-col gap-2 sm:gap-2.5">
-          {visible.map((f) => {
-            const key = fineKey(f);
-            const isPending = pendingKey === key;
-            const isExpanded = expandedKey === key;
-            const detail = dayDetail[key];
-            const dayIndex = STATUS_DAYS.indexOf(f.day);
-            const day =
-              detail && detail !== "loading" && detail !== "error" ? detail.days[dayIndex] : null;
-
+          {groups.map((group) => {
+            const isDayExpanded = expandedDay === group.day;
             return (
-              <InfoCard key={key} className="flex flex-col gap-2.5">
-                <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-                  <span className="text-sm font-bold sm:text-base">{f.name}</span>
-                  <div className="flex items-center gap-1.5">
-                    {FINE_STATUS_OPTIONS.map((status) => (
-                      <Button
-                        key={status}
-                        size="sm"
-                        variant={status === "미납" ? "destructive" : "outline"}
-                        disabled={isPending}
-                        onClick={() => handleSetStatus(f, status)}
-                        className="flex-1 sm:flex-none"
-                      >
-                        {status}
-                      </Button>
-                    ))}
-                    {/* 강제퇴실 처리 — 아직 미구현, 버튼만 우선 배치 */}
-                    <Button size="sm" variant="outline" disabled className="flex-1 sm:flex-none">
-                      직권
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="icon-sm"
-                      onClick={() => toggleExpand(f)}
-                      aria-label={isExpanded ? "상세 접기" : "상세 펼치기"}
-                    >
-                      <ChevronDown
-                        className={cn("size-3.5 transition-transform", isExpanded && "rotate-180")}
-                        strokeWidth={ICON_STROKE.default}
-                      />
-                    </Button>
-                  </div>
-                </div>
+              <InfoCard key={group.day} className="flex flex-col gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setExpandedDay(isDayExpanded ? null : group.day)}
+                  className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded"
+                >
+                  <span className="flex items-baseline gap-1.5">
+                    <span className="text-sm font-bold sm:text-base">
+                      {thisWeekDateLabel(group.day)} {group.day}요일
+                    </span>
+                    <span className="text-xs text-muted-foreground sm:text-sm">{group.members.length}명</span>
+                  </span>
+                  <ChevronDown
+                    className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", isDayExpanded && "rotate-180")}
+                    strokeWidth={ICON_STROKE.default}
+                  />
+                </button>
 
-                {isExpanded && (
-                  <>
-                    {detail === "loading" && (
-                      <p className="py-4 text-center text-sm text-muted-foreground">불러오는 중...</p>
-                    )}
-                    {detail === "error" && (
-                      <p className="py-4 text-center text-sm text-destructive">정보를 불러오지 못했습니다.</p>
-                    )}
-                    {day && <DayDetailCard day={day} dayLabel={`${f.day}요일`} />}
-                  </>
+                {isDayExpanded && (
+                  <div className="flex flex-col gap-2.5">
+                    {group.members.map((f) => {
+                      const key = fineKey(f);
+                      const isPending = pendingKey === key;
+                      const isMemberExpanded = expandedKey === key;
+                      const detail = dayDetail[f.number];
+                      const dayIndex = STATUS_DAYS.indexOf(f.day);
+                      const day =
+                        detail && detail !== "loading" && detail !== "error" ? detail.days[dayIndex] : null;
+
+                      return (
+                        <div key={key} className="flex flex-col gap-2.5 rounded-lg border bg-card p-3">
+                          <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+                            <span className="text-sm font-bold sm:text-base">{f.name}</span>
+                            <div className="flex items-center gap-1.5">
+                              {FINE_STATUS_OPTIONS.map((status) => (
+                                <Button
+                                  key={status}
+                                  size="sm"
+                                  variant={status === "미납" ? "destructive" : "outline"}
+                                  disabled={isPending}
+                                  onClick={() => handleSetStatus(f, status)}
+                                  className="flex-1 sm:flex-none"
+                                >
+                                  {status}
+                                </Button>
+                              ))}
+                              {/* 강제퇴실 처리 — 아직 미구현, 버튼만 우선 배치 */}
+                              <Button size="sm" variant="outline" disabled className="flex-1 sm:flex-none">
+                                직권
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="icon-sm"
+                                onClick={() => toggleMember(f)}
+                                aria-label={isMemberExpanded ? "상세 접기" : "상세 펼치기"}
+                              >
+                                <ChevronDown
+                                  className={cn("size-3.5 transition-transform", isMemberExpanded && "rotate-180")}
+                                  strokeWidth={ICON_STROKE.default}
+                                />
+                              </Button>
+                            </div>
+                          </div>
+
+                          {isMemberExpanded && (
+                            <>
+                              {detail === "loading" && (
+                                <p className="py-4 text-center text-sm text-muted-foreground">불러오는 중...</p>
+                              )}
+                              {detail === "error" && (
+                                <p className="py-4 text-center text-sm text-destructive">정보를 불러오지 못했습니다.</p>
+                              )}
+                              {day && <DayDetailCard day={day} dayLabel={`${f.day}요일`} />}
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </InfoCard>
             );
