@@ -157,7 +157,7 @@ export function ExitProcessDialog({
                   <FieldValue className="text-sm sm:text-base">{KIND_LABEL[lockKind]}</FieldValue>
                 ) : (
                   <Select value={kind} onValueChange={(v) => v && resetForNewKind(v as ExitKind)}>
-                    <SelectTrigger className="bg-card sm:h-12 sm:text-base">
+                    <SelectTrigger className="bg-card data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base">
                       <SelectValue>{KIND_LABEL[kind]}</SelectValue>
                     </SelectTrigger>
                     <SelectContent>

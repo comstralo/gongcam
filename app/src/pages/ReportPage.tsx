@@ -103,7 +103,7 @@ export function ReportPage() {
           <span className="text-xs text-muted-foreground sm:text-sm">{hint}</span>
           <div className="flex items-center gap-2">
             <Select value={nickname} onValueChange={(v) => setNickname(v ?? "")} disabled={noMembers}>
-              <SelectTrigger className="flex-1 sm:h-12 sm:text-base">
+              <SelectTrigger className="flex-1 data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base">
                 <SelectValue
                   placeholder={noMembers ? "현재 접속 중인 참여자가 없습니다" : "참여자를 선택하세요"}
                 />
@@ -135,7 +135,7 @@ export function ReportPage() {
           </Label>
           <span className="text-xs text-muted-foreground sm:text-sm">해당하는 상황을 선택해주세요</span>
           <Select value={reason} onValueChange={(v) => setReason(v ?? "")}>
-            <SelectTrigger id="reason" className="sm:h-12 sm:text-base">
+            <SelectTrigger id="reason" className="data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base">
               <SelectValue placeholder="상황을 선택하세요" />
             </SelectTrigger>
             <SelectContent>

@@ -107,7 +107,7 @@ export function GoalTypeScheduleDialog({
                   </span>
                 )}
                 <Select value={selected} onValueChange={(v) => setSelected(v ?? "")}>
-                  <SelectTrigger className="bg-card sm:h-12 sm:text-base">
+                  <SelectTrigger className="bg-card data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base">
                     <SelectValue>{selected && formatGoalType(selected)}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>

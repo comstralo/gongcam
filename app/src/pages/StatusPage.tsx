@@ -73,7 +73,7 @@ export function StatusPage() {
         </div>
         {isAdmin && (
           <Select value={selected} onValueChange={(v) => setSelected(v ?? SELF_VALUE)}>
-            <SelectTrigger className="sm:h-12 sm:text-base">
+            <SelectTrigger className="data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base">
               <SelectValue>
                 {selected === SELF_VALUE ? "내 대시보드" : members?.find((m) => m.number === selected)?.name}
               </SelectValue>
