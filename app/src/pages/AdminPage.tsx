@@ -4,13 +4,12 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AdminMemberTab } from "@/components/admin/AdminMemberTab";
 import { AdminMoneyTab } from "@/components/admin/AdminMoneyTab";
 import { AdminPenaltyTab } from "@/components/admin/AdminPenaltyTab";
-import { AdminBotTab } from "@/components/admin/AdminBotTab";
-import { AdminSheetTab } from "@/components/admin/AdminSheetTab";
+import { AdminBotSheetTab } from "@/components/admin/AdminBotSheetTab";
 
-type AdminView = "member" | "money" | "penalty" | "bot" | "sheet";
+type AdminView = "member" | "money" | "penalty" | "botsheet";
 
 function normalizeView(raw: string | null): AdminView {
-  if (raw === "money" || raw === "penalty" || raw === "bot" || raw === "sheet") return raw;
+  if (raw === "money" || raw === "penalty" || raw === "botsheet") return raw;
   return "member";
 }
 
@@ -38,11 +37,8 @@ export function AdminPage() {
           <TabsTrigger value="penalty" className="flex-1 font-mono text-xs tracking-wide uppercase">
             Penalty
           </TabsTrigger>
-          <TabsTrigger value="bot" className="flex-1 font-mono text-xs tracking-wide uppercase">
-            Bot
-          </TabsTrigger>
-          <TabsTrigger value="sheet" className="flex-1 font-mono text-xs tracking-wide uppercase">
-            Sheet
+          <TabsTrigger value="botsheet" className="flex-1 font-mono text-xs tracking-wide uppercase">
+            Bot · Sheet
           </TabsTrigger>
         </TabsList>
       </Tabs>
@@ -52,8 +48,7 @@ export function AdminPage() {
           {view === "member" && <AdminMemberTab />}
           {view === "money" && <AdminMoneyTab />}
           {view === "penalty" && <AdminPenaltyTab />}
-          {view === "bot" && <AdminBotTab />}
-          {view === "sheet" && <AdminSheetTab />}
+          {view === "botsheet" && <AdminBotSheetTab />}
         </CardContent>
       </Card>
     </div>

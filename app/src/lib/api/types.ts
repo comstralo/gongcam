@@ -291,3 +291,16 @@ export type SetGoalScheduleResponse = {
   ok: true;
   scheduled: string;
 };
+
+export type BotStatusResponse = {
+  online: boolean;
+  browserState: "running" | "stopped" | null;
+  lastSeenAt: number | null;
+};
+
+export type BotCommand = "restart" | "stop" | "start";
+
+export type BotCommandResponse = {
+  ok: true;
+  command: BotCommand;
+};
