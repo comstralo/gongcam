@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { Wallet, PiggyBank, RotateCw, ChevronDown, CircleDollarSign, BadgePercent, type LucideIcon } from "lucide-react";
+import { Wallet, ChevronDown, CircleDollarSign, BadgePercent } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
+import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, DayDetailCard } from "@/components/dashboard/shared";
+import { SectionHeader } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
 import { ICON_STROKE, cn } from "@/lib/utils";
@@ -11,15 +12,11 @@ import type {
   AdminFinesUnpaidResponse,
   AdminFinesPaidResponse,
   AdminFinesExemptResponse,
-  AdminDepositsUnpaidResponse,
   FineStatus,
-  DepositStatus,
   SetFineStatusResponse,
-  SetDepositStatusResponse,
   UnpaidFine,
   PaidFine,
   ExemptFine,
-  UnpaidDeposit,
   StatusResponse,
 } from "@/lib/api/types";
 
@@ -27,7 +24,6 @@ import type {
 const FINE_RESOLVE_OPTIONS: Exclude<FineStatus, "미납">[] = ["납부", "면제"];
 // 면제 현황 목록은 이미 면제된 항목이므로 "면제" 버튼은 불필요하다.
 const FINE_REVERT_OPTIONS: Exclude<FineStatus, "면제">[] = ["납부", "미납"];
-const DEPOSIT_STATUS_OPTIONS: DepositStatus[] = ["미납", "납부"];
 const STATUS_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
 
 function fineKey(f: Pick<UnpaidFine, "number" | "day">) {
@@ -60,34 +56,6 @@ function groupByDay<T extends { number: string; name: string; day: string }>(ite
     else map.set(item.day, [item]);
   }
   return STATUS_DAYS.filter((d) => map.has(d)).map((day) => ({ day, members: map.get(day)! }));
-}
-
-// 각 현황 섹션 공통 헤더 — 제목(펼침/접힘 토글 겸)과 새로고침 버튼.
-// 새로고침 버튼은 CollapsibleTrigger 바깥에 두어 클릭 시 섹션이 접히지 않게 한다.
-function SectionHeader({
-  icon: Icon,
-  title,
-  loading,
-  onRefresh,
-}: {
-  icon: LucideIcon;
-  title: string;
-  loading: boolean;
-  onRefresh: () => void;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-2">
-      <CollapsibleTrigger className="flex-1">
-        <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
-          <Icon className="size-4 shrink-0 text-primary sm:size-5" strokeWidth={ICON_STROKE.default} />
-          {title}
-        </span>
-      </CollapsibleTrigger>
-      <Button variant="outline" size="icon-sm" onClick={onRefresh} disabled={loading} aria-label="새로고침">
-        <RotateCw className={cn("size-3.5", loading && "animate-spin")} strokeWidth={ICON_STROKE.default} />
-      </Button>
-    </div>
-  );
 }
 
 // 납부 현황은 이미 납부된 항목만 다루므로 "납부" 버튼은 불필요하다.
@@ -638,97 +606,6 @@ function ExemptFineList({
   );
 }
 
-function DepositList() {
-  const { call } = useApi();
-
-  const [unpaid, setUnpaid] = useState<UnpaidDeposit[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [pendingNumber, setPendingNumber] = useState<string | null>(null);
-  const [resolvedNumbers, setResolvedNumbers] = useState<Set<string>>(new Set());
-
-  function load() {
-    setLoading(true);
-    setError(null);
-    call<AdminDepositsUnpaidResponse>("/admin/deposits/unpaid")
-      .then((data) => {
-        setUnpaid(data.unpaid || []);
-        setResolvedNumbers(new Set());
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : "예치금 미납 목록을 불러오지 못했습니다."))
-      .finally(() => setLoading(false));
-  }
-
-  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  async function handleSetStatus(d: UnpaidDeposit, status: DepositStatus) {
-    setPendingNumber(d.number);
-    setError(null);
-    try {
-      await call<SetDepositStatusResponse>("/admin/deposits/status", {
-        method: "POST",
-        body: { number: d.number, status },
-      });
-      setResolvedNumbers((prev) => new Set(prev).add(d.number));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "예치금 재납 상태 변경에 실패했습니다.");
-    } finally {
-      setPendingNumber(null);
-    }
-  }
-
-  const visible = (unpaid || []).filter((d) => !resolvedNumbers.has(d.number));
-
-  return (
-    <Collapsible defaultOpen className="flex flex-col gap-4">
-      <SectionHeader icon={PiggyBank} title="예치금 미납 현황" loading={loading} onRefresh={load} />
-      <div className="h-px w-full bg-border" />
-      <CollapsiblePanel className="flex flex-col gap-4">
-      {error && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      {loading && !unpaid && (
-        <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">불러오는 중...</p>
-      )}
-
-      {!loading && unpaid && visible.length === 0 && (
-        <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">미납 항목이 없습니다.</p>
-      )}
-
-      {visible.length > 0 && (
-        <div className="flex flex-col gap-2 sm:gap-2.5">
-          {visible.map((d) => {
-            const isPending = pendingNumber === d.number;
-            return (
-              <InfoCard key={d.number} className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-                <span className="text-sm font-bold sm:text-base">{d.name}</span>
-                <div className="flex gap-1.5">
-                  {DEPOSIT_STATUS_OPTIONS.map((status) => (
-                    <Button
-                      key={status}
-                      size="sm"
-                      variant={status === "미납" ? "destructive" : "outline"}
-                      disabled={isPending}
-                      onClick={() => handleSetStatus(d, status)}
-                      className="flex-1 sm:flex-none"
-                    >
-                      {status}
-                    </Button>
-                  ))}
-                </div>
-              </InfoCard>
-            );
-          })}
-        </div>
-      )}
-      </CollapsiblePanel>
-    </Collapsible>
-  );
-}
-
 export function AdminMoneyTab() {
   // 세 현황(납부/미납/면제) 중 어느 하나에서 상태를 바꾸면, 그 값이 향하는
   // 다른 현황이 즉시 새 항목을 반영하도록 재조회를 트리거한다.
@@ -749,8 +626,6 @@ export function AdminMoneyTab() {
       <FineList refreshToken={unpaidRefresh} onResolved={handleFineResolved} />
       <div className="h-px w-full bg-border" />
       <ExemptFineList refreshToken={exemptRefresh} onResolved={handleFineResolved} />
-      <div className="h-px w-full bg-border" />
-      <DepositList />
     </div>
   );
 }

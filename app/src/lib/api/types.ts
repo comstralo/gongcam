@@ -230,6 +230,19 @@ export type AdminExitCandidatesResponse = {
   candidates: ExitCandidate[];
 };
 
+export type MemberRosterEntry = {
+  number: string;
+  name: string;
+  joinDate: string;
+  totalPenalty: number;
+  suggestedKind: Exclude<ExitKind, "deposit_again">;
+  reasons: string[];
+};
+
+export type AdminMembersRosterResponse = {
+  members: MemberRosterEntry[];
+};
+
 export type ExitPreviewRequest = {
   number: string;
   kind: ExitKind;

@@ -4,6 +4,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard } from "@/components/dashboard/shared";
 import { NewMemberForm } from "@/components/admin/NewMemberForm";
+import { MemberRosterList } from "@/components/admin/MemberRosterList";
 import { usePushSubscription } from "@/hooks/usePushSubscription";
 import { cn, ICON_STROKE } from "@/lib/utils";
 
@@ -31,6 +32,12 @@ export function AdminMemberTab() {
           <NewMemberForm />
         </CollapsiblePanel>
       </Collapsible>
+
+      <div className="h-px w-full bg-border" />
+
+      <MemberRosterList />
+
+      <div className="h-px w-full bg-border" />
 
       <span className="font-mono text-micro uppercase tracking-wide text-muted-foreground sm:text-xs">
         브라우저 푸시 알림

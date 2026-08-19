@@ -9,6 +9,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { InfoCard } from "@/components/dashboard/shared";
 import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
+import { cn } from "@/lib/utils";
 import type { ExitCandidate, ExitKind, ExitPreviewResponse, ExitConfirmResponse } from "@/lib/api/types";
 
 const KIND_LABEL: Record<ExitKind, string> = {
@@ -20,15 +21,21 @@ const KIND_LABEL: Record<ExitKind, string> = {
 export function ExitProcessDialog({
   candidate,
   onConfirmed,
+  triggerClassName,
+  lockKind,
   children,
 }: {
   candidate: ExitCandidate;
   onConfirmed?: () => void;
+  triggerClassName?: string;
+  // 페널티 2 이상은 반환율이 항상 0%로 고정되는 정산 퇴실자(settle) 단일
+  // 경로라, PENALTY 탭에서는 유형 선택 UI 자체를 숨기고 이 값으로 고정한다.
+  lockKind?: ExitKind;
   children: ReactNode;
 }) {
   const { call } = useApi();
   const [open, setOpen] = useState(false);
-  const [kind, setKind] = useState<ExitKind>(candidate.suggestedKind);
+  const [kind, setKind] = useState<ExitKind>(lockKind ?? candidate.suggestedKind);
   const [forcedReason, setForcedReason] = useState("");
 
   const [previewing, setPreviewing] = useState(false);
@@ -87,11 +94,16 @@ export function ExitProcessDialog({
           setError(null);
           setConfirmed(false);
           setForcedReason("");
-          setKind(candidate.suggestedKind);
+          setKind(lockKind ?? candidate.suggestedKind);
         }
       }}
     >
-      <DialogTrigger className="w-full rounded-xl text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+      <DialogTrigger
+        className={cn(
+          "w-full rounded-xl text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+          triggerClassName
+        )}
+      >
         {children}
       </DialogTrigger>
       <DialogContent>
@@ -113,22 +125,26 @@ export function ExitProcessDialog({
             <>
               <InfoCard className="flex flex-col gap-2">
                 <Label className="text-xs font-semibold text-muted-foreground sm:text-sm">처리 유형</Label>
-                <Select value={kind} onValueChange={(v) => v && resetForNewKind(v as ExitKind)}>
-                  <SelectTrigger className="bg-card sm:h-12 sm:text-base">
-                    <SelectValue>{KIND_LABEL[kind]}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="forced" className="sm:text-base">
-                      {KIND_LABEL.forced}
-                    </SelectItem>
-                    <SelectItem value="settle" className="sm:text-base">
-                      {KIND_LABEL.settle}
-                    </SelectItem>
-                    <SelectItem value="deposit_again" className="sm:text-base">
-                      {KIND_LABEL.deposit_again}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+                {lockKind ? (
+                  <p className="text-sm font-semibold sm:text-base">{KIND_LABEL[lockKind]}</p>
+                ) : (
+                  <Select value={kind} onValueChange={(v) => v && resetForNewKind(v as ExitKind)}>
+                    <SelectTrigger className="bg-card sm:h-12 sm:text-base">
+                      <SelectValue>{KIND_LABEL[kind]}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="forced" className="sm:text-base">
+                        {KIND_LABEL.forced}
+                      </SelectItem>
+                      <SelectItem value="settle" className="sm:text-base">
+                        {KIND_LABEL.settle}
+                      </SelectItem>
+                      <SelectItem value="deposit_again" className="sm:text-base">
+                        {KIND_LABEL.deposit_again}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
 
                 {kind === "forced" && (
                   <div className="flex flex-col gap-1.5">
