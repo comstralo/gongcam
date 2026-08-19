@@ -294,13 +294,19 @@ export type SetGoalScheduleResponse = {
 
 export type BotStatusResponse = {
   online: boolean;
-  browserState: "running" | "stopped" | null;
-  lastSeenAt: number | null;
+  roomState: "in_room" | "outside" | null;
+  screenshot: string | null;
+  recentLogs: string[];
 };
 
-export type BotCommand = "restart" | "stop" | "start";
+export type BotCommand = "restart";
 
 export type BotCommandResponse = {
   ok: true;
   command: BotCommand;
+};
+
+export type ReportStatusResponse = {
+  inProgress: boolean;
+  recentLogs: string[];
 };

@@ -8,20 +8,13 @@ import { SectionHeader, SectionCard, FieldLabel, FieldValue } from "@/components
 import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
 import { cn, ICON_STROKE } from "@/lib/utils";
-import type { BotStatusResponse, BotCommand, BotCommandResponse } from "@/lib/api/types";
+import type { BotStatusResponse, BotCommandResponse } from "@/lib/api/types";
 
 // 도움봇(study_manager_260418.py)은 로컬 PC에서 상시 실행되는 Selenium
-// 프로세스라, Worker와 하트비트(생존 신호)/명령 예약으로만 느슨하게
-// 연결된다. "정지"는 완전 종료가 아니라 브라우저만 끄고 다음 명령을
-// 기다리는 상태 — 봇 쪽 코드가 그렇게 구현되어 있다(BOT_STRUCTURE.md 참고).
-function timeAgo(ts: number): string {
-  const diffSec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
-  if (diffSec < 60) return `${diffSec}초 전`;
-  const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}분 전`;
-  const diffHour = Math.floor(diffMin / 60);
-  return `${diffHour}시간 전`;
-}
+// 프로세스라, Cloudflare Tunnel로 노출한 로컬 상태 서버를 Worker가 요청
+// 시점에 즉시 프록시하는 방식으로 연결된다(폴링 없음). 관리자가 할 수
+// 있는 원격 명령은 "재시작"뿐이다 — 봇 쪽 코드가 그렇게 구현되어 있다
+// (BOT_STRUCTURE.md 참고).
 
 function BotStatusSection() {
   const { call } = useApi();
@@ -29,7 +22,7 @@ function BotStatusSection() {
   const [status, setStatus] = useState<BotStatusResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [pendingCommand, setPendingCommand] = useState<BotCommand | null>(null);
+  const [restarting, setRestarting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   function load() {
@@ -43,22 +36,22 @@ function BotStatusSection() {
 
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function sendCommand(command: BotCommand) {
-    setPendingCommand(command);
+  async function sendRestart() {
+    setRestarting(true);
     setError(null);
     setMessage(null);
     try {
-      await call<BotCommandResponse>("/admin/bot/command", { method: "POST", body: { command } });
-      setMessage("명령을 예약했습니다. 봇이 다음 하트비트(최대 30초) 때 수행합니다.");
+      await call<BotCommandResponse>("/admin/bot/command", { method: "POST", body: { command: "restart" } });
+      setMessage("재시작 명령을 전송했습니다. 봇이 즉시 브라우저를 재시작합니다.");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "명령 전송에 실패했습니다.");
     } finally {
-      setPendingCommand(null);
+      setRestarting(false);
     }
   }
 
   const online = status?.online ?? false;
-  const browserState = status?.browserState;
+  const roomState = status?.roomState;
 
   return (
     <SectionCard>
@@ -78,6 +71,14 @@ function BotStatusSection() {
             </Alert>
           )}
 
+          {status?.screenshot && (
+            <img
+              src={`data:image/png;base64,${status.screenshot}`}
+              alt="도움봇 화면"
+              className="w-full rounded-lg border border-border"
+            />
+          )}
+
           <InfoCard className="flex flex-col gap-2.5">
             <div className="flex items-center justify-between gap-2">
               <FieldLabel>연결 상태</FieldLabel>
@@ -90,61 +91,33 @@ function BotStatusSection() {
             </div>
 
             <div className="flex items-center justify-between gap-2">
-              <FieldLabel>브라우저</FieldLabel>
+              <FieldLabel>스터디룸 접속</FieldLabel>
               <FieldValue>
-                {browserState === "running" ? "실행 중" : browserState === "stopped" ? "정지됨" : "-"}
+                {roomState === "in_room" ? "접속 중" : roomState === "outside" ? "외부" : "-"}
               </FieldValue>
-            </div>
-
-            <div className="flex items-center justify-between gap-2">
-              <FieldLabel>마지막 신호</FieldLabel>
-              <FieldValue>{status?.lastSeenAt ? timeAgo(status.lastSeenAt) : "-"}</FieldValue>
             </div>
           </InfoCard>
 
-          <div className="grid grid-cols-3 gap-2">
-            <Button
-              variant="outline"
-              disabled={pendingCommand !== null}
-              onClick={() => sendCommand("start")}
-              className="sm:h-11"
-            >
-              {pendingCommand === "start" ? (
-                <RotateCw className="size-4 animate-spin" strokeWidth={ICON_STROKE.default} />
-              ) : (
-                "ON"
-              )}
-            </Button>
-            <Button
-              variant="outline"
-              disabled={pendingCommand !== null}
-              onClick={() => sendCommand("stop")}
-              className="sm:h-11"
-            >
-              {pendingCommand === "stop" ? (
-                <RotateCw className="size-4 animate-spin" strokeWidth={ICON_STROKE.default} />
-              ) : (
-                "OFF"
-              )}
-            </Button>
-            <Button
-              variant="outline"
-              disabled={pendingCommand !== null}
-              onClick={() => sendCommand("restart")}
-              className="sm:h-11"
-            >
-              {pendingCommand === "restart" ? (
-                <RotateCw className="size-4 animate-spin" strokeWidth={ICON_STROKE.default} />
-              ) : (
-                "재시작"
-              )}
-            </Button>
-          </div>
+          <Button variant="outline" disabled={restarting} onClick={sendRestart} className="w-full sm:h-11">
+            {restarting ? (
+              <RotateCw className="size-4 animate-spin" strokeWidth={ICON_STROKE.default} />
+            ) : (
+              "재시작"
+            )}
+          </Button>
 
           <p className="text-xs text-muted-foreground sm:text-sm">
-            OFF는 봇 프로세스를 완전히 종료하지 않고 브라우저만 끕니다. 다시 ON 또는 재시작을 누르면
-            브라우저를 새로 열고 스터디룸에 재입장합니다.
+            재시작을 누르면 브라우저를 새로 열고 스터디룸에 재입장합니다.
           </p>
+
+          {status?.recentLogs && status.recentLogs.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <FieldLabel>최근 로그</FieldLabel>
+              <pre className="max-h-48 overflow-y-auto rounded-lg border border-border bg-muted p-2.5 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
+                {status.recentLogs.join("\n")}
+              </pre>
+            </div>
+          )}
         </CollapsiblePanel>
       </Collapsible>
     </SectionCard>
