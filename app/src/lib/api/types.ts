@@ -310,3 +310,21 @@ export type ReportStatusResponse = {
   inProgress: boolean;
   recentLogs: string[];
 };
+
+export type CaptureReviewItem = {
+  id: string;
+  nickname: string;
+  reason: string;
+  mode: "screenshot" | "video";
+  reporterEmail: string;
+  ts: number;
+  reviewStatus: "pending" | "approved" | "rejected";
+};
+
+export type CapturesListResponse = {
+  items: CaptureReviewItem[];
+};
+
+export type CaptureDecideResponse = {
+  ok: boolean;
+};
