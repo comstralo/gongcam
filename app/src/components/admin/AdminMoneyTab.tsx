@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Wallet, PiggyBank, RotateCw, ChevronDown, CircleDollarSign, BadgePercent } from "lucide-react";
+import { Wallet, PiggyBank, RotateCw, ChevronDown, CircleDollarSign, BadgePercent, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, DayDetailCard } from "@/components/dashboard/shared";
 import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
@@ -59,6 +60,34 @@ function groupByDay<T extends { number: string; name: string; day: string }>(ite
     else map.set(item.day, [item]);
   }
   return STATUS_DAYS.filter((d) => map.has(d)).map((day) => ({ day, members: map.get(day)! }));
+}
+
+// 각 현황 섹션 공통 헤더 — 제목(펼침/접힘 토글 겸)과 새로고침 버튼.
+// 새로고침 버튼은 CollapsibleTrigger 바깥에 두어 클릭 시 섹션이 접히지 않게 한다.
+function SectionHeader({
+  icon: Icon,
+  title,
+  loading,
+  onRefresh,
+}: {
+  icon: LucideIcon;
+  title: string;
+  loading: boolean;
+  onRefresh: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <CollapsibleTrigger className="flex-1">
+        <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
+          <Icon className="size-4 shrink-0 text-primary sm:size-5" strokeWidth={ICON_STROKE.default} />
+          {title}
+        </span>
+      </CollapsibleTrigger>
+      <Button variant="outline" size="icon-sm" onClick={onRefresh} disabled={loading} aria-label="새로고침">
+        <RotateCw className={cn("size-3.5", loading && "animate-spin")} strokeWidth={ICON_STROKE.default} />
+      </Button>
+    </div>
+  );
 }
 
 // 납부 현황은 이미 납부된 항목만 다루므로 "납부" 버튼은 불필요하다.
@@ -135,18 +164,10 @@ function PaidFineList({
   const groups = groupByDay(visible);
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
-          <CircleDollarSign className="size-4 shrink-0 text-primary sm:size-5" strokeWidth={ICON_STROKE.default} />
-          벌금 납부 현황
-        </span>
-        <Button variant="outline" size="icon-sm" onClick={load} disabled={loading} aria-label="새로고침">
-          <RotateCw className={cn("size-3.5", loading && "animate-spin")} strokeWidth={ICON_STROKE.default} />
-        </Button>
-      </div>
+    <Collapsible defaultOpen className="flex flex-col gap-4">
+      <SectionHeader icon={CircleDollarSign} title="벌금 납부 현황" loading={loading} onRefresh={load} />
       <div className="h-px w-full bg-border" />
-
+      <CollapsiblePanel className="flex flex-col gap-4">
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
@@ -252,7 +273,8 @@ function PaidFineList({
           })}
         </div>
       )}
-    </div>
+      </CollapsiblePanel>
+    </Collapsible>
   );
 }
 
@@ -325,18 +347,10 @@ function FineList({
   const groups = groupByDay(visible);
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
-          <Wallet className="size-4 shrink-0 text-primary sm:size-5" strokeWidth={ICON_STROKE.default} />
-          벌금 미납 현황
-        </span>
-        <Button variant="outline" size="icon-sm" onClick={load} disabled={loading} aria-label="새로고침">
-          <RotateCw className={cn("size-3.5", loading && "animate-spin")} strokeWidth={ICON_STROKE.default} />
-        </Button>
-      </div>
+    <Collapsible defaultOpen className="flex flex-col gap-4">
+      <SectionHeader icon={Wallet} title="벌금 미납 현황" loading={loading} onRefresh={load} />
       <div className="h-px w-full bg-border" />
-
+      <CollapsiblePanel className="flex flex-col gap-4">
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
@@ -441,7 +455,8 @@ function FineList({
           })}
         </div>
       )}
-    </div>
+      </CollapsiblePanel>
+    </Collapsible>
   );
 }
 
@@ -514,18 +529,10 @@ function ExemptFineList({
   const groups = groupByDay(visible);
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
-          <BadgePercent className="size-4 shrink-0 text-primary sm:size-5" strokeWidth={ICON_STROKE.default} />
-          벌금 면제 현황
-        </span>
-        <Button variant="outline" size="icon-sm" onClick={load} disabled={loading} aria-label="새로고침">
-          <RotateCw className={cn("size-3.5", loading && "animate-spin")} strokeWidth={ICON_STROKE.default} />
-        </Button>
-      </div>
+    <Collapsible defaultOpen className="flex flex-col gap-4">
+      <SectionHeader icon={BadgePercent} title="벌금 면제 현황" loading={loading} onRefresh={load} />
       <div className="h-px w-full bg-border" />
-
+      <CollapsiblePanel className="flex flex-col gap-4">
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
@@ -626,7 +633,8 @@ function ExemptFineList({
           })}
         </div>
       )}
-    </div>
+      </CollapsiblePanel>
+    </Collapsible>
   );
 }
 
@@ -672,18 +680,10 @@ function DepositList() {
   const visible = (unpaid || []).filter((d) => !resolvedNumbers.has(d.number));
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
-          <PiggyBank className="size-4 shrink-0 text-primary sm:size-5" strokeWidth={ICON_STROKE.default} />
-          예치금 미납 현황
-        </span>
-        <Button variant="outline" size="icon-sm" onClick={load} disabled={loading} aria-label="새로고침">
-          <RotateCw className={cn("size-3.5", loading && "animate-spin")} strokeWidth={ICON_STROKE.default} />
-        </Button>
-      </div>
+    <Collapsible defaultOpen className="flex flex-col gap-4">
+      <SectionHeader icon={PiggyBank} title="예치금 미납 현황" loading={loading} onRefresh={load} />
       <div className="h-px w-full bg-border" />
-
+      <CollapsiblePanel className="flex flex-col gap-4">
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
@@ -724,7 +724,8 @@ function DepositList() {
           })}
         </div>
       )}
-    </div>
+      </CollapsiblePanel>
+    </Collapsible>
   );
 }
 
