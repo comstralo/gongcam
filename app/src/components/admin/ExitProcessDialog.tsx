@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { InfoCard } from "@/components/dashboard/shared";
+import { FieldValue } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
@@ -126,7 +127,7 @@ export function ExitProcessDialog({
               <InfoCard className="flex flex-col gap-2">
                 <Label className="text-xs font-semibold text-muted-foreground sm:text-sm">처리 유형</Label>
                 {lockKind ? (
-                  <p className="text-sm font-semibold sm:text-base">{KIND_LABEL[lockKind]}</p>
+                  <FieldValue className="text-sm sm:text-base">{KIND_LABEL[lockKind]}</FieldValue>
                 ) : (
                   <Select value={kind} onValueChange={(v) => v && resetForNewKind(v as ExitKind)}>
                     <SelectTrigger className="bg-card sm:h-12 sm:text-base">

@@ -3,6 +3,12 @@ import { Search, SquarePen, CircleCheck, CircleDot, Timer, BedDouble, Wallet, ty
 import { cn, ICON_STROKE } from "@/lib/utils";
 import type { StatusDay } from "@/lib/api/types";
 
+// 카드 안에서 가장 두드러지는 1차 텍스트(예: "퇴실신청" 같은 카드 제목).
+// 섹션/탭 제목(font-bold)보다 한 단계 낮은 굵기(semibold)로 위계를 분리한다.
+export function ItemTitle({ children, className }: { children: ReactNode; className?: string }) {
+  return <span className={cn("text-sm font-semibold sm:text-base", className)}>{children}</span>;
+}
+
 type PillTone = "ok" | "warn" | "muted" | "primary";
 
 const PILL_TONE_CLASSES: Record<PillTone, string> = {

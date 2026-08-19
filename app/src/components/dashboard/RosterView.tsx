@@ -1,6 +1,6 @@
 import { Timer } from "lucide-react";
 import { ICON_STROKE } from "@/lib/utils";
-import { InfoCard, TintedPill } from "@/components/dashboard/shared";
+import { InfoCard, TintedPill, ItemTitle } from "@/components/dashboard/shared";
 import type { RosterMember } from "@/lib/api/types";
 
 function isMedalRank(rank: string) {
@@ -55,7 +55,7 @@ export function RosterView({ members }: { members: RosterMember[] }) {
         <InfoCard key={`${m.name}-${i}`} className="flex items-center gap-3 sm:gap-4">
           <RankBadge rank={m.rank} />
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="truncate text-sm font-bold sm:text-base">{m.name}</span>
+            <ItemTitle className="truncate">{m.name}</ItemTitle>
             <span className="inline-flex items-center gap-1 font-mono text-xs tabular-nums text-muted-foreground sm:text-sm">
               <Timer className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
               {m.timer || "-"}

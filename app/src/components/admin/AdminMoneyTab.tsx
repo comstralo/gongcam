@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, DayDetailCard } from "@/components/dashboard/shared";
-import { SectionHeader } from "@/components/admin/shared";
+import { SectionHeader, ItemTitle, FieldLabel } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
 import { ICON_STROKE, cn } from "@/lib/utils";
@@ -143,7 +143,7 @@ function PaidFineList({
       )}
 
       <InfoCard className="flex items-center justify-between gap-2">
-        <span className="text-sm font-semibold text-muted-foreground sm:text-base">납부된 총 벌금액</span>
+        <FieldLabel>납부된 총 벌금액</FieldLabel>
         <span className="font-mono text-base font-bold tabular-nums text-ok sm:text-lg">{won(totalAmount)}</span>
       </InfoCard>
 
@@ -192,7 +192,7 @@ function PaidFineList({
                       return (
                         <div key={key} className="flex flex-col gap-2.5 rounded-lg border bg-card p-3">
                           <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-                            <span className="text-sm font-bold sm:text-base">{f.name}</span>
+                            <ItemTitle>{f.name}</ItemTitle>
                             <div className="flex items-center gap-1.5">
                               {FINE_UNDO_PAID_OPTIONS.map((status) => (
                                 <Button
@@ -370,7 +370,7 @@ function FineList({
                       return (
                         <div key={key} className="flex flex-col gap-2.5 rounded-lg border bg-card p-3">
                           <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-                            <span className="text-sm font-bold sm:text-base">{f.name}</span>
+                            <ItemTitle>{f.name}</ItemTitle>
                             <div className="flex items-center gap-1.5">
                               {FINE_RESOLVE_OPTIONS.map((status) => (
                                 <Button
@@ -552,7 +552,7 @@ function ExemptFineList({
                       return (
                         <div key={key} className="flex flex-col gap-2.5 rounded-lg border bg-card p-3">
                           <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-                            <span className="text-sm font-bold sm:text-base">{f.name}</span>
+                            <ItemTitle>{f.name}</ItemTitle>
                             <div className="flex items-center gap-1.5">
                               {FINE_REVERT_OPTIONS.map((status) => (
                                 <Button

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard } from "@/components/dashboard/shared";
-import { SectionHeader } from "@/components/admin/shared";
+import { SectionHeader, ItemTitle } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
 import type { AdminDepositsUnpaidResponse, SetDepositStatusResponse, UnpaidDeposit } from "@/lib/api/types";
@@ -82,7 +82,7 @@ export function PenaltyDepositList() {
                   key={d.number}
                   className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between"
                 >
-                  <span className="text-sm font-bold sm:text-base">{d.name}</span>
+                  <ItemTitle>{d.name}</ItemTitle>
                   <div className="flex gap-1.5">
                     <Button size="sm" variant="outline" disabled={isPending} onClick={() => handleAgain(d)} className="flex-1 sm:flex-none">
                       재납

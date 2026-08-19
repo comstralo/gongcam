@@ -3,7 +3,7 @@ import { ShieldAlert } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard } from "@/components/dashboard/shared";
-import { SectionHeader } from "@/components/admin/shared";
+import { SectionHeader, ItemTitle } from "@/components/admin/shared";
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
 import { useApi } from "@/hooks/useApi";
 import type { AdminExitCandidatesResponse, ExitCandidate } from "@/lib/api/types";
@@ -54,7 +54,7 @@ export function PenaltyCandidateList() {
               <ExitProcessDialog key={c.number} candidate={c} onConfirmed={load} lockKind="settle">
                 <InfoCard className="flex flex-col gap-1.5">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-bold sm:text-base">{c.name}</span>
+                    <ItemTitle>{c.name}</ItemTitle>
                     <span className="rounded-full bg-destructive/15 px-2.5 py-1 text-micro-lg font-semibold text-destructive sm:text-xs">
                       정산퇴실 대상
                     </span>

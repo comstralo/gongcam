@@ -14,7 +14,7 @@ import {
   Megaphone,
 } from "lucide-react";
 import { cn, ICON_STROKE } from "@/lib/utils";
-import { SummaryTile, InfoCard, DividedValue, DayDetailCard } from "@/components/dashboard/shared";
+import { SummaryTile, InfoCard, DividedValue, DayDetailCard, ItemTitle } from "@/components/dashboard/shared";
 import { PeriodAlarmCard } from "@/components/dashboard/PeriodAlarmCard";
 import { MeritBreakdownDialog } from "@/components/dashboard/MeritBreakdownDialog";
 import { GoalTypeScheduleDialog } from "@/components/dashboard/GoalTypeScheduleDialog";
@@ -218,7 +218,7 @@ export function StatusView({
           <div className="flex min-w-0 items-center gap-2.5">
             <DoorOpen className="size-4 shrink-0 text-primary sm:size-5" strokeWidth={ICON_STROKE.default} />
             <div className="flex min-w-0 flex-col gap-0.5">
-              <span className="text-sm font-semibold sm:text-base">퇴실신청</span>
+              <ItemTitle>퇴실신청</ItemTitle>
               <span className="truncate text-xs text-muted-foreground sm:text-sm">
                 운영진에게 문의해주세요
               </span>
