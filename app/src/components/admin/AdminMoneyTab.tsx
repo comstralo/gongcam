@@ -20,7 +20,8 @@ import type {
   StatusResponse,
 } from "@/lib/api/types";
 
-const FINE_STATUS_OPTIONS: FineStatus[] = ["미납", "납부", "면제"];
+// 미납 현황 목록은 이미 미납 상태인 항목만 다루므로 "미납" 버튼은 불필요하다.
+const FINE_RESOLVE_OPTIONS: Exclude<FineStatus, "미납">[] = ["납부", "면제"];
 const DEPOSIT_STATUS_OPTIONS: DepositStatus[] = ["미납", "납부"];
 const STATUS_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
 
@@ -313,11 +314,11 @@ function FineList() {
                           <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
                             <span className="text-sm font-bold sm:text-base">{f.name}</span>
                             <div className="flex items-center gap-1.5">
-                              {FINE_STATUS_OPTIONS.map((status) => (
+                              {FINE_RESOLVE_OPTIONS.map((status) => (
                                 <Button
                                   key={status}
                                   size="sm"
-                                  variant={status === "미납" ? "destructive" : "outline"}
+                                  variant="outline"
                                   disabled={isPending}
                                   onClick={() => handleSetStatus(f, status)}
                                   className="flex-1 sm:flex-none"
@@ -327,7 +328,7 @@ function FineList() {
                               ))}
                               {/* 강제퇴실 처리 — 아직 미구현, 버튼만 우선 배치 */}
                               <Button size="sm" variant="outline" disabled className="flex-1 sm:flex-none">
-                                직권
+                                직권 P
                               </Button>
                               <Button
                                 variant="outline"
