@@ -328,3 +328,19 @@ export type CapturesListResponse = {
 export type CaptureDecideResponse = {
   ok: boolean;
 };
+
+export type MemberReorderPlanItem = {
+  from: string;
+  to: string;
+  name: string;
+};
+
+export type MemberReorderPreviewResponse = {
+  plan: MemberReorderPlanItem[];
+};
+
+export type MemberReorderResponse = {
+  ok: boolean;
+  moved: MemberReorderPlanItem[];
+  error?: string;
+};

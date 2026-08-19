@@ -1,14 +1,20 @@
 import { useEffect, useState } from "react";
-import { Bot, RotateCw, Table } from "lucide-react";
+import { ArrowRightLeft, Bot, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard } from "@/components/dashboard/shared";
-import { SectionHeader, SectionCard, FieldLabel, FieldValue } from "@/components/admin/shared";
+import { SectionHeader, SectionCard, ItemTitle, FieldLabel, FieldValue } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
 import { cn, ICON_STROKE } from "@/lib/utils";
-import type { BotStatusResponse, BotCommandResponse } from "@/lib/api/types";
+import type {
+  BotStatusResponse,
+  BotCommandResponse,
+  MemberReorderPlanItem,
+  MemberReorderPreviewResponse,
+  MemberReorderResponse,
+} from "@/lib/api/types";
 
 // 도움봇(study_manager_260418.py)은 로컬 PC에서 상시 실행되는 Selenium
 // 프로세스라, Cloudflare Tunnel로 노출한 로컬 상태 서버를 Worker가 요청
@@ -130,11 +136,89 @@ function BotStatusSection() {
   );
 }
 
-function SheetPlaceholderSection() {
+// 권한관리 탭의 빈 번호(퇴실 등으로 비워진 슬롯)를 앞으로 당겨 채우는 기능.
+// 번호는 시트 탭 이름 자체이자 권한관리/제보상점의 고정 행 번호라, 잘못
+// 실행하면 실제 출석/타이머 이력이 섞일 수 있다 — 그래서 미리보기로 이동
+// 계획을 먼저 보여주고 관리자가 확인해야만 실행하도록 두 단계로 나눴다.
+function MemberReorderSection() {
+  const { call } = useApi();
+
+  const [plan, setPlan] = useState<MemberReorderPlanItem[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [executing, setExecuting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<string | null>(null);
+
+  function loadPreview() {
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    call<MemberReorderPreviewResponse>("/admin/members/reorder-preview")
+      .then((data) => setPlan(data.plan))
+      .catch((err) => setError(err instanceof Error ? err.message : "이동 계획을 불러오지 못했습니다."))
+      .finally(() => setLoading(false));
+  }
+
+  function execute() {
+    setExecuting(true);
+    setError(null);
+    call<MemberReorderResponse>("/admin/members/reorder", { method: "POST", body: {} })
+      .then((data) => {
+        setResult(`${data.moved.length}건 이동 완료.`);
+        setPlan(null);
+      })
+      .catch((err) => setError(err instanceof ApiError ? err.message : "번호 정렬에 실패했습니다."))
+      .finally(() => setExecuting(false));
+  }
+
   return (
-    <SectionCard className="flex flex-col items-center gap-2 py-10 text-center text-muted-foreground">
-      <Table className="size-8" strokeWidth={ICON_STROKE.large} />
-      <p className="text-sm sm:text-base">시트 관리 기능은 준비 중입니다.</p>
+    <SectionCard>
+      <Collapsible defaultOpen className="flex flex-col gap-4">
+        <SectionHeader icon={ArrowRightLeft} title="번호 정렬" />
+        <div className="h-px w-full bg-border" />
+        <CollapsiblePanel className="flex flex-col gap-4">
+          <p className="text-xs text-muted-foreground sm:text-sm">
+            퇴실 등으로 비워진 번호를 앞으로 당겨 채웁니다. 진행 중인 교시가 없을 때 실행하는 것을 권장합니다.
+          </p>
+
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          {result && (
+            <Alert>
+              <AlertDescription>{result}</AlertDescription>
+            </Alert>
+          )}
+
+          <Button variant="outline" disabled={loading} onClick={loadPreview} className="w-full sm:h-11">
+            {loading ? <RotateCw className="size-4 animate-spin" strokeWidth={ICON_STROKE.default} /> : "이동 계획 미리보기"}
+          </Button>
+
+          {plan && plan.length === 0 && (
+            <p className="py-4 text-center text-sm text-muted-foreground sm:text-base">이미 정렬되어 있습니다.</p>
+          )}
+
+          {plan && plan.length > 0 && (
+            <>
+              <div className="flex flex-col gap-2">
+                {plan.map((item) => (
+                  <InfoCard key={item.from} className="flex items-center justify-between gap-2">
+                    <ItemTitle>{item.name}</ItemTitle>
+                    <FieldValue>
+                      {item.from}번 → {item.to}번
+                    </FieldValue>
+                  </InfoCard>
+                ))}
+              </div>
+              <Button variant="destructive" disabled={executing} onClick={execute} className="w-full sm:h-11">
+                {executing ? <RotateCw className="size-4 animate-spin" strokeWidth={ICON_STROKE.default} /> : "실행"}
+              </Button>
+            </>
+          )}
+        </CollapsiblePanel>
+      </Collapsible>
     </SectionCard>
   );
 }
@@ -143,7 +227,7 @@ export function AdminBotSheetTab() {
   return (
     <div className="flex flex-col gap-4">
       <BotStatusSection />
-      <SheetPlaceholderSection />
+      <MemberReorderSection />
     </div>
   );
 }
