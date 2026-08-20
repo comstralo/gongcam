@@ -116,15 +116,20 @@ export function MeritBreakdownDialog({
             />
           </InfoCard>
 
-          {breakdown.isZero && breakdown.zeroReason && (
+          {breakdown.isZero && breakdown.zeroConditions?.length > 0 && (
             <InfoCard className="flex flex-col gap-1.5">
               <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
                 <TrendingDown className="size-3.5 shrink-0 text-destructive sm:size-4" />
                 제외 원인
               </span>
-              <span className="pl-5 text-micro-lg text-destructive sm:pl-5.5 sm:text-xs">
-                {breakdown.zeroReason}
-              </span>
+              {breakdown.zeroConditions.map((cond) => (
+                <SubRow
+                  key={cond.key}
+                  label={cond.label}
+                  value={cond.met ? "해당" : "-"}
+                  valueClassName={cond.met ? "text-destructive" : "text-muted-foreground"}
+                />
+              ))}
             </InfoCard>
           )}
 
@@ -133,7 +138,15 @@ export function MeritBreakdownDialog({
               <Gauge className="size-3.5 shrink-0 text-primary sm:size-4" />
               상점 배율
             </span>
-            <SubRow label={formatGoalType(goalType)} value={`× ${breakdown.multiplier ?? 1}`} />
+            <SubRow
+              label={
+                breakdown.multiplierDowngraded
+                  ? `${formatGoalType(goalType)} (사유 반휴 ${breakdown.reasonLeaveTotal}장 → 강등)`
+                  : formatGoalType(goalType)
+              }
+              value={`× ${breakdown.multiplier ?? 1}`}
+              valueClassName={breakdown.multiplierDowngraded ? "text-destructive" : undefined}
+            />
           </InfoCard>
 
           <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">

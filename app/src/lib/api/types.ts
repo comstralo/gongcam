@@ -25,9 +25,16 @@ export type StatusDay = {
   reasonLeaveUsed: number;
 };
 
+export type MeritZeroCondition = {
+  key: string;
+  label: string;
+  met: boolean;
+};
+
 export type WeeklyMeritBreakdown = {
   isZero: boolean;
   zeroReason: string | null;
+  zeroConditions: MeritZeroCondition[];
   studyTimeMerit: number;
   studyTimeHours: number;
   reportMerit: number;
@@ -35,6 +42,8 @@ export type WeeklyMeritBreakdown = {
   isLeader: boolean;
   reportMeritIncluded: boolean;
   multiplier: number;
+  multiplierDowngraded: boolean;
+  reasonLeaveTotal: number;
   penaltyDeduction: number;
   fineDeduction: number;
   weeklyTotalFineAmount: number;
