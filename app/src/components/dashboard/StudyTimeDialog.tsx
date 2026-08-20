@@ -50,6 +50,13 @@ function passedCount(periods: PeriodGridPeriod[]): number {
   return periods.filter((p) => p.rate === "ERR" || Number(p.rate) >= 85).length;
 }
 
+// "HH:MM"을 "NH NM"으로 표시한다.
+function formatHM(raw: string): string {
+  const min = timeToMinutes(raw);
+  if (min === null) return "0H 0M";
+  return `${Math.floor(min / 60)}H ${min % 60}M`;
+}
+
 export function StudyTimeDialog({
   weeklyStudyTime,
   periodGrid,
@@ -97,8 +104,6 @@ export function StudyTimeDialog({
                     <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
                       <CalendarDays className="size-3.5 shrink-0 text-primary sm:size-4" />
                       {d.day}요일
-                    </span>
-                    <span className="flex items-center gap-1">
                       {achieved !== null && (
                         <span
                           className={cn(
@@ -106,11 +111,11 @@ export function StudyTimeDialog({
                             achieved ? "bg-ok/15 text-ok" : "bg-destructive/15 text-destructive"
                           )}
                         >
-                          {dayInfo?.studyTime || "0:00"} {achieved ? "달성" : "미달성"}
+                          {formatHM(dayInfo?.studyTime || "")}
                         </span>
                       )}
-                      <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-micro font-semibold text-primary sm:text-micro-lg">
-                        {passed}교시 통과
+                      <span className="rounded-full bg-ok/15 px-1.5 py-0.5 text-micro font-semibold text-ok sm:text-micro-lg">
+                        {passed}개 교시
                       </span>
                     </span>
                   </CollapsibleTrigger>
