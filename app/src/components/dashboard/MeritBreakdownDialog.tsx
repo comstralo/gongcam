@@ -1,4 +1,4 @@
-import { Award, Search, TrendingDown, TrendingUp, Gauge, TriangleAlert } from "lucide-react";
+import { Award, Search, TrendingDown, TrendingUp, Gauge, TriangleAlert, CircleCheck, Circle } from "lucide-react";
 import {
   Dialog,
   DialogTrigger,
@@ -81,11 +81,7 @@ export function MeritBreakdownDialog({
               valueClassName={(breakdown.studyTimeMerit ?? 0) > 0 ? "text-ok" : "text-muted-foreground"}
             />
             <SubRow
-              label={
-                breakdown.isLeader
-                  ? "제보상점"
-                  : `제보상점 (${breakdown.reportApprovedCount ?? 0}건)`
-              }
+              label={`제보상점 (인정 ${breakdown.reportApprovedCount ?? 0}건)`}
               value={
                 breakdown.reportMeritIncluded && (breakdown.reportMerit ?? 0) > 0
                   ? `+${pt(breakdown.reportMerit)}`
@@ -122,14 +118,24 @@ export function MeritBreakdownDialog({
                 <TrendingDown className="size-3.5 shrink-0 text-destructive sm:size-4" />
                 제외 원인
               </span>
-              {breakdown.zeroConditions.map((cond) => (
-                <SubRow
-                  key={cond.key}
-                  label={cond.label}
-                  value={cond.met ? "해당" : "-"}
-                  valueClassName={cond.met ? "text-destructive" : "text-muted-foreground"}
-                />
-              ))}
+              <ul className="flex flex-col gap-1 pl-5 sm:pl-5.5">
+                {breakdown.zeroConditions.map((cond) => (
+                  <li
+                    key={cond.key}
+                    className={cn(
+                      "flex items-center gap-1.5 text-micro-lg sm:text-xs",
+                      cond.met ? "text-destructive" : "text-muted-foreground"
+                    )}
+                  >
+                    {cond.met ? (
+                      <CircleCheck className="size-3.5 shrink-0" />
+                    ) : (
+                      <Circle className="size-3.5 shrink-0" />
+                    )}
+                    <span>주간 {cond.label}</span>
+                  </li>
+                ))}
+              </ul>
             </InfoCard>
           )}
 
