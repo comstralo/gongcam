@@ -121,7 +121,7 @@ export function MeritBreakdownDialog({
             <InfoCard className="flex flex-col gap-1.5">
               <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
                 <TrendingDown className="size-3.5 shrink-0 text-destructive sm:size-4" />
-                제외 원인
+                상점 제외 원인
               </span>
               <ul className="flex flex-col gap-1 pl-5 sm:pl-5.5">
                 {breakdown.zeroConditions.map((cond) => (
