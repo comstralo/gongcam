@@ -56,13 +56,17 @@ export function MeritBreakdownDialog({
               <Award className="size-3.5 shrink-0 text-primary sm:size-4" />
               주간 총 상점
             </span>
-            <span className={cn("font-mono text-sm font-bold sm:text-base", breakdown.isZero && "text-destructive")}>
-              <DividedValue
-                items={[
-                  weeklyMeritRank && !weeklyMeritRank.startsWith("-") ? `+${weeklyMerit || "0"}` : weeklyMerit || "0",
-                  weeklyMeritRank || "-",
-                ]}
-              />
+            <span className={cn("font-mono text-sm font-bold sm:text-base", !breakdown.isZero && "text-ok")}>
+              {breakdown.isZero ? (
+                "-"
+              ) : (
+                <DividedValue
+                  items={[
+                    weeklyMeritRank && !weeklyMeritRank.startsWith("-") ? `+${weeklyMerit || "0"}` : weeklyMerit || "0",
+                    weeklyMeritRank || "-",
+                  ]}
+                />
+              )}
             </span>
           </InfoCard>
 
@@ -73,7 +77,7 @@ export function MeritBreakdownDialog({
             </span>
             <SubRow
               label={`학습시간 상점 (${breakdown.studyTimeHours ?? 0}H)`}
-              value={`+${pt(breakdown.studyTimeMerit)}`}
+              value={(breakdown.studyTimeMerit ?? 0) > 0 ? `+${pt(breakdown.studyTimeMerit)}` : `+${pt(0)}`}
               valueClassName={(breakdown.studyTimeMerit ?? 0) > 0 ? "text-ok" : "text-muted-foreground"}
             />
             <SubRow
@@ -82,7 +86,11 @@ export function MeritBreakdownDialog({
                   ? "제보상점"
                   : `제보상점 (${breakdown.reportApprovedCount ?? 0}건)`
               }
-              value={breakdown.reportMeritIncluded ? `+${pt(breakdown.reportMerit)}` : pt(0)}
+              value={
+                breakdown.reportMeritIncluded && (breakdown.reportMerit ?? 0) > 0
+                  ? `+${pt(breakdown.reportMerit)}`
+                  : `+${pt(0)}`
+              }
               valueClassName={
                 breakdown.reportMeritIncluded && (breakdown.reportMerit ?? 0) > 0
                   ? "text-ok"
@@ -98,15 +106,27 @@ export function MeritBreakdownDialog({
             </span>
             <SubRow
               label="송출 벌점"
-              value={(breakdown.penaltyDeduction ?? 0) > 0 ? `-${pt(breakdown.penaltyDeduction)}` : pt(0)}
+              value={(breakdown.penaltyDeduction ?? 0) > 0 ? `-${pt(breakdown.penaltyDeduction)}` : `-${pt(0)}`}
               valueClassName={(breakdown.penaltyDeduction ?? 0) > 0 ? "text-destructive" : "text-muted-foreground"}
             />
             <SubRow
               label="벌금 (500원 당)"
-              value={(breakdown.fineDeduction ?? 0) > 0 ? `-${pt(breakdown.fineDeduction)}` : pt(0)}
+              value={(breakdown.fineDeduction ?? 0) > 0 ? `-${pt(breakdown.fineDeduction)}` : `-${pt(0)}`}
               valueClassName={(breakdown.fineDeduction ?? 0) > 0 ? "text-destructive" : "text-muted-foreground"}
             />
           </InfoCard>
+
+          {breakdown.isZero && breakdown.zeroReason && (
+            <InfoCard className="flex flex-col gap-1.5">
+              <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+                <TrendingDown className="size-3.5 shrink-0 text-destructive sm:size-4" />
+                제외 원인
+              </span>
+              <span className="pl-5 text-micro-lg text-destructive sm:pl-5.5 sm:text-xs">
+                {breakdown.zeroReason}
+              </span>
+            </InfoCard>
+          )}
 
           <InfoCard className="flex flex-col gap-1.5">
             <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
@@ -126,12 +146,6 @@ export function MeritBreakdownDialog({
                 <span className="text-destructive/60">•</span>
                 제보상점은 금요일에 일괄 반영됩니다.
               </li>
-              {breakdown.isZero && breakdown.zeroReason && (
-                <li className="flex gap-1.5">
-                  <span className="text-destructive/60">•</span>
-                  {breakdown.zeroReason}에 해당해 이번 주 상점이 0점으로 처리되어 순위 계산에서 제외됩니다.
-                </li>
-              )}
             </ul>
           </InfoCard>
         </div>
