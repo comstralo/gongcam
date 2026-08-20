@@ -1,4 +1,4 @@
-import { Timer, Search } from "lucide-react";
+import { Timer, Search, CalendarDays, Clock } from "lucide-react";
 import {
   Dialog,
   DialogTrigger,
@@ -60,7 +60,10 @@ export function StudyTimeDialog({
             <Collapsible key={d.day}>
               <InfoCard className="flex flex-col gap-1.5">
                 <CollapsibleTrigger>
-                  <span className="text-xs font-semibold sm:text-sm">{d.day}요일</span>
+                  <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+                    <CalendarDays className="size-3.5 shrink-0 text-primary sm:size-4" />
+                    {d.day}요일
+                  </span>
                 </CollapsibleTrigger>
                 <CollapsiblePanel>
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1 pt-1.5 sm:grid-cols-2">
@@ -68,7 +71,8 @@ export function StudyTimeDialog({
                       const { text, className } = periodTone(raw);
                       return (
                         <div key={i} className="flex items-center justify-between gap-2">
-                          <span className="text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
+                          <span className="flex items-center gap-1 text-micro-lg text-muted-foreground sm:text-xs">
+                            <Clock className="size-2.5 shrink-0 sm:size-3" />
                             {PERIOD_LABELS[i]}
                           </span>
                           <span className={cn("text-micro-lg tabular-nums sm:text-xs", className)}>{text}</span>
