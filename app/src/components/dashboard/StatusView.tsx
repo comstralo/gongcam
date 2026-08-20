@@ -31,7 +31,7 @@ import { DepositRefundDialog } from "@/components/dashboard/DepositRefundDialog"
 import { PeriodAttendanceDialog } from "@/components/dashboard/PeriodAttendanceDialog";
 import { TotalPenaltyDialog } from "@/components/dashboard/TotalPenaltyDialog";
 import { StudyTimeDialog } from "@/components/dashboard/StudyTimeDialog";
-import { NormalLeaveButton } from "@/components/dashboard/NormalLeaveButton";
+import { LeaveApplyButton } from "@/components/dashboard/LeaveApplyButton";
 import type { StatusResponse } from "@/lib/api/types";
 
 const TODAY_INDEX = (new Date().getDay() + 6) % 7; // 월=0 ... 일=6
@@ -381,7 +381,12 @@ export function StatusView({
             day={selected}
             isPast={effectiveSelectedDay < TODAY_INDEX}
             footer={
-              allowGoalSchedule && effectiveSelectedDay === TODAY_INDEX ? <NormalLeaveButton /> : undefined
+              allowGoalSchedule ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <LeaveApplyButton type="normal" day={selected.day} label="일반반휴" />
+                  <LeaveApplyButton type="reason" day={selected.day} label="사유반휴" />
+                </div>
+              ) : undefined
             }
           />
         )}

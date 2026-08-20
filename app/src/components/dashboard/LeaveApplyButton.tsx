@@ -1,35 +1,33 @@
 import { useEffect, useState } from "react";
-import { BedDouble } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
-import type { NormalLeaveResponse, SetNormalLeaveResponse } from "@/lib/api/types";
+import type { LeaveApplyResponse, SetLeaveApplyResponse } from "@/lib/api/types";
 
-// 오늘 요일에 한해서만 일반반휴를 신청/취소한다 — 지난 요일이나 관리자가
-// 다른 회원을 조회 중일 때는 이 버튼 자체를 렌더링하지 않는다(호출부에서 제어).
-export function NormalLeaveButton() {
+// 선택한 요일(day)에 한해 일반반휴/사유반휴를 신청/취소한다.
+export function LeaveApplyButton({ type, day, label }: { type: "normal" | "reason"; day: string; label: string }) {
   const { call } = useApi();
-  const [state, setState] = useState<NormalLeaveResponse | "loading" | "error">("loading");
+  const [state, setState] = useState<LeaveApplyResponse | "loading" | "error">("loading");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function load() {
     setState("loading");
-    call<NormalLeaveResponse>("/normal-leave")
+    call<LeaveApplyResponse>(`/leave-apply?type=${type}&day=${encodeURIComponent(day)}`)
       .then(setState)
       .catch(() => setState("error"));
   }
 
-  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(load, [type, day]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function toggle() {
     if (state === "loading" || state === "error") return;
     setPending(true);
     setError(null);
     try {
-      const data = await call<SetNormalLeaveResponse>("/normal-leave", {
+      const data = await call<SetLeaveApplyResponse>("/leave-apply", {
         method: "POST",
-        body: { applied: !state.applied },
+        body: { type, day, applied: !state.applied },
       });
       setState((prev) => (prev === "loading" || prev === "error" ? prev : { ...prev, applied: data.applied }));
     } catch (err) {
@@ -64,12 +62,11 @@ export function NormalLeaveButton() {
         disabled={disabled}
         onClick={toggle}
       >
-        <BedDouble className="size-3.5 sm:size-4" />
-        {pending ? "처리 중..." : state.applied ? "일반반휴 신청 취소" : "일반반휴 신청"}
+        {pending ? "처리 중..." : state.applied ? `${label} 신청 취소` : `${label} 신청`}
       </Button>
       {!state.applied && state.left <= 0 && (
         <p className="text-center text-micro text-muted-foreground sm:text-micro-lg">
-          일반반휴 잔여량이 없습니다.
+          {label} 잔여량이 없습니다.
         </p>
       )}
       {error && <p className="text-center text-micro text-destructive sm:text-micro-lg">{error}</p>}

@@ -318,12 +318,12 @@ export type SetGoalScheduleResponse = {
   scheduled: string;
 };
 
-export type NormalLeaveResponse = {
+export type LeaveApplyResponse = {
   applied: boolean;
   left: number;
 };
 
-export type SetNormalLeaveResponse = {
+export type SetLeaveApplyResponse = {
   ok: true;
   applied: boolean;
 };
