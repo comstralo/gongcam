@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Clock,
+  Timer,
   CalendarDays,
   Award,
   PiggyBank,
@@ -127,6 +128,12 @@ export function StatusView({
       ),
       wrap: true,
       clickable: "view",
+    },
+    {
+      key: "studyTime",
+      icon: Timer,
+      label: "주간 학습시간",
+      value: `${status.weeklyMeritBreakdown?.studyTimeHours ?? 0}H`,
     },
     {
       key: "periodAttendance",
