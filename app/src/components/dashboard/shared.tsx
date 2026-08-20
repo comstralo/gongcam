@@ -135,7 +135,7 @@ export function SubRow({
       >
         {label}
       </span>
-      <span className={cn("font-mono text-xs tabular-nums text-muted-foreground sm:text-sm", valueClassName)}>
+      <span className={cn("font-mono text-micro-lg tabular-nums text-muted-foreground sm:text-xs", valueClassName)}>
         {value}
       </span>
     </div>
