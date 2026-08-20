@@ -57,7 +57,7 @@ export function PeriodAttendanceDialog({
             {breakdown.applicable ? (
               <div className="flex flex-col gap-1.5">
                 <SubRow label="① 85% 이상 달성 교시" value={`${breakdown.achievedCount}개`} />
-                <SubRow label="② 오류(ERR) 처리 교시" value={`${breakdown.errorCount}개`} />
+                <SubRow label="② 오류(ERR) 발생 교시" value={`${breakdown.errorCount}개`} />
                 <div className="flex flex-col">
                   <SubRow label="③ 목표 교시 수" value={`${breakdown.targetPeriods}개`} />
                   <span className="pl-8.5 text-micro leading-tight text-amber-600 sm:pl-9.5 sm:text-micro-lg dark:text-amber-400">
@@ -80,7 +80,12 @@ export function PeriodAttendanceDialog({
               <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
               <span className="text-xs font-semibold sm:text-sm">주의사항</span>
             </div>
-            <ul className="flex flex-col gap-1 text-xs leading-relaxed text-muted-foreground sm:text-sm"></ul>
+            <ul className="flex flex-col gap-1 text-xs leading-relaxed text-muted-foreground sm:text-sm">
+              <li className="flex gap-1.5">
+                <span className="text-destructive/60">•</span>
+                교시 참여율이 80% 미만인 경우, 주간 P가 1회 적립됩니다.
+              </li>
+            </ul>
           </InfoCard>
         </div>
       </DialogContent>
