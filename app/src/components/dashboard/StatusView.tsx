@@ -95,7 +95,7 @@ export function StatusView({
       value: formatGoalType(status.goalType),
       clickable: allowGoalSchedule ? "edit" : undefined,
     },
-    { key: "joinDate", icon: CalendarDays, label: "가입일자", value: status.joinDate || "-" },
+    { key: "joinDate", icon: CalendarDays, label: "가입일자 (첫 참여일 기준)", value: status.joinDate || "-" },
     {
       key: "depositRefund",
       icon: PiggyBank,
