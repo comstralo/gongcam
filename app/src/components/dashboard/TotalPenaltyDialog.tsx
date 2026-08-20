@@ -60,7 +60,7 @@ export function TotalPenaltyDialog({
               송출 P 원인
             </span>
             {outputPen > 0 && breakdown.outputPenReasons.length > 0 ? (
-              <ul className="flex flex-col gap-1 pl-5 text-xs text-muted-foreground sm:pl-5.5 sm:text-sm">
+              <ul className="flex flex-col gap-1 pl-5 text-micro-lg text-muted-foreground sm:pl-5.5 sm:text-xs">
                 {breakdown.outputPenReasons.map((reason, i) => (
                   <li key={i} className="before:mr-1 before:content-['└']">
                     {reason}
@@ -80,7 +80,7 @@ export function TotalPenaltyDialog({
               주간 P 원인
             </span>
             {timePen > 0 && breakdown.timePenReasons.length > 0 ? (
-              <ul className="flex flex-col gap-1 pl-5 text-xs text-muted-foreground sm:pl-5.5 sm:text-sm">
+              <ul className="flex flex-col gap-1 pl-5 text-micro-lg text-muted-foreground sm:pl-5.5 sm:text-xs">
                 {breakdown.timePenReasons.map((reason, i) => (
                   <li key={i} className="before:mr-1 before:content-['└']">
                     {reason}
