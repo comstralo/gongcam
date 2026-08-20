@@ -10,19 +10,40 @@ import { InfoCard } from "@/components/dashboard/shared";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
-import type { PeriodGridDay } from "@/lib/api/types";
+import type { PeriodGridDay, PeriodGridPeriod } from "@/lib/api/types";
 
 const PERIOD_LABELS = Array.from({ length: 14 }, (_, i) => `${i + 1}교시`);
 
-// 참여율 셀 값을 판정한다: "ERR"=기록 오류, 숫자 85 이상=달성, 그 외 숫자=미달, 빈 값=미기록.
-function periodTone(raw: string): { text: string; className?: string } {
-  if (!raw) return { text: "-", className: "text-muted-foreground/60" };
-  if (raw === "ERR") return { text: "ERR", className: "text-destructive" };
-  const n = Number(raw);
+// "HH:MM"을 분으로 변환한다. 파싱 실패 시 null.
+function timeToMinutes(raw: string): number | null {
+  const m = (raw || "").trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
+// 참여율 값을 판정한다: "ERR"=기록 오류, 숫자 85 이상=달성, 그 외 숫자=미달.
+function rateTone(rate: string): { text: string; className?: string } {
+  if (rate === "ERR") return { text: "ERR", className: "text-destructive" };
+  const n = Number(rate);
   if (Number.isFinite(n)) {
     return { text: `${Math.round(n)}%`, className: n >= 85 ? "text-ok" : "text-destructive" };
   }
-  return { text: raw, className: "text-muted-foreground" };
+  return { text: rate, className: "text-muted-foreground" };
+}
+
+// 교시 한 칸을 "09:00 ~ 09:50 (50분) · 92%" 형태로 요약한다.
+// 시작/종료/참여율이 전부 비어 있으면 기록 자체가 없는 것으로 본다.
+function formatPeriod(p: PeriodGridPeriod): { text: string; className?: string; recorded: boolean } {
+  if (!p.start && !p.end && !p.rate) {
+    return { text: "미기록", className: "text-muted-foreground/60", recorded: false };
+  }
+  const startMin = timeToMinutes(p.start);
+  const endMin = timeToMinutes(p.end);
+  const duration = startMin !== null && endMin !== null ? endMin - startMin : null;
+  const { text: rateText, className } = rateTone(p.rate);
+  const timeRange = p.start && p.end ? `${p.start} ~ ${p.end}` : "-";
+  const durationText = duration !== null && duration >= 0 ? ` (${duration}분)` : "";
+  return { text: `${timeRange}${durationText} · ${rateText}`, className, recorded: true };
 }
 
 export function StudyTimeDialog({
@@ -66,16 +87,23 @@ export function StudyTimeDialog({
                   </span>
                 </CollapsibleTrigger>
                 <CollapsiblePanel>
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 pt-1.5 sm:grid-cols-2">
-                    {d.periods.map((raw, i) => {
-                      const { text, className } = periodTone(raw);
+                  <div className="flex flex-col gap-1 pt-1.5">
+                    {d.periods.map((p, i) => {
+                      const { text, className, recorded } = formatPeriod(p);
                       return (
                         <div key={i} className="flex items-center justify-between gap-2">
-                          <span className="flex items-center gap-1 text-micro-lg text-muted-foreground sm:text-xs">
+                          <span className="flex shrink-0 items-center gap-1 text-micro-lg text-muted-foreground sm:text-xs">
                             <Clock className="size-2.5 shrink-0 sm:size-3" />
                             {PERIOD_LABELS[i]}
                           </span>
-                          <span className={cn("text-micro-lg tabular-nums sm:text-xs", className)}>{text}</span>
+                          <span
+                            className={cn(
+                              "text-micro-lg tabular-nums sm:text-xs",
+                              recorded ? className : "text-muted-foreground/60"
+                            )}
+                          >
+                            {text}
+                          </span>
                         </div>
                       );
                     })}

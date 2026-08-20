@@ -94,9 +94,15 @@ export type StatusResponse = {
   days: StatusDay[];
 };
 
+export type PeriodGridPeriod = {
+  start: string;
+  end: string;
+  rate: string;
+};
+
 export type PeriodGridDay = {
   day: string;
-  periods: string[];
+  periods: PeriodGridPeriod[];
 };
 
 export type RosterMember = {
