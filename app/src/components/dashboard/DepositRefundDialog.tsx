@@ -88,7 +88,7 @@ export function DepositRefundDialog({
             </span>
             <span
               className={cn(
-                "font-mono text-sm font-bold sm:text-base",
+                "font-mono text-xs sm:text-sm",
                 isReduced ? "text-destructive" : "text-ok"
               )}
             >
