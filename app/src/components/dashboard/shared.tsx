@@ -145,7 +145,7 @@ export function SubRow({
       >
         {label}
       </span>
-      <span className={cn("font-mono text-micro-lg tabular-nums text-muted-foreground sm:text-xs", valueClassName)}>
+      <span className={cn("text-micro-lg tabular-nums text-muted-foreground sm:text-xs", valueClassName)}>
         {value}
       </span>
     </div>
@@ -220,7 +220,7 @@ export function DayDetailCard({
           tone={day.confirmed || isPast ? "muted" : "primary"}
           icon={day.confirmed || isPast ? CircleCheck : CircleDot}
         >
-          {day.confirmed ? "확정" : isPast ? "마감" : "진행중"}
+          {day.confirmed || isPast ? "마감" : "진행중"}
         </TintedPill>
       </div>
 
