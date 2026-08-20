@@ -51,6 +51,9 @@ export function PeriodAttendanceDialog({
                 <SubRow label="85% 이상 달성 교시" value={`${breakdown.achievedCount}개`} />
                 <SubRow label="오류(ERR) 처리 교시" value={`${breakdown.errorCount}개`} />
                 <SubRow label="목표 교시 수" value={`${breakdown.targetPeriods}개`} />
+                <span className="pl-5 text-micro text-muted-foreground sm:pl-5.5 sm:text-micro-lg">
+                  (85% 이상 달성 교시 + 오류(ERR) 처리 교시) ÷ 목표 교시 수 × 100
+                </span>
               </div>
             ) : (
               <span className="pl-5 text-xs text-muted-foreground sm:pl-5.5 sm:text-sm">
