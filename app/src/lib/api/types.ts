@@ -86,11 +86,17 @@ export type StatusResponse = {
   depositRefundBreakdown: DepositRefundBreakdown;
   periodAttendanceRate: string;
   periodAttendanceBreakdown: PeriodAttendanceBreakdown;
+  periodGrid: PeriodGridDay[];
   weeklyTotalFine: string;
   weeklyOutputPen: number;
   weeklyTimePen: number;
   totalPenaltyBreakdown: TotalPenaltyBreakdown;
   days: StatusDay[];
+};
+
+export type PeriodGridDay = {
+  day: string;
+  periods: string[];
 };
 
 export type RosterMember = {

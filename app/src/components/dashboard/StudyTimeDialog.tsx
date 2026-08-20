@@ -6,17 +6,31 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { SubRow, InfoCard } from "@/components/dashboard/shared";
+import { InfoCard } from "@/components/dashboard/shared";
+import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
-import type { StatusDay } from "@/lib/api/types";
+import type { PeriodGridDay } from "@/lib/api/types";
+
+const PERIOD_LABELS = Array.from({ length: 14 }, (_, i) => `${i + 1}교시`);
+
+// 참여율 셀 값을 판정한다: "ERR"=기록 오류, 숫자 85 이상=달성, 그 외 숫자=미달, 빈 값=미기록.
+function periodTone(raw: string): { text: string; className?: string } {
+  if (!raw) return { text: "-", className: "text-muted-foreground/60" };
+  if (raw === "ERR") return { text: "ERR", className: "text-destructive" };
+  const n = Number(raw);
+  if (Number.isFinite(n)) {
+    return { text: `${Math.round(n)}%`, className: n >= 85 ? "text-ok" : "text-destructive" };
+  }
+  return { text: raw, className: "text-muted-foreground" };
+}
 
 export function StudyTimeDialog({
   weeklyStudyTime,
-  days,
+  periodGrid,
   children,
 }: {
   weeklyStudyTime: string;
-  days: StatusDay[];
+  periodGrid: PeriodGridDay[];
   children: ReactNode;
 }) {
   return (
@@ -41,17 +55,24 @@ export function StudyTimeDialog({
             <span className="text-xs sm:text-sm">{weeklyStudyTime}</span>
           </InfoCard>
 
-          <InfoCard className="flex flex-col gap-1.5">
-            <span className="text-xs font-semibold sm:text-sm">요일별 학습시간</span>
-            {days.map((d) => (
-              <SubRow
-                key={d.day}
-                label={d.day}
-                value={d.studyTime || "-"}
-                valueClassName="font-sans"
-              />
-            ))}
-          </InfoCard>
+          {periodGrid.map((d) => (
+            <InfoCard key={d.day} className="flex flex-col gap-1.5">
+              <span className="text-xs font-semibold sm:text-sm">{d.day}요일</span>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1 sm:grid-cols-2">
+                {d.periods.map((raw, i) => {
+                  const { text, className } = periodTone(raw);
+                  return (
+                    <div key={i} className="flex items-center justify-between gap-2">
+                      <span className="text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
+                        {PERIOD_LABELS[i]}
+                      </span>
+                      <span className={cn("text-micro-lg tabular-nums sm:text-xs", className)}>{text}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </InfoCard>
+          ))}
         </div>
       </DialogContent>
     </Dialog>
