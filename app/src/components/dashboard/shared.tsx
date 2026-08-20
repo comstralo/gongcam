@@ -274,6 +274,7 @@ export function DayDetailCard({
         </div>
         <SubRow label="일반반휴" value={day.normalLeaveUsed > 0 ? `${day.normalLeaveUsed}회` : "-"} />
         <SubRow label="사유반휴" value={day.reasonLeaveUsed > 0 ? `${day.reasonLeaveUsed}회` : "-"} />
+        {footer}
       </div>
 
       <div className="h-px w-full bg-border" />
@@ -304,8 +305,6 @@ export function DayDetailCard({
           )}
         />
       </div>
-
-      {footer && <div className="flex flex-col gap-1.5">{footer}</div>}
     </div>
   );
 }
