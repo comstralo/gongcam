@@ -227,6 +227,7 @@ export function DayDetailCard({
         >
           {day.confirmed || isPast ? "마감" : "진행중"}
         </TintedPill>
+        {day.paymentStatus === "미납" && <TintedPill tone="warn">벌금 미납</TintedPill>}
       </div>
 
       <div className="flex flex-col gap-1.5">
