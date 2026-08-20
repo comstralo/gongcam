@@ -1,4 +1,4 @@
-import { Search, ShieldAlert, TriangleAlert } from "lucide-react";
+import { Search, ShieldAlert, TriangleAlert, Radio, CalendarClock } from "lucide-react";
 import {
   Dialog,
   DialogTrigger,
@@ -38,25 +38,26 @@ export function TotalPenaltyDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
-          <InfoCard className="flex flex-col gap-1.5">
+          <InfoCard className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
               <ShieldAlert className="size-3.5 shrink-0 text-primary sm:size-4" />
               총 페널티
             </span>
-            <div className="flex items-center justify-end gap-2">
-              <span
-                className={cn(
-                  "font-mono text-sm font-bold sm:text-base",
-                  total >= 2 ? "text-destructive" : total === 1 ? "text-amber-600 dark:text-amber-400" : undefined
-                )}
-              >
-                송출 P {outputPen}회 + 주간 P {timePen}회
-              </span>
-            </div>
+            <span
+              className={cn(
+                "font-mono text-sm font-bold sm:text-base",
+                total >= 2 ? "text-destructive" : total === 1 ? "text-amber-600 dark:text-amber-400" : undefined
+              )}
+            >
+              송출 P {outputPen}회 + 주간 P {timePen}회
+            </span>
           </InfoCard>
 
           <InfoCard className="flex flex-col gap-1.5">
-            <span className="text-xs font-semibold sm:text-sm">└ 송출 P 발생 원인</span>
+            <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+              <Radio className="size-3.5 shrink-0 text-primary sm:size-4" />
+              송출 P 원인
+            </span>
             {outputPen > 0 && breakdown.outputPenReasons.length > 0 ? (
               <ul className="flex flex-col gap-1 pl-5 text-xs text-muted-foreground sm:pl-5.5 sm:text-sm">
                 {breakdown.outputPenReasons.map((reason, i) => (
@@ -71,7 +72,10 @@ export function TotalPenaltyDialog({
           </InfoCard>
 
           <InfoCard className="flex flex-col gap-1.5">
-            <span className="text-xs font-semibold sm:text-sm">└ 주간 P 발생 원인</span>
+            <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+              <CalendarClock className="size-3.5 shrink-0 text-primary sm:size-4" />
+              주간 P 원인
+            </span>
             {timePen > 0 && breakdown.timePenReasons.length > 0 ? (
               <ul className="flex flex-col gap-1 pl-5 text-xs text-muted-foreground sm:pl-5.5 sm:text-sm">
                 {breakdown.timePenReasons.map((reason, i) => (
