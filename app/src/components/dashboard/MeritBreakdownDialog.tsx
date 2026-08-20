@@ -80,7 +80,7 @@ export function MeritBreakdownDialog({
               value={(breakdown.studyTimeMerit ?? 0) > 0 ? `+${pt(breakdown.studyTimeMerit)}` : `+${pt(0)}`}
               valueClassName={(breakdown.studyTimeMerit ?? 0) > 0 ? "text-ok" : "text-muted-foreground"}
             />
-            <div className="flex flex-col gap-0.5">
+            <div className="flex flex-col">
               <SubRow
                 label={`주간 제보상점 (인정 ${breakdown.reportApprovedCount ?? 0}건)`}
                 value={
@@ -94,7 +94,7 @@ export function MeritBreakdownDialog({
                     : "text-muted-foreground"
                 }
               />
-              <span className="pl-8.5 text-micro text-amber-600 sm:pl-9.5 sm:text-micro-lg dark:text-amber-400">
+              <span className="pl-8.5 text-micro leading-tight text-amber-600 sm:pl-9.5 sm:text-micro-lg dark:text-amber-400">
                 * 주중 랜덤 반영
               </span>
             </div>
