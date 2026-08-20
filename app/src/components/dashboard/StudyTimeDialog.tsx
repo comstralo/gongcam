@@ -39,17 +39,23 @@ function timeToMinutes(raw: string): number | null {
   return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
 }
 
-// 참여율 값으로 색상만 판정한다: "ERR"=오류, 85% 이상=달성, 그 외=미달.
-function rateClassName(rate: string): string {
-  if (rate === "ERR") return "text-destructive";
+// 참여율 값을 "92%"/"ERR" 텍스트와 색상으로 판정한다: "ERR"=오류,
+// 85% 이상=달성(초록), 그 외=미달(빨강).
+function rateTone(rate: string): { text: string; className: string } {
+  if (rate === "ERR") return { text: "ERR", className: "text-destructive" };
   const n = Number(rate);
-  if (Number.isFinite(n)) return n >= 85 ? "text-ok" : "text-destructive";
-  return "text-muted-foreground";
+  if (Number.isFinite(n)) {
+    return { text: `${Math.round(n)}%`, className: n >= 85 ? "text-ok" : "text-destructive" };
+  }
+  return { text: rate, className: "text-muted-foreground" };
 }
 
-// 교시 한 칸을 "59분" 형태로 요약한다.
+// 교시 한 칸을 요약한다 — 교시제는 "59분 · 92%", 달성제는 "59분"만 표시한다.
 // 시작/종료/참여율이 전부 비어 있으면 기록 자체가 없는 것으로 본다.
-function formatPeriod(p: PeriodGridPeriod): { text: string; className?: string; recorded: boolean } {
+function formatPeriod(
+  p: PeriodGridPeriod,
+  showRate: boolean
+): { text: string; className?: string; recorded: boolean } {
   if (!p.start && !p.end && !p.rate) {
     return { text: "미기록", className: "text-muted-foreground/60", recorded: false };
   }
@@ -57,7 +63,14 @@ function formatPeriod(p: PeriodGridPeriod): { text: string; className?: string; 
   const endMin = timeToMinutes(p.end);
   const duration = startMin !== null && endMin !== null ? endMin - startMin : null;
   const durationText = duration !== null && duration >= 0 ? `${duration}분` : "-";
-  return { text: durationText, className: rateClassName(p.rate), recorded: true };
+  const { text: rateText, className } = rateTone(p.rate);
+  const text = showRate ? `${durationText} · ${rateText}` : durationText;
+  return { text, className, recorded: true };
+}
+
+// 통과 교시 수 = 참여율 85% 이상 또는 "ERR"인 교시 개수(교시제 전용 지표).
+function passedCount(periods: PeriodGridPeriod[]): number {
+  return periods.filter((p) => p.rate === "ERR" || Number(p.rate) >= 85).length;
 }
 
 // "HH:MM"을 "NH NM"으로 표시한다.
@@ -109,6 +122,7 @@ export function StudyTimeDialog({
             const studyMin = timeToMinutes(dayInfo?.studyTime || "");
             const goalMin = timeToMinutes(dayInfo?.dailyGoalTime || "");
             const achieved = studyMin !== null && goalMin !== null ? studyMin >= goalMin : null;
+            const passed = passedCount(d.periods);
 
             return (
               <Collapsible key={d.day}>
@@ -127,6 +141,11 @@ export function StudyTimeDialog({
                           {formatHM(dayInfo?.studyTime || "")}
                         </span>
                       )}
+                      {isPeriodType && (
+                        <span className="rounded-full bg-ok/15 px-1.5 py-0.5 text-micro font-semibold text-ok sm:text-micro-lg">
+                          {passed}개 교시
+                        </span>
+                      )}
                     </span>
                   </CollapsibleTrigger>
                   <CollapsiblePanel>
@@ -135,7 +154,7 @@ export function StudyTimeDialog({
                         <div key={col} className="flex flex-col gap-1">
                           {half.map((p, j) => {
                             const i = col * 7 + j;
-                            const { text, className, recorded } = formatPeriod(p);
+                            const { text, className, recorded } = formatPeriod(p, isPeriodType);
                             return (
                               <div key={i} className="flex items-center justify-between gap-2">
                                 <span className="flex shrink-0 items-center gap-1 text-micro-lg text-muted-foreground sm:text-xs">
