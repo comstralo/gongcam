@@ -199,7 +199,7 @@ export function DayDetailCard({ day, dayLabel }: { day: StatusDay; dayLabel?: st
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 rounded-xl border bg-muted p-4 sm:gap-3.5 sm:p-5",
+        "flex flex-col gap-3 rounded-xl border bg-card p-4 sm:gap-3.5 sm:p-5",
         day.total > 0 ? "border-destructive/30" : "border-border"
       )}
     >
