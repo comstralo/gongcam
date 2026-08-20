@@ -23,7 +23,7 @@ import { DepositRefundDialog } from "@/components/dashboard/DepositRefundDialog"
 import { PeriodAttendanceDialog } from "@/components/dashboard/PeriodAttendanceDialog";
 import { TotalPenaltyDialog } from "@/components/dashboard/TotalPenaltyDialog";
 import { StudyTimeDialog } from "@/components/dashboard/StudyTimeDialog";
-import type { StatusResponse } from "@/lib/api/types";
+import type { StatusResponse, StatusDay } from "@/lib/api/types";
 
 const TODAY_INDEX = (new Date().getDay() + 6) % 7; // 월=0 ... 일=6
 
@@ -55,6 +55,20 @@ function formatStudyTime(hours: number): string {
   const h = Math.floor(totalMinutes / 60);
   const m = totalMinutes % 60;
   return `${h}H ${m}M`;
+}
+
+// "HH:MM"을 분으로 변환한다. 파싱 실패 시 0.
+function timeToMinutesOrZero(raw: string): number {
+  const m = (raw || "").trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return 0;
+  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
+// days[]의 dailyGoalTime(요일별 목표시간, HH:MM)을 합산해 주간 목표시간을
+// "NH NM" 형태로 만든다.
+function formatWeeklyGoalTime(days: StatusDay[]): string {
+  const totalMinutes = days.reduce((sum, d) => sum + timeToMinutesOrZero(d.dailyGoalTime), 0);
+  return `${Math.floor(totalMinutes / 60)}H ${totalMinutes % 60}M`;
 }
 
 // 총합 0이면 "-", 1이면 "송출 P 1회" 처럼 0이 아닌 쪽만, 2 이상이면 두 값을
@@ -151,15 +165,25 @@ export function StatusView({
       key: "studyTime",
       icon: Timer,
       label: "주간 학습시간",
-      value: formatStudyTime(status.weeklyMeritBreakdown?.studyTimeHours ?? 0),
+      value: (
+        <DividedValue
+          items={[formatStudyTime(status.weeklyMeritBreakdown?.studyTimeHours ?? 0), formatWeeklyGoalTime(status.days)]}
+        />
+      ),
+      wrap: true,
       clickable: "view",
     },
     {
       key: "periodAttendance",
       icon: ListChecks,
       label: "주간 교시 참여율",
-      value: status.periodAttendanceRate || "-",
+      value: status.periodAttendanceBreakdown?.applicable ? (
+        <DividedValue items={[status.periodAttendanceRate || "-", "80%"]} />
+      ) : (
+        "-"
+      ),
       valueClassName: periodAttendanceClassName,
+      wrap: true,
       clickable: "view",
     },
     {
@@ -170,7 +194,7 @@ export function StatusView({
         totalPen >= 2 ? (
           <span className="flex flex-col">
             <span>{formatTotalPenalty(outputPen, timePen)}</span>
-            <span>예치금 재납 대상</span>
+            <span className="text-micro sm:text-micro-lg">* 예치금 재납 대상</span>
           </span>
         ) : (
           formatTotalPenalty(outputPen, timePen)
