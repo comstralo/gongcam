@@ -166,9 +166,10 @@ function won(n: number) {
 }
 
 function timeToMinutes(raw: string): number | null {
-  const m = (raw || "").trim().match(/^(\d{1,3}):(\d{2})$/);
+  const m = (raw || "").trim().match(/^([+-]?)(\d{1,3}):(\d{2})$/);
   if (!m) return null;
-  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  const minutes = parseInt(m[2], 10) * 60 + parseInt(m[3], 10);
+  return m[1] === "-" ? -minutes : minutes;
 }
 
 type GoalStatus = "met" | "failed" | "pending";
@@ -239,15 +240,23 @@ export function DayDetailCard({
           >
             {day.dailyGoalTime ? (
               <DividedValue
-                items={[day.studyTime || "-", <span key="goal" className="text-muted-foreground">{day.dailyGoalTime}</span>]}
+                items={[day.studyTime || "-", <span key="goal" className="text-ok">{day.dailyGoalTime}</span>]}
               />
             ) : (
               day.studyTime || "-"
             )}
           </span>
         </div>
-        <SubRow label="로그 학습시간" value={day.logStudyTime || "-"} />
-        <SubRow label="보정 학습시간" value={signedTime(day.bonusStudyTime)} />
+        <SubRow label="로그 학습시간" value={day.logStudyTime ? `+${day.logStudyTime}` : "-"} />
+        <SubRow
+          label="보정 학습시간"
+          value={signedTime(day.bonusStudyTime)}
+          valueClassName={
+            (day.bonusStudyTime || "").trim() && timeToMinutes(day.bonusStudyTime) !== 0
+              ? "text-destructive"
+              : undefined
+          }
+        />
       </div>
 
       <div className="h-px w-full bg-border" />
