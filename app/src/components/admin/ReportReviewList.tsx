@@ -89,7 +89,7 @@ export function ReportReviewList() {
     setResult(null);
     call<CaptureDecideResponse>("/admin/captures/decide", {
       method: "POST",
-      body: { id: item.id, decision, nickname: item.nickname },
+      body: { id: item.id, decision, nickname: item.nickname, reason: item.reason, ts: item.ts },
     })
       .then((data) => {
         if (data.penalty) {
