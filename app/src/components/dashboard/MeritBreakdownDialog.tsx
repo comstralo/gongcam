@@ -58,7 +58,7 @@ export function MeritBreakdownDialog({
             </span>
             <span
               className={cn(
-                "font-mono text-xs tabular-nums sm:text-sm",
+                "text-xs tabular-nums sm:text-sm",
                 breakdown.isZero ? "text-muted-foreground" : "text-ok"
               )}
             >
@@ -79,7 +79,7 @@ export function MeritBreakdownDialog({
             <SubRow
               label={`주간 학습시간 상점 (${breakdown.studyTimeHours ?? 0}H)`}
               value={(breakdown.studyTimeMerit ?? 0) > 0 ? `+${pt(breakdown.studyTimeMerit)}` : `+${pt(0)}`}
-              valueClassName={(breakdown.studyTimeMerit ?? 0) > 0 ? "text-ok" : "text-muted-foreground"}
+              valueClassName={cn("font-sans", (breakdown.studyTimeMerit ?? 0) > 0 ? "text-ok" : "text-muted-foreground")}
             />
             <div className="flex flex-col">
               <SubRow
@@ -89,11 +89,12 @@ export function MeritBreakdownDialog({
                     ? `+${pt(breakdown.reportMerit)}`
                     : `+${pt(0)}`
                 }
-                valueClassName={
+                valueClassName={cn(
+                  "font-sans",
                   breakdown.reportMeritIncluded && (breakdown.reportMerit ?? 0) > 0
                     ? "text-ok"
                     : "text-muted-foreground"
-                }
+                )}
               />
               <span className="pl-8.5 text-micro leading-tight text-amber-600 sm:pl-9.5 sm:text-micro-lg dark:text-amber-400">
                 * 주중 랜덤 반영
@@ -109,12 +110,12 @@ export function MeritBreakdownDialog({
             <SubRow
               label="주간 송출 벌점"
               value={(breakdown.penaltyDeduction ?? 0) > 0 ? `-${pt(breakdown.penaltyDeduction)}` : `-${pt(0)}`}
-              valueClassName={(breakdown.penaltyDeduction ?? 0) > 0 ? "text-destructive" : "text-muted-foreground"}
+              valueClassName={cn("font-sans", (breakdown.penaltyDeduction ?? 0) > 0 ? "text-destructive" : "text-muted-foreground")}
             />
             <SubRow
               label="주간 벌금 (500원 당)"
               value={(breakdown.fineDeduction ?? 0) > 0 ? `-${pt(breakdown.fineDeduction)}` : `-${pt(0)}`}
-              valueClassName={(breakdown.fineDeduction ?? 0) > 0 ? "text-destructive" : "text-muted-foreground"}
+              valueClassName={cn("font-sans", (breakdown.fineDeduction ?? 0) > 0 ? "text-destructive" : "text-muted-foreground")}
             />
           </InfoCard>
 
@@ -154,7 +155,7 @@ export function MeritBreakdownDialog({
               <SubRow
                 label={formatGoalType(goalType)}
                 value={`× ${breakdown.multiplier ?? 1}`}
-                valueClassName={breakdown.multiplierDowngraded ? "text-destructive" : undefined}
+                valueClassName={cn("font-sans", breakdown.multiplierDowngraded && "text-destructive")}
               />
               <span className="pl-8.5 text-micro leading-tight text-amber-600 sm:pl-9.5 sm:text-micro-lg dark:text-amber-400">
                 * 사유반휴 2장 사용 시, 8H 기준으로 강등
