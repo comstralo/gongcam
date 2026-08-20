@@ -48,8 +48,9 @@ export function PeriodAttendanceDialog({
             </div>
             {breakdown.applicable ? (
               <div className="flex flex-col gap-1.5">
-                <SubRow label="85% 이상 달성 교시" value={`${breakdown.achievedCount}개 교시`} />
-                <SubRow label="오류(ERR) 처리 교시" value={`${breakdown.errorCount}개 교시`} />
+                <SubRow label="85% 이상 달성 교시" value={`${breakdown.achievedCount}개`} />
+                <SubRow label="오류(ERR) 처리 교시" value={`${breakdown.errorCount}개`} />
+                <SubRow label="목표 교시 수" value={`${breakdown.targetPeriods}개`} />
               </div>
             ) : (
               <span className="pl-5 text-xs text-muted-foreground sm:pl-5.5 sm:text-sm">
