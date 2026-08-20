@@ -6,7 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { InfoCard } from "@/components/dashboard/shared";
+import { InfoCard, formatTotalPenalty } from "@/components/dashboard/shared";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 import type { TotalPenaltyBreakdown } from "@/lib/api/types";
@@ -45,11 +45,12 @@ export function TotalPenaltyDialog({
             </span>
             <span
               className={cn(
-                "font-mono text-sm font-bold sm:text-base",
+                "flex flex-col text-right text-xs font-semibold sm:text-sm",
                 total >= 2 ? "text-destructive" : total === 1 ? "text-amber-600 dark:text-amber-400" : undefined
               )}
             >
-              송출 P {outputPen}회 + 주간 P {timePen}회
+              <span>{formatTotalPenalty(outputPen, timePen)}</span>
+              {total >= 2 && <span className="text-micro sm:text-micro-lg">* 예치금 재납 대상</span>}
             </span>
           </InfoCard>
 

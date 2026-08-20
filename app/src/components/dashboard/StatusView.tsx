@@ -15,7 +15,14 @@ import {
   Megaphone,
 } from "lucide-react";
 import { cn, ICON_STROKE } from "@/lib/utils";
-import { SummaryTile, InfoCard, DividedValue, DayDetailCard, ItemTitle } from "@/components/dashboard/shared";
+import {
+  SummaryTile,
+  InfoCard,
+  DividedValue,
+  DayDetailCard,
+  ItemTitle,
+  formatTotalPenalty,
+} from "@/components/dashboard/shared";
 import { PeriodAlarmCard } from "@/components/dashboard/PeriodAlarmCard";
 import { MeritBreakdownDialog } from "@/components/dashboard/MeritBreakdownDialog";
 import { GoalTypeScheduleDialog } from "@/components/dashboard/GoalTypeScheduleDialog";
@@ -60,15 +67,6 @@ function timeToMinutesOrZero(raw: string): number {
 function formatHM(raw: string): string {
   const totalMinutes = timeToMinutesOrZero(raw);
   return `${Math.floor(totalMinutes / 60)}H ${totalMinutes % 60}M`;
-}
-
-// 총합 0이면 "-", 1이면 "송출 P 1회" 처럼 0이 아닌 쪽만, 2 이상이면 두 값을
-// "+"로 조합해 표시한다(총합은 최대 2까지만 나올 수 있는 값이다).
-function formatTotalPenalty(outputPen: number, timePen: number): string {
-  const parts: string[] = [];
-  if (outputPen > 0) parts.push(`송출 P ${outputPen}회`);
-  if (timePen > 0) parts.push(`주간 P ${timePen}회`);
-  return parts.length > 0 ? parts.join(" + ") : "-";
 }
 
 // 괄호 안 "0회" 등의 숫자가 섞여 들어오지 않도록, formatDepositRefund와 동일하게

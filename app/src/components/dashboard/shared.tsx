@@ -96,6 +96,16 @@ export function SummaryTile({
   );
 }
 
+// 총합 0이면 "-", 1이면 "송출 P 1회" 처럼 0이 아닌 쪽만, 2 이상이면 두 값을
+// "+"로 조합해 표시한다(총합은 최대 2까지만 나올 수 있는 값이다). 대시보드
+// 타일과 페널티 모달이 동일한 문구를 써야 해서 공용 헬퍼로 둔다.
+export function formatTotalPenalty(outputPen: number, timePen: number): string {
+  const parts: string[] = [];
+  if (outputPen > 0) parts.push(`송출 P ${outputPen}회`);
+  if (timePen > 0) parts.push(`주간 P ${timePen}회`);
+  return parts.length > 0 ? parts.join(" + ") : "-";
+}
+
 // 텍스트 구분자("|") 대신 은은한 세로선으로 두 값을 나눠 보여준다.
 // 예: 주간 총 상점(수치) │ 순위.
 export function DividedValue({ items }: { items: ReactNode[] }) {
