@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CalendarClock, Clock, TriangleAlert } from "lucide-react";
+import { CalendarClock, Search, TriangleAlert } from "lucide-react";
 import {
   Dialog,
   DialogTrigger,
@@ -81,7 +81,7 @@ export function GoalTypeScheduleDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-1.5">
-            <Clock className="size-4 text-primary sm:size-5" />
+            <Search className="size-4 text-primary sm:size-5" />
             목표시간 · 변경 예약
           </DialogTitle>
         </DialogHeader>
