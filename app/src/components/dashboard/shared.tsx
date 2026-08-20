@@ -226,7 +226,7 @@ export function DayDetailCard({
 
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between gap-2">
-          <span className="inline-flex items-center gap-1.25 text-xs font-semibold text-muted-foreground sm:text-sm">
+          <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
             <Timer className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
             일간 학습시간
           </span>
@@ -253,7 +253,7 @@ export function DayDetailCard({
 
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between gap-2">
-          <span className="inline-flex items-center gap-1.25 text-xs font-semibold text-muted-foreground sm:text-sm">
+          <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
             <BedDouble className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
             반휴 사용
           </span>
@@ -266,7 +266,7 @@ export function DayDetailCard({
 
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between gap-2">
-          <span className="inline-flex items-center gap-1.25 text-xs font-semibold text-muted-foreground sm:text-sm">
+          <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
             <Wallet className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
             일간 총 벌금
             {!day.complete && (
@@ -277,7 +277,7 @@ export function DayDetailCard({
           </span>
           <span
             className={cn(
-              "font-mono text-sm font-semibold tabular-nums sm:text-base",
+              "text-sm font-semibold sm:text-base",
               day.total > 0 ? "text-destructive" : "text-ok"
             )}
           >
