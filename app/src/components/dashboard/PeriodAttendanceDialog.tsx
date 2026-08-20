@@ -43,7 +43,7 @@ export function PeriodAttendanceDialog({
                 교시 참여율
               </span>
               <span className={cn("font-mono text-sm font-bold sm:text-base", isLow && "text-destructive")}>
-                {periodAttendanceRate}
+                {periodAttendanceRate} / 80%
               </span>
             </div>
             {breakdown.applicable ? (
