@@ -174,8 +174,9 @@ function timeToMinutes(raw: string): number | null {
 
 type GoalStatus = "met" | "failed" | "pending";
 
-function goalStatus(studyTime: string, goalTime: string, complete: boolean): GoalStatus {
-  if (!complete) return "pending";
+// 그날 기록이 완결됐는지와 무관하게, 현재 학습시간이 목표시간 이상이면
+// 그 시점 기준으로 바로 초록/빨강을 표시한다.
+function goalStatus(studyTime: string, goalTime: string): GoalStatus {
   const study = timeToMinutes(studyTime);
   const goal = timeToMinutes(goalTime);
   if (study === null || goal === null) return "pending";
@@ -234,8 +235,8 @@ export function DayDetailCard({
           <span
             className={cn(
               "text-xs font-semibold sm:text-sm",
-              goalStatus(day.studyTime, day.dailyGoalTime, day.complete) === "met" && "text-ok",
-              goalStatus(day.studyTime, day.dailyGoalTime, day.complete) === "failed" && "text-destructive"
+              goalStatus(day.studyTime, day.dailyGoalTime) === "met" && "text-ok",
+              goalStatus(day.studyTime, day.dailyGoalTime) === "failed" && "text-destructive"
             )}
           >
             {day.dailyGoalTime ? (
