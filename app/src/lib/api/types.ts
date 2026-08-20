@@ -88,6 +88,7 @@ export type StatusResponse = {
   periodAttendanceBreakdown: PeriodAttendanceBreakdown;
   periodGrid: PeriodGridDay[];
   weeklyGoalTime: string;
+  weeklyStudyTime: string;
   weeklyTotalFine: string;
   weeklyOutputPen: number;
   weeklyTimePen: number;

@@ -49,14 +49,6 @@ function formatDepositRefund(raw: string): string {
   return raw.replace(/\s*\([^)]*\)\s*$/, "").trim();
 }
 
-// studyTimeHours(소수 시간, 예: 4.5)를 "4H 30M" 형태로 분해한다.
-function formatStudyTime(hours: number): string {
-  const totalMinutes = Math.round(hours * 60);
-  const h = Math.floor(totalMinutes / 60);
-  const m = totalMinutes % 60;
-  return `${h}H ${m}M`;
-}
-
 // "HH:MM"을 분으로 변환한다. 파싱 실패 시 0.
 function timeToMinutesOrZero(raw: string): number {
   const m = (raw || "").trim().match(/^(\d{1,2}):(\d{2})$/);
@@ -64,9 +56,8 @@ function timeToMinutesOrZero(raw: string): number {
   return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
 }
 
-// 서버가 개인 탭 M28 수식과 동일하게 계산해 내려주는 weeklyGoalTime("HH:MM")을
-// "NH NM" 형태로 바꾼다.
-function formatWeeklyGoalTime(raw: string): string {
+// 서버가 "HH:MM"으로 내려주는 시간 값을 "NH NM" 형태로 바꾼다.
+function formatHM(raw: string): string {
   const totalMinutes = timeToMinutesOrZero(raw);
   return `${Math.floor(totalMinutes / 60)}H ${totalMinutes % 60}M`;
 }
@@ -167,7 +158,7 @@ export function StatusView({
       label: "주간 학습시간",
       value: (
         <DividedValue
-          items={[formatStudyTime(status.weeklyMeritBreakdown?.studyTimeHours ?? 0), formatWeeklyGoalTime(status.weeklyGoalTime)]}
+          items={[formatHM(status.weeklyStudyTime), formatHM(status.weeklyGoalTime)]}
         />
       ),
       wrap: true,
@@ -255,7 +246,7 @@ export function StatusView({
             return (
               <StudyTimeDialog
                 key={tile.key}
-                weeklyStudyTime={formatStudyTime(status.weeklyMeritBreakdown?.studyTimeHours ?? 0)}
+                weeklyStudyTime={formatHM(status.weeklyStudyTime)}
                 goalType={status.goalType}
                 periodGrid={status.periodGrid || []}
                 days={status.days}
