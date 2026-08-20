@@ -56,7 +56,7 @@ export function DepositRefundDialog({
       label: "예치금 재납 시한 미납",
       rate: breakdown.depositAgainStatus === "미납" ? 100 : 0,
     },
-    { key: "directPen", label: "직권 P (스터디장 직권 강제퇴실)", rate: 0 },
+    { key: "directPen", label: "페널티 (직권 P)", rate: 0 },
   ].sort((a, b) => b.rate - a.rate);
 
   const depositAgainItems = [
