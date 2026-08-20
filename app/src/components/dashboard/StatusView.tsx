@@ -48,6 +48,14 @@ function formatDepositRefund(raw: string): string {
   return raw.replace(/\s*\([^)]*\)\s*$/, "").trim();
 }
 
+// studyTimeHours(소수 시간, 예: 4.5)를 "4H 30M" 형태로 분해한다.
+function formatStudyTime(hours: number): string {
+  const totalMinutes = Math.round(hours * 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return `${h}H ${m}M`;
+}
+
 // 괄호 안 "0회" 등의 숫자가 섞여 들어오지 않도록, formatDepositRefund와 동일하게
 // 괄호를 먼저 떼어낸 뒤 남은 숫자만 파싱한다.
 function parseDepositRefundAmount(raw: string): number {
@@ -133,7 +141,7 @@ export function StatusView({
       key: "studyTime",
       icon: Timer,
       label: "주간 학습시간",
-      value: `${status.weeklyMeritBreakdown?.studyTimeHours ?? 0}H`,
+      value: formatStudyTime(status.weeklyMeritBreakdown?.studyTimeHours ?? 0),
     },
     {
       key: "periodAttendance",
