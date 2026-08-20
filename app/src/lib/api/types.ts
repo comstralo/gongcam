@@ -29,7 +29,9 @@ export type WeeklyMeritBreakdown = {
   isZero: boolean;
   zeroReason: string | null;
   studyTimeMerit: number;
+  studyTimeHours: number;
   reportMerit: number;
+  reportApprovedCount: number | null;
   isLeader: boolean;
   reportMeritIncluded: boolean;
   multiplier: number;

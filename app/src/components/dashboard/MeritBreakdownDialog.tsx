@@ -18,14 +18,22 @@ function pt(n: number | null | undefined) {
   return `${abs}점`;
 }
 
+// 시트 원본 값("8H (교시제)")의 괄호를 지워 "8H 교시제"로 표시한다.
+function formatGoalType(raw: string): string {
+  if (!raw) return "-";
+  return raw.replace(/[()]/g, "").replace(/\s+/g, " ").trim();
+}
+
 export function MeritBreakdownDialog({
   weeklyMerit,
   weeklyMeritRank,
+  goalType,
   breakdown,
   children,
 }: {
   weeklyMerit: string;
   weeklyMeritRank: string;
+  goalType: string;
   breakdown: WeeklyMeritBreakdown;
   children: ReactNode;
 }) {
@@ -63,11 +71,23 @@ export function MeritBreakdownDialog({
               <TrendingUp className="size-3.5 shrink-0 text-primary sm:size-4" />
               적립 원인
             </span>
-            <SubRow label="학습시간 상점" value={`+${pt(breakdown.studyTimeMerit)}`} valueClassName="text-ok" />
             <SubRow
-              label="제보상점"
+              label={`학습시간 상점 (${breakdown.studyTimeHours ?? 0}H)`}
+              value={`+${pt(breakdown.studyTimeMerit)}`}
+              valueClassName={(breakdown.studyTimeMerit ?? 0) > 0 ? "text-ok" : "text-muted-foreground"}
+            />
+            <SubRow
+              label={
+                breakdown.isLeader
+                  ? "제보상점"
+                  : `제보상점 (${breakdown.reportApprovedCount ?? 0}건)`
+              }
               value={breakdown.reportMeritIncluded ? `+${pt(breakdown.reportMerit)}` : pt(0)}
-              valueClassName={breakdown.reportMeritIncluded ? "text-ok" : "text-muted-foreground/60"}
+              valueClassName={
+                breakdown.reportMeritIncluded && (breakdown.reportMerit ?? 0) > 0
+                  ? "text-ok"
+                  : "text-muted-foreground"
+              }
             />
           </InfoCard>
 
@@ -77,14 +97,14 @@ export function MeritBreakdownDialog({
               차감 원인
             </span>
             <SubRow
-              label="송출 P 벌점"
+              label="송출 벌점"
               value={(breakdown.penaltyDeduction ?? 0) > 0 ? `-${pt(breakdown.penaltyDeduction)}` : pt(0)}
-              valueClassName={(breakdown.penaltyDeduction ?? 0) > 0 ? "text-destructive" : undefined}
+              valueClassName={(breakdown.penaltyDeduction ?? 0) > 0 ? "text-destructive" : "text-muted-foreground"}
             />
             <SubRow
-              label={`벌금 차감 (₩${(breakdown.weeklyTotalFineAmount ?? 0).toLocaleString()})`}
+              label="벌금 (500원 당)"
               value={(breakdown.fineDeduction ?? 0) > 0 ? `-${pt(breakdown.fineDeduction)}` : pt(0)}
-              valueClassName={(breakdown.fineDeduction ?? 0) > 0 ? "text-destructive" : undefined}
+              valueClassName={(breakdown.fineDeduction ?? 0) > 0 ? "text-destructive" : "text-muted-foreground"}
             />
           </InfoCard>
 
@@ -93,7 +113,7 @@ export function MeritBreakdownDialog({
               <Gauge className="size-3.5 shrink-0 text-primary sm:size-4" />
               상점 배율
             </span>
-            <SubRow label="적용 배율" value={`× ${breakdown.multiplier ?? 1}`} />
+            <SubRow label={formatGoalType(goalType)} value={`× ${breakdown.multiplier ?? 1}`} />
           </InfoCard>
 
           <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">

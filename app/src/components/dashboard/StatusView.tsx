@@ -170,6 +170,7 @@ export function StatusView({
                 key={tile.key}
                 weeklyMerit={status.weeklyMerit || "0"}
                 weeklyMeritRank={status.weeklyMeritRank || "-"}
+                goalType={status.goalType}
                 breakdown={status.weeklyMeritBreakdown}
               >
                 {tileEl}
