@@ -88,7 +88,7 @@ export function DepositRefundDialog({
             </span>
             <span
               className={cn(
-                "font-mono text-xs sm:text-sm",
+                "text-xs sm:text-sm",
                 isReduced ? "text-destructive" : "text-ok"
               )}
             >
@@ -106,7 +106,7 @@ export function DepositRefundDialog({
                 key={item.key}
                 label={item.label}
                 value={`${item.rate}%`}
-                valueClassName={item.rate > 0 ? "text-destructive" : undefined}
+                valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
               />
             ))}
 
@@ -117,7 +117,7 @@ export function DepositRefundDialog({
                 key={item.key}
                 label={item.label}
                 value={`${item.rate}%`}
-                valueClassName={item.rate > 0 ? "text-destructive" : undefined}
+                valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
               />
             ))}
 
@@ -128,7 +128,7 @@ export function DepositRefundDialog({
                 key={item.key}
                 label={item.label}
                 value={`${item.rate}%`}
-                valueClassName={item.rate > 0 ? "text-destructive" : undefined}
+                valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
               />
             ))}
           </InfoCard>
