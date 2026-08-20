@@ -94,8 +94,8 @@ export function MeritBreakdownDialog({
                     : "text-muted-foreground"
                 }
               />
-              <span className="pl-5 text-micro text-amber-600 sm:pl-5.5 sm:text-micro-lg dark:text-amber-400">
-                주중에 랜덤 반영
+              <span className="pl-8.5 text-micro text-amber-600 sm:pl-9.5 sm:text-micro-lg dark:text-amber-400">
+                * 주중 랜덤 반영
               </span>
             </div>
           </InfoCard>
