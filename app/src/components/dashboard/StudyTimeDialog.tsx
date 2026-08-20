@@ -6,11 +6,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { InfoCard } from "@/components/dashboard/shared";
+import { InfoCard, TintedPill } from "@/components/dashboard/shared";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
-import type { PeriodGridDay, PeriodGridPeriod } from "@/lib/api/types";
+import type { PeriodGridDay, PeriodGridPeriod, StatusDay } from "@/lib/api/types";
 
 const PERIOD_LABELS = Array.from({ length: 14 }, (_, i) => `${i + 1}교시`);
 
@@ -45,13 +45,20 @@ function formatPeriod(p: PeriodGridPeriod): { text: string; className?: string; 
   return { text: `${durationText} · ${rateText}`, className, recorded: true };
 }
 
+// 통과 교시 수 = 참여율 85% 이상 또는 "ERR"인 교시 개수.
+function passedCount(periods: PeriodGridPeriod[]): number {
+  return periods.filter((p) => p.rate === "ERR" || Number(p.rate) >= 85).length;
+}
+
 export function StudyTimeDialog({
   weeklyStudyTime,
   periodGrid,
+  days,
   children,
 }: {
   weeklyStudyTime: string;
   periodGrid: PeriodGridDay[];
+  days: StatusDay[];
   children: ReactNode;
 }) {
   return (
@@ -76,46 +83,63 @@ export function StudyTimeDialog({
             <span className="text-xs sm:text-sm">{weeklyStudyTime}</span>
           </InfoCard>
 
-          {periodGrid.map((d) => (
-            <Collapsible key={d.day}>
-              <InfoCard className="flex flex-col gap-1.5">
-                <CollapsibleTrigger>
-                  <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
-                    <CalendarDays className="size-3.5 shrink-0 text-primary sm:size-4" />
-                    {d.day}요일
-                  </span>
-                </CollapsibleTrigger>
-                <CollapsiblePanel>
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 pt-1.5">
-                    {[d.periods.slice(0, 7), d.periods.slice(7, 14)].map((half, col) => (
-                      <div key={col} className="flex flex-col gap-1">
-                        {half.map((p, j) => {
-                          const i = col * 7 + j;
-                          const { text, className, recorded } = formatPeriod(p);
-                          return (
-                            <div key={i} className="flex items-center justify-between gap-2">
-                              <span className="flex shrink-0 items-center gap-1 text-micro-lg text-muted-foreground sm:text-xs">
-                                <Clock className="size-2.5 shrink-0 sm:size-3" />
-                                {PERIOD_LABELS[i]}
-                              </span>
-                              <span
-                                className={cn(
-                                  "text-micro-lg tabular-nums sm:text-xs",
-                                  recorded ? className : "text-muted-foreground/60"
-                                )}
-                              >
-                                {text}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ))}
-                  </div>
-                </CollapsiblePanel>
-              </InfoCard>
-            </Collapsible>
-          ))}
+          {periodGrid.map((d) => {
+            const dayInfo = days.find((x) => x.day === d.day);
+            const studyMin = timeToMinutes(dayInfo?.studyTime || "");
+            const goalMin = timeToMinutes(dayInfo?.dailyGoalTime || "");
+            const achieved =
+              dayInfo?.complete && studyMin !== null && goalMin !== null ? studyMin >= goalMin : null;
+            const passed = passedCount(d.periods);
+
+            return (
+              <Collapsible key={d.day}>
+                <InfoCard className="flex flex-col gap-1.5">
+                  <CollapsibleTrigger>
+                    <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+                      <CalendarDays className="size-3.5 shrink-0 text-primary sm:size-4" />
+                      {d.day}요일
+                    </span>
+                    <span className="flex items-center gap-1">
+                      {achieved !== null && (
+                        <TintedPill tone={achieved ? "ok" : "warn"}>
+                          {dayInfo?.studyTime || "0:00"} {achieved ? "달성" : "미달성"}
+                        </TintedPill>
+                      )}
+                      <TintedPill tone="primary">{passed}교시 통과</TintedPill>
+                    </span>
+                  </CollapsibleTrigger>
+                  <CollapsiblePanel>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 pt-1.5">
+                      {[d.periods.slice(0, 7), d.periods.slice(7, 14)].map((half, col) => (
+                        <div key={col} className="flex flex-col gap-1">
+                          {half.map((p, j) => {
+                            const i = col * 7 + j;
+                            const { text, className, recorded } = formatPeriod(p);
+                            return (
+                              <div key={i} className="flex items-center justify-between gap-2">
+                                <span className="flex shrink-0 items-center gap-1 text-micro-lg text-muted-foreground sm:text-xs">
+                                  <Clock className="size-2.5 shrink-0 sm:size-3" />
+                                  {PERIOD_LABELS[i]}
+                                </span>
+                                <span
+                                  className={cn(
+                                    "text-micro-lg tabular-nums sm:text-xs",
+                                    recorded ? className : "text-muted-foreground/60"
+                                  )}
+                                >
+                                  {text}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                  </CollapsiblePanel>
+                </InfoCard>
+              </Collapsible>
+            );
+          })}
         </div>
       </DialogContent>
     </Dialog>

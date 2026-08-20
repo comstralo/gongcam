@@ -217,6 +217,7 @@ export function StatusView({
                 key={tile.key}
                 weeklyStudyTime={formatStudyTime(status.weeklyMeritBreakdown?.studyTimeHours ?? 0)}
                 periodGrid={status.periodGrid || []}
+                days={status.days}
               >
                 {tileEl}
               </StudyTimeDialog>
