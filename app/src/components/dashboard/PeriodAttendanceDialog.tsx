@@ -41,13 +41,13 @@ export function PeriodAttendanceDialog({
                 <ListChecks className="size-3.5 shrink-0 text-primary sm:size-4" />
                 주간 교시 참여율
               </span>
-              <span className="font-mono text-sm font-bold sm:text-base">
+              <span className="text-xs sm:text-sm">
                 <DividedValue
                   items={[
                     <span key="rate" className={isLow ? "text-destructive" : undefined}>
                       {periodAttendanceRate}
                     </span>,
-                    <span key="threshold" className="text-muted-foreground">
+                    <span key="threshold" className="text-ok">
                       80%
                     </span>,
                   ]}
@@ -56,10 +56,10 @@ export function PeriodAttendanceDialog({
             </div>
             {breakdown.applicable ? (
               <div className="flex flex-col gap-1.5">
-                <SubRow label="① 85% 이상 달성 교시" value={`${breakdown.achievedCount}개`} />
-                <SubRow label="② 오류(ERR) 발생 교시" value={`${breakdown.errorCount}개`} />
+                <SubRow label="① 85% 이상 달성 교시" value={`${breakdown.achievedCount}개`} valueClassName="font-sans" />
+                <SubRow label="② 오류(ERR) 발생 교시" value={`${breakdown.errorCount}개`} valueClassName="font-sans" />
                 <div className="flex flex-col">
-                  <SubRow label="③ 목표 교시 수" value={`${breakdown.targetPeriods}개`} />
+                  <SubRow label="③ 목표 교시 수" value={`${breakdown.targetPeriods}개`} valueClassName="font-sans" />
                   <span className="pl-8.5 text-micro leading-tight text-amber-600 sm:pl-9.5 sm:text-micro-lg dark:text-amber-400">
                     * 사유 반휴 사용 시, 목표량 감소
                   </span>
