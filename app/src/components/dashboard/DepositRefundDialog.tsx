@@ -86,7 +86,12 @@ export function DepositRefundDialog({
               <PiggyBank className="size-3.5 shrink-0 text-primary sm:size-4" />
               예치금 반환 예상액
             </span>
-            <span className={cn("font-mono text-sm font-bold sm:text-base", isReduced && "text-destructive")}>
+            <span
+              className={cn(
+                "font-mono text-sm font-bold sm:text-base",
+                isReduced ? "text-destructive" : "text-ok"
+              )}
+            >
               {won(amount)}
             </span>
           </InfoCard>

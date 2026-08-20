@@ -47,6 +47,12 @@ function formatDepositRefund(raw: string): string {
   return raw.replace(/\s*\([^)]*\)\s*$/, "").trim();
 }
 
+// 괄호 안 "0회" 등의 숫자가 섞여 들어오지 않도록, formatDepositRefund와 동일하게
+// 괄호를 먼저 떼어낸 뒤 남은 숫자만 파싱한다.
+function parseDepositRefundAmount(raw: string): number {
+  return parseInt(formatDepositRefund(raw).replace(/[^\d]/g, ""), 10) || 0;
+}
+
 // 실시간 조회(StatusPage)와 지난 주 스냅샷(SnapshotPage) 모두 같은 형태로
 // 데이터를 보여줘야 해서, fetch 로직과 표시 로직을 분리해 이 컴포넌트를 공유한다.
 // allowGoalSchedule: 목표시간 예약은 로그인한 본인 계정에만 적용되므로, 관리자가
@@ -78,6 +84,9 @@ export function StatusView({
   const totalPenClassName =
     totalPen >= 2 ? "text-destructive" : totalPen === 1 ? "text-amber-600 dark:text-amber-400" : undefined;
 
+  const depositRefundAmount = parseDepositRefundAmount(status.depositRefundEstimate);
+  const depositRefundClassName = depositRefundAmount >= 10000 ? "text-ok" : "text-destructive";
+
   const summaryTiles: {
     key: string;
     icon: LucideIcon;
@@ -101,6 +110,7 @@ export function StatusView({
       icon: PiggyBank,
       label: "예치금 반환 예상액",
       value: formatDepositRefund(status.depositRefundEstimate),
+      valueClassName: depositRefundClassName,
       clickable: "view",
     },
     {
