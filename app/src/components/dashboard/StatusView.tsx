@@ -120,10 +120,8 @@ export function StatusView({
       value: (
         <DividedValue
           items={[
-            status.weeklyMeritRank && !status.weeklyMeritRank.startsWith("-")
-              ? `+${status.weeklyMerit || "0"}`
-              : status.weeklyMerit || "0",
-            status.weeklyMeritRank || "-",
+            `+${status.weeklyMerit || "0"}`,
+            status.weeklyMeritBreakdown?.isZero ? "제외" : status.weeklyMeritRank || "-",
           ]}
         />
       ),
