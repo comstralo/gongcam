@@ -22,6 +22,7 @@ import { GoalTypeScheduleDialog } from "@/components/dashboard/GoalTypeScheduleD
 import { DepositRefundDialog } from "@/components/dashboard/DepositRefundDialog";
 import { PeriodAttendanceDialog } from "@/components/dashboard/PeriodAttendanceDialog";
 import { TotalPenaltyDialog } from "@/components/dashboard/TotalPenaltyDialog";
+import { StudyTimeDialog } from "@/components/dashboard/StudyTimeDialog";
 import type { StatusResponse } from "@/lib/api/types";
 
 const TODAY_INDEX = (new Date().getDay() + 6) % 7; // 월=0 ... 일=6
@@ -142,6 +143,7 @@ export function StatusView({
       icon: Timer,
       label: "주간 학습시간",
       value: formatStudyTime(status.weeklyMeritBreakdown?.studyTimeHours ?? 0),
+      clickable: "view",
     },
     {
       key: "periodAttendance",
@@ -207,6 +209,17 @@ export function StatusView({
               >
                 {tileEl}
               </DepositRefundDialog>
+            );
+          }
+          if (tile.key === "studyTime") {
+            return (
+              <StudyTimeDialog
+                key={tile.key}
+                weeklyStudyTime={formatStudyTime(status.weeklyMeritBreakdown?.studyTimeHours ?? 0)}
+                days={status.days}
+              >
+                {tileEl}
+              </StudyTimeDialog>
             );
           }
           if (tile.key === "periodAttendance" && status.periodAttendanceBreakdown) {
