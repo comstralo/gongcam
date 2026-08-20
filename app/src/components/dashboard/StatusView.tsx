@@ -128,17 +128,6 @@ export function StatusView({
     },
     { key: "joinDate", icon: CalendarDays, label: "가입일자 (첫 참여일 기준)", value: status.joinDate || "-" },
     {
-      key: "leaveLeft",
-      icon: BedDouble,
-      label: "반휴권 잔여량",
-      value: (
-        <DividedValue
-          items={[`일반 ${status.normalLeaveLeft || "0"}회`, `사유 ${status.reasonLeaveLeft || "0"}회`]}
-        />
-      ),
-      wrap: true,
-    },
-    {
       key: "depositRefund",
       icon: PiggyBank,
       label: "예치금 반환 예상액",
@@ -217,6 +206,17 @@ export function StatusView({
       wrap: true,
       valueClassName: totalPenClassName,
       clickable: "view",
+    },
+    {
+      key: "leaveLeft",
+      icon: BedDouble,
+      label: "반휴권 잔여량",
+      value: (
+        <DividedValue
+          items={[`일반 ${status.normalLeaveLeft || "0"}회`, `사유 ${status.reasonLeaveLeft || "0"}회`]}
+        />
+      ),
+      wrap: true,
     },
   ];
 
