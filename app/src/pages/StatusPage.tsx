@@ -58,10 +58,7 @@ export function StatusPage() {
   return (
     <Card className="w-full">
       <CardContent className="flex flex-col gap-5">
-        <div className="flex items-center justify-between gap-3">
-          <span className="font-mono text-micro uppercase tracking-wide text-muted-foreground sm:text-xs">
-            내 대시보드
-          </span>
+        <div className="flex items-center justify-end gap-3">
           <Button
             variant="outline"
             size="icon"
