@@ -110,12 +110,12 @@ export function GoalTypeScheduleDialog({
                   <span className="shrink-0 text-muted-foreground">└</span>
                   <div className="min-w-0 flex-1">
                     <Select value={selected} onValueChange={(v) => setSelected(v ?? "")}>
-                      <SelectTrigger className="bg-card data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base">
+                      <SelectTrigger className="bg-card text-xs data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-sm">
                         <SelectValue>{selected && formatGoalType(selected)}</SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         {validValues.map((v) => (
-                          <SelectItem key={v} value={v} className="sm:text-base">
+                          <SelectItem key={v} value={v} className="text-xs sm:text-sm">
                             {formatGoalType(v)}
                           </SelectItem>
                         ))}
