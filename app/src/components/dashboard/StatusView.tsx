@@ -140,7 +140,8 @@ export function StatusView({
       key: "totalFine",
       icon: ShieldAlert,
       label: "총 페널티",
-      value: `송출 P ${outputPen}회 + 주간 P ${timePen}회`,
+      value:
+        totalPen >= 2 ? "예치금 재납 대상" : `송출 P ${outputPen}회 + 주간 P ${timePen}회`,
       wrap: true,
       valueClassName: totalPenClassName,
       clickable: "view",
