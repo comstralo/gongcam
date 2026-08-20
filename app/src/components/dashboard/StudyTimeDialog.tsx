@@ -31,7 +31,7 @@ function rateTone(rate: string): { text: string; className?: string } {
   return { text: rate, className: "text-muted-foreground" };
 }
 
-// 교시 한 칸을 "09:00 ~ 09:50 (50분) · 92%" 형태로 요약한다.
+// 교시 한 칸을 "59분 · 0%" 형태로 요약한다.
 // 시작/종료/참여율이 전부 비어 있으면 기록 자체가 없는 것으로 본다.
 function formatPeriod(p: PeriodGridPeriod): { text: string; className?: string; recorded: boolean } {
   if (!p.start && !p.end && !p.rate) {
@@ -41,9 +41,8 @@ function formatPeriod(p: PeriodGridPeriod): { text: string; className?: string; 
   const endMin = timeToMinutes(p.end);
   const duration = startMin !== null && endMin !== null ? endMin - startMin : null;
   const { text: rateText, className } = rateTone(p.rate);
-  const timeRange = p.start && p.end ? `${p.start} ~ ${p.end}` : "-";
-  const durationText = duration !== null && duration >= 0 ? ` (${duration}분)` : "";
-  return { text: `${timeRange}${durationText} · ${rateText}`, className, recorded: true };
+  const durationText = duration !== null && duration >= 0 ? `${duration}분` : "-";
+  return { text: `${durationText} · ${rateText}`, className, recorded: true };
 }
 
 export function StudyTimeDialog({
