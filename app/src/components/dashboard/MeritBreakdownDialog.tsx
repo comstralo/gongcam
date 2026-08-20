@@ -57,16 +57,12 @@ export function MeritBreakdownDialog({
               주간 총 상점
             </span>
             <span className={cn("font-mono text-sm font-bold sm:text-base", !breakdown.isZero && "text-ok")}>
-              {breakdown.isZero ? (
-                "제외"
-              ) : (
-                <DividedValue
-                  items={[
-                    weeklyMeritRank && !weeklyMeritRank.startsWith("-") ? `+${weeklyMerit || "0"}` : weeklyMerit || "0",
-                    weeklyMeritRank || "-",
-                  ]}
-                />
-              )}
+              <DividedValue
+                items={[
+                  `+${weeklyMerit || "0"}`,
+                  breakdown.isZero ? "제외" : weeklyMeritRank || "-",
+                ]}
+              />
             </span>
           </InfoCard>
 
@@ -156,7 +152,7 @@ export function MeritBreakdownDialog({
                 valueClassName={breakdown.multiplierDowngraded ? "text-destructive" : undefined}
               />
               <span className="pl-8.5 text-micro leading-tight text-amber-600 sm:pl-9.5 sm:text-micro-lg dark:text-amber-400">
-                * 사유반휴 2장 사용 시, 8H 기준 강등 적용
+                * 사유반휴 2장 사용 시, 8H 기준으로 강등
               </span>
             </div>
           </InfoCard>
