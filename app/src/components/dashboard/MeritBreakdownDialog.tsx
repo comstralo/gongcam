@@ -1,4 +1,4 @@
-import { Award, Search, TrendingDown, TrendingUp, Gauge, TriangleAlert, CircleCheck, Circle } from "lucide-react";
+import { Award, Search, TrendingDown, TrendingUp, Gauge, CircleCheck, Circle } from "lucide-react";
 import {
   Dialog,
   DialogTrigger,
@@ -149,27 +149,16 @@ export function MeritBreakdownDialog({
               <Gauge className="size-3.5 shrink-0 text-primary sm:size-4" />
               상점 배율
             </span>
-            <SubRow
-              label={formatGoalType(goalType)}
-              value={`× ${breakdown.multiplier ?? 1}`}
-              valueClassName={breakdown.multiplierDowngraded ? "text-destructive" : undefined}
-            />
-            <span className="pl-8.5 text-micro leading-tight text-amber-600 sm:pl-9.5 sm:text-micro-lg dark:text-amber-400">
-              * 사유반휴 2장 사용 시, 8H 기준 강등 적용
-            </span>
-          </InfoCard>
-
-          <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
-            <div className="flex items-center gap-1.5 text-destructive">
-              <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
-              <span className="text-xs font-semibold sm:text-sm">주의사항</span>
+            <div className="flex flex-col">
+              <SubRow
+                label={formatGoalType(goalType)}
+                value={`× ${breakdown.multiplier ?? 1}`}
+                valueClassName={breakdown.multiplierDowngraded ? "text-destructive" : undefined}
+              />
+              <span className="pl-8.5 text-micro leading-tight text-amber-600 sm:pl-9.5 sm:text-micro-lg dark:text-amber-400">
+                * 사유반휴 2장 사용 시, 8H 기준 강등 적용
+              </span>
             </div>
-            <ul className="flex flex-col gap-1 text-xs leading-relaxed text-muted-foreground sm:text-sm">
-              <li className="flex gap-1.5">
-                <span className="text-destructive/60">•</span>
-                제보상점은 금요일에 일괄 반영됩니다.
-              </li>
-            </ul>
           </InfoCard>
         </div>
       </DialogContent>
