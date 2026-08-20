@@ -1,4 +1,4 @@
-import { ListChecks, CheckCheck, Search, TriangleAlert } from "lucide-react";
+import { ListChecks, Search, TriangleAlert } from "lucide-react";
 import {
   Dialog,
   DialogTrigger,
@@ -46,29 +46,20 @@ export function PeriodAttendanceDialog({
                 {periodAttendanceRate}
               </span>
             </div>
-            {breakdown.applicable && (
-              <span className="text-micro text-muted-foreground sm:text-micro-lg">
-                (85% 이상 달성 교시 + 오류(ERR) 처리 교시) ÷ 목표 교시 수 × 100
+            {breakdown.applicable ? (
+              <div className="flex flex-col gap-1.5 pl-5 sm:pl-5.5">
+                <span className="text-micro text-muted-foreground sm:text-micro-lg">
+                  (85% 이상 달성 교시 + 오류(ERR) 처리 교시) ÷ 목표 교시 수 × 100
+                </span>
+                <SubRow label="85% 이상 달성 교시" value={`${breakdown.achievedCount}개 교시`} indent={false} />
+                <SubRow label="오류(ERR) 처리 교시" value={`${breakdown.errorCount}개 교시`} indent={false} />
+              </div>
+            ) : (
+              <span className="pl-5 text-xs text-muted-foreground sm:pl-5.5 sm:text-sm">
+                교시제 목표시간(8H/9H/10H 교시제)이 아니면 참여율이 집계되지 않습니다.
               </span>
             )}
           </InfoCard>
-
-          {breakdown.applicable ? (
-            <InfoCard className="flex flex-col gap-1.5">
-              <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
-                <CheckCheck className="size-3.5 shrink-0 text-primary sm:size-4" />
-                통과된 교시 카운트
-              </span>
-              <SubRow label="85% 이상 달성 교시" value={`${breakdown.achievedCount}개 교시`} />
-              <SubRow label="오류(ERR) 처리 교시" value={`${breakdown.errorCount}개 교시`} />
-            </InfoCard>
-          ) : (
-            <InfoCard className="flex flex-col gap-1.5">
-              <span className="text-xs text-muted-foreground sm:text-sm">
-                교시제 목표시간(8H/9H/10H 교시제)이 아니면 참여율이 집계되지 않습니다.
-              </span>
-            </InfoCard>
-          )}
 
           <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
             <div className="flex items-center gap-1.5 text-destructive">
