@@ -232,13 +232,18 @@ export function DayDetailCard({
           </span>
           <span
             className={cn(
-              "font-mono text-xs font-semibold tabular-nums sm:text-sm",
+              "text-xs font-semibold sm:text-sm",
               goalStatus(day.studyTime, day.dailyGoalTime, day.complete) === "met" && "text-ok",
               goalStatus(day.studyTime, day.dailyGoalTime, day.complete) === "failed" && "text-destructive"
             )}
           >
-            {day.studyTime || "-"}
-            {day.dailyGoalTime && <span className="text-muted-foreground"> / {day.dailyGoalTime}</span>}
+            {day.dailyGoalTime ? (
+              <DividedValue
+                items={[day.studyTime || "-", <span key="goal" className="text-muted-foreground">{day.dailyGoalTime}</span>]}
+              />
+            ) : (
+              day.studyTime || "-"
+            )}
           </span>
         </div>
         <SubRow label="보정 학습시간" value={signedTime(day.bonusStudyTime)} />
