@@ -1,4 +1,4 @@
-import { ListChecks, Search } from "lucide-react";
+import { ListChecks, Search, TriangleAlert } from "lucide-react";
 import {
   Dialog,
   DialogTrigger,
@@ -73,6 +73,14 @@ export function PeriodAttendanceDialog({
                 교시제 목표시간(8H/9H/10H 교시제)이 아니면 참여율이 집계되지 않습니다.
               </span>
             )}
+          </InfoCard>
+
+          <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
+            <div className="flex items-center gap-1.5 text-destructive">
+              <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
+              <span className="text-xs font-semibold sm:text-sm">주의사항</span>
+            </div>
+            <ul className="flex flex-col gap-1 text-xs leading-relaxed text-muted-foreground sm:text-sm"></ul>
           </InfoCard>
         </div>
       </DialogContent>

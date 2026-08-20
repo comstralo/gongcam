@@ -131,7 +131,7 @@ export function StatusView({
     {
       key: "periodAttendance",
       icon: ListChecks,
-      label: "교시 참여율",
+      label: "주간 교시 참여율",
       value: status.periodAttendanceRate || "-",
       valueClassName: periodAttendanceClassName,
       clickable: "view",
