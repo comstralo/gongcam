@@ -56,7 +56,12 @@ export function MeritBreakdownDialog({
               <Award className="size-3.5 shrink-0 text-primary sm:size-4" />
               주간 총 상점
             </span>
-            <span className={cn("font-mono text-sm font-bold sm:text-base", !breakdown.isZero && "text-ok")}>
+            <span
+              className={cn(
+                "font-mono text-xs tabular-nums sm:text-sm",
+                breakdown.isZero ? "text-muted-foreground" : "text-ok"
+              )}
+            >
               <DividedValue
                 items={[
                   `+${weeklyMerit || "0"}`,
