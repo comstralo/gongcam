@@ -59,6 +59,25 @@ export function StatusPage() {
     <Card className="w-full">
       <CardContent className="flex flex-col gap-5">
         <div className="flex items-center justify-end gap-3">
+          {isAdmin && (
+            <Select value={selected} onValueChange={(v) => setSelected(v ?? SELF_VALUE)}>
+              <SelectTrigger className="flex-1 data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base">
+                <SelectValue>
+                  {selected === SELF_VALUE ? "내 대시보드" : members?.find((m) => m.number === selected)?.name}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={SELF_VALUE} className="sm:text-base">
+                  내 대시보드
+                </SelectItem>
+                {members?.map((m) => (
+                  <SelectItem key={m.number} value={m.number} className="sm:text-base">
+                    {m.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Button
             variant="outline"
             size="icon"
@@ -68,25 +87,6 @@ export function StatusPage() {
             <Bell className="size-4 sm:size-4.5" strokeWidth={ICON_STROKE.default} />
           </Button>
         </div>
-        {isAdmin && (
-          <Select value={selected} onValueChange={(v) => setSelected(v ?? SELF_VALUE)}>
-            <SelectTrigger className="data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base">
-              <SelectValue>
-                {selected === SELF_VALUE ? "내 대시보드" : members?.find((m) => m.number === selected)?.name}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={SELF_VALUE} className="sm:text-base">
-                내 대시보드
-              </SelectItem>
-              {members?.map((m) => (
-                <SelectItem key={m.number} value={m.number} className="sm:text-base">
-                  {m.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
         {membersError && (
           <Alert variant="destructive">
             <AlertDescription>{membersError}</AlertDescription>
