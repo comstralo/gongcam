@@ -1,4 +1,4 @@
-import { ListChecks, Search, TriangleAlert } from "lucide-react";
+import { ListChecks, CheckCheck, Search, TriangleAlert } from "lucide-react";
 import {
   Dialog,
   DialogTrigger,
@@ -36,21 +36,22 @@ export function PeriodAttendanceDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
-          <InfoCard className="flex flex-col gap-1.5">
+          <InfoCard className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
               <ListChecks className="size-3.5 shrink-0 text-primary sm:size-4" />
               교시 참여율
             </span>
-            <div className="flex items-center justify-end gap-2">
-              <span className={cn("font-mono text-sm font-bold sm:text-base", isLow && "text-destructive")}>
-                {periodAttendanceRate}
-              </span>
-            </div>
+            <span className={cn("font-mono text-sm font-bold sm:text-base", isLow && "text-destructive")}>
+              {periodAttendanceRate}
+            </span>
           </InfoCard>
 
           {breakdown.applicable ? (
             <InfoCard className="flex flex-col gap-1.5">
-              <span className="text-xs font-semibold sm:text-sm">산정 근거</span>
+              <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+                <CheckCheck className="size-3.5 shrink-0 text-primary sm:size-4" />
+                통과된 교시 카운트
+              </span>
               <SubRow label="85% 이상 달성 교시" value={`${breakdown.achievedCount}교시`} />
               <SubRow label="오류(ERR) 처리 교시" value={`${breakdown.errorCount}교시`} />
               <SubRow label="목표 교시 수" value={`${breakdown.targetPeriods}교시`} />
