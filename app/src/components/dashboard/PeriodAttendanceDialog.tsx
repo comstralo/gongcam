@@ -1,4 +1,4 @@
-import { ListChecks, Search, TriangleAlert } from "lucide-react";
+import { ListChecks, Search } from "lucide-react";
 import {
   Dialog,
   DialogTrigger,
@@ -64,7 +64,7 @@ export function PeriodAttendanceDialog({
                     * 사유 반휴 사용 시, 목표량 감소
                   </span>
                 </div>
-                <span className="pl-5 text-micro text-amber-600 before:mr-1 before:content-['└'] sm:pl-5.5 sm:text-micro-lg dark:text-amber-400">
+                <span className="pl-5 text-micro text-muted-foreground before:mr-1 before:content-['└'] sm:pl-5.5 sm:text-micro-lg">
                   참여율 = (① + ②) ÷ ③ × 100
                 </span>
               </div>
@@ -73,23 +73,6 @@ export function PeriodAttendanceDialog({
                 교시제 목표시간(8H/9H/10H 교시제)이 아니면 참여율이 집계되지 않습니다.
               </span>
             )}
-          </InfoCard>
-
-          <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
-            <div className="flex items-center gap-1.5 text-destructive">
-              <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
-              <span className="text-xs font-semibold sm:text-sm">주의사항</span>
-            </div>
-            <ul className="flex flex-col gap-1 text-xs leading-relaxed text-muted-foreground sm:text-sm">
-              <li className="flex gap-1.5">
-                <span className="text-destructive/60">•</span>
-                조회 당일 기준입니다. 이후 기록에 따라 값이 달라질 수 있습니다.
-              </li>
-              <li className="flex gap-1.5">
-                <span className="text-destructive/60">•</span>
-                참여율이 80% 미만이면 주간 P(페널티) 대상이 될 수 있습니다.
-              </li>
-            </ul>
           </InfoCard>
         </div>
       </DialogContent>
