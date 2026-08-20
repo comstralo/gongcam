@@ -318,6 +318,16 @@ export type SetGoalScheduleResponse = {
   scheduled: string;
 };
 
+export type NormalLeaveResponse = {
+  applied: boolean;
+  left: number;
+};
+
+export type SetNormalLeaveResponse = {
+  ok: true;
+  applied: boolean;
+};
+
 export type BotStatusResponse = {
   online: boolean;
   roomState: "in_room" | "outside" | null;

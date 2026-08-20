@@ -199,14 +199,18 @@ function signedTime(raw: string): string {
 // isPast: 기록시점(23:3x) 유무와 무관하게, 오늘보다 이전 요일이면 무조건
 // "마감"으로 표시한다 — 봇이 그날 마지막 기록을 못 남긴 경우에도 이미
 // 지난 요일을 "진행중"으로 오인 표시하지 않기 위함.
+// footer: 일반반휴 신청 버튼처럼, 훅/API 호출이 필요해 이 순수 UI 파일에
+// 직접 넣기 애매한 액션 영역을 호출부에서 주입할 때 쓴다.
 export function DayDetailCard({
   day,
   dayLabel,
   isPast = false,
+  footer,
 }: {
   day: StatusDay;
   dayLabel?: string;
   isPast?: boolean;
+  footer?: ReactNode;
 }) {
   return (
     <div
@@ -300,6 +304,8 @@ export function DayDetailCard({
           )}
         />
       </div>
+
+      {footer && <div className="flex flex-col gap-1.5">{footer}</div>}
     </div>
   );
 }
