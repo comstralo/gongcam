@@ -57,6 +57,15 @@ function formatStudyTime(hours: number): string {
   return `${h}H ${m}M`;
 }
 
+// 총합 0이면 "-", 1이면 "송출 P 1회" 처럼 0이 아닌 쪽만, 2 이상이면 두 값을
+// "+"로 조합해 표시한다(총합은 최대 2까지만 나올 수 있는 값이다).
+function formatTotalPenalty(outputPen: number, timePen: number): string {
+  const parts: string[] = [];
+  if (outputPen > 0) parts.push(`송출 P ${outputPen}회`);
+  if (timePen > 0) parts.push(`주간 P ${timePen}회`);
+  return parts.length > 0 ? parts.join(" + ") : "-";
+}
+
 // 괄호 안 "0회" 등의 숫자가 섞여 들어오지 않도록, formatDepositRefund와 동일하게
 // 괄호를 먼저 떼어낸 뒤 남은 숫자만 파싱한다.
 function parseDepositRefundAmount(raw: string): number {
@@ -158,7 +167,14 @@ export function StatusView({
       icon: ShieldAlert,
       label: "총 페널티",
       value:
-        totalPen >= 2 ? "예치금 재납 대상" : `송출 P ${outputPen}회 + 주간 P ${timePen}회`,
+        totalPen >= 2 ? (
+          <span className="flex flex-col">
+            <span>{formatTotalPenalty(outputPen, timePen)}</span>
+            <span>예치금 재납 대상</span>
+          </span>
+        ) : (
+          formatTotalPenalty(outputPen, timePen)
+        ),
       wrap: true,
       valueClassName: totalPenClassName,
       clickable: "view",
