@@ -85,6 +85,10 @@ export function PeriodAttendanceDialog({
                 <span className="text-destructive/60">•</span>
                 교시 참여율이 80% 미만인 경우, 주간 P가 1회 적립됩니다.
               </li>
+              <li className="flex gap-1.5">
+                <span className="text-destructive/60">•</span>
+                교시제 참여자가 달성제처럼 교시와 무관하게 참여할 경우, 주간 P 위험이 높아집니다.
+              </li>
             </ul>
           </InfoCard>
         </div>
