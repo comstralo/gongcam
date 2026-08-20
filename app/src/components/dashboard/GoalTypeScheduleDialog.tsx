@@ -118,6 +118,9 @@ export function GoalTypeScheduleDialog({
                     ))}
                   </SelectContent>
                 </Select>
+                <span className="text-micro text-amber-600 sm:text-micro-lg dark:text-amber-400">
+                  * 변경하지 않으면 기존 설정 값이 계속 유지됩니다.
+                </span>
               </InfoCard>
 
               <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
@@ -126,10 +129,6 @@ export function GoalTypeScheduleDialog({
                   <span className="text-xs font-semibold sm:text-sm">주의사항</span>
                 </div>
                 <ul className="flex flex-col gap-1 text-xs leading-relaxed text-muted-foreground sm:text-sm">
-                  <li className="flex gap-1.5">
-                    <span className="text-destructive/60">•</span>
-                    변경하지 않으면 기존 설정 값이 계속 유지됩니다.
-                  </li>
                   <li className="flex gap-1.5">
                     <span className="text-destructive/60">•</span>
                     현재 진행 주간의 목표시간은 중도 변경이 불가합니다.
