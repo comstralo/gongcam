@@ -1,4 +1,4 @@
-import { PiggyBank, TrendingDown, TriangleAlert } from "lucide-react";
+import { PiggyBank, Search, TrendingDown, TriangleAlert } from "lucide-react";
 import {
   Dialog,
   DialogTrigger,
@@ -75,7 +75,7 @@ export function DepositRefundDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-1.5">
-            <PiggyBank className="size-4 text-primary sm:size-5" />
+            <Search className="size-4 text-primary sm:size-5" />
             예치금 반환 · 세부사항
           </DialogTitle>
         </DialogHeader>
