@@ -246,6 +246,7 @@ export function DayDetailCard({
             )}
           </span>
         </div>
+        <SubRow label="로그 학습시간" value={day.logStudyTime || "-"} />
         <SubRow label="보정 학습시간" value={signedTime(day.bonusStudyTime)} />
       </div>
 
