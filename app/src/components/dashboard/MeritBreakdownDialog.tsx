@@ -58,7 +58,7 @@ export function MeritBreakdownDialog({
             </span>
             <span className={cn("font-mono text-sm font-bold sm:text-base", !breakdown.isZero && "text-ok")}>
               {breakdown.isZero ? (
-                "-"
+                "제외"
               ) : (
                 <DividedValue
                   items={[
