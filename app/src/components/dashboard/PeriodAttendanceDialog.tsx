@@ -30,7 +30,7 @@ export function PeriodAttendanceDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-1.5">
             <Search className="size-4 text-primary sm:size-5" />
-            교시 참여율 · 세부사항
+            주간 교시 참여율 · 세부사항
           </DialogTitle>
         </DialogHeader>
 
@@ -39,7 +39,7 @@ export function PeriodAttendanceDialog({
             <div className="flex items-center justify-between gap-2">
               <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
                 <ListChecks className="size-3.5 shrink-0 text-primary sm:size-4" />
-                교시 참여율
+                주간 교시 참여율
               </span>
               <span className="font-mono text-sm font-bold sm:text-base">
                 <DividedValue
@@ -87,7 +87,7 @@ export function PeriodAttendanceDialog({
               </li>
               <li className="flex gap-1.5">
                 <span className="text-destructive/60">•</span>
-                교시제 참여자가 달성제처럼 교시와 무관하게 참여할 경우, 주간 P 위험이 높아집니다.
+                교시제 참여자가 달성제처럼 자유롭게 참여할 경우, 주간 P 위험이 증가합니다.
               </li>
             </ul>
           </InfoCard>
