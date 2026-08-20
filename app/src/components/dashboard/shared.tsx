@@ -195,7 +195,18 @@ function signedTime(raw: string): string {
 // 특정 인원/요일을 펼쳐볼 때도 동일한 형태로 재사용한다.
 // dayLabel: MY 대시보드는 요일 선택 버튼이 이미 있어 생략하지만, 관리자 화면처럼
 // 별도 요일 선택 UI 없이 이 카드만 보여줄 때는 어느 요일인지 표시해줘야 한다.
-export function DayDetailCard({ day, dayLabel }: { day: StatusDay; dayLabel?: string }) {
+// isPast: 기록시점(23:3x) 유무와 무관하게, 오늘보다 이전 요일이면 무조건
+// "마감"으로 표시한다 — 봇이 그날 마지막 기록을 못 남긴 경우에도 이미
+// 지난 요일을 "진행중"으로 오인 표시하지 않기 위함.
+export function DayDetailCard({
+  day,
+  dayLabel,
+  isPast = false,
+}: {
+  day: StatusDay;
+  dayLabel?: string;
+  isPast?: boolean;
+}) {
   return (
     <div
       className={cn(
@@ -205,8 +216,11 @@ export function DayDetailCard({ day, dayLabel }: { day: StatusDay; dayLabel?: st
     >
       <div className="flex items-center justify-start gap-1.5">
         {dayLabel && <TintedPill tone="warn">{dayLabel}</TintedPill>}
-        <TintedPill tone={day.confirmed ? "muted" : "primary"} icon={day.confirmed ? CircleCheck : CircleDot}>
-          {day.confirmed ? "확정" : "진행중"}
+        <TintedPill
+          tone={day.confirmed || isPast ? "muted" : "primary"}
+          icon={day.confirmed || isPast ? CircleCheck : CircleDot}
+        >
+          {day.confirmed ? "확정" : isPast ? "마감" : "진행중"}
         </TintedPill>
       </div>
 

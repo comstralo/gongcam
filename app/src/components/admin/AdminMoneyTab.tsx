@@ -25,6 +25,7 @@ const FINE_RESOLVE_OPTIONS: Exclude<FineStatus, "미납">[] = ["납부", "면제
 // 면제 현황 목록은 이미 면제된 항목이므로 "면제" 버튼은 불필요하다.
 const FINE_REVERT_OPTIONS: Exclude<FineStatus, "면제">[] = ["납부", "미납"];
 const STATUS_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
+const TODAY_INDEX = (new Date().getDay() + 6) % 7; // 월=0 ... 일=6
 
 function fineKey(f: Pick<UnpaidFine, "number" | "day">) {
   return `${f.number}-${f.day}`;
@@ -228,7 +229,13 @@ function PaidFineList({
                               {detail === "error" && (
                                 <p className="py-4 text-center text-sm text-destructive">정보를 불러오지 못했습니다.</p>
                               )}
-                              {day && <DayDetailCard day={day} dayLabel={`${f.day}요일`} />}
+                              {day && (
+                                <DayDetailCard
+                                  day={day}
+                                  dayLabel={`${f.day}요일`}
+                                  isPast={STATUS_DAYS.indexOf(f.day) < TODAY_INDEX}
+                                />
+                              )}
                             </>
                           )}
                         </div>
@@ -410,7 +417,13 @@ function FineList({
                               {detail === "error" && (
                                 <p className="py-4 text-center text-sm text-destructive">정보를 불러오지 못했습니다.</p>
                               )}
-                              {day && <DayDetailCard day={day} dayLabel={`${f.day}요일`} />}
+                              {day && (
+                                <DayDetailCard
+                                  day={day}
+                                  dayLabel={`${f.day}요일`}
+                                  isPast={STATUS_DAYS.indexOf(f.day) < TODAY_INDEX}
+                                />
+                              )}
                             </>
                           )}
                         </div>
@@ -588,7 +601,13 @@ function ExemptFineList({
                               {detail === "error" && (
                                 <p className="py-4 text-center text-sm text-destructive">정보를 불러오지 못했습니다.</p>
                               )}
-                              {day && <DayDetailCard day={day} dayLabel={`${f.day}요일`} />}
+                              {day && (
+                                <DayDetailCard
+                                  day={day}
+                                  dayLabel={`${f.day}요일`}
+                                  isPast={STATUS_DAYS.indexOf(f.day) < TODAY_INDEX}
+                                />
+                              )}
                             </>
                           )}
                         </div>

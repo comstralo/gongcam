@@ -363,7 +363,7 @@ export function StatusView({
           })}
         </div>
 
-        {selected && <DayDetailCard day={selected} />}
+        {selected && <DayDetailCard day={selected} isPast={effectiveSelectedDay < TODAY_INDEX} />}
       </section>
     </div>
   );
