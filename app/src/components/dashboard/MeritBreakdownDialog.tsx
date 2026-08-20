@@ -73,15 +73,15 @@ export function MeritBreakdownDialog({
           <InfoCard className="flex flex-col gap-1.5">
             <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
               <TrendingUp className="size-3.5 shrink-0 text-primary sm:size-4" />
-              적립 원인
+              상점 적립 원인
             </span>
             <SubRow
-              label={`학습시간 상점 (${breakdown.studyTimeHours ?? 0}H)`}
+              label={`주간 학습시간 상점 (${breakdown.studyTimeHours ?? 0}H)`}
               value={(breakdown.studyTimeMerit ?? 0) > 0 ? `+${pt(breakdown.studyTimeMerit)}` : `+${pt(0)}`}
               valueClassName={(breakdown.studyTimeMerit ?? 0) > 0 ? "text-ok" : "text-muted-foreground"}
             />
             <SubRow
-              label={`제보상점 (인정 ${breakdown.reportApprovedCount ?? 0}건)`}
+              label={`주간 제보상점 (인정 ${breakdown.reportApprovedCount ?? 0}건)`}
               value={
                 breakdown.reportMeritIncluded && (breakdown.reportMerit ?? 0) > 0
                   ? `+${pt(breakdown.reportMerit)}`
@@ -98,15 +98,15 @@ export function MeritBreakdownDialog({
           <InfoCard className="flex flex-col gap-1.5">
             <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
               <TrendingDown className="size-3.5 shrink-0 text-primary sm:size-4" />
-              차감 원인
+              상점 차감 원인
             </span>
             <SubRow
-              label="송출 벌점"
+              label="주간 송출 벌점"
               value={(breakdown.penaltyDeduction ?? 0) > 0 ? `-${pt(breakdown.penaltyDeduction)}` : `-${pt(0)}`}
               valueClassName={(breakdown.penaltyDeduction ?? 0) > 0 ? "text-destructive" : "text-muted-foreground"}
             />
             <SubRow
-              label="벌금 (500원 당)"
+              label="주간 벌금 (500원 당)"
               value={(breakdown.fineDeduction ?? 0) > 0 ? `-${pt(breakdown.fineDeduction)}` : `-${pt(0)}`}
               valueClassName={(breakdown.fineDeduction ?? 0) > 0 ? "text-destructive" : "text-muted-foreground"}
             />
