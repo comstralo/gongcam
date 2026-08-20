@@ -269,11 +269,6 @@ export function DayDetailCard({
           <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
             <Wallet className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
             일간 총 벌금
-            {!day.complete && (
-              <span className="rounded-full bg-muted-foreground/10 px-1.5 py-0.5 text-micro font-medium normal-case text-muted-foreground sm:text-micro-lg">
-                집계 중
-              </span>
-            )}
           </span>
           <span
             className={cn(
