@@ -6,7 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { InfoCard, TintedPill } from "@/components/dashboard/shared";
+import { InfoCard } from "@/components/dashboard/shared";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
@@ -87,8 +87,7 @@ export function StudyTimeDialog({
             const dayInfo = days.find((x) => x.day === d.day);
             const studyMin = timeToMinutes(dayInfo?.studyTime || "");
             const goalMin = timeToMinutes(dayInfo?.dailyGoalTime || "");
-            const achieved =
-              dayInfo?.complete && studyMin !== null && goalMin !== null ? studyMin >= goalMin : null;
+            const achieved = studyMin !== null && goalMin !== null ? studyMin >= goalMin : null;
             const passed = passedCount(d.periods);
 
             return (
@@ -101,11 +100,18 @@ export function StudyTimeDialog({
                     </span>
                     <span className="flex items-center gap-1">
                       {achieved !== null && (
-                        <TintedPill tone={achieved ? "ok" : "warn"}>
+                        <span
+                          className={cn(
+                            "rounded-full px-1.5 py-0.5 text-micro font-semibold sm:text-micro-lg",
+                            achieved ? "bg-ok/15 text-ok" : "bg-destructive/15 text-destructive"
+                          )}
+                        >
                           {dayInfo?.studyTime || "0:00"} {achieved ? "달성" : "미달성"}
-                        </TintedPill>
+                        </span>
                       )}
-                      <TintedPill tone="primary">{passed}교시 통과</TintedPill>
+                      <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-micro font-semibold text-primary sm:text-micro-lg">
+                        {passed}교시 통과
+                      </span>
                     </span>
                   </CollapsibleTrigger>
                   <CollapsiblePanel>
