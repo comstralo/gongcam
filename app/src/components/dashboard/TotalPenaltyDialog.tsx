@@ -68,7 +68,9 @@ export function TotalPenaltyDialog({
                 ))}
               </ul>
             ) : (
-              <p className="pl-5 text-micro-lg text-muted-foreground/70 sm:pl-5.5">해당 없음</p>
+              <p className="pl-5 text-micro-lg text-muted-foreground/70 before:mr-1 before:content-['└'] sm:pl-5.5">
+                해당 없음
+              </p>
             )}
           </InfoCard>
 
@@ -86,7 +88,9 @@ export function TotalPenaltyDialog({
                 ))}
               </ul>
             ) : (
-              <p className="pl-5 text-micro-lg text-muted-foreground/70 sm:pl-5.5">해당 없음</p>
+              <p className="pl-5 text-micro-lg text-muted-foreground/70 before:mr-1 before:content-['└'] sm:pl-5.5">
+                해당 없음
+              </p>
             )}
           </InfoCard>
 
