@@ -80,23 +80,24 @@ export function MeritBreakdownDialog({
               value={(breakdown.studyTimeMerit ?? 0) > 0 ? `+${pt(breakdown.studyTimeMerit)}` : `+${pt(0)}`}
               valueClassName={(breakdown.studyTimeMerit ?? 0) > 0 ? "text-ok" : "text-muted-foreground"}
             />
-            <SubRow
-              label={`주간 제보상점 (인정 ${breakdown.reportApprovedCount ?? 0}건)`}
-              value={
-                breakdown.reportMeritIncluded && (breakdown.reportMerit ?? 0) > 0
-                  ? `+${pt(breakdown.reportMerit)}`
-                  : `+${pt(0)}`
-              }
-              valueClassName={
-                breakdown.reportMeritIncluded && (breakdown.reportMerit ?? 0) > 0
-                  ? "text-ok"
-                  : "text-muted-foreground"
-              }
-            />
-
-            <span className="pl-5 text-micro text-amber-600 sm:pl-5.5 sm:text-micro-lg dark:text-amber-400">
-              주중에 랜덤 반영
-            </span>
+            <div className="flex flex-col gap-0.5">
+              <SubRow
+                label={`주간 제보상점 (인정 ${breakdown.reportApprovedCount ?? 0}건)`}
+                value={
+                  breakdown.reportMeritIncluded && (breakdown.reportMerit ?? 0) > 0
+                    ? `+${pt(breakdown.reportMerit)}`
+                    : `+${pt(0)}`
+                }
+                valueClassName={
+                  breakdown.reportMeritIncluded && (breakdown.reportMerit ?? 0) > 0
+                    ? "text-ok"
+                    : "text-muted-foreground"
+                }
+              />
+              <span className="pl-5 text-micro text-amber-600 sm:pl-5.5 sm:text-micro-lg dark:text-amber-400">
+                주중에 랜덤 반영
+              </span>
+            </div>
           </InfoCard>
 
           <InfoCard className="flex flex-col gap-1.5">
