@@ -7,6 +7,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { InfoCard } from "@/components/dashboard/shared";
+import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 import type { PeriodGridDay } from "@/lib/api/types";
@@ -56,22 +57,28 @@ export function StudyTimeDialog({
           </InfoCard>
 
           {periodGrid.map((d) => (
-            <InfoCard key={d.day} className="flex flex-col gap-1.5">
-              <span className="text-xs font-semibold sm:text-sm">{d.day}요일</span>
-              <div className="grid grid-cols-2 gap-x-3 gap-y-1 sm:grid-cols-2">
-                {d.periods.map((raw, i) => {
-                  const { text, className } = periodTone(raw);
-                  return (
-                    <div key={i} className="flex items-center justify-between gap-2">
-                      <span className="text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
-                        {PERIOD_LABELS[i]}
-                      </span>
-                      <span className={cn("text-micro-lg tabular-nums sm:text-xs", className)}>{text}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </InfoCard>
+            <Collapsible key={d.day}>
+              <InfoCard className="flex flex-col gap-1.5">
+                <CollapsibleTrigger>
+                  <span className="text-xs font-semibold sm:text-sm">{d.day}요일</span>
+                </CollapsibleTrigger>
+                <CollapsiblePanel>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 pt-1.5 sm:grid-cols-2">
+                    {d.periods.map((raw, i) => {
+                      const { text, className } = periodTone(raw);
+                      return (
+                        <div key={i} className="flex items-center justify-between gap-2">
+                          <span className="text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
+                            {PERIOD_LABELS[i]}
+                          </span>
+                          <span className={cn("text-micro-lg tabular-nums sm:text-xs", className)}>{text}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CollapsiblePanel>
+              </InfoCard>
+            </Collapsible>
           ))}
         </div>
       </DialogContent>
