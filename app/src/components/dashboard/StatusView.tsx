@@ -23,7 +23,7 @@ import { DepositRefundDialog } from "@/components/dashboard/DepositRefundDialog"
 import { PeriodAttendanceDialog } from "@/components/dashboard/PeriodAttendanceDialog";
 import { TotalPenaltyDialog } from "@/components/dashboard/TotalPenaltyDialog";
 import { StudyTimeDialog } from "@/components/dashboard/StudyTimeDialog";
-import type { StatusResponse, StatusDay } from "@/lib/api/types";
+import type { StatusResponse } from "@/lib/api/types";
 
 const TODAY_INDEX = (new Date().getDay() + 6) % 7; // 월=0 ... 일=6
 
@@ -64,10 +64,10 @@ function timeToMinutesOrZero(raw: string): number {
   return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
 }
 
-// days[]의 dailyGoalTime(요일별 목표시간, HH:MM)을 합산해 주간 목표시간을
-// "NH NM" 형태로 만든다.
-function formatWeeklyGoalTime(days: StatusDay[]): string {
-  const totalMinutes = days.reduce((sum, d) => sum + timeToMinutesOrZero(d.dailyGoalTime), 0);
+// 서버가 개인 탭 M28 수식과 동일하게 계산해 내려주는 weeklyGoalTime("HH:MM")을
+// "NH NM" 형태로 바꾼다.
+function formatWeeklyGoalTime(raw: string): string {
+  const totalMinutes = timeToMinutesOrZero(raw);
   return `${Math.floor(totalMinutes / 60)}H ${totalMinutes % 60}M`;
 }
 
@@ -167,7 +167,7 @@ export function StatusView({
       label: "주간 학습시간",
       value: (
         <DividedValue
-          items={[formatStudyTime(status.weeklyMeritBreakdown?.studyTimeHours ?? 0), formatWeeklyGoalTime(status.days)]}
+          items={[formatStudyTime(status.weeklyMeritBreakdown?.studyTimeHours ?? 0), formatWeeklyGoalTime(status.weeklyGoalTime)]}
         />
       ),
       wrap: true,
