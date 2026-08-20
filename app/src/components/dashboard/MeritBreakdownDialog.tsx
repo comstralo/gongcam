@@ -150,14 +150,13 @@ export function MeritBreakdownDialog({
               상점 배율
             </span>
             <SubRow
-              label={
-                breakdown.multiplierDowngraded
-                  ? `${formatGoalType(goalType)} (사유 반휴 ${breakdown.reasonLeaveTotal}장 → 강등)`
-                  : formatGoalType(goalType)
-              }
+              label={formatGoalType(goalType)}
               value={`× ${breakdown.multiplier ?? 1}`}
               valueClassName={breakdown.multiplierDowngraded ? "text-destructive" : undefined}
             />
+            <span className="pl-8.5 text-micro leading-tight text-amber-600 sm:pl-9.5 sm:text-micro-lg dark:text-amber-400">
+              * 사유반휴 2장 사용 시, 8H 기준 강등 적용
+            </span>
           </InfoCard>
 
           <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
