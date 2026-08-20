@@ -187,9 +187,8 @@ function goalStatus(studyTime: string, goalTime: string): GoalStatus {
 // "-00:20"처럼 이미 부호가 붙어 있으면 그 부호를 그대로 존중한다.
 function signedTime(raw: string): string {
   const trimmed = (raw || "").trim();
-  if (!trimmed || trimmed === "00:00" || trimmed.startsWith("+") || trimmed.startsWith("-")) {
-    return trimmed || "-";
-  }
+  if (!trimmed) return "-";
+  if (trimmed.startsWith("+") || trimmed.startsWith("-")) return trimmed;
   return `+${trimmed}`;
 }
 
@@ -266,7 +265,7 @@ export function DayDetailCard({
         <div className="flex items-center justify-between gap-2">
           <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
             <BedDouble className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
-            반휴 사용
+            반휴권
           </span>
         </div>
         <SubRow label="일반반휴" value={day.normalLeaveUsed > 0 ? `${day.normalLeaveUsed}회` : "-"} />
