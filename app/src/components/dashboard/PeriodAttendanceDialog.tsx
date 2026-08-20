@@ -42,16 +42,20 @@ export function PeriodAttendanceDialog({
                 주간 교시 참여율
               </span>
               <span className="text-xs sm:text-sm">
-                <DividedValue
-                  items={[
-                    <span key="rate" className={isLow ? "text-destructive" : undefined}>
-                      {periodAttendanceRate}
-                    </span>,
-                    <span key="threshold" className="text-ok">
-                      80%
-                    </span>,
-                  ]}
-                />
+                {breakdown.applicable ? (
+                  <DividedValue
+                    items={[
+                      <span key="rate" className={isLow ? "text-destructive" : undefined}>
+                        {periodAttendanceRate}
+                      </span>,
+                      <span key="threshold" className="text-ok">
+                        80%
+                      </span>,
+                    ]}
+                  />
+                ) : (
+                  "-"
+                )}
               </span>
             </div>
             {breakdown.applicable ? (
@@ -69,8 +73,8 @@ export function PeriodAttendanceDialog({
                 </span>
               </div>
             ) : (
-              <span className="pl-5 text-xs text-muted-foreground sm:pl-5.5 sm:text-sm">
-                교시제 목표시간(8H/9H/10H 교시제)이 아니면 참여율이 집계되지 않습니다.
+              <span className="pl-5 text-micro text-amber-600 sm:pl-5.5 sm:text-micro-lg dark:text-amber-400">
+                * 달성제 참여자는 집계되지 않습니다.
               </span>
             )}
           </InfoCard>
