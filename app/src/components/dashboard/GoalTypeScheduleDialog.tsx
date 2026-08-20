@@ -106,19 +106,24 @@ export function GoalTypeScheduleDialog({
                     현재 예약됨: <span className="font-mono font-semibold">{formatGoalType(scheduled)}</span>
                   </span>
                 )}
-                <Select value={selected} onValueChange={(v) => setSelected(v ?? "")}>
-                  <SelectTrigger className="bg-card data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base">
-                    <SelectValue>{selected && formatGoalType(selected)}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {validValues.map((v) => (
-                      <SelectItem key={v} value={v} className="sm:text-base">
-                        {formatGoalType(v)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <span className="text-micro text-amber-600 sm:text-micro-lg dark:text-amber-400">
+                <div className="flex items-center gap-1.5">
+                  <span className="shrink-0 text-muted-foreground">└</span>
+                  <div className="min-w-0 flex-1">
+                    <Select value={selected} onValueChange={(v) => setSelected(v ?? "")}>
+                      <SelectTrigger className="bg-card data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base">
+                        <SelectValue>{selected && formatGoalType(selected)}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {validValues.map((v) => (
+                          <SelectItem key={v} value={v} className="sm:text-base">
+                            {formatGoalType(v)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <span className="pl-5 text-micro text-amber-600 sm:pl-5.5 sm:text-micro-lg dark:text-amber-400">
                   * 변경하지 않으면 기존 설정 값이 계속 유지됩니다.
                 </span>
               </InfoCard>
