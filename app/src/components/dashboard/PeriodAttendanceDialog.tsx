@@ -58,7 +58,12 @@ export function PeriodAttendanceDialog({
               <div className="flex flex-col gap-1.5">
                 <SubRow label="① 85% 이상 달성 교시" value={`${breakdown.achievedCount}개`} />
                 <SubRow label="② 오류(ERR) 처리 교시" value={`${breakdown.errorCount}개`} />
-                <SubRow label="③ 목표 교시 수" value={`${breakdown.targetPeriods}개`} />
+                <div className="flex flex-col">
+                  <SubRow label="③ 목표 교시 수" value={`${breakdown.targetPeriods}개`} />
+                  <span className="pl-8.5 text-micro leading-tight text-amber-600 sm:pl-9.5 sm:text-micro-lg dark:text-amber-400">
+                    * 사유 반휴 사용 시, 목표량 감소
+                  </span>
+                </div>
                 <span className="pl-5 text-micro text-amber-600 sm:pl-5.5 sm:text-micro-lg dark:text-amber-400">
                   (① + ②) ÷ ③ × 100
                 </span>
