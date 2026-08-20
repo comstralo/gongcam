@@ -1,4 +1,4 @@
-import { Award, TrendingDown, TrendingUp, Gauge, TriangleAlert } from "lucide-react";
+import { Award, Search, TrendingDown, TrendingUp, Gauge, TriangleAlert } from "lucide-react";
 import {
   Dialog,
   DialogTrigger,
@@ -37,7 +37,7 @@ export function MeritBreakdownDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-1.5">
-            <Award className="size-4 text-primary sm:size-5" />
+            <Search className="size-4 text-primary sm:size-5" />
             주간 총 상점 · 세부사항
           </DialogTitle>
         </DialogHeader>

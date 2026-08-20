@@ -1,4 +1,4 @@
-import { ShieldAlert, TriangleAlert } from "lucide-react";
+import { Search, ShieldAlert, TriangleAlert } from "lucide-react";
 import {
   Dialog,
   DialogTrigger,
@@ -32,7 +32,7 @@ export function TotalPenaltyDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-1.5">
-            <ShieldAlert className="size-4 text-primary sm:size-5" />
+            <Search className="size-4 text-primary sm:size-5" />
             총 페널티 · 세부사항
           </DialogTitle>
         </DialogHeader>

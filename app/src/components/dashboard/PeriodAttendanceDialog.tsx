@@ -1,4 +1,4 @@
-import { ListChecks, TriangleAlert } from "lucide-react";
+import { ListChecks, Search, TriangleAlert } from "lucide-react";
 import {
   Dialog,
   DialogTrigger,
@@ -30,7 +30,7 @@ export function PeriodAttendanceDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-1.5">
-            <ListChecks className="size-4 text-primary sm:size-5" />
+            <Search className="size-4 text-primary sm:size-5" />
             교시 참여율 · 세부사항
           </DialogTitle>
         </DialogHeader>
