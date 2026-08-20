@@ -96,11 +96,7 @@ export function StatusView({
   const effectiveSelectedDay = status.days[selectedDay] ? selectedDay : 0;
 
   const periodAttendanceValue = parseFloat(status.periodAttendanceRate || "");
-  const periodAttendanceClassName = Number.isNaN(periodAttendanceValue)
-    ? undefined
-    : periodAttendanceValue >= 85
-      ? "text-ok"
-      : "text-destructive";
+  const periodAttendanceLow = Number.isNaN(periodAttendanceValue) ? false : periodAttendanceValue < 80;
 
   const outputPen = status.weeklyOutputPen || 0;
   const timePen = status.weeklyTimePen || 0;
@@ -110,6 +106,9 @@ export function StatusView({
 
   const depositRefundAmount = parseDepositRefundAmount(status.depositRefundEstimate);
   const depositRefundClassName = depositRefundAmount >= 10000 ? "text-ok" : "text-destructive";
+
+  const studyTimeShort =
+    timeToMinutesOrZero(status.weeklyStudyTime) < timeToMinutesOrZero(status.weeklyGoalTime);
 
   const summaryTiles: {
     key: string;
@@ -158,7 +157,14 @@ export function StatusView({
       label: "주간 학습시간",
       value: (
         <DividedValue
-          items={[formatHM(status.weeklyStudyTime), formatHM(status.weeklyGoalTime)]}
+          items={[
+            <span key="value" className={studyTimeShort ? "text-destructive" : undefined}>
+              {formatHM(status.weeklyStudyTime)}
+            </span>,
+            <span key="goal" className="text-ok">
+              {formatHM(status.weeklyGoalTime)}
+            </span>,
+          ]}
         />
       ),
       wrap: true,
@@ -169,11 +175,19 @@ export function StatusView({
       icon: ListChecks,
       label: "주간 교시 참여율",
       value: status.periodAttendanceBreakdown?.applicable ? (
-        <DividedValue items={[status.periodAttendanceRate || "-", "80%"]} />
+        <DividedValue
+          items={[
+            <span key="value" className={periodAttendanceLow ? "text-destructive" : undefined}>
+              {status.periodAttendanceRate || "-"}
+            </span>,
+            <span key="goal" className="text-ok">
+              80%
+            </span>,
+          ]}
+        />
       ) : (
         "-"
       ),
-      valueClassName: periodAttendanceClassName,
       wrap: true,
       clickable: "view",
     },
