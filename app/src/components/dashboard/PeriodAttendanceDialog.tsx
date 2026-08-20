@@ -6,8 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { SubRow, InfoCard } from "@/components/dashboard/shared";
-import { cn } from "@/lib/utils";
+import { SubRow, InfoCard, DividedValue } from "@/components/dashboard/shared";
 import type { ReactNode } from "react";
 import type { PeriodAttendanceBreakdown } from "@/lib/api/types";
 
@@ -42,8 +41,17 @@ export function PeriodAttendanceDialog({
                 <ListChecks className="size-3.5 shrink-0 text-primary sm:size-4" />
                 교시 참여율
               </span>
-              <span className={cn("font-mono text-sm font-bold sm:text-base", isLow && "text-destructive")}>
-                {periodAttendanceRate} / 80%
+              <span className="font-mono text-sm font-bold sm:text-base">
+                <DividedValue
+                  items={[
+                    <span key="rate" className={isLow ? "text-destructive" : undefined}>
+                      {periodAttendanceRate}
+                    </span>,
+                    <span key="threshold" className="text-muted-foreground">
+                      80%
+                    </span>,
+                  ]}
+                />
               </span>
             </div>
             {breakdown.applicable ? (
