@@ -86,26 +86,31 @@ export function StudyTimeDialog({
                   </span>
                 </CollapsibleTrigger>
                 <CollapsiblePanel>
-                  <div className="flex flex-col gap-1 pt-1.5">
-                    {d.periods.map((p, i) => {
-                      const { text, className, recorded } = formatPeriod(p);
-                      return (
-                        <div key={i} className="flex items-center justify-between gap-2">
-                          <span className="flex shrink-0 items-center gap-1 text-micro-lg text-muted-foreground sm:text-xs">
-                            <Clock className="size-2.5 shrink-0 sm:size-3" />
-                            {PERIOD_LABELS[i]}
-                          </span>
-                          <span
-                            className={cn(
-                              "text-micro-lg tabular-nums sm:text-xs",
-                              recorded ? className : "text-muted-foreground/60"
-                            )}
-                          >
-                            {text}
-                          </span>
-                        </div>
-                      );
-                    })}
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 pt-1.5">
+                    {[d.periods.slice(0, 7), d.periods.slice(7, 14)].map((half, col) => (
+                      <div key={col} className="flex flex-col gap-1">
+                        {half.map((p, j) => {
+                          const i = col * 7 + j;
+                          const { text, className, recorded } = formatPeriod(p);
+                          return (
+                            <div key={i} className="flex items-center justify-between gap-2">
+                              <span className="flex shrink-0 items-center gap-1 text-micro-lg text-muted-foreground sm:text-xs">
+                                <Clock className="size-2.5 shrink-0 sm:size-3" />
+                                {PERIOD_LABELS[i]}
+                              </span>
+                              <span
+                                className={cn(
+                                  "text-micro-lg tabular-nums sm:text-xs",
+                                  recorded ? className : "text-muted-foreground/60"
+                                )}
+                              >
+                                {text}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
                   </div>
                 </CollapsiblePanel>
               </InfoCard>
