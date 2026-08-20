@@ -68,6 +68,7 @@ export function ReportReviewList() {
 
   const [items, setItems] = useState<CaptureReviewItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [decidingId, setDecidingId] = useState<string | null>(null);
 
@@ -82,10 +83,22 @@ export function ReportReviewList() {
 
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function decide(id: string, decision: "approved" | "rejected") {
-    setDecidingId(id);
-    call<CaptureDecideResponse>("/admin/captures/decide", { method: "POST", body: { id, decision } })
-      .then(() => setItems((prev) => (prev ? prev.filter((item) => item.id !== id) : prev)))
+  function decide(item: CaptureReviewItem, decision: "approved" | "rejected") {
+    setDecidingId(item.id);
+    setError(null);
+    setResult(null);
+    call<CaptureDecideResponse>("/admin/captures/decide", {
+      method: "POST",
+      body: { id: item.id, decision, nickname: item.nickname },
+    })
+      .then((data) => {
+        if (data.penalty) {
+          const { name, occurrence, isPCount } = data.penalty;
+          const effect = isPCount ? "송출 P 발생" : occurrence === 1 ? "구두 경고" : "총 상점 차감";
+          setResult(`${name}님 ${occurrence}차 위반 기록 완료 (${effect})`);
+        }
+        setItems((prev) => (prev ? prev.filter((i) => i.id !== item.id) : prev));
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "처리에 실패했습니다."))
       .finally(() => setDecidingId(null));
   }
@@ -98,6 +111,11 @@ export function ReportReviewList() {
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        {result && (
+          <Alert>
+            <AlertDescription>{result}</AlertDescription>
           </Alert>
         )}
 
@@ -140,14 +158,14 @@ export function ReportReviewList() {
                   <Button
                     variant="destructive"
                     disabled={decidingId === item.id}
-                    onClick={() => decide(item.id, "approved")}
+                    onClick={() => decide(item, "approved")}
                   >
                     페널티 적용
                   </Button>
                   <Button
                     variant="outline"
                     disabled={decidingId === item.id}
-                    onClick={() => decide(item.id, "rejected")}
+                    onClick={() => decide(item, "rejected")}
                   >
                     반려
                   </Button>

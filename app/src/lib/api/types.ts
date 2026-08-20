@@ -325,8 +325,16 @@ export type CapturesListResponse = {
   items: CaptureReviewItem[];
 };
 
+export type OutputPenaltyResult = {
+  number: string;
+  name: string;
+  occurrence: number;
+  isPCount: boolean;
+};
+
 export type CaptureDecideResponse = {
   ok: boolean;
+  penalty?: OutputPenaltyResult | null;
 };
 
 export type MemberReorderPlanItem = {
