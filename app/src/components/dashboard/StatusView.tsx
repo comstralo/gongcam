@@ -96,7 +96,7 @@ export function StatusView({
   const effectiveSelectedDay = status.days[selectedDay] ? selectedDay : 0;
 
   const periodAttendanceValue = parseFloat(status.periodAttendanceRate || "");
-  const periodAttendanceLow = Number.isNaN(periodAttendanceValue) ? false : periodAttendanceValue < 80;
+  const periodAttendanceLow = Number.isNaN(periodAttendanceValue) ? false : periodAttendanceValue < 85;
 
   const outputPen = status.weeklyOutputPen || 0;
   const timePen = status.weeklyTimePen || 0;
@@ -181,7 +181,7 @@ export function StatusView({
               {status.periodAttendanceRate || "-"}
             </span>,
             <span key="goal" className="text-ok">
-              80%
+              85%
             </span>,
           ]}
         />

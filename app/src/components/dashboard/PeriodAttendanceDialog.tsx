@@ -19,7 +19,7 @@ export function PeriodAttendanceDialog({
   breakdown: PeriodAttendanceBreakdown;
   children: ReactNode;
 }) {
-  const isLow = breakdown.rate !== null && breakdown.rate < 80;
+  const isLow = breakdown.rate !== null && breakdown.rate < 85;
 
   return (
     <Dialog>
@@ -49,7 +49,7 @@ export function PeriodAttendanceDialog({
                         {periodAttendanceRate}
                       </span>,
                       <span key="threshold" className="text-ok">
-                        80%
+                        85%
                       </span>,
                     ]}
                   />
@@ -87,7 +87,7 @@ export function PeriodAttendanceDialog({
             <ul className="flex flex-col gap-1 text-micro-lg leading-relaxed text-muted-foreground sm:text-xs">
               <li className="flex gap-1.5">
                 <span className="text-destructive/60">•</span>
-                교시 참여율이 80% 미만인 경우, 주간 P가 1회 적립됩니다.
+                교시 참여율이 85% 미만인 경우, 주간 P가 1회 적립됩니다.
               </li>
               <li className="flex gap-1.5">
                 <span className="text-destructive/60">•</span>
