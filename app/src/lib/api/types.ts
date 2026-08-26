@@ -562,3 +562,27 @@ export type MemberReorderResponse = {
   moved: MemberReorderPlanItem[];
   error?: string;
 };
+
+export type NotifyCategory =
+  | "report_result"
+  | "leave_proof_result"
+  | "fine_status"
+  | "exit_result"
+  | "direct_message";
+
+export type NotifyPrefsResponse = {
+  categories: Record<NotifyCategory, string>;
+  prefs: Record<NotifyCategory, boolean>;
+};
+
+export type SetNotifyPrefsResponse = {
+  ok: boolean;
+  prefs: Record<NotifyCategory, boolean>;
+};
+
+export type AdminPushSendCategoryResponse = {
+  ok: boolean;
+  blocked?: boolean;
+  message?: string;
+  sent?: number;
+};

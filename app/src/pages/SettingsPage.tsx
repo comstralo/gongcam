@@ -7,6 +7,7 @@ import { SectionHeader, SectionCard } from "@/components/admin/shared";
 import { SessionCard } from "@/components/session/SessionCard";
 import { DividedValue, InfoCard } from "@/components/dashboard/shared";
 import { PeriodAlarmCard } from "@/components/dashboard/PeriodAlarmCard";
+import { NotifyPrefsCard } from "@/components/dashboard/NotifyPrefsCard";
 import { DepositRefundDialog } from "@/components/dashboard/DepositRefundDialog";
 import { useApi } from "@/hooks/useApi";
 import { ICON_STROKE, cn } from "@/lib/utils";
@@ -100,6 +101,7 @@ export function SettingsPage() {
             <div className="h-px w-full bg-border" />
             <CollapsiblePanel className="flex flex-col gap-4">
               <PeriodAlarmCard />
+              <NotifyPrefsCard />
             </CollapsiblePanel>
           </Collapsible>
         </SectionCard>
