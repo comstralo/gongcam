@@ -8,9 +8,9 @@ const END_CHIME_SRC = `${import.meta.env.BASE_URL}sounds/period-end.mp3`;
 function loadSoundPref(): boolean {
   try {
     const raw = localStorage.getItem(SOUND_PREF_KEY);
-    return raw === null ? true : raw === "1";
+    return raw === null ? false : raw === "1";
   } catch {
-    return true;
+    return false;
   }
 }
 
