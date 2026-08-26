@@ -6,10 +6,9 @@ import { PenaltyCandidateList } from "@/components/admin/PenaltyCandidateList";
 import { ReasonLeaveReviewList } from "@/components/admin/ReasonLeaveReviewList";
 import { NewMemberForm } from "@/components/admin/NewMemberForm";
 import { MemberRosterList } from "@/components/admin/MemberRosterList";
-import { PushNotificationSection } from "@/components/admin/PushNotificationSection";
 
 // MEMBER 탭과 PENALTY 탭을 통합한 뷰(MEM · PEN). 요구된 순서대로 배치한다:
-// 화각제보검토 → 예치금재납대상자 → 사유반휴신청 → 스터디원등록 → 명단 → 푸시알림.
+// 화각제보검토 → 예치금재납대상자 → 사유반휴신청 → 스터디원등록 → 명단.
 export function AdminMemberPenaltyTab() {
   return (
     <div className="flex flex-col gap-4">
@@ -37,10 +36,6 @@ export function AdminMemberPenaltyTab() {
 
       <SectionCard>
         <MemberRosterList />
-      </SectionCard>
-
-      <SectionCard>
-        <PushNotificationSection />
       </SectionCard>
     </div>
   );
