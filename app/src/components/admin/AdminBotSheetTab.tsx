@@ -118,8 +118,9 @@ function UsageMonitorSection() {
                 />
                 <p className="text-micro-lg text-muted-foreground/70 sm:text-xs">
                   직전 분: 읽기 {usage.sheets.readsLastMinute}회 · 쓰기 {usage.sheets.writesLastMinute}회 —
-                  Worker와 도움봇(같은 서비스 계정으로 시트에 접근)의 호출을 합산한 근사치이며, Worker
-                  재배포·장시간 유휴 후에는 0부터 다시 셉니다.
+                  Worker와 도움봇(같은 서비스 계정으로 시트에 접근)의 호출을 합산한 근사치입니다. Cloudflare
+                  가 요청을 여러 서버로 분산 처리하기 때문에, 이 값은 지금 이 요청을 처리한 서버가 최근에
+                  직접 본 호출만 집계한 것으로, 실제 전체 호출량보다 낮게 보일 수 있습니다.
                 </p>
               </InfoCard>
 
