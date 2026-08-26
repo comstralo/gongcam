@@ -71,13 +71,26 @@ export function DepositRefundDialog({
   const penaltyRate = penaltyTotal >= 2 ? 100 : penaltyTotal === 1 ? 50 : 0;
   const daysSinceJoin = breakdown.daysSinceJoin ?? -1;
 
-  // 차감 원인을 성격별로 세 그룹으로 나눈다. 각 그룹은 차감률 내림차순으로
-  // 정렬하되, 그룹 자체의 순서(일반 차감 → 강제퇴실 계열 → 예치금 재납)는
-  // 고정한다. 0%인 항목도 판정 근거를 투명하게 보여주기 위해 그대로 남긴다.
-  // "직권 P"는 앱스크립트에서 관리자가 퇴실 처리 시 그때그때 입력하는
-  // 사유일 뿐 시트에 상시 저장되지 않아, 지금은 UI만 만들고 항상 0%로
-  // 표시한다 — 감사 기록용 시트 칸이 추가되면 실제 값을 연동할 예정.
-  const generalItems = [
+  // "고지지연" — 신청일(오늘)과 마지막 참여일 사이가 3일 미만이면(임박 신청)
+  // 50% 차감. 이 항목은 페널티(0/50/100)와 합산되어 실제 예치금 반환
+  // 예상액(위 amount)에 반영되지만, 여기서는 각 항목을 있는 그대로(독립적)
+  // 보여준다 — 합산 결과는 반환 예상액 금액 자체로 이미 드러난다.
+  const lastAttendDate = exitRequestDate || selectedDate;
+  const daysUntilLastAttend = lastAttendDate
+    ? Math.round((new Date(lastAttendDate).getTime() - new Date(todayStr()).getTime()) / 86_400_000)
+    : null;
+  const lateNoticeRate = daysUntilLastAttend !== null && daysUntilLastAttend < 3 ? 50 : 0;
+
+  // 차감 원인을 고정된 순서(벌금 미납 → 예치금 미납 → 30일 미만 참여자 →
+  // 페널티 → 고지지연)로 보여준다. "직권 P"/"예치금 재납 대상자"는 관리자가
+  // 그때그때 입력하거나 실제 반환액 계산에 반영되지 않는 항목이라 제외.
+  const causeItems = [
+    { key: "fine", label: "벌금 미납", rate: breakdown.fineUnpaid ? 100 : 0 },
+    {
+      key: "depositUnpaid",
+      label: "예치금 미납",
+      rate: breakdown.depositAgainStatus === "미납" ? 100 : 0,
+    },
     {
       key: "days",
       label: `30일 미만 참여자 (D+${daysSinceJoin >= 0 ? daysSinceJoin : "-"})`,
@@ -88,23 +101,10 @@ export function DepositRefundDialog({
       label: `페널티 (송출 P ${breakdown.outputPen ?? 0}회 + 주간 P ${breakdown.timePen ?? 0}회)`,
       rate: penaltyRate,
     },
-  ].sort((a, b) => b.rate - a.rate);
-
-  const forcedExitItems = [
-    { key: "fine", label: "벌금 시한 내 미납", rate: breakdown.fineUnpaid ? 100 : 0 },
     {
-      key: "depositUnpaid",
-      label: "예치금 재납 시한 미납",
-      rate: breakdown.depositAgainStatus === "미납" ? 100 : 0,
-    },
-    { key: "directPen", label: "페널티 (직권 P)", rate: 0 },
-  ].sort((a, b) => b.rate - a.rate);
-
-  const depositAgainItems = [
-    {
-      key: "depositAgain",
-      label: "예치금 재납 대상자",
-      rate: breakdown.depositAgainStatus === "납부" ? 100 : 0,
+      key: "lateNotice",
+      label: "고지지연",
+      rate: lateNoticeRate,
     },
   ];
 
@@ -174,29 +174,7 @@ export function DepositRefundDialog({
                   <TrendingDown className="size-3.5 shrink-0 text-primary sm:size-4" />
                   차감 원인
                 </span>
-                {generalItems.map((item) => (
-                  <SubRow
-                    key={item.key}
-                    label={item.label}
-                    value={`${item.rate}%`}
-                    valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
-                  />
-                ))}
-
-                <div className="my-0.5 h-px w-full bg-border" />
-
-                {forcedExitItems.map((item) => (
-                  <SubRow
-                    key={item.key}
-                    label={item.label}
-                    value={`${item.rate}%`}
-                    valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
-                  />
-                ))}
-
-                <div className="my-0.5 h-px w-full bg-border" />
-
-                {depositAgainItems.map((item) => (
+                {causeItems.map((item) => (
                   <SubRow
                     key={item.key}
                     label={item.label}
