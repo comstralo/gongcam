@@ -115,7 +115,7 @@ export function DepositRefundDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-1.5">
             <Search className="size-4 text-primary sm:size-5" />
-            예치금 반환 · 세부사항
+            퇴실신청
           </DialogTitle>
         </DialogHeader>
 
