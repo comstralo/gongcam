@@ -202,6 +202,7 @@ function buildTwoWeeksAgo(): StatusResponse {
   const summary = deriveWeeklySummary(days, goalType);
 
   return {
+    name: "길동",
     goalType,
     joinDate: "2026-01-12",
     weeklyMerit: String(summary.computedMerit),
@@ -273,6 +274,7 @@ function buildOneWeekAgo(): StatusResponse {
   const summary = deriveWeeklySummary(days, goalType);
 
   return {
+    name: "길동",
     goalType,
     joinDate: "2026-01-12",
     weeklyMerit: String(summary.computedMerit),
@@ -370,6 +372,7 @@ function buildCurrent(): StatusResponse {
   const summaryBefore = deriveWeeklySummary(beforeDays, goalType);
 
   return {
+    name: "길동",
     goalType,
     joinDate: "2026-08-25", // 재납으로 오늘(화요일, 처리 시점) 날짜로 리셋됨
     weeklyMerit: String(summaryAfter.computedMerit),

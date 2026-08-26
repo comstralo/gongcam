@@ -172,6 +172,7 @@ export type DepositAgainSplit = {
 };
 
 export type StatusResponse = {
+  name: string;
   goalType: string;
   joinDate: string;
   weeklyMerit: string;

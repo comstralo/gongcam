@@ -39,7 +39,7 @@ export function SettingsPage() {
             <SectionHeader icon={UserCog} title="계정 관리" />
             <div className="h-px w-full bg-border" />
             <CollapsiblePanel className="flex flex-col gap-4">
-              <SessionCard />
+              <SessionCard name={status?.name} />
 
               {status?.depositRefundBreakdown ? (
                 <DepositRefundDialog
