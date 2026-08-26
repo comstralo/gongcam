@@ -51,10 +51,10 @@ export function DashboardPage() {
         </TabsList>
       </Tabs>
 
-      <div hidden={view !== "me"}>
+      <div className="w-full" hidden={view !== "me"}>
         {everOpened.current.me && <StatusPage cycleFileId={cycleFileId} onSelectCycle={selectCycle} />}
       </div>
-      <div hidden={view !== "all"}>
+      <div className="w-full" hidden={view !== "all"}>
         {everOpened.current.all && <RosterPage cycleFileId={cycleFileId} onSelectCycle={selectCycle} />}
       </div>
     </div>
