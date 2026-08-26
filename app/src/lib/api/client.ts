@@ -1,4 +1,19 @@
+import { dummyCycleList, dummyLeaveProofList, dummyRosterStatus, dummyStatus } from "@/lib/api/devDummy";
+
 export const WORKER_BASE = "https://frame-checker-worker.comstralo.workers.dev";
+
+// TODO(dev-preview): 3주 사이클 점검용 더미 인터셉터. /cycles, /status, /roster-status
+// 요청을 실제 워커로 보내지 않고 devDummy.ts의 고정 데이터로 바로 응답한다. 점검이
+// 끝나면 이 블록과 devDummy.ts를 함께 제거할 것.
+function devDummyResponse<T>(path: string): T | null {
+  const [pathname, query] = path.split("?");
+  const cycleFileId = new URLSearchParams(query || "").get("cycle");
+  if (pathname === "/cycles") return dummyCycleList() as T;
+  if (pathname === "/status") return dummyStatus(cycleFileId) as T;
+  if (pathname === "/roster-status") return dummyRosterStatus(cycleFileId) as T;
+  if (pathname === "/admin/leave-proof") return dummyLeaveProofList() as T;
+  return null;
+}
 
 export class ApiError extends Error {
   status: number;
@@ -20,6 +35,11 @@ type ApiOptions = {
 
 export async function apiFetch<T>(path: string, opts: ApiOptions = {}): Promise<T> {
   const { method = "GET", body, token, tokenInBody, onUnauthorized } = opts;
+
+  if (method === "GET") {
+    const dummy = devDummyResponse<T>(path);
+    if (dummy !== null) return dummy;
+  }
 
   const headers: Record<string, string> = {};
   let finalBody = body;

@@ -1,15 +1,15 @@
 import { useSearchParams } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AdminMemberTab } from "@/components/admin/AdminMemberTab";
+import { AdminMemberPenaltyTab } from "@/components/admin/AdminMemberPenaltyTab";
 import { AdminMoneyTab } from "@/components/admin/AdminMoneyTab";
-import { AdminPenaltyTab } from "@/components/admin/AdminPenaltyTab";
 import { AdminBotSheetTab } from "@/components/admin/AdminBotSheetTab";
 
-type AdminView = "member" | "money" | "penalty" | "botsheet";
+type AdminView = "member" | "money" | "botsheet";
 
+// "penalty"였던 값도(기존 북마크/링크 호환) member(통합 뷰)로 흡수한다.
 function normalizeView(raw: string | null): AdminView {
-  if (raw === "money" || raw === "penalty" || raw === "botsheet") return raw;
+  if (raw === "money" || raw === "botsheet") return raw;
   return "member";
 }
 
@@ -29,13 +29,10 @@ export function AdminPage() {
       >
         <TabsList className="w-full">
           <TabsTrigger value="member" className="flex-1 font-mono text-xs tracking-wide uppercase">
-            Member
+            MEM · PEN
           </TabsTrigger>
           <TabsTrigger value="money" className="flex-1 font-mono text-xs tracking-wide uppercase">
             Money
-          </TabsTrigger>
-          <TabsTrigger value="penalty" className="flex-1 font-mono text-xs tracking-wide uppercase">
-            Penalty
           </TabsTrigger>
           <TabsTrigger value="botsheet" className="flex-1 font-mono text-xs tracking-wide uppercase">
             Bot · Sheet
@@ -45,9 +42,8 @@ export function AdminPage() {
 
       <Card className="w-full">
         <CardContent className="flex flex-col gap-4">
-          {view === "member" && <AdminMemberTab />}
+          {view === "member" && <AdminMemberPenaltyTab />}
           {view === "money" && <AdminMoneyTab />}
-          {view === "penalty" && <AdminPenaltyTab />}
           {view === "botsheet" && <AdminBotSheetTab />}
         </CardContent>
       </Card>

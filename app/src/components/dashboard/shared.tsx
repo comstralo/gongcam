@@ -1,7 +1,12 @@
 import type { ReactNode } from "react";
 import { Search, SquarePen, CircleCheck, CircleDot, Timer, BedDouble, Wallet, type LucideIcon } from "lucide-react";
 import { cn, ICON_STROKE } from "@/lib/utils";
-import type { StatusDay } from "@/lib/api/types";
+import type { StatusDay, DepositRefundBreakdown } from "@/lib/api/types";
+
+// 하루(요일)에 일반반휴+사유반휴를 합쳐 신청할 수 있는 최대 장수. 각 종류의
+// 요일별 시트 셀이 0/1만 가능해(종류당 1장) 두 종류를 합친 구조적 상한도
+// 자연히 이 값과 같다 — HalfDayLeaveDialog/LeaveApplyButton이 함께 쓴다.
+export const MAX_LEAVES_PER_DAY = 2;
 
 // 카드 안에서 가장 두드러지는 1차 텍스트(예: "퇴실신청" 같은 카드 제목).
 // 섹션/탭 제목(font-bold)보다 한 단계 낮은 굵기(semibold)로 위계를 분리한다.
@@ -9,13 +14,14 @@ export function ItemTitle({ children, className }: { children: ReactNode; classN
   return <span className={cn("text-sm font-semibold sm:text-base", className)}>{children}</span>;
 }
 
-type PillTone = "ok" | "warn" | "muted" | "primary";
+type PillTone = "ok" | "warn" | "muted" | "primary" | "amber";
 
 const PILL_TONE_CLASSES: Record<PillTone, string> = {
   ok: "bg-ok/15 text-ok",
   warn: "bg-destructive/15 text-destructive",
   muted: "bg-foreground/8 text-muted-foreground",
   primary: "bg-primary/15 text-primary",
+  amber: "bg-amber-600/15 text-amber-600 dark:bg-amber-400/15 dark:text-amber-400",
 };
 
 // 대시보드 전반(내 대시보드/전체 대시보드/지난 기록)에서 반복되는 "틴트된 상태 배지".
@@ -96,16 +102,6 @@ export function SummaryTile({
   );
 }
 
-// 총합 0이면 "-", 1이면 "송출 P 1회" 처럼 0이 아닌 쪽만, 2 이상이면 두 값을
-// "+"로 조합해 표시한다(총합은 최대 2까지만 나올 수 있는 값이다). 대시보드
-// 타일과 페널티 모달이 동일한 문구를 써야 해서 공용 헬퍼로 둔다.
-export function formatTotalPenalty(outputPen: number, timePen: number): string {
-  const parts: string[] = [];
-  if (outputPen > 0) parts.push(`송출 P ${outputPen}회`);
-  if (timePen > 0) parts.push(`주간 P ${timePen}회`);
-  return parts.length > 0 ? parts.join(" + ") : "-";
-}
-
 // 텍스트 구분자("|") 대신 은은한 세로선으로 두 값을 나눠 보여준다.
 // 예: 주간 총 상점(수치) │ 순위.
 export function DividedValue({ items }: { items: ReactNode[] }) {
@@ -121,6 +117,19 @@ export function DividedValue({ items }: { items: ReactNode[] }) {
   );
 }
 
+// 총합(outputPen + timePen)은 0~2까지만 나올 수 있는 값이다. 0이면 "-",
+// 1이면 "1회 │ 송출 P"처럼 0이 아닌 쪽 유형만, 2면 "2회 │ 예치금 재납 대상"
+// 으로 표시한다(2는 항상 예치금 재납 대상이므로 유형 대신 그 결과를
+// 보여준다). 다른 타일(주간 학습시간 등)과 동일하게 DividedValue의 세로선
+// 구분자를 쓴다. 대시보드 타일과 페널티 모달이 동일한 문구를 써야 해서
+// 공용 헬퍼로 둔다.
+export function formatTotalPenalty(outputPen: number, timePen: number): ReactNode {
+  const total = outputPen + timePen;
+  if (total <= 0) return "-";
+  const kind = total >= 2 ? "예치금 재납 대상" : outputPen > 0 ? "송출 P" : "주간 P";
+  return <DividedValue items={[`${total}회`, kind]} />;
+}
+
 // "└" 접두 트리 표기로 상위 행 아래 들여쓰기된 세부 항목을 표시하는 서브로우.
 // indent: 상위 행 없이 박스 안에 항목만 나열할 때는 false로 꺼서 불필요한
 // 좌측 여백/트리 기호 없이 일반 목록처럼 보이게 한다.
@@ -128,11 +137,13 @@ export function SubRow({
   label,
   value,
   valueClassName,
+  labelClassName,
   indent = true,
 }: {
   label: string;
   value: ReactNode;
   valueClassName?: string;
+  labelClassName?: string;
   indent?: boolean;
 }) {
   return (
@@ -140,7 +151,8 @@ export function SubRow({
       <span
         className={cn(
           "text-micro-lg text-muted-foreground sm:text-xs",
-          indent && "before:mr-1 before:content-['└']"
+          indent && "before:mr-1 before:content-['└']",
+          labelClassName
         )}
       >
         {label}
@@ -161,9 +173,13 @@ export function InfoCard({ className, children, ...props }: React.ComponentProps
   );
 }
 
-function won(n: number) {
+export function won(n: number) {
   return "₩" + (n || 0).toLocaleString();
 }
+
+// appscript.js deposit_value(고정 예치금)와 동일 — 재납 대상이면 이 금액
+// 전액을 다시 내야 한다(미납/납부 상태와 무관하게 금액 자체는 고정).
+const DEPOSIT_AGAIN_AMOUNT = 10000;
 
 function timeToMinutes(raw: string): number | null {
   const m = (raw || "").trim().match(/^([+-]?)(\d{1,3}):(\d{2})$/);
@@ -181,6 +197,14 @@ function goalStatus(studyTime: string, goalTime: string): GoalStatus {
   const goal = timeToMinutes(goalTime);
   if (study === null || goal === null) return "pending";
   return study >= goal ? "met" : "failed";
+}
+
+// 시트 셀 값이 "4:10"처럼 시(hour)가 한 자리로 오는 경우가 있어, 항상
+// "04:10" 두 자리로 맞춰 보여준다. 파싱 실패(빈 값 등)는 원본을 그대로 둔다.
+function padHM(raw: string): string {
+  const m = (raw || "").trim().match(/^(\d{1,3}):(\d{2})$/);
+  if (!m) return raw;
+  return `${m[1].padStart(2, "0")}:${m[2]}`;
 }
 
 // 관리자가 직접 입력하는 값이라 "00:20"처럼 부호 없이 저장되는 경우 기본을 +로 해석하고,
@@ -206,17 +230,29 @@ export function DayDetailCard({
   dayLabel,
   isPast = false,
   footer,
+  depositRefundBreakdown,
 }: {
   day: StatusDay;
   dayLabel?: string;
   isPast?: boolean;
   footer?: ReactNode;
+  // 예치금 재납 여부(미납/납부)는 요일이 아니라 개인 탭 상단의 주간값
+  // 하나뿐이라, 모든 요일 카드가 이 값을 그대로 반복해 보여준다.
+  depositRefundBreakdown?: DepositRefundBreakdown;
 }) {
+  // 예치금 재납 미납은 요일별 기록이 아니라 개인 탭 상단의 "현재 시점" 값이라,
+  // 2회 달성 시점의 요일 카드(day.isDepositAgainDay)에만 뱃지를 띄운다 — 그러지
+  // 않으면 이번 주 모든 요일 카드에 똑같이 "예치금 미납"이 찍히게 된다.
+  const showDepositAgainUnpaidBadge =
+    day.isDepositAgainDay && depositRefundBreakdown?.depositAgainStatus === "미납";
+  const showDepositAgainPaidBadge =
+    day.isDepositAgainDay && depositRefundBreakdown?.depositAgainStatus === "납부";
+
   return (
     <div
       className={cn(
         "flex flex-col gap-3 rounded-xl border bg-card p-4 sm:gap-3.5 sm:p-5",
-        day.total > 0 ? "border-destructive/30" : "border-border"
+        day.total > 0 || showDepositAgainUnpaidBadge ? "border-destructive/30" : "border-border"
       )}
     >
       <div className="flex items-center justify-start gap-1.5">
@@ -228,6 +264,9 @@ export function DayDetailCard({
           {day.confirmed || isPast ? "마감" : "진행중"}
         </TintedPill>
         {day.paymentStatus === "미납" && <TintedPill tone="warn">벌금 미납</TintedPill>}
+        {day.paymentStatus === "납부" && <TintedPill tone="ok">벌금 납부</TintedPill>}
+        {showDepositAgainUnpaidBadge && <TintedPill tone="warn">예치금 미납</TintedPill>}
+        {showDepositAgainPaidBadge && <TintedPill tone="ok">예치금 납부</TintedPill>}
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -245,14 +284,21 @@ export function DayDetailCard({
           >
             {day.dailyGoalTime ? (
               <DividedValue
-                items={[day.studyTime || "-", <span key="goal" className="text-ok">{day.dailyGoalTime}</span>]}
+                items={[
+                  day.studyTime ? padHM(day.studyTime) : "-",
+                  <span key="goal" className="text-muted-foreground">
+                    {padHM(day.dailyGoalTime)}
+                  </span>,
+                ]}
               />
+            ) : day.studyTime ? (
+              padHM(day.studyTime)
             ) : (
-              day.studyTime || "-"
+              "-"
             )}
           </span>
         </div>
-        <SubRow label="로그 학습시간" value={day.logStudyTime ? `+${day.logStudyTime}` : "-"} />
+        <SubRow label="로그 학습시간" value={day.logStudyTime ? `+${padHM(day.logStudyTime)}` : "-"} />
         <SubRow
           label="보정 학습시간"
           value={signedTime(day.bonusStudyTime)}
@@ -272,40 +318,88 @@ export function DayDetailCard({
             <BedDouble className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
             반휴권
           </span>
+          <span
+            className={cn(
+              "text-xs font-semibold sm:text-sm",
+              day.normalLeaveUsed + day.reasonLeaveUsed === 0 && "text-muted-foreground"
+            )}
+          >
+            {day.normalLeaveUsed + day.reasonLeaveUsed}장
+          </span>
         </div>
-        <SubRow label="일반반휴" value={day.normalLeaveUsed > 0 ? `${day.normalLeaveUsed}회` : "-"} />
-        <SubRow label="사유반휴" value={day.reasonLeaveUsed > 0 ? `${day.reasonLeaveUsed}회` : "-"} />
+        <SubRow label="일반반휴" value={`${day.normalLeaveUsed}장`} />
+        <SubRow
+          label="사유반휴"
+          value={`${day.reasonLeaveUsed}장${day.reasonLeavePending ? " (관리자 확인 중)" : ""}`}
+        />
         {footer}
       </div>
 
       <div className="h-px w-full bg-border" />
 
-      <div className="flex flex-col gap-1.5">
-        <div className="flex items-center justify-between gap-2">
-          <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
-            <Wallet className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
-            일간 총 벌금
-          </span>
-          <span
-            className={cn(
-              "text-sm font-semibold sm:text-base",
-              day.total > 0 ? "text-destructive" : "text-ok"
+      {(() => {
+        // 예치금 재납 상태는 요일별 기록이 아니라 개인 탭 상단의 "현재 시점"
+        // 스냅샷 하나뿐이라, day.isDepositAgainDay(2회 달성 시점의 요일)가
+        // 아닌 카드에는 반영하지 않는다 — 그러지 않으면 이번 주 모든 요일
+        // 카드에 동일하게 "미납" 등이 찍히는 문제가 있었다(사용자 지적).
+        const showDepositAgain = day.isDepositAgainDay && depositRefundBreakdown?.depositAgainStatus;
+        const depositAgainAmount = showDepositAgain ? DEPOSIT_AGAIN_AMOUNT : 0;
+        const combinedTotal = day.total + depositAgainAmount;
+        const combinedPaymentStatus =
+          day.paymentStatus === "미납" || (showDepositAgain && depositRefundBreakdown?.depositAgainStatus === "미납")
+            ? "미납"
+            : day.paymentStatus;
+        return (
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                <Wallet className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
+                일간 총 벌금 · 재납 예치금
+              </span>
+              <span
+                className={cn(
+                  "text-xs font-semibold sm:text-sm",
+                  combinedTotal > 0 ? "text-destructive" : "text-muted-foreground"
+                )}
+              >
+                {won(combinedTotal)}
+              </span>
+            </div>
+            <SubRow
+              label={`일간 목표시간 벌금${day.dailyShortfallTime ? ` (-${day.dailyShortfallTime} 미달)` : ""}`}
+              value={won(day.goal)}
+            />
+            <SubRow
+              label={`오전 목표시간 벌금${day.morningShortfallTime ? ` (-${day.morningShortfallTime} 미달)` : ""}`}
+              value={won(day.morning)}
+            />
+            {depositRefundBreakdown && (
+              <SubRow
+                label={
+                  showDepositAgain
+                    ? `재납 예치금 (송출 P ${depositRefundBreakdown.outputPen}회 + 주간 P ${depositRefundBreakdown.timePen}회)`
+                    : "재납 예치금"
+                }
+                value={won(depositAgainAmount)}
+                valueClassName={
+                  showDepositAgain && depositRefundBreakdown.depositAgainStatus === "미납"
+                    ? "text-destructive"
+                    : undefined
+                }
+              />
             )}
-          >
-            {won(day.total)}
-          </span>
-        </div>
-        <SubRow label="일간 목표시간 벌금" value={won(day.goal)} />
-        <SubRow label="오전 목표시간 벌금" value={won(day.morning)} />
-        <SubRow
-          label="납부확인"
-          value={day.paymentStatus || "-"}
-          valueClassName={cn(
-            "font-sans text-xs font-semibold normal-case sm:text-sm",
-            day.paymentStatus === "미납" && "text-destructive"
-          )}
-        />
-      </div>
+            <SubRow
+              label="납부확인"
+              value={combinedPaymentStatus || "-"}
+              valueClassName={cn(
+                "font-sans normal-case",
+                combinedPaymentStatus === "미납" && "text-destructive",
+                combinedPaymentStatus === "납부" && "text-ok"
+              )}
+            />
+          </div>
+        );
+      })()}
     </div>
   );
 }

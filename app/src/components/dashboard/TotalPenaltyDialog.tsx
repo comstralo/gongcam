@@ -7,19 +7,34 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { InfoCard, formatTotalPenalty } from "@/components/dashboard/shared";
+import { PenaltyHistorySection } from "@/components/admin/shared";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 import type { TotalPenaltyBreakdown } from "@/lib/api/types";
+
+// 관리자 "예치금 재납 대상자"의 송출 P 슬롯 차수(1~6차) → 조치명 매핑과
+// 동일하게 맞춘다(PenaltyCandidateList.OUTPUT_PEN_SLOT_LABELS). 두 화면이
+// 같은 시트 슬롯을 가리키므로 라벨도 동일해야 한다.
+const OUTPUT_PEN_SLOT_LABELS = [
+  "구두경고 (1차)",
+  "벌점 (1차)",
+  "벌점 (2차)",
+  "페널티 (1차)",
+  "벌점 (3차)",
+  "페널티 (2차)",
+];
 
 export function TotalPenaltyDialog({
   outputPen,
   timePen,
   breakdown,
+  token,
   children,
 }: {
   outputPen: number;
   timePen: number;
   breakdown: TotalPenaltyBreakdown;
+  token: string | undefined;
   children: ReactNode;
 }) {
   const total = outputPen + timePen;
@@ -45,53 +60,29 @@ export function TotalPenaltyDialog({
             </span>
             <span
               className={cn(
-                "flex flex-col text-right text-xs font-semibold sm:text-sm",
+                "text-right text-xs font-semibold sm:text-sm",
                 total >= 2 ? "text-destructive" : total === 1 ? "text-amber-600 dark:text-amber-400" : undefined
               )}
             >
-              <span>{formatTotalPenalty(outputPen, timePen)}</span>
-              {total >= 2 && <span className="text-micro sm:text-micro-lg">* 예치금 재납 대상</span>}
+              {formatTotalPenalty(outputPen, timePen)}
             </span>
           </InfoCard>
 
-          <InfoCard className="flex flex-col gap-1.5">
-            <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
-              <Radio className="size-3.5 shrink-0 text-primary sm:size-4" />
-              송출 P 원인
-            </span>
-            {outputPen > 0 && breakdown.outputPenReasons.length > 0 ? (
-              <ul className="flex flex-col gap-1 pl-5 text-micro-lg text-muted-foreground sm:pl-5.5 sm:text-xs">
-                {breakdown.outputPenReasons.map((reason, i) => (
-                  <li key={i} className="before:mr-1 before:content-['└']">
-                    {reason}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="pl-5 text-micro-lg text-muted-foreground/70 before:mr-1 before:content-['└'] sm:pl-5.5">
-                해당 없음
-              </p>
-            )}
-          </InfoCard>
-
-          <InfoCard className="flex flex-col gap-1.5">
-            <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
-              <CalendarClock className="size-3.5 shrink-0 text-primary sm:size-4" />
-              주간 P 원인
-            </span>
-            {timePen > 0 && breakdown.timePenReasons.length > 0 ? (
-              <ul className="flex flex-col gap-1 pl-5 text-micro-lg text-muted-foreground sm:pl-5.5 sm:text-xs">
-                {breakdown.timePenReasons.map((reason, i) => (
-                  <li key={i} className="before:mr-1 before:content-['└']">
-                    {reason}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="pl-5 text-micro-lg text-muted-foreground/70 before:mr-1 before:content-['└'] sm:pl-5.5">
-                해당 없음
-              </p>
-            )}
+          <InfoCard className="flex flex-col gap-3">
+            <PenaltyHistorySection
+              icon={Radio}
+              title="송출 P 원인"
+              history={breakdown.outputPenHistory}
+              slotLabels={OUTPUT_PEN_SLOT_LABELS}
+              token={token}
+            />
+            <div className="h-px w-full bg-border" />
+            <PenaltyHistorySection
+              icon={CalendarClock}
+              title="주간 P 원인"
+              history={breakdown.timePenHistory}
+              token={token}
+            />
           </InfoCard>
 
           <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">

@@ -1,61 +1,26 @@
 import { useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import {
-  Clock,
-  Timer,
-  CalendarDays,
-  Award,
-  PiggyBank,
-  ListChecks,
-  ShieldAlert,
-  BedDouble,
-  DoorOpen,
-  MessageCircle,
-  FileText,
-  Table,
-  Megaphone,
-} from "lucide-react";
+import { Clock, Timer, CalendarDays, Award, ListChecks, ShieldAlert, CircleDollarSign, CircleCheck } from "lucide-react";
 import { cn, ICON_STROKE } from "@/lib/utils";
-import {
-  SummaryTile,
-  InfoCard,
-  DividedValue,
-  DayDetailCard,
-  ItemTitle,
-  formatTotalPenalty,
-} from "@/components/dashboard/shared";
-import { PeriodAlarmCard } from "@/components/dashboard/PeriodAlarmCard";
+import { SummaryTile, DividedValue, DayDetailCard, formatTotalPenalty } from "@/components/dashboard/shared";
+import { formatRankInline } from "@/components/dashboard/RosterView";
 import { MeritBreakdownDialog } from "@/components/dashboard/MeritBreakdownDialog";
 import { GoalTypeScheduleDialog } from "@/components/dashboard/GoalTypeScheduleDialog";
-import { DepositRefundDialog } from "@/components/dashboard/DepositRefundDialog";
 import { PeriodAttendanceDialog } from "@/components/dashboard/PeriodAttendanceDialog";
 import { TotalPenaltyDialog } from "@/components/dashboard/TotalPenaltyDialog";
 import { StudyTimeDialog } from "@/components/dashboard/StudyTimeDialog";
-import { LeaveApplyButton } from "@/components/dashboard/LeaveApplyButton";
+import { HalfDayLeaveDialog } from "@/components/dashboard/HalfDayLeaveDialog";
+import { useAuth } from "@/lib/auth/useAuth";
 import type { StatusResponse } from "@/lib/api/types";
 
 const TODAY_INDEX = (new Date().getDay() + 6) % 7; // 월=0 ... 일=6
-
-// 스터디 바로가기 — 링크 값은 추후 실제 URL로 교체 예정.
-const quickLinks: { key: string; icon: LucideIcon; label: string; href: string }[] = [
-  { key: "chat", icon: MessageCircle, label: "단체 채팅방", href: "#" },
-  { key: "rules", icon: FileText, label: "스터디 규정", href: "#" },
-  { key: "sheet", icon: Table, label: "원본 시트", href: "#" },
-  { key: "notice", icon: Megaphone, label: "공지사항", href: "#" },
-];
+const STATUS_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
 
 // 시트 원본 값은 "8H (교시제)"처럼 괄호가 붙어 있어 그대로 노출하면 답답해
 // 보인다 — 괄호만 제거해 "8H 교시제"로 표시한다.
 function formatGoalType(raw: string): string {
   if (!raw) return "-";
   return raw.replace(/[()]/g, "").replace(/\s+/g, " ").trim();
-}
-
-// 시트 원본 값("₩10,000 (송출 P 0회 / 주간 P 0회)")에서 감액 사유 괄호를
-// 떼어낸다 — 사유는 이제 별도 모달에서 보여주므로 타일에는 금액만 노출한다.
-function formatDepositRefund(raw: string): string {
-  if (!raw) return "-";
-  return raw.replace(/\s*\([^)]*\)\s*$/, "").trim();
 }
 
 // "HH:MM"을 분으로 변환한다. 파싱 실패 시 0.
@@ -65,16 +30,12 @@ function timeToMinutesOrZero(raw: string): number {
   return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
 }
 
-// 서버가 "HH:MM"으로 내려주는 시간 값을 "NH NM" 형태로 바꾼다.
+// 서버가 "H:MM"/"HH:MM"으로 내려주는 시간 값을 항상 2자리 "HH:MM" 형태로 맞춘다.
 function formatHM(raw: string): string {
   const totalMinutes = timeToMinutesOrZero(raw);
-  return `${Math.floor(totalMinutes / 60)}H ${totalMinutes % 60}M`;
-}
-
-// 괄호 안 "0회" 등의 숫자가 섞여 들어오지 않도록, formatDepositRefund와 동일하게
-// 괄호를 먼저 떼어낸 뒤 남은 숫자만 파싱한다.
-function parseDepositRefundAmount(raw: string): number {
-  return parseInt(formatDepositRefund(raw).replace(/[^\d]/g, ""), 10) || 0;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 }
 
 // 실시간 조회(StatusPage)와 지난 주 스냅샷(SnapshotPage) 모두 같은 형태로
@@ -84,31 +45,56 @@ function parseDepositRefundAmount(raw: string): number {
 export function StatusView({
   status,
   allowGoalSchedule = false,
+  // 과거 사이클(완결된 지난 주) 조회 중인지 — true면 그 주의 모든 요일이 이미
+  // 지났으므로, 오늘 요일 기준 "미래라 선택 불가" 판정을 걸지 않는다.
+  isViewingCycle = false,
+  onLeaveApplied,
+  onReasonLeaveSubmitted,
 }: {
   status: StatusResponse | null;
   allowGoalSchedule?: boolean;
+  isViewingCycle?: boolean;
+  // 일반반휴 신청·취소가 반영됐을 때 부모(StatusPage)에 알려, 그 요일의
+  // normalLeaveUsed를 새로고침 없이 즉시 갱신하게 한다.
+  onLeaveApplied?: (day: string, type: "normal" | "reason", delta: number) => void;
+  // 사유반휴 신청이 접수됐을 때(승인 전까지는 카운트가 바뀌지 않으므로) 부모가
+  // 상태를 재조회해 "관리자 확인 중" 배지가 반영되게 한다.
+  onReasonLeaveSubmitted?: () => void;
 }) {
-  const [selectedDay, setSelectedDay] = useState<number>(TODAY_INDEX);
+  const { session } = useAuth();
+  // 과거 사이클은 오늘 요일과 무관하게 마지막 요일(일)을 기본으로 보여준다 —
+  // 실시간 조회는 지금까지처럼 오늘 요일을 기본 선택한다.
+  const [selectedDay, setSelectedDay] = useState<number>(isViewingCycle ? 6 : TODAY_INDEX);
 
   if (!status) return null;
 
-  const selected = status.days[selectedDay] || status.days[0];
-  const effectiveSelectedDay = status.days[selectedDay] ? selectedDay : 0;
+  const split = status.depositAgainSplit;
+  // 재납이 발생한 주는 요일별 카드를 재납 전(백업 탭)/후(현재 탭) 병합본으로
+  // 보여줘야 하므로, split이 있으면 days 배열 자체를 병합본으로 교체한다.
+  const days = split ? split.days : status.days;
+  const boundaryIndex = split ? STATUS_DAYS.indexOf(split.boundaryDay) : -1;
 
-  const periodAttendanceValue = parseFloat(status.periodAttendanceRate || "");
+  const selected = days[selectedDay] || days[0];
+  const effectiveSelectedDay = days[selectedDay] ? selectedDay : 0;
+  // 선택된 요일이 재납 전 구간(경계 요일 포함)에 속하면, 상단 요약 타일도
+  // 그 시점의 백업 탭 스냅샷 기준으로 통째로 바꿔 보여준다.
+  const viewingBeforeSplit = split !== null && split !== undefined && effectiveSelectedDay <= boundaryIndex;
+  const summarySource = viewingBeforeSplit && split ? split.before : status;
+
+  const periodAttendanceValue = parseFloat(summarySource.periodAttendanceRate || "");
   const periodAttendanceLow = Number.isNaN(periodAttendanceValue) ? false : periodAttendanceValue < 85;
 
-  const outputPen = status.weeklyOutputPen || 0;
-  const timePen = status.weeklyTimePen || 0;
+  // 백업 스냅샷에는 페널티 이력(다른 시트 참조)이 없어 항상 0/em-dash로 둔다 —
+  // 재납 자체가 페널티 누적으로 발동하는 것이라 "재납 전 페널티"라는 개념이
+  // 이 시점 요약과는 맞지 않기도 하다.
+  const outputPen = viewingBeforeSplit ? 0 : status.weeklyOutputPen || 0;
+  const timePen = viewingBeforeSplit ? 0 : status.weeklyTimePen || 0;
   const totalPen = outputPen + timePen;
   const totalPenClassName =
     totalPen >= 2 ? "text-destructive" : totalPen === 1 ? "text-amber-600 dark:text-amber-400" : undefined;
 
-  const depositRefundAmount = parseDepositRefundAmount(status.depositRefundEstimate);
-  const depositRefundClassName = depositRefundAmount >= 10000 ? "text-ok" : "text-destructive";
-
   const studyTimeShort =
-    timeToMinutesOrZero(status.weeklyStudyTime) < timeToMinutesOrZero(status.weeklyGoalTime);
+    timeToMinutesOrZero(summarySource.weeklyStudyTime) < timeToMinutesOrZero(summarySource.weeklyGoalTime);
 
   const summaryTiles: {
     key: string;
@@ -124,17 +110,18 @@ export function StatusView({
       key: "goalType",
       icon: Clock,
       label: "목표시간",
-      value: formatGoalType(status.goalType),
-      clickable: allowGoalSchedule ? "edit" : undefined,
+      value: formatGoalType(summarySource.goalType),
+      clickable: !viewingBeforeSplit && allowGoalSchedule ? "edit" : undefined,
     },
-    { key: "joinDate", icon: CalendarDays, label: "가입일자 (첫 참여일 기준)", value: status.joinDate || "-" },
+    { key: "joinDate", icon: CalendarDays, label: "가입일자 (첫 참여일 기준)", value: summarySource.joinDate || "-" },
     {
-      key: "depositRefund",
-      icon: PiggyBank,
-      label: "예치금 반환 예상액",
-      value: formatDepositRefund(status.depositRefundEstimate),
-      valueClassName: depositRefundClassName,
-      clickable: "view",
+      key: "totalFine",
+      icon: ShieldAlert,
+      label: "총 페널티",
+      value: viewingBeforeSplit ? "-" : formatTotalPenalty(outputPen, timePen),
+      wrap: true,
+      valueClassName: totalPenClassName,
+      clickable: viewingBeforeSplit ? undefined : "view",
     },
     {
       key: "merit",
@@ -143,44 +130,60 @@ export function StatusView({
       value: (
         <DividedValue
           items={[
-            `+${status.weeklyMerit || "0"}`,
-            status.weeklyMeritBreakdown?.isZero ? "제외" : status.weeklyMeritRank || "-",
+            <span
+              key="value"
+              className={parseFloat(summarySource.weeklyMerit || "0") !== 0 ? "text-ok" : undefined}
+            >
+              +{summarySource.weeklyMerit || "0"}점
+            </span>,
+            <span key="rank" className="text-foreground">
+              {viewingBeforeSplit
+                ? "-"
+                : status.weeklyMeritBreakdown?.isZero
+                  ? "제외"
+                  : formatRankInline(status.weeklyMeritRank || "-")}
+            </span>,
           ]}
         />
       ),
       wrap: true,
-      clickable: "view",
+      clickable: viewingBeforeSplit ? undefined : "view",
     },
     {
       key: "studyTime",
       icon: Timer,
       label: "주간 학습시간",
-      value: (
+      // 재납 전 스냅샷은 완결된 요일 수가 5일보다 적을 수 있는데, 목표시간
+      // 계산(weeklyGoalTime)은 항상 "5일 기준"으로만 나와 목표 대비 미달률이
+      // 실제보다 심하게 왜곡돼 보인다 — 목표 비교 없이 실적치만 보여준다.
+      value: viewingBeforeSplit ? (
+        formatHM(summarySource.weeklyStudyTime)
+      ) : (
         <DividedValue
           items={[
             <span key="value" className={studyTimeShort ? "text-destructive" : undefined}>
-              {formatHM(status.weeklyStudyTime)}
+              {formatHM(summarySource.weeklyStudyTime)}
             </span>,
-            <span key="goal" className="text-ok">
-              {formatHM(status.weeklyGoalTime)}
+            <span key="goal" className="text-muted-foreground">
+              {formatHM(summarySource.weeklyGoalTime)}
             </span>,
           ]}
         />
       ),
       wrap: true,
-      clickable: "view",
+      clickable: viewingBeforeSplit ? undefined : "view",
     },
     {
       key: "periodAttendance",
       icon: ListChecks,
       label: "주간 교시 참여율",
-      value: status.periodAttendanceBreakdown?.applicable ? (
+      value: summarySource.periodAttendanceBreakdown?.applicable ? (
         <DividedValue
           items={[
             <span key="value" className={periodAttendanceLow ? "text-destructive" : undefined}>
-              {status.periodAttendanceRate || "-"}
+              {summarySource.periodAttendanceRate || "-"}
             </span>,
-            <span key="goal" className="text-ok">
+            <span key="goal" className="text-muted-foreground">
               85%
             </span>,
           ]}
@@ -189,41 +192,13 @@ export function StatusView({
         "-"
       ),
       wrap: true,
-      clickable: "view",
-    },
-    {
-      key: "totalFine",
-      icon: ShieldAlert,
-      label: "총 페널티",
-      value:
-        totalPen >= 2 ? (
-          <span className="flex flex-col">
-            <span>{formatTotalPenalty(outputPen, timePen)}</span>
-            <span className="text-micro sm:text-micro-lg">* 예치금 재납 대상</span>
-          </span>
-        ) : (
-          formatTotalPenalty(outputPen, timePen)
-        ),
-      wrap: true,
-      valueClassName: totalPenClassName,
-      clickable: "view",
-    },
-    {
-      key: "leaveLeft",
-      icon: BedDouble,
-      label: "반휴권 잔여량",
-      value: (
-        <DividedValue
-          items={[`일반 ${status.normalLeaveLeft || "0"}회`, `사유 ${status.reasonLeaveLeft || "0"}회`]}
-        />
-      ),
-      wrap: true,
+      clickable: viewingBeforeSplit ? undefined : "view",
     },
   ];
 
   return (
     <div className="flex flex-col gap-5">
-      <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5">
+      <section className="relative grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5">
         {summaryTiles.map((tile) => {
           const tileEl = (
             <SummaryTile
@@ -236,6 +211,20 @@ export function StatusView({
               clickable={tile.clickable}
             />
           );
+          // 재납 이전 스냅샷 보기 중에는 순위/제보점수/페널티 이력처럼 다른
+          // 시트를 참조해야 하는 세부 다이얼로그를 열 근거 데이터가 없거나,
+          // 목표시간 대비 비교가 5일 기준으로 왜곡되는 값(학습시간/교시참여율)
+          // 이라 타일만 보여주고 클릭 동작은 비활성화한다.
+          if (
+            viewingBeforeSplit &&
+            (tile.key === "merit" ||
+              tile.key === "goalType" ||
+              tile.key === "totalFine" ||
+              tile.key === "studyTime" ||
+              tile.key === "periodAttendance")
+          ) {
+            return <div key={tile.key}>{tileEl}</div>;
+          }
           if (tile.key === "merit" && status.weeklyMeritBreakdown) {
             return (
               <MeritBreakdownDialog
@@ -256,36 +245,25 @@ export function StatusView({
               </GoalTypeScheduleDialog>
             );
           }
-          if (tile.key === "depositRefund" && status.depositRefundBreakdown) {
-            return (
-              <DepositRefundDialog
-                key={tile.key}
-                depositRefundEstimate={status.depositRefundEstimate}
-                breakdown={status.depositRefundBreakdown}
-              >
-                {tileEl}
-              </DepositRefundDialog>
-            );
-          }
           if (tile.key === "studyTime") {
             return (
               <StudyTimeDialog
                 key={tile.key}
-                weeklyStudyTime={formatHM(status.weeklyStudyTime)}
-                goalType={status.goalType}
-                periodGrid={status.periodGrid || []}
-                days={status.days}
+                weeklyStudyTime={formatHM(summarySource.weeklyStudyTime)}
+                goalType={summarySource.goalType}
+                periodGrid={summarySource.periodGrid || []}
+                days={days}
               >
                 {tileEl}
               </StudyTimeDialog>
             );
           }
-          if (tile.key === "periodAttendance" && status.periodAttendanceBreakdown) {
+          if (tile.key === "periodAttendance" && summarySource.periodAttendanceBreakdown) {
             return (
               <PeriodAttendanceDialog
                 key={tile.key}
-                periodAttendanceRate={status.periodAttendanceRate || "-"}
-                breakdown={status.periodAttendanceBreakdown}
+                periodAttendanceRate={summarySource.periodAttendanceRate || "-"}
+                breakdown={summarySource.periodAttendanceBreakdown}
               >
                 {tileEl}
               </PeriodAttendanceDialog>
@@ -298,6 +276,7 @@ export function StatusView({
                 outputPen={outputPen}
                 timePen={timePen}
                 breakdown={status.totalPenaltyBreakdown}
+                token={session?.token}
               >
                 {tileEl}
               </TotalPenaltyDialog>
@@ -305,70 +284,83 @@ export function StatusView({
           }
           return <div key={tile.key}>{tileEl}</div>;
         })}
-      </section>
 
-      <section className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-2.5">
-        <PeriodAlarmCard />
-
-        <InfoCard className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <DoorOpen className="size-4 shrink-0 text-primary sm:size-5" strokeWidth={ICON_STROKE.default} />
-            <div className="flex min-w-0 flex-col gap-0.5">
-              <ItemTitle>퇴실신청</ItemTitle>
-              <span className="truncate text-xs text-muted-foreground sm:text-sm">
-                운영진에게 문의해주세요
-              </span>
-            </div>
+        {viewingBeforeSplit && (
+          <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-background/35 backdrop-blur-[1px]">
+            <span className="rounded-full border bg-card px-3.5 py-1.5 text-xs font-semibold text-muted-foreground shadow-sm sm:text-sm">
+              예치금 재납 이전 데이터입니다.
+            </span>
           </div>
-        </InfoCard>
-      </section>
-
-      <section className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-2.5">
-        {quickLinks.map((link) => (
-          <a
-            key={link.key}
-            href={link.href}
-            target="_blank"
-            rel="noreferrer"
-            className="flex flex-col items-center gap-1.5 rounded-xl border bg-muted px-3 py-3 text-center shadow-xs transition-colors hover:bg-accent sm:py-3.5"
-          >
-            <link.icon className="size-4 shrink-0 text-primary sm:size-5" strokeWidth={ICON_STROKE.default} />
-            <span className="truncate text-xs font-semibold sm:text-sm">{link.label}</span>
-          </a>
-        ))}
+        )}
       </section>
 
       <section className="flex flex-col gap-2">
+        {split && (
+          <div className="grid grid-cols-7 gap-1.5 text-center text-micro-lg text-muted-foreground sm:gap-2 sm:text-xs">
+            <div style={{ gridColumn: `span ${boundaryIndex + 1} / span ${boundaryIndex + 1}` }}>
+              <div className="border-b pb-1">예치금 재납 전</div>
+            </div>
+            <div style={{ gridColumn: `span ${7 - boundaryIndex - 1} / span ${7 - boundaryIndex - 1}` }}>
+              <div className="border-b pb-1">예치금 재납 후</div>
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
-          {status.days.map((d, i) => {
+          {days.map((d, i) => {
             const isSelected = i === effectiveSelectedDay;
-            const isUnpaid = d.paymentStatus === "미납";
+            const isUnpaid =
+              d.paymentStatus === "미납" ||
+              (d.isDepositAgainDay && status.depositRefundBreakdown?.depositAgainStatus === "미납");
+            const isPaid =
+              !isUnpaid &&
+              (d.paymentStatus === "납부" ||
+                (d.isDepositAgainDay && status.depositRefundBreakdown?.depositAgainStatus === "납부"));
+            const isFuture = !isViewingCycle && i > TODAY_INDEX;
             return (
               <button
                 key={d.day}
                 type="button"
                 onClick={() => setSelectedDay(i)}
+                disabled={isFuture}
                 className={cn(
                   "relative flex flex-col items-center gap-1 rounded-full border py-2 text-xs font-semibold transition-all sm:py-2.5 sm:text-sm",
-                  isSelected
-                    ? isUnpaid
-                      ? "border-destructive bg-destructive text-card shadow-sm"
-                      : "border-primary bg-primary text-primary-foreground shadow-sm"
-                    : isUnpaid
-                      ? "border-destructive/60 bg-destructive/10 text-destructive hover:bg-destructive/15"
-                      : "border-border bg-card text-foreground hover:border-primary/50 hover:bg-muted"
+                  isFuture
+                    ? "cursor-not-allowed border-border bg-muted/50 text-muted-foreground/50"
+                    : isSelected
+                      ? isUnpaid
+                        ? "animate-unpaid-glow border-destructive bg-destructive text-card shadow-sm"
+                        : "border-primary bg-primary text-primary-foreground shadow-sm"
+                      : isUnpaid
+                        ? "animate-unpaid-glow border-destructive/60 bg-destructive/10 text-destructive hover:bg-destructive/15"
+                        : "border-border bg-card text-foreground hover:border-primary/50 hover:bg-muted"
                 )}
               >
-                {i === TODAY_INDEX && !isSelected && !isUnpaid && (
-                  <span className="absolute -top-1 size-1.25 rounded-full bg-primary sm:size-1.5" />
-                )}
-                {isUnpaid && (
-                  <span
+                {isUnpaid ? (
+                  <CircleDollarSign
                     className={cn(
-                      "absolute -top-1 size-1.25 rounded-full bg-destructive sm:size-1.5",
-                      isSelected && "bg-card"
+                      "absolute -top-1.5 size-3 animate-pulse rounded-full sm:-top-2 sm:size-3.5",
+                      isSelected ? "bg-destructive text-card" : "bg-card text-destructive"
                     )}
+                    strokeWidth={ICON_STROKE.default}
                   />
+                ) : isPaid ? (
+                  <CircleDollarSign
+                    className={cn(
+                      "absolute -top-1.5 size-3 rounded-full sm:-top-2 sm:size-3.5",
+                      isSelected ? "bg-ok text-card" : "bg-card text-ok"
+                    )}
+                    strokeWidth={ICON_STROKE.default}
+                  />
+                ) : (
+                  !isViewingCycle && i === TODAY_INDEX && (
+                    <CircleCheck
+                      className={cn(
+                        "absolute -top-1.5 size-3 rounded-full sm:-top-2 sm:size-3.5",
+                        isSelected ? "bg-primary text-card" : "bg-card text-primary"
+                      )}
+                      strokeWidth={ICON_STROKE.default}
+                    />
+                  )
                 )}
                 {d.day}
               </button>
@@ -379,13 +371,21 @@ export function StatusView({
         {selected && (
           <DayDetailCard
             day={selected}
-            isPast={effectiveSelectedDay < TODAY_INDEX}
+            isPast={isViewingCycle || effectiveSelectedDay < TODAY_INDEX}
+            depositRefundBreakdown={status.depositRefundBreakdown}
             footer={
               allowGoalSchedule ? (
-                <div className="grid grid-cols-2 gap-2">
-                  <LeaveApplyButton type="normal" day={selected.day} label="일반반휴" />
-                  <LeaveApplyButton type="reason" day={selected.day} label="사유반휴" />
-                </div>
+                <HalfDayLeaveDialog
+                  day={selected.day}
+                  usedToday={selected.normalLeaveUsed + selected.reasonLeaveUsed}
+                  reasonLeaveUsed={selected.reasonLeaveUsed}
+                  normalLeaveLeft={status.normalLeaveLeft}
+                  reasonLeaveLeft={status.reasonLeaveLeft}
+                  onNormalApplied={(delta) => onLeaveApplied?.(selected.day, "normal", delta)}
+                  onReasonLeaveApplied={(delta) => onLeaveApplied?.(selected.day, "reason", delta)}
+                  onReasonLeaveSubmitted={onReasonLeaveSubmitted}
+                  onOpen={onReasonLeaveSubmitted}
+                />
               ) : undefined
             }
           />

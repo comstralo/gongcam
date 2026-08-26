@@ -1,8 +1,12 @@
-import type { ReactNode } from "react";
-import { RotateCw, type LucideIcon } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { RotateCw, FileText, Image as ImageIcon, Search, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { InfoCard, SubRow } from "@/components/dashboard/shared";
+import { WORKER_BASE } from "@/lib/api/client";
 import { cn, ICON_STROKE } from "@/lib/utils";
+import type { PenaltySlotHistoryEntry } from "@/lib/api/types";
 
 // 관리자 탭 전반의 텍스트 위계를 명시적으로 나눈 프리미티브들.
 // 1. SectionHeader 제목  — text-sm/base, font-bold   (섹션의 최상위 텍스트)
@@ -63,6 +67,222 @@ export function SectionHeader({
         </Button>
       ) : (
         <span className="size-7 shrink-0" aria-hidden="true" />
+      )}
+    </div>
+  );
+}
+
+// 화각 제보로 봇이 캡처한 파일(스크린샷/영상)은 봇 로컬 디스크에만 있고
+// Worker가 Cloudflare Tunnel로 그때그때 프록시해서 가져온다. 목록/이력에는
+// 메타데이터만 담고, 실제 파일 바이트는 열람 시 별도로 fetch()해서 blob으로
+// 받는다. 이미지/영상 여부는 별도 필드로 저장하지 않고 응답 blob의 MIME
+// 타입으로 판정한다 — "송출 P 제보 확인"(대기 중 제보)와 "예치금 재납
+// 대상자"(이미 승인된 이력)가 동일하게 재사용한다.
+export function CapturePreview({
+  id,
+  token,
+  endpoint = "/admin/captures/file",
+}: {
+  id: string;
+  token: string;
+  // 화각 제보 캡처("/admin/captures/file")와 사유반휴 증빙("/admin/leave-proof/file")이
+  // 동일한 fetch-blob 패턴을 공유하되 조회 경로만 다르다.
+  endpoint?: string;
+}) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [isVideo, setIsVideo] = useState(false);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    let cancelled = false;
+
+    fetch(`${WORKER_BASE}${endpoint}?id=${encodeURIComponent(id)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("파일을 불러오지 못했습니다.");
+        return res.blob();
+      })
+      .then((blob) => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setIsVideo(blob.type.startsWith("video/"));
+        setBlobUrl(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setError(true);
+      });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [id, token, endpoint]);
+
+  // 로딩·에러 상태에서도 실제 미디어와 같은 비율의 박스를 유지해, 미리보기가
+  // 나타나기 전후로 카드 높이가 출렁이지 않게 한다.
+  if (error) {
+    return (
+      <div className="flex aspect-video w-full items-center justify-center rounded-lg border border-dashed bg-muted">
+        <p className="text-xs text-destructive sm:text-sm">미리보기를 불러오지 못했습니다.</p>
+      </div>
+    );
+  }
+  if (!blobUrl) {
+    return (
+      <div className="flex aspect-video w-full items-center justify-center rounded-lg border border-dashed bg-muted">
+        <p className="text-xs text-muted-foreground sm:text-sm">미리보기 불러오는 중...</p>
+      </div>
+    );
+  }
+  if (isVideo) {
+    return (
+      <video
+        src={blobUrl}
+        controls
+        className="aspect-video w-full rounded-lg bg-black object-contain"
+      />
+    );
+  }
+  return (
+    <Dialog>
+      <DialogTrigger className="block w-full overflow-hidden rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+        <img
+          src={blobUrl}
+          alt="제보 캡처"
+          className="aspect-video w-full cursor-zoom-in bg-black object-contain"
+        />
+      </DialogTrigger>
+      <DialogContent className="max-w-3xl bg-black p-2 [&>button]:rounded-full [&>button]:bg-black/60 [&>button]:text-white [&>button]:opacity-100">
+        <img src={blobUrl} alt="제보 캡처 확대" className="w-full rounded-lg object-contain" />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// "송출 P 1차"/"주간 P 1차" 같은 기본 라벨의 "N차"를 괄호로 묶는다
+// ("페널티 1차" → "페널티 (1차)") — 조치명과 차수를 시각적으로 구분한다.
+export function parenthesizeOccurrence(label: string): string {
+  return label.replace(/\s*(\d+차)$/, " ($1)");
+}
+
+// 슬롯 주석에 남긴 발생일시 문자열("2026. 8. 25. 오후 3:41:46 · 사유")에서
+// 날짜만 잘라 "8월 25일" 형태로 보여준다. 파싱에 실패하면 원본을 그대로 둔다.
+export function dateOnlyLabel(when: string): string {
+  const m = /^(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\./.exec(when);
+  if (!m) return when || "-";
+  return `${parseInt(m[2], 10)}월 ${parseInt(m[3], 10)}일`;
+}
+
+// 페널티 슬롯 이력 한 줄을 눌렀을 때 뜨는 모달 — 대시보드 타일(예치금
+// 반환·총 페널티 등)을 누르면 뜨는 모달과 같은 톤으로 맞춘다: DialogTitle에
+// Search 아이콘 + "· 세부사항", 본문은 InfoCard 박스 안에 아이콘+제목 헤더.
+// 슬롯 주석에는 발신/회신 시각·차감분이 남지 않으므로 "시간 차감"은 넣지
+// 않는다. 제보자는 비밀이라 표시하지 않는다. captureId가 있는 이력(캡처ID
+// 기록 기능 이후 생성된 것)만 "스크린샷 · 영상" 섹션을 보여준다 — 이전
+// 이력은 캡처와의 연결이 없다. 관리자 "예치금 재납 대상자"와 개인 대시보드
+// "총 페널티" 모달이 동일하게 재사용한다.
+export function PenaltyHistoryDetailDialog({
+  label,
+  entry,
+  token,
+  children,
+}: {
+  label: string;
+  entry: PenaltySlotHistoryEntry;
+  token: string | undefined;
+  children: ReactNode;
+}) {
+  return (
+    <Dialog>
+      <DialogTrigger className="rounded text-micro-lg tabular-nums text-muted-foreground underline decoration-dotted underline-offset-2 outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 sm:text-xs">
+        {children}
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-1.5">
+            <Search className="size-4 text-primary sm:size-5" />
+            {label} · 세부사항
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-3">
+          {entry.captureId && (
+            <InfoCard className="flex flex-col gap-1.5">
+              <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+                <ImageIcon className="size-3.5 shrink-0 text-primary sm:size-4" />
+                스크린샷 · 영상
+              </span>
+              {token ? (
+                <CapturePreview id={entry.captureId} token={token} />
+              ) : (
+                <div className="flex aspect-video w-full items-center justify-center rounded-lg border border-dashed bg-muted">
+                  <p className="text-xs text-muted-foreground sm:text-sm">미리보기를 불러오지 못했습니다.</p>
+                </div>
+              )}
+            </InfoCard>
+          )}
+
+          <InfoCard className="flex flex-col gap-1.5">
+            <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+              <FileText className="size-3.5 shrink-0 text-primary sm:size-4" />
+              제보 정보
+            </span>
+            <SubRow label="사유" value={entry.reason || "-"} />
+            <SubRow label="발생일시" value={entry.when || "-"} />
+          </InfoCard>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// "송출 P 원인"/"주간 P 원인" 같은 슬롯 이력 섹션 — 채워진 슬롯마다 한 줄로
+// 나열한다. 우측에는 날짜만 보여주고, 누르면 상세(제보 정보) 모달이 뜬다.
+// slotLabels가 있으면(송출 P 1~6차 → 구두경고/벌점/페널티) 그 순서대로 쓰고,
+// 없으면(주간 P) 기본 라벨의 "N차"만 괄호로 묶어 그대로 쓴다. 라벨이
+// "페널티" 또는 "주간 P"로 시작하면(둘 다 실제 페널티로 이어지는 슬롯)
+// 빨간색으로 강조한다.
+export function PenaltyHistorySection({
+  icon: Icon,
+  title,
+  history,
+  slotLabels,
+  token,
+}: {
+  icon: LucideIcon;
+  title: string;
+  history: PenaltySlotHistoryEntry[];
+  slotLabels?: string[];
+  token: string | undefined;
+}) {
+  const entries = history || [];
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+        <Icon className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
+        {title}
+      </span>
+      {entries.length === 0 ? (
+        <SubRow label="해당 없음" value="-" />
+      ) : (
+        entries.map((entry, i) => {
+          const label = slotLabels?.[i] ?? parenthesizeOccurrence(entry.label);
+          const isPenalty = label.startsWith("페널티") || label.startsWith("주간 P");
+          return (
+            <SubRow
+              key={entry.label}
+              label={label}
+              labelClassName={isPenalty ? "font-semibold text-destructive" : undefined}
+              value={
+                <PenaltyHistoryDetailDialog label={label} entry={entry} token={token}>
+                  {dateOnlyLabel(entry.when)}
+                </PenaltyHistoryDetailDialog>
+              }
+            />
+          );
+        })
       )}
     </div>
   );

@@ -229,11 +229,12 @@ function PaidFineList({
                               {detail === "error" && (
                                 <p className="py-4 text-center text-sm text-destructive">정보를 불러오지 못했습니다.</p>
                               )}
-                              {day && (
+                              {day && detail && detail !== "loading" && detail !== "error" && (
                                 <DayDetailCard
                                   day={day}
                                   dayLabel={`${f.day}요일`}
                                   isPast={STATUS_DAYS.indexOf(f.day) < TODAY_INDEX}
+                                  depositRefundBreakdown={detail.depositRefundBreakdown}
                                 />
                               )}
                             </>
@@ -417,11 +418,12 @@ function FineList({
                               {detail === "error" && (
                                 <p className="py-4 text-center text-sm text-destructive">정보를 불러오지 못했습니다.</p>
                               )}
-                              {day && (
+                              {day && detail && detail !== "loading" && detail !== "error" && (
                                 <DayDetailCard
                                   day={day}
                                   dayLabel={`${f.day}요일`}
                                   isPast={STATUS_DAYS.indexOf(f.day) < TODAY_INDEX}
+                                  depositRefundBreakdown={detail.depositRefundBreakdown}
                                 />
                               )}
                             </>
@@ -601,11 +603,12 @@ function ExemptFineList({
                               {detail === "error" && (
                                 <p className="py-4 text-center text-sm text-destructive">정보를 불러오지 못했습니다.</p>
                               )}
-                              {day && (
+                              {day && detail && detail !== "loading" && detail !== "error" && (
                                 <DayDetailCard
                                   day={day}
                                   dayLabel={`${f.day}요일`}
                                   isPast={STATUS_DAYS.indexOf(f.day) < TODAY_INDEX}
+                                  depositRefundBreakdown={detail.depositRefundBreakdown}
                                 />
                               )}
                             </>

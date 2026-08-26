@@ -1,5 +1,5 @@
 import { HashRouter, Routes, Route } from "react-router-dom";
-import { LayoutDashboard, ScanLine, Settings, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, ScanLine, Link2, Settings, ShieldCheck } from "lucide-react";
 import { AuthProvider } from "@/lib/auth/AuthContext";
 import { PeriodAlarmProvider } from "@/lib/periodAlarm/PeriodAlarmContext";
 import { ProtectedRoute } from "@/lib/auth/ProtectedRoute";
@@ -9,6 +9,7 @@ import { LoginPage } from "@/pages/LoginPage";
 import { CheckerPage } from "@/pages/CheckerPage";
 import { ReportPage } from "@/pages/ReportPage";
 import { DashboardPage } from "@/pages/DashboardPage";
+import { LinksPage } from "@/pages/LinksPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { AdminPage } from "@/pages/AdminPage";
 import { useVersionCheck } from "@/hooks/useVersionCheck";
@@ -46,6 +47,16 @@ export default function App() {
                 <ProtectedRoute>
                   <AppShell title="화각 제보" titleIcon={ScanLine}>
                     <ReportPage />
+                  </AppShell>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/links"
+              element={
+                <ProtectedRoute>
+                  <AppShell title="링크" titleIcon={Link2}>
+                    <LinksPage />
                   </AppShell>
                 </ProtectedRoute>
               }

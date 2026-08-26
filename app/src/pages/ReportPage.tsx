@@ -1,16 +1,17 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
+import { SectionHeader, SectionCard } from "@/components/admin/shared";
 import { useRosterPolling } from "@/hooks/useRosterPolling";
 import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
-import { RefreshCw } from "lucide-react";
-import type { ReportStatusResponse } from "@/lib/api/types";
-
-const REPORT_STATUS_POLL_MS = 15000;
+import { Bell, Flag, MessageSquareWarning, User } from "lucide-react";
+import { SimpleNoticeSection } from "@/components/report/SimpleNoticeSection";
+import { ActiveReportsSection } from "@/components/report/ActiveReportsSection";
 
 const REASON_OPTIONS = [
   { value: "모호한 송출", label: "모호한 송출" },
@@ -21,29 +22,23 @@ type ReportMode = "screenshot" | "video";
 
 export function ReportPage() {
   const { call } = useApi();
-  const { members, hint, refresh } = useRosterPolling();
+  const { members, stale, refresh } = useRosterPolling();
   const [nickname, setNickname] = useState("");
   const [reason, setReason] = useState("");
   const [submittingMode, setSubmittingMode] = useState<ReportMode | null>(null);
   const [message, setMessage] = useState<{ text: string; type: "error" | "ok" } | null>(null);
-
-  // 방금 제출한 제보의 캡처 진행 상황을 확인하기 위한 폴링 대상.
-  // 새 제보를 제출하면 이 값이 바뀌면서 이전 폴링을 정리하고 새로 시작한다.
-  const [trackedNickname, setTrackedNickname] = useState<string | null>(null);
-  const [trackedMode, setTrackedMode] = useState<ReportMode | null>(null);
-  const [reportStatus, setReportStatus] = useState<ReportStatusResponse | null>(null);
-  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [cooldownRefreshSignal, setCooldownRefreshSignal] = useState(0);
 
   const noMembers = members.length === 0;
   const submitting = submittingMode !== null;
 
   async function handleSubmit(mode: ReportMode) {
     if (!nickname) {
-      setMessage({ text: "대상 참여자를 선택해주세요.", type: "error" });
+      setMessage({ text: "제보 대상자를 선택해주세요.", type: "error" });
       return;
     }
     if (!reason) {
-      setMessage({ text: "상황 설명을 선택해주세요.", type: "error" });
+      setMessage({ text: "제보 원인을 선택해주세요.", type: "error" });
       return;
     }
     setSubmittingMode(mode);
@@ -61,11 +56,9 @@ export function ReportPage() {
             : "제보가 접수되었습니다. 잠시 후 확인됩니다.",
         type: "ok",
       });
-      setTrackedNickname(nickname);
-      setTrackedMode(mode);
-      setReportStatus(null);
       setNickname("");
       setReason("");
+      setCooldownRefreshSignal((n) => n + 1);
     } catch (err) {
       const text = err instanceof ApiError ? err.message : "네트워크 오류입니다.";
       setMessage({ text, type: "error" });
@@ -74,129 +67,115 @@ export function ReportPage() {
     }
   }
 
-  useEffect(() => {
-    if (pollTimerRef.current) {
-      clearInterval(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
-    if (!trackedNickname) return;
-
-    function loadStatus() {
-      call<ReportStatusResponse>(`/report-status?nickname=${encodeURIComponent(trackedNickname!)}`)
-        .then((data) => setReportStatus(data))
-        .catch(() => {});
-    }
-
-    loadStatus();
-    pollTimerRef.current = setInterval(loadStatus, REPORT_STATUS_POLL_MS);
-    return () => {
-      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trackedNickname]);
-
   return (
-    <Card className="w-full page-content">
-      <CardContent className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1.5">
-          <Label className="text-sm font-semibold sm:text-base">대상 참여자</Label>
-          <span className="text-xs text-muted-foreground sm:text-sm">{hint}</span>
-          <div className="flex items-center gap-2">
-            <Select value={nickname} onValueChange={(v) => setNickname(v ?? "")} disabled={noMembers}>
-              <SelectTrigger className="flex-1 data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base">
-                <SelectValue
-                  placeholder={noMembers ? "현재 접속 중인 참여자가 없습니다" : "참여자를 선택하세요"}
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {members.map((name) => (
-                  <SelectItem key={name} value={name} className="sm:text-base">
-                    {name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="size-11 shrink-0 sm:size-12"
-              onClick={refresh}
-              aria-label="명단 새로고침"
-            >
-              <RefreshCw className="size-4 sm:size-5" />
-            </Button>
-          </div>
-        </div>
+    <div className="flex w-full page-content flex-col gap-4">
+      <Card className="w-full">
+        <CardContent>
+          <Collapsible defaultOpen className="flex flex-col gap-4">
+            <SectionHeader icon={Flag} title="송출 P 제보" onRefresh={refresh} />
+            <div className="h-px w-full bg-border" />
+            <CollapsiblePanel className="flex flex-col gap-4">
+              <SectionCard className="flex flex-col gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <Label className="flex items-center gap-1.25 text-xs font-semibold text-muted-foreground sm:text-sm">
+                    <User className="size-3 shrink-0 sm:size-3.5" />
+                    제보 대상자
+                  </Label>
+                  <Select
+                    value={nickname}
+                    onValueChange={(v) => setNickname(v ?? "")}
+                    disabled={stale || noMembers}
+                    onOpenChange={(open) => {
+                      if (open) refresh();
+                    }}
+                  >
+                    <SelectTrigger className="w-full data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base">
+                      <SelectValue
+                        placeholder={
+                          stale
+                            ? "도움봇이 가동중이지 않습니다."
+                            : noMembers
+                              ? "현재 접속 중인 참여자가 없습니다"
+                              : "참여자를 선택하세요"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {members.map((name) => (
+                        <SelectItem key={name} value={name} className="sm:text-base">
+                          {name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="reason" className="text-sm font-semibold sm:text-base">
-            상황 설명
-          </Label>
-          <span className="text-xs text-muted-foreground sm:text-sm">해당하는 상황을 선택해주세요</span>
-          <Select value={reason} onValueChange={(v) => setReason(v ?? "")}>
-            <SelectTrigger id="reason" className="data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base">
-              <SelectValue placeholder="상황을 선택하세요" />
-            </SelectTrigger>
-            <SelectContent>
-              {REASON_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value} className="sm:text-base">
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="reason" className="flex items-center gap-1.25 text-xs font-semibold text-muted-foreground sm:text-sm">
+                    <MessageSquareWarning className="size-3 shrink-0 sm:size-3.5" />
+                    제보 원인
+                  </Label>
+                  <Select value={reason} onValueChange={(v) => setReason(v ?? "")} disabled={stale}>
+                    <SelectTrigger
+                      id="reason"
+                      className="w-full data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base"
+                    >
+                      <SelectValue placeholder="원인을 선택해 주세요." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {REASON_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value} className="sm:text-base">
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          <Button
-            className="w-full sm:h-12 sm:text-base"
-            disabled={submitting}
-            onClick={() => handleSubmit("screenshot")}
-          >
-            스크린샷 제보
-          </Button>
-          <Button
-            className="w-full sm:h-12 sm:text-base"
-            variant="secondary"
-            disabled={submitting}
-            onClick={() => handleSubmit("video")}
-          >
-            영상 제보
-          </Button>
-        </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    className="w-full border-primary hover:bg-primary/10 sm:h-12 sm:text-base"
+                    variant="outline"
+                    disabled={submitting || stale}
+                    onClick={() => handleSubmit("screenshot")}
+                  >
+                    스크린샷 제보
+                  </Button>
+                  <Button
+                    className="w-full border-primary hover:bg-primary/10 sm:h-12 sm:text-base"
+                    variant="outline"
+                    disabled={submitting || stale}
+                    onClick={() => handleSubmit("video")}
+                  >
+                    영상 제보
+                  </Button>
+                </div>
+              </SectionCard>
 
-        {message && (
-          <Alert variant={message.type === "error" ? "destructive" : "default"}>
-            <AlertDescription>{message.text}</AlertDescription>
-          </Alert>
-        )}
+              <ActiveReportsSection refreshSignal={cooldownRefreshSignal} />
 
-        {trackedNickname && (
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <Label className="text-sm font-semibold sm:text-base">
-                [{trackedNickname}] {trackedMode === "video" ? "영상" : "스크린샷"} 처리 현황
-              </Label>
-              <span className="inline-flex items-center gap-1.5">
-                <span
-                  className={`size-2.5 shrink-0 rounded-full ${
-                    reportStatus?.inProgress ? "bg-ok" : "bg-muted-foreground/40"
-                  }`}
-                />
-                <span className="text-xs text-muted-foreground sm:text-sm">
-                  {reportStatus?.inProgress ? "캡처 진행 중" : "대기 중 또는 완료"}
-                </span>
-              </span>
-            </div>
-            {reportStatus?.recentLogs && reportStatus.recentLogs.length > 0 && (
-              <pre className="max-h-48 overflow-y-auto rounded-lg border border-border bg-muted p-2.5 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
-                {reportStatus.recentLogs.join("\n")}
-              </pre>
-            )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+              {message && (
+                <Alert variant={message.type === "error" ? "destructive" : "default"}>
+                  <AlertDescription>{message.text}</AlertDescription>
+                </Alert>
+              )}
+
+            </CollapsiblePanel>
+          </Collapsible>
+        </CardContent>
+      </Card>
+
+      <Card className="w-full">
+        <CardContent>
+          <Collapsible defaultOpen className="flex flex-col gap-4">
+            <SectionHeader icon={Bell} title="간단한 알림" onRefresh={refresh} />
+            <div className="h-px w-full bg-border" />
+            <CollapsiblePanel className="flex flex-col gap-4">
+              <SimpleNoticeSection members={members} noMembers={noMembers} stale={stale} />
+            </CollapsiblePanel>
+          </Collapsible>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

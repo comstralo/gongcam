@@ -13,6 +13,12 @@ import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 import type { ExitCandidate, ExitCheckItem, ExitKind, ExitPreviewResponse, ExitConfirmResponse } from "@/lib/api/types";
 
+// MemberRosterList(전체 명단)와 PenaltyCandidateList(예치금 재납 대상자) 둘
+// 다 이 다이얼로그를 쓰지만, 서로 다른 타입(MemberRosterEntry/ExitCandidate)의
+// 항목을 넘긴다. 이 다이얼로그가 실제로 쓰는 필드만 최소 타입으로 요구해야
+// 두 목록 타입이 각자 필요한 필드만 갖고도 호환된다.
+type ExitProcessCandidate = Pick<ExitCandidate, "number" | "name" | "suggestedKind" | "allChecks">;
+
 const KIND_LABEL: Record<ExitKind, string> = {
   forced: "강제 퇴실자",
   admin_forced: "직권 퇴실자",
@@ -53,8 +59,11 @@ export function ExitProcessDialog({
   lockKind,
   children,
 }: {
-  candidate: ExitCandidate;
-  onConfirmed?: () => void;
+  candidate: ExitProcessCandidate;
+  // 실제로 확정된 유형(forced/admin_forced/settle/deposit_again)을 함께
+  // 넘긴다 — 호출부(PenaltyCandidateList 등)가 "이 회원이 강퇴로 처리됐는지
+  // 재납으로 처리됐는지"를 화면 상태로 구분해 보여줘야 하기 때문이다.
+  onConfirmed?: (kind: ExitKind) => void;
   triggerClassName?: string;
   // 페널티 2 이상은 반환율이 항상 0%로 고정되는 정산 퇴실자(settle) 단일
   // 경로라, PENALTY 탭에서는 유형 선택 UI 자체를 숨기고 이 값으로 고정한다.
@@ -104,7 +113,7 @@ export function ExitProcessDialog({
         body: { number: candidate.number, kind, forcedReason: kind === "admin_forced" ? forcedReason : undefined },
       });
       setConfirmed(true);
-      onConfirmed?.();
+      onConfirmed?.(kind);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "확정 처리에 실패했습니다.");
     } finally {

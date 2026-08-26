@@ -21,9 +21,81 @@ export type StatusDay = {
   logStudyTime: string;
   bonusStudyTime: string;
   dailyGoalTime: string;
+  // 일간/오전 목표시간 벌금이 부과된 날의 미달 시간(HH:MM). 벌금이 0이면 "".
+  dailyShortfallTime: string;
+  morningShortfallTime: string;
+  // 예치금 재납 2회 달성 시점의 요일과 이 요일이 같을 때만 true. 예치금
+  // 재납 상태(depositRefundBreakdown)는 요일별 기록이 아니라 개인 탭 상단의
+  // 주간 스냅샷 하나뿐이라, 이 값으로 "발생일" 카드에만 노출한다.
+  isDepositAgainDay: boolean;
   paymentStatus: string;
   normalLeaveUsed: number;
   reasonLeaveUsed: number;
+  // 관리자 승인 대기 중인 사유반휴 신청이 이 요일에 있는지 — 승인 전까지는
+  // reasonLeaveUsed에 반영되지 않는다.
+  reasonLeavePending: boolean;
+};
+
+export type ReasonLeaveProofStatus = {
+  pending: boolean;
+  rejected: { reason: string } | null;
+};
+
+export type SetReasonLeaveProofRequest = {
+  day: string;
+  reason: string;
+  imageBase64: string;
+  imageExt: "jpg" | "png";
+  // 같은 증빙으로 이 요일에 한 번에 신청할 장수(1 또는 2). 미지정 시 1.
+  count?: 1 | 2;
+};
+
+export type SetReasonLeaveProofResponse = {
+  ok: true;
+  id: string;
+  // 봇이 꺼져 있어 KV 대기열에 임시 보관됐다는 표시. 학생 화면에는 봇에 이미
+  // 전달된 경우와 동일하게 "관리자 확인 중"으로 보여준다.
+  queued?: boolean;
+};
+
+export type CancelReasonLeaveProofResponse = {
+  ok: true;
+};
+
+export type LeaveProofReviewItem = {
+  id: string;
+  memberNumber: string;
+  memberName: string;
+  day: string;
+  reason: string;
+  requesterEmail: string;
+  ts: number;
+  reviewStatus: "pending" | "approved" | "rejected";
+  rejectReason: string | null;
+  // 승인 시 이 증빙으로 반영할 장수(1 또는 2). 이 필드가 생기기 전 신청은
+  // undefined일 수 있으며, 그 경우 1로 취급한다.
+  count?: 1 | 2;
+  // 봇이 꺼져 있어 아직 봇 manifest가 아니라 Worker KV 대기열에만 있는
+  // 신청인지 — true면 관리자 승인/반려가 봇 없이 즉시 처리된다.
+  queued?: boolean;
+};
+
+export type LeaveProofListResponse = {
+  items: LeaveProofReviewItem[];
+};
+
+export type LeaveProofDecideRequest = {
+  id: string;
+  decision: "approved" | "rejected";
+  memberNumber: string;
+  day: string;
+  rejectReason?: string;
+  count?: 1 | 2;
+};
+
+export type LeaveProofDecideResponse = {
+  ok: boolean;
+  botSyncFailed?: boolean;
 };
 
 export type MeritZeroCondition = {
@@ -70,8 +142,33 @@ export type PeriodAttendanceBreakdown = {
 };
 
 export type TotalPenaltyBreakdown = {
-  outputPenReasons: string[];
-  timePenReasons: string[];
+  outputPenHistory: PenaltySlotHistoryEntry[];
+  timePenHistory: PenaltySlotHistoryEntry[];
+};
+
+// 재납 확정 직전 백업 탭에서 복원한 "재납 이전" 요약 스냅샷. 순위/제보점수
+// 등 다른 시트를 참조해야 하는 값은 스냅샷 시점 그대로 복원할 수 없어 포함되지
+// 않는다.
+export type DepositAgainBeforeSnapshot = {
+  goalType: string;
+  joinDate: string;
+  weeklyMerit: string;
+  weeklyGoalTime: string;
+  weeklyStudyTime: string;
+  weeklyTotalFine: string;
+  periodAttendanceRate: string;
+  periodAttendanceBreakdown: PeriodAttendanceBreakdown;
+  periodGrid: PeriodGridDay[];
+  weekTotalConfirmed: number;
+};
+
+export type DepositAgainSplit = {
+  // 재납 전 구간의 마지막 요일("월"~"일"). 이 요일까지(포함)는 백업 탭 값을,
+  // 그 뒤는 현재 탭 값을 쓴다.
+  boundaryDay: string;
+  before: DepositAgainBeforeSnapshot;
+  // days와 동일한 형태지만, 요일별로 재납 전/후 값이 이미 병합되어 있다.
+  days: StatusDay[];
 };
 
 export type StatusResponse = {
@@ -85,6 +182,9 @@ export type StatusResponse = {
   weekTotalConfirmed: number;
   depositRefundEstimate: string;
   depositRefundBreakdown: DepositRefundBreakdown;
+  // 본인이 대시보드에서 "퇴실 신청"을 접수해둔 상태인지.
+  exitRequested: boolean;
+  exitRequestDate: string | null;
   periodAttendanceRate: string;
   periodAttendanceBreakdown: PeriodAttendanceBreakdown;
   periodGrid: PeriodGridDay[];
@@ -95,6 +195,10 @@ export type StatusResponse = {
   weeklyTimePen: number;
   totalPenaltyBreakdown: TotalPenaltyBreakdown;
   days: StatusDay[];
+  // 이번 주 안에 예치금 재납이 발생했을 때만 존재. 없으면(대부분의 경우)
+  // undefined — 이 주는 재납이 없었거나 분리해서 보여줄 "재납 전" 구간이
+  // 없다는 뜻이다(예: 월요일 시작 직후 재납).
+  depositAgainSplit?: DepositAgainSplit | null;
 };
 
 export type PeriodGridPeriod = {
@@ -109,25 +213,49 @@ export type PeriodGridDay = {
 };
 
 export type RosterMember = {
+  number: string;
   name: string;
   timer: string;
+  merit: string;
   rank: string;
   status: string;
 };
 
+export type SettlementItem = {
+  number: string;
+  name: string;
+  rank: number;
+  // 총 모금액을 정산 대상 인원 수로 1/n 균등 분배한 금액, 원 단위.
+  amount: number;
+};
+
 export type RosterStatusResponse = {
   members: RosterMember[];
+  // 집계 시트 D20~D24, 원 단위 숫자.
+  collectMoney: number;
+  fineCarry: number;
+  fineThisWeek: number;
+  fineOuter: number;
+  // 이번 주간 총 모금액에 포함되지 않았고(스터디장 개인 페널티 없음) 관리자가
+  // 아니면 백엔드가 이 필드 자체를 응답에서 제외한다.
+  depositOuter?: number;
+  // 이번 주 1~5등에게 분배될 금액. 스터디장 본인이거나 일요일 14교시
+  // 종료(23:30 KST) 이후가 아니면 백엔드가 이 필드 자체를 제외한다.
+  settlement?: SettlementItem[];
 };
 
-export type SnapshotListResponse = {
-  weeks: string[];
-};
-
-export type SnapshotDetailResponse = {
+export type CycleWeek = {
+  // 이 주차 백업 파일의 Google Drive fileId. /status, /roster-status에
+  // ?cycle=<fileId>로 넘기면 그 주차 기준 데이터를 조회한다.
+  fileId: string;
   weekOf: string;
   weekTo: string;
-  roster: RosterStatusResponse;
-  personal: StatusResponse | null;
+};
+
+export type CycleListResponse = {
+  // 현재 진행 중인 사이클(최대 3주) 중 이미 백업된 주차만 최신순으로 담는다.
+  // "현재"(실시간) 옵션은 이 목록에 없다 — 프론트가 cycle 파라미터 생략으로 표현한다.
+  weeks: CycleWeek[];
 };
 
 export type AdminMember = {
@@ -147,6 +275,26 @@ export type PushSendTestResult = {
 
 export type PushSendTestResponse = {
   results: PushSendTestResult[];
+};
+
+export type PushSendToMemberRequest = {
+  nickname: string;
+  message: string;
+};
+
+export type PushSendToMemberResponse = {
+  ok: true;
+};
+
+export type RecentNoticeItem = {
+  nickname: string;
+  message: string;
+  senderName: string;
+  ts: number;
+};
+
+export type RecentNoticesResponse = {
+  items: RecentNoticeItem[];
 };
 
 export type AdminOpenSlotsResponse = {
@@ -221,28 +369,6 @@ export type SetFineStatusResponse = {
   status: FineStatus;
 };
 
-export type DepositStatus = "미납" | "납부";
-
-export type UnpaidDeposit = {
-  number: string;
-  name: string;
-};
-
-export type AdminDepositsUnpaidResponse = {
-  unpaid: UnpaidDeposit[];
-};
-
-export type SetDepositStatusRequest = {
-  number: string;
-  status: DepositStatus;
-};
-
-export type SetDepositStatusResponse = {
-  ok: true;
-  number: string;
-  status: DepositStatus;
-};
-
 export type ExitKind = "forced" | "admin_forced" | "settle" | "deposit_again";
 
 export type ExitReasonCode = {
@@ -255,6 +381,16 @@ export type ExitReasonCode = {
 // 것만 강조 표시할 수 있게 한다.
 export type ExitCheckItem = ExitReasonCode & { met: boolean };
 
+export type PenaltySlotHistoryEntry = {
+  label: string;
+  cycle: number;
+  when: string;
+  reason: string;
+  // 이 이력이 기록될 때 함께 남긴 원본 제보 캡처 ID. /admin/captures/file로
+  // 스크린샷·영상을 다시 불러오는 데 쓴다. 이 필드가 생기기 전 이력은 null.
+  captureId: string | null;
+};
+
 export type ExitCandidate = {
   number: string;
   name: string;
@@ -262,6 +398,13 @@ export type ExitCandidate = {
   reasons: string[];
   reasonCodes?: ExitReasonCode[];
   allChecks?: ExitCheckItem[];
+  // 채워진 송출P/주간P 슬롯 주석 중 가장 최근 날짜의 요일("월"~"일"). 주석이
+  // 없으면 null — 이 경우 "요일 미확인" 그룹으로 묶인다.
+  occurredDay: string | null;
+  // 개인별 상세 카드의 "송출 P 적립 기록"/"주간 P 적립 기록" 섹션에 그대로
+  // 뿌려지는 슬롯별 이력(차수·발생일시·사유).
+  outputPenHistory: PenaltySlotHistoryEntry[];
+  timePenHistory: PenaltySlotHistoryEntry[];
 };
 
 export type AdminExitCandidatesResponse = {
@@ -277,6 +420,10 @@ export type MemberRosterEntry = {
   reasons: string[];
   reasonCodes?: ExitReasonCode[];
   allChecks?: ExitCheckItem[];
+  // 회원 본인이 대시보드에서 "퇴실 신청"을 접수했는지 — 실제 시트 반영과는
+  // 무관한 예약 표시일 뿐이며, 관리자가 퇴실을 확정하면 자동으로 꺼진다.
+  exitRequested: boolean;
+  exitRequestDate: string | null;
 };
 
 export type AdminMembersRosterResponse = {
@@ -320,12 +467,17 @@ export type SetGoalScheduleResponse = {
 
 export type LeaveApplyResponse = {
   applied: boolean;
+  // 이 요일에 이미 신청된 개수(일반반휴는 0~2, 사유반휴는 0~1).
+  count: number;
+  // count와 무관하게 시트에 남은 전체 잔여량 — 이 요일에서 더 늘릴 수
+  // 있는 최대치는 count + left(단, 유형별 상한 이내)다.
   left: number;
 };
 
 export type SetLeaveApplyResponse = {
   ok: true;
   applied: boolean;
+  count: number;
 };
 
 export type BotStatusResponse = {
@@ -347,6 +499,16 @@ export type ReportStatusResponse = {
   recentLogs: string[];
 };
 
+export type ActiveCooldownItem = {
+  nickname: string;
+  // 이 쿨다운이 풀리는 시각(ms epoch) — 20분 제보 쿨다운 종료 시점.
+  expiresAt: number;
+};
+
+export type ReportCooldownsResponse = {
+  items: ActiveCooldownItem[];
+};
+
 export type CaptureReviewItem = {
   id: string;
   nickname: string;
@@ -355,6 +517,11 @@ export type CaptureReviewItem = {
   reporterEmail: string;
   ts: number;
   reviewStatus: "pending" | "approved" | "rejected";
+  // 승인 시 몇 차 슬롯(1~6)에 기록될지 미리 계산된 값. 회원을 찾지 못했거나
+  // 슬롯이 모두 찼으면 null.
+  nextOccurrence: number | null;
+  // 제보자 이메일로 매칭한 이름. 등록 회원이 아니면 null.
+  reporterName: string | null;
 };
 
 export type CapturesListResponse = {
@@ -366,6 +533,12 @@ export type OutputPenaltyResult = {
   name: string;
   occurrence: number;
   isPCount: boolean;
+  col: string;
+  // 화각 요청 회신 지연(20분 초과분)으로 개인 탭 27행에서 차감된 분. 0이면
+  // 차감 없음(지연 없었거나 발신/회신 시각을 입력하지 않음).
+  deductedMinutes: number;
+  // 차감이 기록된 요일 열 문자(A1 표기). deductedMinutes가 0이면 null.
+  dayCol: string | null;
 };
 
 export type CaptureDecideResponse = {

@@ -1,4 +1,5 @@
-import { PiggyBank, Search, TrendingDown, TriangleAlert } from "lucide-react";
+import { CalendarDays, DoorOpen, PiggyBank, Search, TrendingDown, TriangleAlert } from "lucide-react";
+import { useState } from "react";
 import {
   Dialog,
   DialogTrigger,
@@ -6,7 +7,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { SubRow, InfoCard } from "@/components/dashboard/shared";
+import { useApi } from "@/hooks/useApi";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 import type { DepositRefundBreakdown } from "@/lib/api/types";
@@ -15,15 +21,48 @@ function won(n: number) {
   return `₩${(n || 0).toLocaleString()}`;
 }
 
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export function DepositRefundDialog({
   depositRefundEstimate,
   breakdown,
+  exitRequested,
+  exitRequestDate,
+  onExitRequestChange,
   children,
 }: {
   depositRefundEstimate: string;
   breakdown: DepositRefundBreakdown;
+  exitRequested: boolean;
+  exitRequestDate: string | null;
+  onExitRequestChange: () => void;
   children: ReactNode;
 }) {
+  const { call } = useApi();
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState(exitRequestDate || todayStr());
+
+  function handleRequestExit() {
+    setSubmitting(true);
+    setError(null);
+    call<{ ok: boolean }>("/exit-request", { method: "POST", body: { exitDate: selectedDate } })
+      .then(onExitRequestChange)
+      .catch((err) => setError(err instanceof Error ? err.message : "퇴실 신청에 실패했습니다."))
+      .finally(() => setSubmitting(false));
+  }
+
+  function handleCancelExit() {
+    setSubmitting(true);
+    setError(null);
+    call<{ ok: boolean }>("/exit-request/cancel", { method: "POST" })
+      .then(onExitRequestChange)
+      .catch((err) => setError(err instanceof Error ? err.message : "퇴실 신청 취소에 실패했습니다."))
+      .finally(() => setSubmitting(false));
+  }
+
   const amount = breakdown.amount ?? 0;
   const isReduced = amount < 10000;
   const penaltyTotal = (breakdown.outputPen ?? 0) + (breakdown.timePen ?? 0);
@@ -155,6 +194,50 @@ export function DepositRefundDialog({
           {!depositRefundEstimate || depositRefundEstimate === "-" ? (
             <p className="text-micro-lg text-muted-foreground/70">시트에서 값을 불러오지 못했습니다.</p>
           ) : null}
+
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          {exitRequested ? (
+            <>
+              <SubRow label="희망 퇴실일" value={exitRequestDate || "-"} />
+              <Button variant="outline" className="w-full sm:h-12 sm:text-base" disabled={submitting} onClick={handleCancelExit}>
+                퇴실 신청 취소
+              </Button>
+            </>
+          ) : (
+            <>
+              <div className="flex flex-col gap-1.5">
+                <Label
+                  htmlFor="exit-request-date"
+                  className="inline-flex items-center gap-1.25 text-xs font-medium text-muted-foreground sm:text-sm"
+                >
+                  <CalendarDays className="size-3 shrink-0 sm:size-3.5" />
+                  희망 퇴실일
+                </Label>
+                <Input
+                  id="exit-request-date"
+                  type="date"
+                  value={selectedDate}
+                  min={todayStr()}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="sm:h-12 sm:text-base md:text-base"
+                />
+              </div>
+              <Button
+                variant="destructive"
+                className="w-full sm:h-12 sm:text-base"
+                disabled={submitting || !selectedDate}
+                onClick={handleRequestExit}
+              >
+                <DoorOpen className="size-3.5 shrink-0" />
+                퇴실 신청하기
+              </Button>
+            </>
+          )}
         </div>
       </DialogContent>
     </Dialog>

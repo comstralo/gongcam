@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { User, Mail, Video, Hash, ListChecks, GraduationCap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useApi } from "@/hooks/useApi";
 import { ApiError, WORKER_BASE } from "@/lib/api/client";
 import { useAuth } from "@/lib/auth/useAuth";
+import { ICON_STROKE } from "@/lib/utils";
 import type {
   AdminOpenSlotsResponse,
   CreateMemberResponse,
@@ -33,6 +35,7 @@ export function NewMemberForm() {
   const [number, setNumber] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [gooroomeeAccount, setGooroomeeAccount] = useState("");
   const [participationType, setParticipationType] = useState("8|교시제");
   const [examKind, setExamKind] = useState("");
 
@@ -59,6 +62,7 @@ export function NewMemberForm() {
   function resetForm() {
     setName("");
     setEmail("");
+    setGooroomeeAccount("");
     setParticipationType("8|교시제");
     setExamKind("");
   }
@@ -73,6 +77,12 @@ export function NewMemberForm() {
       setMessage({ text: "시트번호, 이름, 이메일은 필수입니다.", type: "error" });
       return;
     }
+    // 시트 D열에 "구글계정,구루미계정" 형태로 콤마 구분해 함께 저장하므로,
+    // 어느 쪽 값에도 콤마가 섞이면 파싱이 깨진다(백엔드와 동일 규칙).
+    if (email.includes(",") || gooroomeeAccount.includes(",")) {
+      setMessage({ text: "이메일/구루미 계정에는 쉼표를 포함할 수 없습니다.", type: "error" });
+      return;
+    }
     const [goalHours, goalKind] = participationType.split("|");
     setSubmitting(true);
     setMessage(null);
@@ -84,6 +94,7 @@ export function NewMemberForm() {
           number,
           name: name.trim(),
           email: email.trim(),
+          gooroomeeAccount: gooroomeeAccount.trim(),
           goalHours,
           goalKind,
           examKind: examKind.trim(),
@@ -130,12 +141,18 @@ export function NewMemberForm() {
 
   const noSlots = slots?.length === 0;
   const selectedType = PARTICIPATION_TYPES.find((t) => t.value === participationType);
+  const allFieldsFilled =
+    !!number && !!name.trim() && !!email.trim() && !!gooroomeeAccount.trim() && !!examKind.trim();
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-3">
+    <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:gap-3.5 sm:p-5">
+      <div className="grid grid-cols-3 gap-3">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="new-member-name" className="text-xs font-medium text-muted-foreground sm:text-sm">
+          <Label
+            htmlFor="new-member-name"
+            className="inline-flex items-center gap-1.25 text-xs font-medium text-muted-foreground sm:text-sm"
+          >
+            <User className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
             이름
           </Label>
           <Input
@@ -148,31 +165,18 @@ export function NewMemberForm() {
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="new-member-email" className="text-xs font-medium text-muted-foreground sm:text-sm">
-            구글 계정
+          <Label className="inline-flex items-center gap-1.25 text-xs font-medium text-muted-foreground sm:text-sm">
+            <ListChecks className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+            참여유형
           </Label>
-          <Input
-            id="new-member-email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="example@gmail.com"
-            className="sm:h-12 sm:text-base md:text-base"
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1.5">
-          <Label className="text-xs font-medium text-muted-foreground sm:text-sm">시트번호</Label>
-          <Select value={number} onValueChange={(v) => setNumber(v ?? "")} disabled={!slots || noSlots}>
-            <SelectTrigger className="py-1 text-base data-[size=default]:h-8 sm:data-[size=default]:h-12 md:text-base">
-              <SelectValue placeholder={noSlots ? "빈 자리 없음" : "선택"} />
+          <Select value={participationType} onValueChange={(v) => setParticipationType(v ?? "8|교시제")}>
+            <SelectTrigger className="w-full py-1 text-base data-[size=default]:h-8 sm:data-[size=default]:h-12 md:text-base">
+              <SelectValue>{selectedType?.label}</SelectValue>
             </SelectTrigger>
             <SelectContent>
-              {slots?.map((s) => (
-                <SelectItem key={s} value={s} className="sm:text-base">
-                  {s}번
+              {PARTICIPATION_TYPES.map((t) => (
+                <SelectItem key={t.value} value={t.value} className="sm:text-base">
+                  {t.label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -180,15 +184,20 @@ export function NewMemberForm() {
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label className="text-xs font-medium text-muted-foreground sm:text-sm">참여유형</Label>
-          <Select value={participationType} onValueChange={(v) => setParticipationType(v ?? "8|교시제")}>
-            <SelectTrigger className="py-1 text-base data-[size=default]:h-8 sm:data-[size=default]:h-12 md:text-base">
-              <SelectValue>{selectedType?.label}</SelectValue>
+          <Label className="inline-flex items-center gap-1.25 text-xs font-medium text-muted-foreground sm:text-sm">
+            <Hash className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+            시트번호
+          </Label>
+          <Select value={number} onValueChange={(v) => setNumber(v ?? "")} disabled={!slots || noSlots}>
+            <SelectTrigger className="w-full py-1 text-base data-[size=default]:h-8 sm:data-[size=default]:h-12 md:text-base">
+              <SelectValue placeholder={noSlots ? "빈 자리 없음" : "선택"}>
+                {number ? `${number}번` : undefined}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              {PARTICIPATION_TYPES.map((t) => (
-                <SelectItem key={t.value} value={t.value} className="sm:text-base">
-                  {t.label}
+              {slots?.map((s) => (
+                <SelectItem key={s} value={s} className="sm:text-base">
+                  {s}번
                 </SelectItem>
               ))}
             </SelectContent>
@@ -201,8 +210,50 @@ export function NewMemberForm() {
         </Alert>
       )}
 
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1.5">
+          <Label
+            htmlFor="new-member-email"
+            className="inline-flex items-center gap-1.25 text-xs font-medium text-muted-foreground sm:text-sm"
+          >
+            <Mail className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+            구글 계정
+          </Label>
+          <Input
+            id="new-member-email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="example@gmail.com"
+            className="sm:h-12 sm:text-base md:text-base"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label
+            htmlFor="new-member-gooroomee"
+            className="inline-flex items-center gap-1.25 text-xs font-medium text-muted-foreground sm:text-sm"
+          >
+            <Video className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+            구루미 계정
+          </Label>
+          <Input
+            id="new-member-gooroomee"
+            type="email"
+            value={gooroomeeAccount}
+            onChange={(e) => setGooroomeeAccount(e.target.value)}
+            placeholder="example@gmail.com"
+            className="sm:h-12 sm:text-base md:text-base"
+          />
+        </div>
+      </div>
+
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="new-member-exam" className="text-xs font-medium text-muted-foreground sm:text-sm">
+        <Label
+          htmlFor="new-member-exam"
+          className="inline-flex items-center gap-1.25 text-xs font-medium text-muted-foreground sm:text-sm"
+        >
+          <GraduationCap className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
           준비 중인 시험
         </Label>
         <Input
@@ -214,7 +265,11 @@ export function NewMemberForm() {
         />
       </div>
 
-      <Button className="w-full sm:h-12 sm:text-base" disabled={submitting || noSlots} onClick={handleSubmit}>
+      <Button
+        className="w-full sm:h-12 sm:text-base"
+        disabled={submitting || noSlots || !allFieldsFilled}
+        onClick={handleSubmit}
+      >
         등록하기
       </Button>
 

@@ -2,18 +2,25 @@ import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatusPage } from "@/pages/StatusPage";
 import { RosterPage } from "@/pages/RosterPage";
-import { SnapshotPage } from "@/pages/SnapshotPage";
 
-type DashboardView = "me" | "all" | "history";
+type DashboardView = "me" | "all";
 
 function normalizeView(raw: string | null): DashboardView {
-  if (raw === "all" || raw === "history") return raw;
+  if (raw === "all") return raw;
   return "me";
 }
 
 export function DashboardPage() {
   const [params, setParams] = useSearchParams();
   const view = normalizeView(params.get("view"));
+  const cycleFileId = params.get("cycle");
+
+  function selectCycle(fileId: string | null) {
+    const next: Record<string, string> = {};
+    if (view === "all") next.view = "all";
+    if (fileId) next.cycle = fileId;
+    setParams(next, { replace: true });
+  }
 
   return (
     <div className="flex w-full page-content flex-col items-center gap-4">
@@ -21,7 +28,10 @@ export function DashboardPage() {
         value={view}
         onValueChange={(v) => {
           const next = normalizeView(v);
-          setParams(next === "me" ? {} : { view: next }, { replace: true });
+          const nextParams: Record<string, string> = {};
+          if (next === "all") nextParams.view = "all";
+          if (cycleFileId) nextParams.cycle = cycleFileId;
+          setParams(nextParams, { replace: true });
         }}
         className="w-full"
       >
@@ -32,15 +42,11 @@ export function DashboardPage() {
           <TabsTrigger value="all" className="flex-1 font-mono text-xs tracking-wide uppercase">
             All
           </TabsTrigger>
-          <TabsTrigger value="history" className="flex-1 font-mono text-xs tracking-wide uppercase">
-            History
-          </TabsTrigger>
         </TabsList>
       </Tabs>
 
-      {view === "me" && <StatusPage />}
-      {view === "all" && <RosterPage />}
-      {view === "history" && <SnapshotPage />}
+      {view === "me" && <StatusPage cycleFileId={cycleFileId} onSelectCycle={selectCycle} />}
+      {view === "all" && <RosterPage cycleFileId={cycleFileId} onSelectCycle={selectCycle} />}
     </div>
   );
 }
