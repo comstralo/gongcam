@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -16,7 +16,14 @@ function normalizeView(raw: string | null): AdminView {
 
 export function AdminPage({ visible = true }: { visible?: boolean }) {
   const [params, setParams] = useSearchParams();
-  const view = normalizeView(params.get("tab"));
+  // 🔧 [탭 리셋 버그 수정] AdminPage는 이제 최상위 라우팅에서도 언마운트되지
+  // 않고 hidden으로만 유지된다(App.tsx) — 그런데 view를 매 렌더 URL 쿼리에서
+  // 다시 계산하면, 하단 탭바로 다른 페이지에 갔다가 "관리자"를 다시 눌러
+  // 쿼리 없는 "/admin" 경로로 돌아올 때마다 마지막에 보던 탭(Money 등)이
+  // 조용히 기본값(member)으로 리셋됐다. 최초 마운트 시 한 번만 URL에서
+  // 초기값을 읽고, 그 뒤로는 로컬 state로만 관리한다(북마크/공유를 위해
+  // URL에는 계속 반영하되, 되읽지는 않는다).
+  const [view, setView] = useState<AdminView>(() => normalizeView(params.get("tab")));
 
   // 한 번이라도 열린 탭은 계속 마운트 상태로 남겨(hidden으로만 감춤) 탭을
   // 오갈 때마다 다시 로드되지 않게 한다. 리렌더를 유발할 필요가 없는
@@ -24,16 +31,15 @@ export function AdminPage({ visible = true }: { visible?: boolean }) {
   const everOpened = useRef({ member: false, money: false, botsheet: false });
   everOpened.current[view] = true;
 
+  function changeView(v: string) {
+    const next = normalizeView(v);
+    setView(next);
+    setParams(next === "member" ? {} : { tab: next }, { replace: true });
+  }
+
   return (
     <div className="flex w-full page-content flex-col items-center gap-4">
-      <Tabs
-        value={view}
-        onValueChange={(v) => {
-          const next = normalizeView(v);
-          setParams(next === "member" ? {} : { tab: next }, { replace: true });
-        }}
-        className="w-full"
-      >
+      <Tabs value={view} onValueChange={changeView} className="w-full">
         <TabsList className="w-full">
           <TabsTrigger value="member" className="flex-1 font-mono text-xs tracking-wide uppercase">
             MEM · PEN
@@ -59,7 +65,9 @@ export function AdminPage({ visible = true }: { visible?: boolean }) {
           <div hidden={view !== "member"}>
             {everOpened.current.member && <AdminMemberPenaltyTab visible={visible && view === "member"} />}
           </div>
-          <div hidden={view !== "money"}>{everOpened.current.money && <AdminMoneyTab />}</div>
+          <div hidden={view !== "money"}>
+            {everOpened.current.money && <AdminMoneyTab visible={visible && view === "money"} />}
+          </div>
           <div hidden={view !== "botsheet"}>
             {everOpened.current.botsheet && <AdminBotSheetTab visible={visible && view === "botsheet"} />}
           </div>
