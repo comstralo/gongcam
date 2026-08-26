@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
 import { BellRing, DoorOpen, UserCog } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { SectionHeader, SectionCard } from "@/components/admin/shared";
 import { SessionCard } from "@/components/session/SessionCard";
-import { InfoCard, ItemTitle } from "@/components/dashboard/shared";
+import { DividedValue, InfoCard } from "@/components/dashboard/shared";
 import { PeriodAlarmCard } from "@/components/dashboard/PeriodAlarmCard";
 import { DepositRefundDialog } from "@/components/dashboard/DepositRefundDialog";
 import { useApi } from "@/hooks/useApi";
-import { ICON_STROKE } from "@/lib/utils";
+import { ICON_STROKE, cn } from "@/lib/utils";
 import type { StatusResponse } from "@/lib/api/types";
 
 export function SettingsPage() {
@@ -53,36 +53,41 @@ export function SettingsPage() {
                       .catch(() => {});
                   }}
                 >
-                  <InfoCard className="flex items-center justify-between gap-3 text-left">
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      <DoorOpen className="size-4 shrink-0 text-primary sm:size-5" strokeWidth={ICON_STROKE.default} />
-                      <div className="flex min-w-0 flex-col gap-0.5">
-                        <span className="flex items-center gap-1.5">
-                          <ItemTitle>퇴실신청</ItemTitle>
-                          {status.exitRequested && (
-                            <Badge variant="secondary" className="shrink-0 font-mono text-micro sm:text-xs">
-                              신청됨
-                            </Badge>
-                          )}
-                        </span>
-                        <span className="truncate text-xs text-muted-foreground sm:text-sm">
-                          가급적 3일 전까지 신청해 주세요.
-                        </span>
-                      </div>
-                    </div>
+                  <InfoCard className="flex items-center justify-between gap-2.5">
+                    <span className="inline-flex min-w-0 flex-1 items-center gap-1.25 truncate text-sm font-semibold sm:text-base">
+                      <DoorOpen className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
+                      <DividedValue
+                        items={[
+                          "퇴실신청",
+                          <span className="truncate text-xs font-normal text-muted-foreground sm:text-sm">
+                            {status.exitRequested ? "신청됨" : "가급적 3일 전까지 신청해 주세요."}
+                          </span>,
+                        ]}
+                      />
+                    </span>
+                    <span
+                      className={cn(
+                        buttonVariants({ variant: "outline", size: "sm" }),
+                        "shrink-0 pointer-events-none text-xs sm:text-sm"
+                      )}
+                    >
+                      {status.exitRequested ? "신청됨" : "신청하기"}
+                    </span>
                   </InfoCard>
                 </DepositRefundDialog>
               ) : (
-                <InfoCard className="flex items-center justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-2.5">
-                    <DoorOpen className="size-4 shrink-0 text-primary sm:size-5" strokeWidth={ICON_STROKE.default} />
-                    <div className="flex min-w-0 flex-col gap-0.5">
-                      <ItemTitle>퇴실신청</ItemTitle>
-                      <span className="truncate text-xs text-muted-foreground sm:text-sm">
-                        가급적 3일 전까지 신청해 주세요.
-                      </span>
-                    </div>
-                  </div>
+                <InfoCard className="flex items-center justify-between gap-2.5">
+                  <span className="inline-flex min-w-0 flex-1 items-center gap-1.25 truncate text-sm font-semibold sm:text-base">
+                    <DoorOpen className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
+                    <DividedValue
+                      items={[
+                        "퇴실신청",
+                        <span className="truncate text-xs font-normal text-muted-foreground sm:text-sm">
+                          가급적 3일 전까지 신청해 주세요.
+                        </span>,
+                      ]}
+                    />
+                  </span>
                 </InfoCard>
               )}
             </CollapsiblePanel>
