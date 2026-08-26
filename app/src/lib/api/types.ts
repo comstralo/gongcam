@@ -494,11 +494,20 @@ export type BotStatusResponse = {
   recentLogs: string[];
 };
 
+export type KvNamespaceStorage = {
+  byteCount: number;
+  keyCount: number;
+} | null;
+
 export type CloudflareUsage = {
   workersRequestsToday: number;
   workersErrorsToday: number;
   kvReadsToday: number;
   kvWritesToday: number;
+  kvStorage: {
+    reportsKv: KvNamespaceStorage;
+    pushSubsKv: KvNamespaceStorage;
+  };
 };
 
 export type AdminUsageResponse = {
@@ -516,6 +525,7 @@ export type AdminUsageResponse = {
     workersRequestsPerDay: number;
     kvReadsPerDay: number;
     kvWritesPerDay: number;
+    kvStorageBytes: number;
   };
 };
 

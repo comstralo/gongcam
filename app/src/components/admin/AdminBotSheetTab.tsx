@@ -44,6 +44,12 @@ const TONE_TEXT_CLASS: Record<string, string> = {
   destructive: "text-destructive",
 };
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
 function UsageBar({ label, used, limit, unit }: { label: string; used: number; limit: number; unit: string }) {
   const tone = usageTone(used, limit);
   const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 1000) / 10) : 0;
@@ -151,6 +157,36 @@ function UsageMonitorSection() {
                         오늘 Workers 오류 {usage.cloudflare.workersErrorsToday}건
                       </p>
                     )}
+                    {(() => {
+                      const reports = usage.cloudflare.kvStorage.reportsKv;
+                      const pushSubs = usage.cloudflare.kvStorage.pushSubsKv;
+                      const totalBytes = (reports?.byteCount || 0) + (pushSubs?.byteCount || 0);
+                      const limit = usage.limits.kvStorageBytes;
+                      const tone = usageTone(totalBytes, limit);
+                      const pct = limit > 0 ? Math.min(100, Math.round((totalBytes / limit) * 1000) / 10) : 0;
+                      return (
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <FieldLabel>KV 저장 용량</FieldLabel>
+                            <FieldValue className={TONE_TEXT_CLASS[tone]}>
+                              {formatBytes(totalBytes)} / {formatBytes(limit)}
+                            </FieldValue>
+                          </div>
+                          <div className="h-1.5 w-full overflow-hidden rounded-full bg-border">
+                            <div
+                              className={cn("h-full rounded-full transition-all", TONE_BAR_CLASS[tone])}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                          <p className="text-micro-lg text-muted-foreground/70 sm:text-xs">
+                            REPORTS_KV{" "}
+                            {reports ? `${formatBytes(reports.byteCount)}(키 ${reports.keyCount}개)` : "측정 전"} ·
+                            PUSH_SUBS_KV{" "}
+                            {pushSubs ? `${formatBytes(pushSubs.byteCount)}(키 ${pushSubs.keyCount}개)` : "측정 전"}
+                          </p>
+                        </div>
+                      );
+                    })()}
                   </>
                 ) : (
                   <p className="text-xs text-muted-foreground sm:text-sm">
