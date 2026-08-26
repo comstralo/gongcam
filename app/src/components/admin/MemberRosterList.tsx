@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Users, User, DoorOpen, ChevronDown, Hash } from "lucide-react";
+import { Users, User, DoorOpen, ChevronDown, Hash, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
@@ -8,7 +8,7 @@ import { SectionHeader } from "@/components/admin/shared";
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
 import { useApi } from "@/hooks/useApi";
 import { ICON_STROKE, cn } from "@/lib/utils";
-import type { AdminMembersRosterResponse, MemberRosterEntry } from "@/lib/api/types";
+import type { AdminMembersRosterResponse, MemberRosterEntry, SetPartiStatusResponse } from "@/lib/api/types";
 
 export function MemberRosterList() {
   const { call } = useApi();
@@ -18,6 +18,7 @@ export function MemberRosterList() {
   const [loading, setLoading] = useState(true);
   const [expandedNumber, setExpandedNumber] = useState<string | null>(null);
   const [cancelingNumber, setCancelingNumber] = useState<string | null>(null);
+  const [togglingNumber, setTogglingNumber] = useState<string | null>(null);
 
   function load() {
     setLoading(true);
@@ -35,6 +36,18 @@ export function MemberRosterList() {
       .then(load)
       .catch((err) => setError(err instanceof Error ? err.message : "퇴실 신청 취소에 실패했습니다."))
       .finally(() => setCancelingNumber(null));
+  }
+
+  function toggleViceLeader(m: MemberRosterEntry) {
+    setTogglingNumber(m.number);
+    setError(null);
+    call<SetPartiStatusResponse>("/admin/members/parti-status", {
+      method: "POST",
+      body: { number: m.number, appoint: m.partiStatus !== "부스터디장" },
+    })
+      .then(load)
+      .catch((err) => setError(err instanceof Error ? err.message : "부스터디장 임명/해제에 실패했습니다."))
+      .finally(() => setTogglingNumber(null));
   }
 
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -69,9 +82,12 @@ export function MemberRosterList() {
                     onClick={() => setExpandedNumber(isExpanded ? null : m.number)}
                     className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded"
                   >
-                    <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
                       <User className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
                       {m.name}
+                      {m.partiStatus !== "스터디원" && (
+                        <TintedPill tone={m.partiStatus === "스터디장" ? "primary" : "ok"}>{m.partiStatus}</TintedPill>
+                      )}
                     </span>
                     <span className="flex items-center gap-1.5">
                       {m.exitRequested && <TintedPill tone="amber">퇴실 예약</TintedPill>}
@@ -105,7 +121,29 @@ export function MemberRosterList() {
                         )}
                       </div>
 
-                      <div className={cn("grid gap-2", m.exitRequested ? "grid-cols-2" : "grid-cols-1")}>
+                      <div
+                        className={cn(
+                          "grid gap-2",
+                          m.partiStatus === "스터디장"
+                            ? m.exitRequested
+                              ? "grid-cols-2"
+                              : "grid-cols-1"
+                            : m.exitRequested
+                              ? "grid-cols-3"
+                              : "grid-cols-2"
+                        )}
+                      >
+                        {m.partiStatus !== "스터디장" && (
+                          <Button
+                            variant="outline"
+                            className="w-full sm:h-12 sm:text-base"
+                            disabled={togglingNumber === m.number}
+                            onClick={() => toggleViceLeader(m)}
+                          >
+                            <Star className="size-3.5 shrink-0" strokeWidth={ICON_STROKE.default} />
+                            {m.partiStatus === "부스터디장" ? "임명 해제" : "부스터디장 임명"}
+                          </Button>
+                        )}
                         <ExitProcessDialog candidate={m} onConfirmed={load} triggerClassName="w-full">
                           <Button variant="destructive" className="w-full sm:h-12 sm:text-base">
                             <DoorOpen className="size-3.5 shrink-0" strokeWidth={ICON_STROKE.default} />

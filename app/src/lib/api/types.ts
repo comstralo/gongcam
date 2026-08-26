@@ -425,10 +425,16 @@ export type MemberRosterEntry = {
   // 무관한 예약 표시일 뿐이며, 관리자가 퇴실을 확정하면 자동으로 꺼진다.
   exitRequested: boolean;
   exitRequestDate: string | null;
+  partiStatus: "스터디장" | "부스터디장" | "스터디원";
 };
 
 export type AdminMembersRosterResponse = {
   members: MemberRosterEntry[];
+};
+
+export type SetPartiStatusResponse = {
+  ok: boolean;
+  partiStatus: "부스터디장" | "스터디원";
 };
 
 export type ExitPreviewRequest = {
