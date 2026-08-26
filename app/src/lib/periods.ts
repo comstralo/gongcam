@@ -36,7 +36,7 @@ export const PERIODS: Period[] = RAW_TIMETABLE.map(([start, end], i) => ({
 
 export type PeriodPhase =
   | { kind: "in-period"; period: Period; remainingMs: number }
-  | { kind: "break"; next: Period | null; remainingMs: number }
+  | { kind: "break"; next: Period; remainingMs: number }
   | { kind: "outside"; remainingMs: number };
 
 // midnightMs: 오늘 00:00의 epoch ms, nowMs: 현재 epoch ms
@@ -48,9 +48,12 @@ export function getPeriodPhase(midnightMs: number, nowMs: number): PeriodPhase {
       return { kind: "in-period", period, remainingMs };
     }
   }
-  const next = PERIODS.find((p) => p.startMinutes > nowMinutes) || null;
-  if (nowMinutes >= PERIODS[0].startMinutes - 60 && nowMinutes < PERIODS[PERIODS.length - 1].endMinutes) {
-    const remainingMs = next ? midnightMs + next.startMinutes * 60_000 - nowMs : 0;
+  // 마지막 교시 종료 전까지는(nowMinutes < 마지막 교시 endMinutes) 아직 시작하지
+  // 않은 교시가 반드시 하나 이상 남아 있다 — 진행 중인 교시는 위 루프에서 이미
+  // in-period로 걸러졌으므로, 여기 도달했다면 next는 항상 존재한다.
+  const next = PERIODS.find((p) => p.startMinutes > nowMinutes);
+  if (next && nowMinutes >= PERIODS[0].startMinutes - 60 && nowMinutes < PERIODS[PERIODS.length - 1].endMinutes) {
+    const remainingMs = midnightMs + next.startMinutes * 60_000 - nowMs;
     return { kind: "break", next, remainingMs };
   }
   // 운영시간 외 — 다음 1교시 시작까지 남은 시간을 계산한다. 자정 이후(0시~1교시

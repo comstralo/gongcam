@@ -11,9 +11,9 @@ export function PeriodAlarmCard() {
   if (phase.kind === "in-period") {
     statusLabel = `${phase.period.index}교시 남은시간 ${remainingLabel}`;
   } else if (phase.kind === "break") {
-    statusLabel = phase.next ? `휴식 남은시간 ${remainingLabel}` : "오늘 교시 종료";
+    statusLabel = `휴식 남은시간 ${remainingLabel}`;
   } else {
-    statusLabel = `1교시 시작까지 ${remainingLabel}`;
+    statusLabel = `1교시까지 남은시간 ${remainingLabel}`;
   }
 
   return (
