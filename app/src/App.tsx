@@ -20,9 +20,9 @@ export default function App() {
 
   return (
     <AuthProvider>
-      <MyStatusProvider>
-        <PeriodAlarmProvider>
-          <HashRouter>
+      <PeriodAlarmProvider>
+        <HashRouter>
+          <MyStatusProvider>
             <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route
@@ -84,9 +84,9 @@ export default function App() {
                 }
               />
             </Routes>
-          </HashRouter>
-        </PeriodAlarmProvider>
-      </MyStatusProvider>
+          </MyStatusProvider>
+        </HashRouter>
+      </PeriodAlarmProvider>
     </AuthProvider>
   );
 }
