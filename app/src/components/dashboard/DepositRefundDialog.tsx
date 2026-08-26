@@ -103,7 +103,7 @@ export function DepositRefundDialog({
     },
     {
       key: "lateNotice",
-      label: "고지지연",
+      label: "퇴실 통보 지연 (3일내)",
       rate: lateNoticeRate,
     },
   ];
