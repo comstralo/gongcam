@@ -60,7 +60,7 @@ export function SettingsPage() {
                         items={[
                           "퇴실신청",
                           <span className="truncate text-xs font-normal text-muted-foreground sm:text-sm">
-                            {status.exitRequested ? "신청됨" : "가급적 3일 전까지 신청해 주세요."}
+                            {status.exitRequested ? "신청됨" : "최소 3일 전까지 신청 바랍니다."}
                           </span>,
                         ]}
                       />
@@ -83,7 +83,7 @@ export function SettingsPage() {
                       items={[
                         "퇴실신청",
                         <span className="truncate text-xs font-normal text-muted-foreground sm:text-sm">
-                          가급적 3일 전까지 신청해 주세요.
+                          최소 3일 전까지 신청 바랍니다.
                         </span>,
                       ]}
                     />
