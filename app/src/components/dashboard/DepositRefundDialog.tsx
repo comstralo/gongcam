@@ -124,7 +124,7 @@ export function DepositRefundDialog({
             <InfoCard className="flex items-center justify-between gap-2">
               <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
                 <CalendarDays className="size-3.5 shrink-0 text-primary sm:size-4" />
-                희망 퇴실일
+                마지막 참여일
               </span>
               <span className="text-xs sm:text-sm">{exitRequestDate || "-"}</span>
             </InfoCard>
@@ -135,7 +135,7 @@ export function DepositRefundDialog({
                 className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm"
               >
                 <CalendarDays className="size-3.5 shrink-0 text-primary sm:size-4" />
-                희망 퇴실일
+                마지막 참여일
               </Label>
               <Input
                 id="exit-request-date"
