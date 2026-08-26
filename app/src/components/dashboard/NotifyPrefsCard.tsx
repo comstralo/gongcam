@@ -52,44 +52,45 @@ export function NotifyPrefsCard() {
 
   return (
     <div className="flex flex-col gap-2.5">
-      <InfoCard className="flex items-center justify-between gap-2.5">
-        <span className="inline-flex min-w-0 flex-1 items-center gap-1.25 truncate text-xs font-semibold sm:text-sm">
-          <Bell className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-          <DividedValue
-            items={[
-              "푸시 알림",
-              <span className="truncate text-xs font-normal text-muted-foreground sm:text-sm">
-                {PUSH_STATE_LABEL[state]}
-              </span>,
-            ]}
-          />
-        </span>
-        {state === "off" && (
-          <Button size="sm" className="shrink-0 text-xs sm:text-sm" onClick={enable}>
-            알림 켜기
-          </Button>
+      <InfoCard className="flex flex-col gap-2.5">
+        <div className="flex items-center justify-between gap-2.5">
+          <span className="inline-flex min-w-0 flex-1 items-center gap-1.25 truncate text-xs font-semibold sm:text-sm">
+            <Bell className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
+            <DividedValue
+              items={[
+                "푸시 알림",
+                <span className="truncate text-xs font-normal text-muted-foreground sm:text-sm">
+                  {PUSH_STATE_LABEL[state]}
+                </span>,
+              ]}
+            />
+          </span>
+          {state === "off" && (
+            <Button size="sm" className="shrink-0 text-xs sm:text-sm" onClick={enable}>
+              알림 켜기
+            </Button>
+          )}
+        </div>
+
+        {state === "on" && categories && prefs && (
+          <div className="flex flex-col gap-1.5">
+            {(Object.keys(categories) as NotifyCategory[]).map((key) => (
+              <SubRow
+                key={key}
+                label={categories[key]}
+                value={
+                  <Switch
+                    checked={prefs[key]}
+                    disabled={pendingCategory === key}
+                    onCheckedChange={(checked) => toggleCategory(key, checked)}
+                    aria-label={categories[key]}
+                  />
+                }
+              />
+            ))}
+          </div>
         )}
       </InfoCard>
-
-      {state === "on" && categories && prefs && (
-        <InfoCard className="flex flex-col gap-1.5">
-          {(Object.keys(categories) as NotifyCategory[]).map((key) => (
-            <SubRow
-              key={key}
-              indent={false}
-              label={categories[key]}
-              value={
-                <Switch
-                  checked={prefs[key]}
-                  disabled={pendingCategory === key}
-                  onCheckedChange={(checked) => toggleCategory(key, checked)}
-                  aria-label={categories[key]}
-                />
-              }
-            />
-          ))}
-        </InfoCard>
-      )}
 
       {(message || error) && (
         <Alert variant={error ? "destructive" : message?.type === "error" ? "destructive" : "default"}>
