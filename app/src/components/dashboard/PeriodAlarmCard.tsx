@@ -21,7 +21,7 @@ export function PeriodAlarmCard() {
       <div className="flex min-w-0 items-center gap-2.5">
         <BellRing className="size-4 shrink-0 text-primary sm:size-5" strokeWidth={ICON_STROKE.default} />
         <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="text-sm font-semibold sm:text-base">교시 알람</span>
+          <span className="text-sm font-semibold sm:text-base">교시 종소리</span>
           <span className="truncate text-xs text-muted-foreground sm:text-sm">{statusLabel}</span>
         </div>
       </div>
@@ -34,7 +34,7 @@ export function PeriodAlarmCard() {
         <Switch
           checked={soundEnabled}
           onCheckedChange={setSoundEnabled}
-          aria-label="교시 알람 소리"
+          aria-label="교시 종소리"
         />
       </div>
     </InfoCard>

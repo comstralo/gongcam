@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { DoorOpen, UserCog } from "lucide-react";
+import { BellRing, DoorOpen, UserCog } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
@@ -89,8 +89,15 @@ export function SettingsPage() {
           </Collapsible>
         </SectionCard>
 
-        <span className="font-mono text-micro uppercase tracking-wide text-muted-foreground sm:text-xs">일반</span>
-        <PeriodAlarmCard />
+        <SectionCard>
+          <Collapsible defaultOpen className="flex flex-col gap-4">
+            <SectionHeader icon={BellRing} title="알림 설정" />
+            <div className="h-px w-full bg-border" />
+            <CollapsiblePanel className="flex flex-col gap-4">
+              <PeriodAlarmCard />
+            </CollapsiblePanel>
+          </Collapsible>
+        </SectionCard>
       </CardContent>
     </Card>
   );
