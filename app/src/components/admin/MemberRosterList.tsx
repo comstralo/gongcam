@@ -82,14 +82,19 @@ export function MemberRosterList() {
                     onClick={() => setExpandedNumber(isExpanded ? null : m.number)}
                     className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded"
                   >
-                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+                    <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
                       <User className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
                       {m.name}
-                      {m.partiStatus !== "스터디원" && (
-                        <TintedPill tone={m.partiStatus === "스터디장" ? "primary" : "ok"}>{m.partiStatus}</TintedPill>
-                      )}
                     </span>
                     <span className="flex items-center gap-1.5">
+                      {m.partiStatus !== "스터디원" && (
+                        <TintedPill
+                          tone={m.partiStatus === "스터디장" ? "primary" : "ok"}
+                          className="px-2 py-1 leading-none"
+                        >
+                          {m.partiStatus}
+                        </TintedPill>
+                      )}
                       {m.exitRequested && <TintedPill tone="amber">퇴실 예약</TintedPill>}
                       <ChevronDown
                         className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", isExpanded && "rotate-180")}
