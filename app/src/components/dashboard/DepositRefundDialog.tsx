@@ -148,22 +148,24 @@ export function DepositRefundDialog({
             </InfoCard>
           )}
 
-          <InfoCard className="flex items-center justify-between gap-2">
-            <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
-              <PiggyBank className="size-3.5 shrink-0 text-primary sm:size-4" />
-              예치금 반환 예상액
-            </span>
-            <span
-              className={cn(
-                "text-xs sm:text-sm",
-                isReduced ? "text-destructive" : "text-ok"
-              )}
-            >
-              {won(amount)}
-            </span>
-          </InfoCard>
-
           <InfoCard className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+                <PiggyBank className="size-3.5 shrink-0 text-primary sm:size-4" />
+                예치금 반환 예상액
+              </span>
+              <span
+                className={cn(
+                  "text-xs sm:text-sm",
+                  isReduced ? "text-destructive" : "text-ok"
+                )}
+              >
+                {won(amount)}
+              </span>
+            </div>
+
+            <div className="my-0.5 h-px w-full bg-border" />
+
             <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
               <TrendingDown className="size-3.5 shrink-0 text-primary sm:size-4" />
               차감 원인
