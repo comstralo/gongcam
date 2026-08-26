@@ -54,7 +54,7 @@ export function SettingsPage() {
                   }}
                 >
                   <InfoCard className="flex items-center justify-between gap-2.5">
-                    <span className="inline-flex min-w-0 flex-1 items-center gap-1.25 truncate text-sm font-semibold sm:text-base">
+                    <span className="inline-flex min-w-0 flex-1 items-center gap-1.25 truncate text-xs font-semibold sm:text-sm">
                       <DoorOpen className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                       <DividedValue
                         items={[
@@ -77,7 +77,7 @@ export function SettingsPage() {
                 </DepositRefundDialog>
               ) : (
                 <InfoCard className="flex items-center justify-between gap-2.5">
-                  <span className="inline-flex min-w-0 flex-1 items-center gap-1.25 truncate text-sm font-semibold sm:text-base">
+                  <span className="inline-flex min-w-0 flex-1 items-center gap-1.25 truncate text-xs font-semibold sm:text-sm">
                     <DoorOpen className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                     <DividedValue
                       items={[
