@@ -117,8 +117,9 @@ function UsageMonitorSection() {
                   unit="회"
                 />
                 <p className="text-micro-lg text-muted-foreground/70 sm:text-xs">
-                  직전 분: 읽기 {usage.sheets.readsLastMinute}회 · 쓰기 {usage.sheets.writesLastMinute}회 — Worker가
-                  자체적으로 센 근사치이며, 재배포·장시간 유휴 후에는 0부터 다시 셉니다.
+                  직전 분: 읽기 {usage.sheets.readsLastMinute}회 · 쓰기 {usage.sheets.writesLastMinute}회 —
+                  Worker와 도움봇(같은 서비스 계정으로 시트에 접근)의 호출을 합산한 근사치이며, Worker
+                  재배포·장시간 유휴 후에는 0부터 다시 셉니다.
                 </p>
               </InfoCard>
 
