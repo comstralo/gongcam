@@ -121,29 +121,16 @@ export function MemberRosterList() {
                         )}
                       </div>
 
-                      <div
-                        className={cn(
-                          "grid gap-2",
-                          m.partiStatus === "스터디장"
-                            ? m.exitRequested
-                              ? "grid-cols-2"
-                              : "grid-cols-1"
-                            : m.exitRequested
-                              ? "grid-cols-3"
-                              : "grid-cols-2"
-                        )}
-                      >
-                        {m.partiStatus !== "스터디장" && (
-                          <Button
-                            variant="outline"
-                            className="w-full sm:h-12 sm:text-base"
-                            disabled={togglingNumber === m.number}
-                            onClick={() => toggleViceLeader(m)}
-                          >
-                            <Star className="size-3.5 shrink-0" strokeWidth={ICON_STROKE.default} />
-                            {m.partiStatus === "부스터디장" ? "임명 해제" : "부스터디장 임명"}
-                          </Button>
-                        )}
+                      <div className={cn("grid gap-2", m.exitRequested ? "grid-cols-3" : "grid-cols-2")}>
+                        <Button
+                          variant="outline"
+                          className="w-full sm:h-12 sm:text-base"
+                          disabled={m.partiStatus === "스터디장" || togglingNumber === m.number}
+                          onClick={() => toggleViceLeader(m)}
+                        >
+                          <Star className="size-3.5 shrink-0" strokeWidth={ICON_STROKE.default} />
+                          {m.partiStatus === "부스터디장" ? "임명 해제" : "부스터디장 임명"}
+                        </Button>
                         <ExitProcessDialog candidate={m} onConfirmed={load} triggerClassName="w-full">
                           <Button variant="destructive" className="w-full sm:h-12 sm:text-base">
                             <DoorOpen className="size-3.5 shrink-0" strokeWidth={ICON_STROKE.default} />
