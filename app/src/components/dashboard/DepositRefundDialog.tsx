@@ -120,6 +120,34 @@ export function DepositRefundDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
+          {exitRequested ? (
+            <InfoCard className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+                <CalendarDays className="size-3.5 shrink-0 text-primary sm:size-4" />
+                희망 퇴실일
+              </span>
+              <span className="text-xs sm:text-sm">{exitRequestDate || "-"}</span>
+            </InfoCard>
+          ) : (
+            <InfoCard className="flex flex-col gap-1.5">
+              <Label
+                htmlFor="exit-request-date"
+                className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm"
+              >
+                <CalendarDays className="size-3.5 shrink-0 text-primary sm:size-4" />
+                희망 퇴실일
+              </Label>
+              <Input
+                id="exit-request-date"
+                type="date"
+                value={selectedDate}
+                min={todayStr()}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="sm:h-12 sm:text-base md:text-base"
+              />
+            </InfoCard>
+          )}
+
           <InfoCard className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
               <PiggyBank className="size-3.5 shrink-0 text-primary sm:size-4" />
@@ -202,41 +230,19 @@ export function DepositRefundDialog({
           )}
 
           {exitRequested ? (
-            <>
-              <SubRow label="희망 퇴실일" value={exitRequestDate || "-"} />
-              <Button variant="outline" className="w-full sm:h-12 sm:text-base" disabled={submitting} onClick={handleCancelExit}>
-                퇴실 신청 취소
-              </Button>
-            </>
+            <Button variant="outline" className="w-full sm:h-12 sm:text-base" disabled={submitting} onClick={handleCancelExit}>
+              퇴실 신청 취소
+            </Button>
           ) : (
-            <>
-              <div className="flex flex-col gap-1.5">
-                <Label
-                  htmlFor="exit-request-date"
-                  className="inline-flex items-center gap-1.25 text-xs font-medium text-muted-foreground sm:text-sm"
-                >
-                  <CalendarDays className="size-3 shrink-0 sm:size-3.5" />
-                  희망 퇴실일
-                </Label>
-                <Input
-                  id="exit-request-date"
-                  type="date"
-                  value={selectedDate}
-                  min={todayStr()}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="sm:h-12 sm:text-base md:text-base"
-                />
-              </div>
-              <Button
-                variant="destructive"
-                className="w-full sm:h-12 sm:text-base"
-                disabled={submitting || !selectedDate}
-                onClick={handleRequestExit}
-              >
-                <DoorOpen className="size-3.5 shrink-0" />
-                퇴실 신청하기
-              </Button>
-            </>
+            <Button
+              variant="destructive"
+              className="w-full sm:h-12 sm:text-base"
+              disabled={submitting || !selectedDate}
+              onClick={handleRequestExit}
+            >
+              <DoorOpen className="size-3.5 shrink-0" />
+              퇴실 신청하기
+            </Button>
           )}
         </div>
       </DialogContent>
