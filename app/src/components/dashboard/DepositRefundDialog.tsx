@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { SubRow, InfoCard } from "@/components/dashboard/shared";
 import { useApi } from "@/hooks/useApi";
+import { useAuth } from "@/lib/auth/useAuth";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 import type { DepositRefundBreakdown } from "@/lib/api/types";
@@ -41,6 +42,7 @@ export function DepositRefundDialog({
   children: ReactNode;
 }) {
   const { call } = useApi();
+  const { isAdmin } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState(exitRequestDate || todayStr());
@@ -157,49 +159,57 @@ export function DepositRefundDialog({
               <span
                 className={cn(
                   "text-xs sm:text-sm",
-                  isReduced ? "text-destructive" : "text-ok"
+                  isAdmin && isReduced ? "text-destructive" : isAdmin ? "text-ok" : "text-muted-foreground"
                 )}
               >
-                {won(amount)}
+                {isAdmin ? won(amount) : "-"}
               </span>
             </div>
 
             <div className="my-0.5 h-px w-full bg-border" />
 
-            <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
-              <TrendingDown className="size-3.5 shrink-0 text-primary sm:size-4" />
-              차감 원인
-            </span>
-            {generalItems.map((item) => (
-              <SubRow
-                key={item.key}
-                label={item.label}
-                value={`${item.rate}%`}
-                valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
-              />
-            ))}
+            {isAdmin ? (
+              <>
+                <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+                  <TrendingDown className="size-3.5 shrink-0 text-primary sm:size-4" />
+                  차감 원인
+                </span>
+                {generalItems.map((item) => (
+                  <SubRow
+                    key={item.key}
+                    label={item.label}
+                    value={`${item.rate}%`}
+                    valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
+                  />
+                ))}
 
-            <div className="my-0.5 h-px w-full bg-border" />
+                <div className="my-0.5 h-px w-full bg-border" />
 
-            {forcedExitItems.map((item) => (
-              <SubRow
-                key={item.key}
-                label={item.label}
-                value={`${item.rate}%`}
-                valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
-              />
-            ))}
+                {forcedExitItems.map((item) => (
+                  <SubRow
+                    key={item.key}
+                    label={item.label}
+                    value={`${item.rate}%`}
+                    valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
+                  />
+                ))}
 
-            <div className="my-0.5 h-px w-full bg-border" />
+                <div className="my-0.5 h-px w-full bg-border" />
 
-            {depositAgainItems.map((item) => (
-              <SubRow
-                key={item.key}
-                label={item.label}
-                value={`${item.rate}%`}
-                valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
-              />
-            ))}
+                {depositAgainItems.map((item) => (
+                  <SubRow
+                    key={item.key}
+                    label={item.label}
+                    value={`${item.rate}%`}
+                    valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
+                  />
+                ))}
+              </>
+            ) : (
+              <span className="text-micro-lg text-muted-foreground sm:text-xs">
+                마지막 참여일 다음 날 확인하실 수 있습니다.
+              </span>
+            )}
           </InfoCard>
 
           <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
