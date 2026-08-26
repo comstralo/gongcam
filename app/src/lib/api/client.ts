@@ -36,6 +36,10 @@ export async function apiFetch<T>(path: string, opts: ApiOptions = {}): Promise<
     method,
     headers,
     body: finalBody ? JSON.stringify(finalBody) : undefined,
+    // 백엔드가 지금은 Cache-Control을 안 주지만, 향후 실수로 추가되더라도
+    // 이 API 응답들은 항상 네트워크를 타야 한다 — useVersionCheck가 이미
+    // 같은 이유로 no-store를 쓰고 있는 것과 같은 방어책.
+    cache: "no-store",
   });
 
   const data = await res.json().catch(() => ({}));
