@@ -87,14 +87,12 @@ export function MemberRosterList() {
                       {m.name}
                     </span>
                     <span className="flex items-center gap-1.5">
-                      {m.partiStatus !== "스터디원" && (
-                        <TintedPill
-                          tone={m.partiStatus === "스터디장" ? "primary" : "ok"}
-                          className="px-2 py-1 leading-none"
-                        >
-                          {m.partiStatus}
-                        </TintedPill>
-                      )}
+                      <TintedPill
+                        tone={m.partiStatus === "스터디장" ? "primary" : m.partiStatus === "부스터디장" ? "ok" : "muted"}
+                        className="px-2 py-1 leading-none"
+                      >
+                        {m.partiStatus}
+                      </TintedPill>
                       {m.exitRequested && <TintedPill tone="amber">퇴실 예약</TintedPill>}
                       <ChevronDown
                         className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", isExpanded && "rotate-180")}
