@@ -101,7 +101,7 @@ export function SettingsPage() {
             <div className="h-px w-full bg-border" />
             <CollapsiblePanel className="flex flex-col gap-4">
               <PeriodAlarmCard />
-              <NotifyPrefsCard />
+              <NotifyPrefsCard name={status?.name} />
             </CollapsiblePanel>
           </Collapsible>
         </SectionCard>
