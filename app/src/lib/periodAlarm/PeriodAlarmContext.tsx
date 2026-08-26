@@ -75,7 +75,7 @@ export function PeriodAlarmProvider({ children }: { children: ReactNode }) {
       const nowMinutes = (now - midnight) / 60_000;
       const next = getPeriodPhase(midnight, now);
       setPhase(next);
-      setRemainingLabel(next.kind === "outside" ? "" : formatRemaining(next.remainingMs));
+      setRemainingLabel(formatRemaining(next.remainingMs));
 
       const wasAsleep = now - lastTickAtRef.current > 5000;
       lastTickAtRef.current = now;
