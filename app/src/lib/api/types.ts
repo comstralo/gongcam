@@ -494,6 +494,31 @@ export type BotStatusResponse = {
   recentLogs: string[];
 };
 
+export type CloudflareUsage = {
+  workersRequestsToday: number;
+  workersErrorsToday: number;
+  kvReadsToday: number;
+  kvWritesToday: number;
+};
+
+export type AdminUsageResponse = {
+  sheets: {
+    readsThisMinute: number;
+    readsLastMinute: number;
+    writesThisMinute: number;
+    writesLastMinute: number;
+    readLimitPerMinute: number;
+    writeLimitPerMinute: number;
+  };
+  cloudflare: CloudflareUsage | null;
+  cloudflareConfigured: boolean;
+  limits: {
+    workersRequestsPerDay: number;
+    kvReadsPerDay: number;
+    kvWritesPerDay: number;
+  };
+};
+
 export type BotCommand = "restart";
 
 export type BotCommandResponse = {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowRightLeft, Bot, RotateCw } from "lucide-react";
+import { ArrowRightLeft, Bot, Gauge, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
@@ -9,6 +9,7 @@ import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
 import { cn, ICON_STROKE } from "@/lib/utils";
 import type {
+  AdminUsageResponse,
   BotStatusResponse,
   BotCommandResponse,
   MemberReorderPlanItem,
@@ -21,6 +22,148 @@ import type {
 // 시점에 즉시 프록시하는 방식으로 연결된다(폴링 없음). 관리자가 할 수
 // 있는 원격 명령은 "재시작"뿐이다 — 봇 쪽 코드가 그렇게 구현되어 있다
 // (BOT_STRUCTURE.md 참고).
+
+// 사용률(%)에 따라 색을 3단계로 나눈다 — 70% 미만은 안전(ok), 70~90%는
+// 주의(amber), 90% 이상은 위험(destructive)임을 한눈에 알 수 있게 한다.
+function usageTone(used: number, limit: number): "ok" | "amber" | "destructive" {
+  if (limit <= 0) return "ok";
+  const ratio = used / limit;
+  if (ratio >= 0.9) return "destructive";
+  if (ratio >= 0.7) return "amber";
+  return "ok";
+}
+
+const TONE_BAR_CLASS: Record<string, string> = {
+  ok: "bg-ok",
+  amber: "bg-amber-600 dark:bg-amber-400",
+  destructive: "bg-destructive",
+};
+const TONE_TEXT_CLASS: Record<string, string> = {
+  ok: "text-ok",
+  amber: "text-amber-600 dark:text-amber-400",
+  destructive: "text-destructive",
+};
+
+function UsageBar({ label, used, limit, unit }: { label: string; used: number; limit: number; unit: string }) {
+  const tone = usageTone(used, limit);
+  const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 1000) / 10) : 0;
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between gap-2">
+        <FieldLabel>{label}</FieldLabel>
+        <FieldValue className={TONE_TEXT_CLASS[tone]}>
+          {used.toLocaleString()} / {limit.toLocaleString()} {unit}
+        </FieldValue>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-border">
+        <div
+          className={cn("h-full rounded-full transition-all", TONE_BAR_CLASS[tone])}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// Google Sheets(분당 60회 읽기/쓰기)와 Cloudflare(Workers/KV 무료 티어) 무료
+// 할당량 대비 현재 사용량을 한 화면에서 보여준다. Sheets 쪽은 이 Worker
+// 자신이 호출할 때마다 인메모리로 센 근사치(콜드스타트 시 리셋)이고,
+// Cloudflare 쪽은 CF_API_TOKEN이 등록되어 있을 때만 GraphQL Analytics API로
+// 오늘 하루 실측치를 가져온다 — 토큰이 없으면 그 부분만 안내 문구로 대체한다.
+function UsageMonitorSection() {
+  const { call } = useApi();
+
+  const [usage, setUsage] = useState<AdminUsageResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  function load() {
+    setLoading(true);
+    setError(null);
+    call<AdminUsageResponse>("/admin/usage")
+      .then((data) => setUsage(data))
+      .catch((err) => setError(err instanceof Error ? err.message : "사용량을 불러오지 못했습니다."))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <SectionCard>
+      <Collapsible defaultOpen className="flex flex-col gap-4">
+        <SectionHeader icon={Gauge} title="사용량 모니터링" loading={loading} onRefresh={load} />
+        <div className="h-px w-full bg-border" />
+        <CollapsiblePanel className="flex flex-col gap-4">
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          {usage && (
+            <>
+              <InfoCard className="flex flex-col gap-3">
+                <ItemTitle>Google Sheets (분당 한도)</ItemTitle>
+                <UsageBar
+                  label="이번 분 읽기"
+                  used={usage.sheets.readsThisMinute}
+                  limit={usage.sheets.readLimitPerMinute}
+                  unit="회"
+                />
+                <UsageBar
+                  label="이번 분 쓰기"
+                  used={usage.sheets.writesThisMinute}
+                  limit={usage.sheets.writeLimitPerMinute}
+                  unit="회"
+                />
+                <p className="text-micro-lg text-muted-foreground/70 sm:text-xs">
+                  직전 분: 읽기 {usage.sheets.readsLastMinute}회 · 쓰기 {usage.sheets.writesLastMinute}회 — Worker가
+                  자체적으로 센 근사치이며, 재배포·장시간 유휴 후에는 0부터 다시 셉니다.
+                </p>
+              </InfoCard>
+
+              <InfoCard className="flex flex-col gap-3">
+                <ItemTitle>Cloudflare (오늘 하루 한도)</ItemTitle>
+                {usage.cloudflareConfigured && usage.cloudflare ? (
+                  <>
+                    <UsageBar
+                      label="Workers 요청"
+                      used={usage.cloudflare.workersRequestsToday}
+                      limit={usage.limits.workersRequestsPerDay}
+                      unit="회"
+                    />
+                    <UsageBar
+                      label="KV 읽기"
+                      used={usage.cloudflare.kvReadsToday}
+                      limit={usage.limits.kvReadsPerDay}
+                      unit="회"
+                    />
+                    <UsageBar
+                      label="KV 쓰기·삭제"
+                      used={usage.cloudflare.kvWritesToday}
+                      limit={usage.limits.kvWritesPerDay}
+                      unit="회"
+                    />
+                    {usage.cloudflare.workersErrorsToday > 0 && (
+                      <p className="text-micro-lg text-destructive sm:text-xs">
+                        오늘 Workers 오류 {usage.cloudflare.workersErrorsToday}건
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-xs text-muted-foreground sm:text-sm">
+                    Cloudflare API 토큰이 설정되어 있지 않아 실제 사용량을 불러올 수 없습니다. Account Analytics
+                    Read 권한의 API 토큰을 발급해 CF_API_TOKEN/CF_ACCOUNT_ID로 등록하면 표시됩니다.
+                  </p>
+                )}
+              </InfoCard>
+            </>
+          )}
+        </CollapsiblePanel>
+      </Collapsible>
+    </SectionCard>
+  );
+}
 
 function BotStatusSection() {
   const { call } = useApi();
@@ -226,6 +369,7 @@ function MemberReorderSection() {
 export function AdminBotSheetTab() {
   return (
     <div className="flex flex-col gap-4">
+      <UsageMonitorSection />
       <BotStatusSection />
       <MemberReorderSection />
     </div>
