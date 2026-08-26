@@ -6,6 +6,7 @@ import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, DayDetailCard } from "@/components/dashboard/shared";
 import { SectionHeader, ItemTitle, FieldLabel, SectionCard } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
+import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { ApiError } from "@/lib/api/client";
 import { ICON_STROKE, cn } from "@/lib/utils";
 import type {
@@ -65,9 +66,11 @@ const FINE_UNDO_PAID_OPTIONS: Exclude<FineStatus, "납부">[] = ["미납", "면�
 function PaidFineList({
   refreshToken,
   onResolved,
+  isVisible,
 }: {
   refreshToken?: number;
   onResolved?: (status: FineStatus) => void;
+  isVisible: boolean;
 }) {
   const { call } = useApi();
 
@@ -95,6 +98,9 @@ function PaidFineList({
   }
 
   useEffect(load, [refreshToken]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 이 탭(MEM·PEN)에서 퇴실/재납 처리를 하면 벌금 상태가 바뀔 수 있어,
+  // Money 탭으로 돌아올 때마다 새로 불러온다.
+  useRefreshOnVisible(isVisible, load);
 
   async function handleSetStatus(f: PaidFine, status: FineStatus) {
     const key = fineKey(f);
@@ -257,9 +263,11 @@ function PaidFineList({
 function FineList({
   refreshToken,
   onResolved,
+  isVisible,
 }: {
   refreshToken?: number;
   onResolved?: (status: FineStatus) => void;
+  isVisible: boolean;
 }) {
   const { call } = useApi();
 
@@ -285,6 +293,7 @@ function FineList({
   }
 
   useEffect(load, [refreshToken]); // eslint-disable-line react-hooks/exhaustive-deps
+  useRefreshOnVisible(isVisible, load);
 
   async function handleSetStatus(f: UnpaidFine, status: FineStatus) {
     const key = fineKey(f);
@@ -446,9 +455,11 @@ function FineList({
 function ExemptFineList({
   refreshToken,
   onResolved,
+  isVisible,
 }: {
   refreshToken?: number;
   onResolved?: (status: FineStatus) => void;
+  isVisible: boolean;
 }) {
   const { call } = useApi();
 
@@ -474,6 +485,7 @@ function ExemptFineList({
   }
 
   useEffect(load, [refreshToken]); // eslint-disable-line react-hooks/exhaustive-deps
+  useRefreshOnVisible(isVisible, load);
 
   async function handleSetStatus(f: ExemptFine, status: FineStatus) {
     const key = fineKey(f);
@@ -628,7 +640,7 @@ function ExemptFineList({
   );
 }
 
-export function AdminMoneyTab() {
+export function AdminMoneyTab({ visible }: { visible: boolean }) {
   // 세 현황(납부/미납/면제) 중 어느 하나에서 상태를 바꾸면, 그 값이 향하는
   // 다른 현황이 즉시 새 항목을 반영하도록 재조회를 트리거한다.
   const [paidRefresh, setPaidRefresh] = useState(0);
@@ -644,13 +656,13 @@ export function AdminMoneyTab() {
   return (
     <div className="flex flex-col gap-4">
       <SectionCard>
-        <PaidFineList refreshToken={paidRefresh} onResolved={handleFineResolved} />
+        <PaidFineList refreshToken={paidRefresh} onResolved={handleFineResolved} isVisible={visible} />
       </SectionCard>
       <SectionCard>
-        <FineList refreshToken={unpaidRefresh} onResolved={handleFineResolved} />
+        <FineList refreshToken={unpaidRefresh} onResolved={handleFineResolved} isVisible={visible} />
       </SectionCard>
       <SectionCard>
-        <ExemptFineList refreshToken={exemptRefresh} onResolved={handleFineResolved} />
+        <ExemptFineList refreshToken={exemptRefresh} onResolved={handleFineResolved} isVisible={visible} />
       </SectionCard>
     </div>
   );
