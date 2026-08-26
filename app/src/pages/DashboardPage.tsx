@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatusPage } from "@/pages/StatusPage";
@@ -14,6 +15,11 @@ export function DashboardPage() {
   const [params, setParams] = useSearchParams();
   const view = normalizeView(params.get("view"));
   const cycleFileId = params.get("cycle");
+
+  // AdminPage와 동일한 이유 — 탭을 오갈 때마다 언마운트/재마운트되며 각
+  // 탭의 조회가 다시 실행되지 않도록, 한 번 연 탭은 hidden으로만 감춘다.
+  const everOpened = useRef({ me: false, all: false });
+  everOpened.current[view] = true;
 
   function selectCycle(fileId: string | null) {
     const next: Record<string, string> = {};
@@ -45,8 +51,12 @@ export function DashboardPage() {
         </TabsList>
       </Tabs>
 
-      {view === "me" && <StatusPage cycleFileId={cycleFileId} onSelectCycle={selectCycle} />}
-      {view === "all" && <RosterPage cycleFileId={cycleFileId} onSelectCycle={selectCycle} />}
+      <div hidden={view !== "me"}>
+        {everOpened.current.me && <StatusPage cycleFileId={cycleFileId} onSelectCycle={selectCycle} />}
+      </div>
+      <div hidden={view !== "all"}>
+        {everOpened.current.all && <RosterPage cycleFileId={cycleFileId} onSelectCycle={selectCycle} />}
+      </div>
     </div>
   );
 }
