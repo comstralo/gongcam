@@ -7,6 +7,7 @@ import { InfoCard, TintedPill } from "@/components/dashboard/shared";
 import { SectionHeader, PenaltyHistorySection } from "@/components/admin/shared";
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
 import { useApi } from "@/hooks/useApi";
+import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { useAuth } from "@/lib/auth/useAuth";
 import { ICON_STROKE, cn } from "@/lib/utils";
 import type { AdminExitCandidatesResponse, ExitCandidate, ExitKind, PenaltySlotHistoryEntry } from "@/lib/api/types";
@@ -81,7 +82,7 @@ function groupByDay(candidates: ExitCandidate[]) {
 // 페널티 2회 이상은 강제 퇴실자 조건 중 하나라 반환율이 항상 0%로 고정되며,
 // 유형 선택 없이 강제 퇴실자로 곧바로 확정할 수 있다(lockKind="forced").
 // "송출 P 제보 확인"과 동일하게 요일별 아코디언 → 인원별 토글 구조로 맞춘다.
-export function PenaltyCandidateList() {
+export function PenaltyCandidateList({ visible }: { visible: boolean }) {
   const { call } = useApi();
   const { session } = useAuth();
 
@@ -106,6 +107,9 @@ export function PenaltyCandidateList() {
   }
 
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // 다른 회원의 페널티 누적이 탭을 벗어난 사이에도 바뀔 수 있어, 돌아올
+  // 때마다 새로 불러와야 최신 대상자를 놓치지 않는다.
+  useRefreshOnVisible(visible, load);
 
   return (
     <Collapsible defaultOpen className="flex flex-col gap-4">

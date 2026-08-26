@@ -6,6 +6,7 @@ import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard } from "@/components/dashboard/shared";
 import { SectionHeader, SectionCard, ItemTitle, FieldLabel, FieldValue } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
+import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { ApiError } from "@/lib/api/client";
 import { cn, ICON_STROKE } from "@/lib/utils";
 import type {
@@ -76,7 +77,7 @@ function UsageBar({ label, used, limit, unit }: { label: string; used: number; l
 // 자신이 호출할 때마다 인메모리로 센 근사치(콜드스타트 시 리셋)이고,
 // Cloudflare 쪽은 CF_API_TOKEN이 등록되어 있을 때만 GraphQL Analytics API로
 // 오늘 하루 실측치를 가져온다 — 토큰이 없으면 그 부분만 안내 문구로 대체한다.
-function UsageMonitorSection() {
+function UsageMonitorSection({ visible }: { visible: boolean }) {
   const { call } = useApi();
 
   const [usage, setUsage] = useState<AdminUsageResponse | null>(null);
@@ -93,6 +94,10 @@ function UsageMonitorSection() {
   }
 
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // 이 카드는 "지금 할당량이 얼마나 찼는지"를 보여주는 실시간 모니터링이
+  // 목적이라, 탭을 벗어났다가 돌아왔을 때 몇 분 전 값을 계속 보여주면
+  // 한도 임박을 놓칠 수 있다 — 다시 보이게 될 때마다 새로 불러온다.
+  useRefreshOnVisible(visible, load);
 
   return (
     <SectionCard>
@@ -203,7 +208,7 @@ function UsageMonitorSection() {
   );
 }
 
-function BotStatusSection() {
+function BotStatusSection({ visible }: { visible: boolean }) {
   const { call } = useApi();
 
   const [status, setStatus] = useState<BotStatusResponse | null>(null);
@@ -222,6 +227,9 @@ function BotStatusSection() {
   }
 
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // 봇 온라인/오프라인은 실제로 수시로 바뀌는 상태라, 탭을 벗어났다가
+  // 돌아왔을 때 방금 끊긴 봇을 계속 "온라인"으로 보여주면 오해를 준다.
+  useRefreshOnVisible(visible, load);
 
   async function sendRestart() {
     setRestarting(true);
@@ -404,11 +412,11 @@ function MemberReorderSection() {
   );
 }
 
-export function AdminBotSheetTab() {
+export function AdminBotSheetTab({ visible }: { visible: boolean }) {
   return (
     <div className="flex flex-col gap-4">
-      <UsageMonitorSection />
-      <BotStatusSection />
+      <UsageMonitorSection visible={visible} />
+      <BotStatusSection visible={visible} />
       <MemberReorderSection />
     </div>
   );

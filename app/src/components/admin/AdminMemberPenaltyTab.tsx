@@ -9,19 +9,19 @@ import { MemberRosterList } from "@/components/admin/MemberRosterList";
 
 // MEMBER 탭과 PENALTY 탭을 통합한 뷰(MEM · PEN). 요구된 순서대로 배치한다:
 // 화각제보검토 → 예치금재납대상자 → 사유반휴신청 → 스터디원등록 → 명단.
-export function AdminMemberPenaltyTab() {
+export function AdminMemberPenaltyTab({ visible }: { visible: boolean }) {
   return (
     <div className="flex flex-col gap-4">
       <SectionCard>
-        <ReportReviewList />
+        <ReportReviewList visible={visible} />
       </SectionCard>
 
       <SectionCard>
-        <PenaltyCandidateList />
+        <PenaltyCandidateList visible={visible} />
       </SectionCard>
 
       <SectionCard>
-        <ReasonLeaveReviewList />
+        <ReasonLeaveReviewList visible={visible} />
       </SectionCard>
 
       <SectionCard>

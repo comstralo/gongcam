@@ -6,6 +6,7 @@ import { StatusView } from "@/components/dashboard/StatusView";
 import { CycleSwitcher } from "@/components/dashboard/CycleSwitcher";
 import { NotificationDialog } from "@/components/dashboard/NotificationDialog";
 import { useApi } from "@/hooks/useApi";
+import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { useAuth } from "@/lib/auth/useAuth";
 import { useMyStatus } from "@/lib/status/useMyStatus";
 import type { AdminMember, AdminMembersResponse, StatusResponse } from "@/lib/api/types";
@@ -16,9 +17,11 @@ const SELF_VALUE = "__self__";
 export function StatusPage({
   cycleFileId,
   onSelectCycle,
+  visible = true,
 }: {
   cycleFileId?: string | null;
   onSelectCycle?: (fileId: string | null) => void;
+  visible?: boolean;
 }) {
   const { call } = useApi();
   const { isAdmin } = useAuth();
@@ -79,6 +82,9 @@ export function StatusPage({
   }
 
   useEffect(reload, [selected, cycleFileId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 관리자가 다른 곳에서 처리한 벌금/반휴/페널티 결과가 이 화면을 벗어난
+  // 사이에도 바뀔 수 있어, 돌아올 때마다 새로 불러온다.
+  useRefreshOnVisible(visible, reload);
 
   return (
     <Card className="w-full">

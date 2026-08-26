@@ -11,7 +11,7 @@ function normalizeView(raw: string | null): DashboardView {
   return "me";
 }
 
-export function DashboardPage() {
+export function DashboardPage({ visible = true }: { visible?: boolean }) {
   const [params, setParams] = useSearchParams();
   const view = normalizeView(params.get("view"));
   const cycleFileId = params.get("cycle");
@@ -52,10 +52,14 @@ export function DashboardPage() {
       </Tabs>
 
       <div className="w-full" hidden={view !== "me"}>
-        {everOpened.current.me && <StatusPage cycleFileId={cycleFileId} onSelectCycle={selectCycle} />}
+        {everOpened.current.me && (
+          <StatusPage cycleFileId={cycleFileId} onSelectCycle={selectCycle} visible={visible && view === "me"} />
+        )}
       </div>
       <div className="w-full" hidden={view !== "all"}>
-        {everOpened.current.all && <RosterPage cycleFileId={cycleFileId} onSelectCycle={selectCycle} />}
+        {everOpened.current.all && (
+          <RosterPage cycleFileId={cycleFileId} onSelectCycle={selectCycle} visible={visible && view === "all"} />
+        )}
       </div>
     </div>
   );

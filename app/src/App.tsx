@@ -49,7 +49,7 @@ function MainViews() {
       <div hidden={path !== "/"}>
         {everVisited.current["/"] && (
           <AppShell title="대시보드" titleIcon={LayoutDashboard}>
-            <DashboardPage />
+            <DashboardPage visible={path === "/"} />
           </AppShell>
         )}
       </div>
@@ -70,7 +70,7 @@ function MainViews() {
       <div hidden={path !== "/settings"}>
         {everVisited.current["/settings"] && (
           <AppShell title="설정" titleIcon={Settings}>
-            <SettingsPage />
+            <SettingsPage visible={path === "/settings"} />
           </AppShell>
         )}
       </div>
@@ -78,7 +78,7 @@ function MainViews() {
         {everVisited.current["/admin"] &&
           (isAdmin ? (
             <AppShell title="관리자" titleIcon={ShieldCheck}>
-              <AdminPage />
+              <AdminPage visible={path === "/admin"} />
             </AppShell>
           ) : (
             <AdminDeniedCard />

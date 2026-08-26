@@ -8,6 +8,7 @@ import { SubRow, won } from "@/components/dashboard/shared";
 import { RosterView, RANK_EMOJI } from "@/components/dashboard/RosterView";
 import { CycleSwitcher } from "@/components/dashboard/CycleSwitcher";
 import { useApi } from "@/hooks/useApi";
+import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { ICON_STROKE, cn } from "@/lib/utils";
 import type { RosterMember, RosterStatusResponse, SettlementItem } from "@/lib/api/types";
 
@@ -53,9 +54,11 @@ const DUMMY_SETTLEMENT: SettlementItem[] = [
 export function RosterPage({
   cycleFileId,
   onSelectCycle,
+  visible = true,
 }: {
   cycleFileId?: string | null;
   onSelectCycle?: (fileId: string | null) => void;
+  visible?: boolean;
 }) {
   const { call } = useApi();
   const [members, setMembers] = useState<RosterMember[] | null>(DUMMY_MEMBERS);
@@ -91,6 +94,9 @@ export function RosterPage({
   }
 
   useEffect(load, [cycleFileId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 다른 회원들의 타이머·순위·정산은 이 화면을 벗어난 사이에도 계속
+  // 바뀐다 — "실시간 랭킹"을 표방하는 화면이라 돌아올 때마다 새로 불러온다.
+  useRefreshOnVisible(visible, load);
 
   return (
     <Card className="w-full">

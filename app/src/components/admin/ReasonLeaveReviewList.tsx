@@ -7,6 +7,7 @@ import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, SubRow, TintedPill } from "@/components/dashboard/shared";
 import { SectionHeader, CapturePreview } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
+import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { useAuth } from "@/lib/auth/useAuth";
 import { ICON_STROKE, cn } from "@/lib/utils";
 import type { LeaveProofReviewItem, LeaveProofListResponse, LeaveProofDecideResponse } from "@/lib/api/types";
@@ -38,7 +39,7 @@ function groupByDay(items: LeaveProofReviewItem[]) {
   return STATUS_DAYS.filter((d) => map.has(d)).map((day) => ({ day, items: map.get(day)! }));
 }
 
-export function ReasonLeaveReviewList() {
+export function ReasonLeaveReviewList({ visible }: { visible: boolean }) {
   const { call } = useApi();
   const { session } = useAuth();
 
@@ -67,6 +68,9 @@ export function ReasonLeaveReviewList() {
   }
 
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // 새 반휴 신청이 탭을 벗어난 사이에 들어올 수 있어, 돌아올 때마다 새로
+  // 불러와야 처리가 늦어지지 않는다.
+  useRefreshOnVisible(visible, load);
 
   function decide(item: LeaveProofReviewItem, decision: "approved" | "rejected", rejectReason?: string) {
     setDecidingId(item.id);

@@ -9,6 +9,7 @@ import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, SubRow, TintedPill } from "@/components/dashboard/shared";
 import { SectionHeader, CapturePreview } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
+import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { useAuth } from "@/lib/auth/useAuth";
 import { ICON_STROKE, cn } from "@/lib/utils";
 import type {
@@ -228,7 +229,7 @@ function SeverityPicker({
   );
 }
 
-export function ReportReviewList() {
+export function ReportReviewList({ visible }: { visible: boolean }) {
   const { call } = useApi();
   const { session } = useAuth();
 
@@ -272,6 +273,9 @@ export function ReportReviewList() {
   }
 
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // 다른 학생이 이 탭을 벗어난 사이에 새 제보를 넣을 수 있어, 승인 대기열은
+  // 관리자가 이 탭으로 돌아올 때마다 새로 불러와야 방금 들어온 제보를 놓치지 않는다.
+  useRefreshOnVisible(visible, load);
 
   function decide(item: CaptureReviewItem, decision: "approved" | "rejected") {
     setDecidingId(item.id);

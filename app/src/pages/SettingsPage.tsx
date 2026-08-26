@@ -8,14 +8,18 @@ import { DividedValue, InfoCard } from "@/components/dashboard/shared";
 import { PeriodAlarmCard } from "@/components/dashboard/PeriodAlarmCard";
 import { NotifyPrefsCard } from "@/components/dashboard/NotifyPrefsCard";
 import { DepositRefundDialog } from "@/components/dashboard/DepositRefundDialog";
+import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { useMyStatus } from "@/lib/status/useMyStatus";
 import { ICON_STROKE, cn } from "@/lib/utils";
 
-export function SettingsPage() {
+export function SettingsPage({ visible = true }: { visible?: boolean }) {
   // 앱 전역에서 공유하는 "내 현재 상태" 캐시를 그대로 쓴다 — 대시보드에서
   // 이미 불러온 값이 있으면 이 페이지로 넘어와도 재요청 없이 즉시 보여준다
   // (이름이 잠깐 다른 값으로 보였다가 바뀌는 깜빡임 방지).
   const { status, refresh } = useMyStatus();
+  // 관리자가 퇴실/예치금 처리를 다른 화면에서 했을 수 있어, 이 페이지로
+  // 돌아올 때마다 최신 상태를 다시 불러온다.
+  useRefreshOnVisible(visible, refresh);
 
   return (
     <Card className="w-full page-content">

@@ -14,7 +14,7 @@ function normalizeView(raw: string | null): AdminView {
   return "member";
 }
 
-export function AdminPage() {
+export function AdminPage({ visible = true }: { visible?: boolean }) {
   const [params, setParams] = useSearchParams();
   const view = normalizeView(params.get("tab"));
 
@@ -56,9 +56,13 @@ export function AdminPage() {
               몇 번만으로 429 RESOURCE_EXHAUSTED 재현됨). 아직 한 번도
               열지 않은 탭은 그대로 마운트를 미뤄 불필요한 초기 로드를
               피한다. */}
-          <div hidden={view !== "member"}>{everOpened.current.member && <AdminMemberPenaltyTab />}</div>
+          <div hidden={view !== "member"}>
+            {everOpened.current.member && <AdminMemberPenaltyTab visible={visible && view === "member"} />}
+          </div>
           <div hidden={view !== "money"}>{everOpened.current.money && <AdminMoneyTab />}</div>
-          <div hidden={view !== "botsheet"}>{everOpened.current.botsheet && <AdminBotSheetTab />}</div>
+          <div hidden={view !== "botsheet"}>
+            {everOpened.current.botsheet && <AdminBotSheetTab visible={visible && view === "botsheet"} />}
+          </div>
         </CardContent>
       </Card>
     </div>
