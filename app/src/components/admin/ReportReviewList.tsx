@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Flag, ChevronDown, CalendarDays, FileText, Clock, Gavel, Image as ImageIcon, User, Users } from "lucide-react";
+import { Flag, ChevronDown, CalendarDays, FileText, Clock, Gavel, Image as ImageIcon, User, Users, Trash2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import type {
   CaptureReviewItem,
   CapturesListResponse,
   CaptureDecideResponse,
+  CaptureDeleteResponse,
   OutputPenaltyResult,
 } from "@/lib/api/types";
 
@@ -235,6 +236,7 @@ export function ReportReviewList() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [decidingId, setDecidingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   // 승인 완료된 항목을 목록에서 지우지 않고 그 자리에 남겨 "{조치} 취소"
@@ -335,6 +337,33 @@ export function ReportReviewList() {
       })
       .catch((err) => setError(err instanceof Error ? err.message : "취소에 실패했습니다."))
       .finally(() => setDecidingId(null));
+  }
+
+  // 기록 자체를 완전히 말소한다(되돌릴 수 없음). "적용"된 항목이면 시트에
+  // 반영된 페널티도 함께 취소되도록 penalty 정보를 같이 보낸다.
+  function deleteCapture(item: CaptureReviewItem) {
+    if (!window.confirm("이 제보 기록을 완전히 삭제할까요? 되돌릴 수 없습니다.")) return;
+    setDeletingId(item.id);
+    setError(null);
+    call<CaptureDeleteResponse>("/admin/captures/delete", {
+      method: "POST",
+      body: { id: item.id, penalty: applied[item.id] || null },
+    })
+      .then(() => {
+        setItems((prev) => (prev ? prev.filter((i) => i.id !== item.id) : prev));
+        setApplied((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+        setRejected((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : "삭제에 실패했습니다."))
+      .finally(() => setDeletingId(null));
   }
 
   return (
@@ -571,51 +600,63 @@ export function ReportReviewList() {
                                   </div>
                                 )}
 
-                                {isApplied && applied[item.id] ? (
-                                  <Button
-                                    variant="outline"
-                                    className="w-full sm:h-12 sm:text-base"
-                                    disabled={decidingId === item.id}
-                                    onClick={() => cancel(item)}
-                                  >
-                                    {occurrenceLabel(applied[item.id].occurrence)} 취소
-                                  </Button>
-                                ) : isApplied ? (
-                                  // 새로고침 등으로 이 세션이 승인 상세 정보(occurrence 등)를
-                                  // 들고 있지 않은 경우 — 취소에 필요한 정보가 없어 버튼
-                                  // 자체를 숨긴다(잘못 눌러도 동작하지 않는 것보다 안전).
-                                  <p className="text-center text-xs text-muted-foreground sm:text-sm">
-                                    이미 처리된 제보입니다.
-                                  </p>
-                                ) : isRejected ? (
-                                  <Button
-                                    variant="outline"
-                                    className="w-full sm:h-12 sm:text-base"
-                                    disabled={decidingId === item.id}
-                                    onClick={() => revertReject(item)}
-                                  >
-                                    반려 취소
-                                  </Button>
-                                ) : (
-                                  <div className="grid grid-cols-2 gap-2">
-                                    <Button
-                                      variant="destructive"
-                                      className="sm:h-12 sm:text-base"
-                                      disabled={decidingId === item.id || !canDecide(item.id)}
-                                      onClick={() => decide(item, "approved")}
-                                    >
-                                      {occurrenceLabel(item.nextOccurrence)} 적용
-                                    </Button>
+                                <div className="grid grid-cols-[1fr_auto] gap-2">
+                                  {isApplied && applied[item.id] ? (
                                     <Button
                                       variant="outline"
                                       className="sm:h-12 sm:text-base"
-                                      disabled={decidingId === item.id || !canDecide(item.id)}
-                                      onClick={() => decide(item, "rejected")}
+                                      disabled={decidingId === item.id}
+                                      onClick={() => cancel(item)}
                                     >
-                                      반려
+                                      {occurrenceLabel(applied[item.id].occurrence)} 취소
                                     </Button>
-                                  </div>
-                                )}
+                                  ) : isApplied ? (
+                                    // 새로고침 등으로 이 세션이 승인 상세 정보(occurrence 등)를
+                                    // 들고 있지 않은 경우 — 취소에 필요한 정보가 없어 버튼
+                                    // 자체를 숨긴다(잘못 눌러도 동작하지 않는 것보다 안전).
+                                    <p className="flex items-center justify-center text-center text-xs text-muted-foreground sm:text-sm">
+                                      이미 처리된 제보입니다.
+                                    </p>
+                                  ) : isRejected ? (
+                                    <Button
+                                      variant="outline"
+                                      className="sm:h-12 sm:text-base"
+                                      disabled={decidingId === item.id}
+                                      onClick={() => revertReject(item)}
+                                    >
+                                      반려 취소
+                                    </Button>
+                                  ) : (
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <Button
+                                        variant="destructive"
+                                        className="sm:h-12 sm:text-base"
+                                        disabled={decidingId === item.id || !canDecide(item.id)}
+                                        onClick={() => decide(item, "approved")}
+                                      >
+                                        {occurrenceLabel(item.nextOccurrence)} 적용
+                                      </Button>
+                                      <Button
+                                        variant="outline"
+                                        className="sm:h-12 sm:text-base"
+                                        disabled={decidingId === item.id || !canDecide(item.id)}
+                                        onClick={() => decide(item, "rejected")}
+                                      >
+                                        반려
+                                      </Button>
+                                    </div>
+                                  )}
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="sm:h-12 sm:w-12 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                    disabled={deletingId === item.id}
+                                    onClick={() => deleteCapture(item)}
+                                    aria-label="기록 삭제"
+                                  >
+                                    <Trash2 className="size-4" strokeWidth={ICON_STROKE.default} />
+                                  </Button>
+                                </div>
                               </>
                             )}
                           </div>

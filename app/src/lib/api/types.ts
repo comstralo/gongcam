@@ -547,6 +547,10 @@ export type CaptureDecideResponse = {
   penalty?: OutputPenaltyResult | null;
 };
 
+export type CaptureDeleteResponse = {
+  ok: boolean;
+};
+
 export type MemberReorderPlanItem = {
   from: string;
   to: string;
