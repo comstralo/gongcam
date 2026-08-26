@@ -7,7 +7,7 @@ import { DividedValue, InfoCard } from "@/components/dashboard/shared";
 import { usePushSubscription } from "@/hooks/usePushSubscription";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/lib/auth/useAuth";
-import { ICON_STROKE, cn } from "@/lib/utils";
+import { ICON_STROKE } from "@/lib/utils";
 import type { AdminPushSendCategoryResponse, NotifyCategory, NotifyPrefsResponse, SetNotifyPrefsResponse } from "@/lib/api/types";
 
 const PUSH_STATE_LABEL: Record<string, string> = {
@@ -57,7 +57,10 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
   // 관리자 전용 — 실제 이벤트에 연결되기 전, 본인 계정으로 종류별 발송/차단이
   // 의도대로 동작하는지 즉시 확인해보는 용도.
   function sendTestToSelf(category: NotifyCategory) {
-    if (!name) return;
+    if (!name) {
+      setTestResult({ text: "본인 이름을 아직 불러오지 못했습니다. 잠시 후 다시 시도해주세요.", type: "error" });
+      return;
+    }
     setTestingCategory(category);
     setTestResult(null);
     call<AdminPushSendCategoryResponse>("/admin/push/send-category", {
@@ -101,23 +104,21 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
           <div className="flex flex-col gap-1.5">
             {(Object.keys(categories) as NotifyCategory[]).map((key) => (
               <div key={key} className="flex items-center justify-between gap-2 pl-5 sm:pl-5.5">
-                <span
-                  className={cn(
-                    "inline-flex items-center gap-1 text-micro-lg text-muted-foreground before:content-['└'] sm:text-xs"
-                  )}
-                >
+                <span className="inline-flex items-center gap-1">
                   {isAdmin && (
                     <button
                       type="button"
                       className="inline-flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground/70 outline-none hover:text-primary focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 sm:size-4.5"
-                      disabled={!name || testingCategory === key}
+                      disabled={testingCategory === key}
                       onClick={() => sendTestToSelf(key)}
                       aria-label={`${categories[key]} 테스트 발송`}
                     >
                       <Send className="size-3 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
                     </button>
                   )}
-                  {categories[key]}
+                  <span className="text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
+                    {categories[key]}
+                  </span>
                 </span>
                 <Switch
                   checked={prefs[key]}
