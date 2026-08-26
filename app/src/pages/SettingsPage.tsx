@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { BellRing, DoorOpen, UserCog } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
@@ -9,28 +8,14 @@ import { DividedValue, InfoCard } from "@/components/dashboard/shared";
 import { PeriodAlarmCard } from "@/components/dashboard/PeriodAlarmCard";
 import { NotifyPrefsCard } from "@/components/dashboard/NotifyPrefsCard";
 import { DepositRefundDialog } from "@/components/dashboard/DepositRefundDialog";
-import { useApi } from "@/hooks/useApi";
+import { useMyStatus } from "@/lib/status/useMyStatus";
 import { ICON_STROKE, cn } from "@/lib/utils";
-import type { StatusResponse } from "@/lib/api/types";
 
 export function SettingsPage() {
-  const { call } = useApi();
-  const [status, setStatus] = useState<StatusResponse | null>(null);
-
-  // 퇴실신청 카드는 "내 대시보드" 기준 예치금 반환 예상액을 보여줘야 하므로,
-  // 대시보드 조회와 무관하게 이 페이지에서 직접 /status를 불러온다.
-  useEffect(() => {
-    let cancelled = false;
-    call<StatusResponse>("/status")
-      .then((data) => {
-        if (!cancelled) setStatus(data);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // 앱 전역에서 공유하는 "내 현재 상태" 캐시를 그대로 쓴다 — 대시보드에서
+  // 이미 불러온 값이 있으면 이 페이지로 넘어와도 재요청 없이 즉시 보여준다
+  // (이름이 잠깐 다른 값으로 보였다가 바뀌는 깜빡임 방지).
+  const { status, refresh } = useMyStatus();
 
   return (
     <Card className="w-full page-content">
@@ -48,11 +33,7 @@ export function SettingsPage() {
                   breakdown={status.depositRefundBreakdown}
                   exitRequested={!!status.exitRequested}
                   exitRequestDate={status.exitRequestDate}
-                  onExitRequestChange={() => {
-                    call<StatusResponse>("/status")
-                      .then(setStatus)
-                      .catch(() => {});
-                  }}
+                  onExitRequestChange={refresh}
                 >
                   <InfoCard className="flex items-center justify-between gap-2.5">
                     <span className="inline-flex min-w-0 flex-1 items-center gap-1.25 truncate text-xs font-semibold sm:text-sm">

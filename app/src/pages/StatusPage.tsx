@@ -7,6 +7,7 @@ import { CycleSwitcher } from "@/components/dashboard/CycleSwitcher";
 import { NotificationDialog } from "@/components/dashboard/NotificationDialog";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/lib/auth/useAuth";
+import { useMyStatus } from "@/lib/status/useMyStatus";
 import type { AdminMember, AdminMembersResponse, StatusResponse } from "@/lib/api/types";
 
 // 회원번호로 "본인"을 표시하는 특수값 — 실제 회원번호와 겹치지 않도록 접두사를 둔다.
@@ -21,18 +22,26 @@ export function StatusPage({
 }) {
   const { call } = useApi();
   const { isAdmin } = useAuth();
+  const myStatus = useMyStatus();
 
   const [members, setMembers] = useState<AdminMember[] | null>(null);
   const [membersError, setMembersError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string>(SELF_VALUE);
 
-  const [status, setStatus] = useState<StatusResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [otherStatus, setOtherStatus] = useState<StatusResponse | null>(null);
+  const [otherError, setOtherError] = useState<string | null>(null);
+  const [otherLoading, setOtherLoading] = useState(false);
 
   // 과거 사이클(cycleFileId 지정) 조회 중엔 관리자의 다른 회원 선택을
   // 지원하지 않는다 — /admin/members/{number}는 실시간 조회 전용이다.
   const isViewingCycle = !!cycleFileId;
+  // "내 대시보드 · 현재 사이클" 조회는 앱 전역 캐시(MyStatusContext)를 그대로
+  // 쓴다. 그 외(다른 회원 선택, 과거 사이클 조회)는 파라미터가 붙는 별도
+  // 조회라 이 페이지 로컬에서 따로 불러온다.
+  const usingMyStatus = !isViewingCycle && selected === SELF_VALUE;
+  const status = usingMyStatus ? myStatus.status : otherStatus;
+  const loading = usingMyStatus ? myStatus.loading : otherLoading;
+  const error = usingMyStatus ? myStatus.error : otherError;
 
   // 관리자만 다른 스터디원을 선택할 수 있으므로, 관리자일 때만 회원 목록을 불러온다.
   useEffect(() => {
@@ -44,24 +53,25 @@ export function StatusPage({
   }, [isAdmin, isViewingCycle]);
 
   function reload() {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    let path: string;
-    if (isViewingCycle || selected === SELF_VALUE) {
-      path = cycleFileId ? `/status?cycle=${encodeURIComponent(String(cycleFileId))}` : "/status";
-    } else {
-      path = `/admin/members/${encodeURIComponent(selected)}`;
+    if (usingMyStatus) {
+      myStatus.refresh();
+      return;
     }
+    let cancelled = false;
+    setOtherLoading(true);
+    setOtherError(null);
+    const path = isViewingCycle
+      ? `/status?cycle=${encodeURIComponent(String(cycleFileId))}`
+      : `/admin/members/${encodeURIComponent(selected)}`;
     call<StatusResponse>(path)
       .then((data) => {
-        if (!cancelled) setStatus(data);
+        if (!cancelled) setOtherStatus(data);
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "상태를 불러오지 못했습니다.");
+        if (!cancelled) setOtherError(err instanceof Error ? err.message : "상태를 불러오지 못했습니다.");
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setOtherLoading(false);
       });
     return () => {
       cancelled = true;
@@ -112,7 +122,7 @@ export function StatusPage({
           allowGoalSchedule={!isViewingCycle && selected === SELF_VALUE}
           isViewingCycle={isViewingCycle}
           onLeaveApplied={(day, type, delta) => {
-            setStatus((prev) => {
+            const applyLeaveDelta = (prev: StatusResponse | null) => {
               if (!prev) return prev;
               const usedField = type === "normal" ? "normalLeaveUsed" : "reasonLeaveUsed";
               const leftField = type === "normal" ? "normalLeaveLeft" : "reasonLeaveLeft";
@@ -128,7 +138,12 @@ export function StatusPage({
                   d.day === day ? { ...d, [usedField]: Math.max(0, d[usedField] + delta) } : d
                 ),
               };
-            });
+            };
+            if (usingMyStatus) {
+              myStatus.setStatus(applyLeaveDelta);
+            } else {
+              setOtherStatus(applyLeaveDelta);
+            }
           }}
           onReasonLeaveSubmitted={reload}
         />
