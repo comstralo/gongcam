@@ -261,6 +261,9 @@ export type CycleListResponse = {
   // 현재 진행 중인 사이클(최대 3주) 중 이미 백업된 주차만 최신순으로 담는다.
   // "현재"(실시간) 옵션은 이 목록에 없다 — 프론트가 cycle 파라미터 생략으로 표현한다.
   weeks: CycleWeek[];
+  // 사이클 하나가 최대 몇 주로 구성되는지(현재 3) — weeks.length가 이보다
+  // 적으면(아직 3주가 안 지남) 나머지는 비활성화 슬롯으로 채워 보여준다.
+  maxWeeks: number;
 };
 
 export type AdminMember = {
