@@ -11,6 +11,9 @@ export type ParticipantsResponse = {
 
 export type StatusDay = {
   day: string;
+  // 이 요일의 실제 캘린더 날짜("YYYY-MM-DD"). 서버가 계산에 실패하면 null —
+  // 이 경우 프론트는 가입일 비교를 건너뛰고 기존처럼 동작한다.
+  date: string | null;
   total: number;
   goal: number;
   morning: number;
@@ -179,6 +182,9 @@ export type StatusResponse = {
   name: string;
   goalType: string;
   joinDate: string;
+  // 가입일 원본("YYYY-MM-DD") — joinDate("D+238")는 매일 바뀌는 상대값이라
+  // 요일별 날짜와 직접 비교할 수 없어 별도로 내려준다. 값이 없으면 "".
+  joinDateExact: string;
   weeklyMerit: string;
   weeklyMeritRank: string;
   weeklyMeritBreakdown: WeeklyMeritBreakdown;

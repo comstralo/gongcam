@@ -325,15 +325,22 @@ export function StatusView({
               (d.paymentStatus === "납부" ||
                 (d.isDepositAgainDay && status.depositRefundBreakdown?.depositAgainStatus === "납부"));
             const isFuture = !isViewingCycle && i > TODAY_INDEX;
+            // 🔧 [가입일 이전 요일 비활성화] 가입 전이라 참여 자체가 불가능했던
+            // 요일은 데이터가 항상 비어있어 "진행 전/기록 없음"이 미래 요일과
+            // 똑같이 뜬다 — 실제로 지난 날인데 "아직 안 지났다"로 오해할 수
+            // 있어, 아예 선택 불가로 표시한다. 두 값이 다 "YYYY-MM-DD" 문자열
+            // 이라 사전식 비교가 곧 날짜 비교와 같다.
+            const isBeforeJoin = !!(d.date && status.joinDateExact && d.date < status.joinDateExact);
+            const isDisabled = isFuture || isBeforeJoin;
             return (
               <button
                 key={d.day}
                 type="button"
                 onClick={() => setSelectedDay(i)}
-                disabled={isFuture}
+                disabled={isDisabled}
                 className={cn(
                   "relative flex flex-col items-center gap-1 rounded-full border py-2 text-xs font-semibold transition-all sm:py-2.5 sm:text-sm",
-                  isFuture
+                  isDisabled
                     ? "cursor-not-allowed border-border bg-muted/50 text-muted-foreground/50"
                     : isSelected
                       ? isUnpaid
