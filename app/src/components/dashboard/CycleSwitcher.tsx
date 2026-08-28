@@ -81,7 +81,7 @@ export function CycleSwitcher({
             disabled
             className="cursor-not-allowed rounded-full border border-border bg-muted/50 px-3.5 py-2 text-sm font-semibold text-muted-foreground/50 sm:text-base"
           >
-            -
+            데이터 없음
           </button>
         )
       )}
