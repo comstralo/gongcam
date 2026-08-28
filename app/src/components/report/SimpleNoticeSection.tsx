@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { MessageSquareWarning, User } from "lucide-react";
+import { MessageSquareWarning, TriangleAlert, User } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { SectionCard } from "@/components/admin/shared";
+import { InfoCard } from "@/components/dashboard/shared";
 import { RecentNoticesSection } from "@/components/report/RecentNoticesSection";
 import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
@@ -12,6 +13,10 @@ import type { PushSendToMemberResponse } from "@/lib/api/types";
 
 // TODO: 실제 알림 원인 옵션은 나중에 채운다 — 지금은 드롭다운 모양만 잡아둔 상태.
 const NOTICE_REASON_OPTIONS: { value: string; label: string }[] = [];
+
+// "송출 P 제보"의 주의사항과 동일한 패턴 — 배열이라 문구가 늘어나도 목록에
+// 항목만 추가하면 된다.
+const NOTICE_CAUTIONS = ["동일 대상자에 대해 10분내로 중복 전송은 불가합니다."];
 
 // "제보"와 같은 메뉴에서, 타이머를 실수로 안 켠 참여자처럼 화면까지 확인할
 // 필요 없는 사소한 상황을 가볍게 알려주는 용도. 대상은 현재 접속 중인
@@ -110,16 +115,33 @@ export function SimpleNoticeSection({
         </div>
 
         <Button
-          className="w-full border-primary hover:bg-primary/10 sm:h-12 sm:text-base"
+          className="w-full sm:h-12 sm:text-base"
           variant="outline"
           disabled={sending || stale}
           onClick={handleSend}
         >
-          {sending ? "보내는 중..." : "알림 보내기"}
+          {sending ? "보내는 중..." : "알림 전송"}
         </Button>
       </SectionCard>
 
       <RecentNoticesSection refreshSignal={noticeRefreshSignal} />
+
+      <InfoCard className="flex flex-col gap-1 border-amber-600/30 bg-amber-600/5 dark:border-amber-400/30 dark:bg-amber-400/5">
+        <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+          <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
+          <span className="text-xs font-semibold sm:text-sm">주의사항</span>
+        </div>
+        <ul className="flex flex-col gap-0.5">
+          {NOTICE_CAUTIONS.map((text) => (
+            <li
+              key={text}
+              className="text-micro-lg leading-relaxed text-muted-foreground before:mr-1 before:content-['·'] sm:text-xs"
+            >
+              {text}
+            </li>
+          ))}
+        </ul>
+      </InfoCard>
 
       {result && (
         <Alert variant={result.type === "error" ? "destructive" : "default"}>

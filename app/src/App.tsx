@@ -55,7 +55,7 @@ function MainViews() {
       </div>
       <div hidden={path !== "/report"}>
         {everVisited.current["/report"] && (
-          <AppShell title="화각 제보" titleIcon={ScanLine}>
+          <AppShell title="제보" titleIcon={ScanLine}>
             <ReportPage />
           </AppShell>
         )}
