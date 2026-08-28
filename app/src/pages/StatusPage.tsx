@@ -35,8 +35,6 @@ export function StatusPage({
   const [otherError, setOtherError] = useState<string | null>(null);
   const [otherLoading, setOtherLoading] = useState(false);
 
-  // 과거 사이클(cycleFileId 지정) 조회 중엔 관리자의 다른 회원 선택을
-  // 지원하지 않는다 — /admin/members/{number}는 실시간 조회 전용이다.
   const isViewingCycle = !!cycleFileId;
   // "내 대시보드 · 현재 사이클" 조회는 앱 전역 캐시(MyStatusContext)를 그대로
   // 쓴다. 그 외(다른 회원 선택, 과거 사이클 조회)는 파라미터가 붙는 별도
@@ -47,13 +45,25 @@ export function StatusPage({
   const error = usingMyStatus ? myStatus.error : otherError;
 
   // 관리자만 다른 스터디원을 선택할 수 있으므로, 관리자일 때만 회원 목록을 불러온다.
+  // 🔧 [과거 주차 회원 전환 지원] 이전엔 isViewingCycle이면 아예 건너뛰어
+  // "다른 회원 보기" 드롭다운 자체가 사라졌다 — 그 주차 백업 시트의 회원
+  // 목록을 cycle 파라미터로 함께 요청한다(그 주엔 있었지만 지금은 퇴실한
+  // 회원도 과거 기록 조회 대상에 포함되도록).
   useEffect(() => {
-    if (!isAdmin || isViewingCycle) return;
-    call<AdminMembersResponse>("/admin/members")
-      .then((data) => setMembers(data.members || []))
+    if (!isAdmin) return;
+    const cycleParam = isViewingCycle ? `?cycle=${encodeURIComponent(String(cycleFileId))}` : "";
+    call<AdminMembersResponse>(`/admin/members${cycleParam}`)
+      .then((data) => {
+        const list = data.members || [];
+        setMembers(list);
+        // 사이클을 전환하면서 이전에 선택했던 회원이 그 주차 명단에 없으면
+        // (예: 이번엔 있었지만 그 주엔 없었던 회원) "내 대시보드"로 되돌린다
+        // — 존재하지 않는 회원을 선택한 채로 남아있는 오류 상태 방지.
+        setSelected((prev) => (prev === SELF_VALUE || list.some((m) => m.number === prev) ? prev : SELF_VALUE));
+      })
       .catch((err) => setMembersError(err instanceof Error ? err.message : "회원 목록을 불러오지 못했습니다."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, isViewingCycle]);
+  }, [isAdmin, isViewingCycle, cycleFileId]);
 
   function reload() {
     if (usingMyStatus) {
@@ -63,9 +73,8 @@ export function StatusPage({
     let cancelled = false;
     setOtherLoading(true);
     setOtherError(null);
-    const path = isViewingCycle
-      ? `/status?cycle=${encodeURIComponent(String(cycleFileId))}`
-      : `/admin/members/${encodeURIComponent(selected)}`;
+    const cycleParam = isViewingCycle ? `?cycle=${encodeURIComponent(String(cycleFileId))}` : "";
+    const path = selected === SELF_VALUE ? `/status${cycleParam}` : `/admin/members/${encodeURIComponent(selected)}${cycleParam}`;
     call<StatusResponse>(path)
       .then((data) => {
         if (!cancelled) setOtherStatus(data);
@@ -89,7 +98,7 @@ export function StatusPage({
   return (
     <Card className="w-full">
       <CardContent className="flex flex-col gap-5">
-        {isAdmin && !isViewingCycle && (
+        {isAdmin && (
           <Select value={selected} onValueChange={(v) => setSelected(v ?? SELF_VALUE)}>
             <SelectTrigger className="w-fit data-[size=default]:h-9 sm:data-[size=default]:h-11 sm:text-base">
               <SelectValue>
