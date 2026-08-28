@@ -18,9 +18,16 @@ function formatWeekLabel(weekOf: string) {
 export function CycleSwitcher({
   selectedFileId,
   onSelect,
+  // 지금 조회 중인 회원 관점 — 실제 회원번호(관리자가 다른 회원을 보는
+  // 중), "self"(본인 대시보드 — 서버가 세션 이메일로 본인을 판정), 또는
+  // undefined(전체 랭킹처럼 특정 회원 관점이 없는 화면 — 필터링 없음).
+  // 회원 관점이 있을 때, 그 회원이 해당 주차 명단에 없으면(중도 가입 등)
+  // 그 버튼을 "데이터 없음"으로 표시한다.
+  memberNumber,
 }: {
   selectedFileId: string | null;
   onSelect: (fileId: string | null) => void;
+  memberNumber?: string;
 }) {
   const { call } = useApi();
   const [weeks, setWeeks] = useState<CycleWeek[] | null>(null);
@@ -31,7 +38,8 @@ export function CycleSwitcher({
 
   useEffect(() => {
     let cancelled = false;
-    call<CycleListResponse>("/cycles")
+    const memberParam = memberNumber ? `?member=${encodeURIComponent(memberNumber)}` : "";
+    call<CycleListResponse>(`/cycles${memberParam}`)
       .then((data) => {
         if (cancelled) return;
         setWeeks(data.weeks || []);
@@ -42,7 +50,7 @@ export function CycleSwitcher({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [memberNumber]);
 
   if (weeks === null || maxWeeks === 0) return null;
 
@@ -60,7 +68,11 @@ export function CycleSwitcher({
   return (
     <div className="flex w-full flex-wrap gap-1.5 sm:gap-2">
       {slots.map((w, i) =>
-        w ? (
+        // 🔧 [중도 가입 회원 처리] 백업 파일 자체는 존재해도(w는 non-null),
+        // 조회 대상 회원이 그 시점 명단에 없었다면(hasData: false) 실제
+        // 날짜 라벨을 보여줄 수 없다 — 백업 자체가 없는 빈 슬롯과 동일하게
+        // "데이터 없음"으로 비활성화한다.
+        w && w.hasData ? (
           <button
             key={w.fileId}
             type="button"
@@ -76,7 +88,7 @@ export function CycleSwitcher({
           </button>
         ) : (
           <button
-            key={`empty-${i}`}
+            key={w ? w.fileId : `empty-${i}`}
             type="button"
             disabled
             className="cursor-not-allowed rounded-full border border-border bg-muted/50 px-3.5 py-2 text-sm font-semibold text-muted-foreground/50 sm:text-base"

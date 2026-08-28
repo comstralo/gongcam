@@ -261,6 +261,10 @@ export type CycleWeek = {
   fileId: string;
   weekOf: string;
   weekTo: string;
+  // 조회 대상 회원(member 쿼리 파라미터, 없으면 본인)이 이 주차 시점 명단에
+  // 실제로 존재했는지. 중도 가입 회원은 가입 전 주차엔 명단 자체에 없어
+  // false가 된다 — 이 경우 프론트는 날짜 라벨 대신 "데이터 없음"으로 보여준다.
+  hasData: boolean;
 };
 
 export type CycleListResponse = {

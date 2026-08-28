@@ -121,7 +121,11 @@ export function StatusPage({
         <div className="flex items-center gap-3">
           {onSelectCycle && (
             <div className="flex-1">
-              <CycleSwitcher selectedFileId={cycleFileId ?? null} onSelect={onSelectCycle} />
+              <CycleSwitcher
+                selectedFileId={cycleFileId ?? null}
+                onSelect={onSelectCycle}
+                memberNumber={selected === SELF_VALUE ? "self" : selected}
+              />
             </div>
           )}
           <NotificationDialog />
