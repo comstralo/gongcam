@@ -131,6 +131,10 @@ export type DepositRefundBreakdown = {
   daysSinceJoin: number;
   fineUnpaid: boolean;
   depositAgainStatus: string | null;
+  // 실제 제출된 퇴실 신청일 기준으로 서버가 판정한 "퇴실 통보 지연" 여부.
+  // amount에 이미 반영되어 있으므로, 신청 완료 상태에서는 이 값을 그대로
+  // 신뢰해서 보여주면 된다(프론트가 재계산할 필요 없음).
+  lateNotice: boolean;
 };
 
 export type PeriodAttendanceBreakdown = {

@@ -71,15 +71,25 @@ export function DepositRefundDialog({
   const penaltyRate = penaltyTotal >= 2 ? 100 : penaltyTotal === 1 ? 50 : 0;
   const daysSinceJoin = breakdown.daysSinceJoin ?? -1;
 
-  // "고지지연" — 신청일(오늘)과 마지막 참여일 사이가 3일 미만이면(임박 신청)
-  // 50% 차감. 이 항목은 페널티(0/50/100)와 합산되어 실제 예치금 반환
-  // 예상액(위 amount)에 반영되지만, 여기서는 각 항목을 있는 그대로(독립적)
-  // 보여준다 — 합산 결과는 반환 예상액 금액 자체로 이미 드러난다.
-  const lastAttendDate = exitRequestDate || selectedDate;
-  const daysUntilLastAttend = lastAttendDate
-    ? Math.round((new Date(lastAttendDate).getTime() - new Date(todayStr()).getTime()) / 86_400_000)
-    : null;
-  const lateNoticeRate = daysUntilLastAttend !== null && daysUntilLastAttend < 3 ? 50 : 0;
+  // 🔧 [고지지연 실제 반영] 오늘과 마지막 참여일 사이가 3일 미만이면(임박
+  // 신청) 50% 차감이고, 페널티 1개(50%)와 겹치면 100%가 된다 — 서버
+  // (depositRefundBreakdown)가 실제 amount 계산에 이미 이 조건을 반영한다.
+  // 이미 퇴실 신청을 제출한 상태(exitRequested)라면 서버가 정확히 아는
+  // exitRequestDate 기준의 판정 결과(breakdown.lateNotice)를 그대로 믿고
+  // 쓴다. 아직 신청 전(날짜만 고르는 중)이라면 서버는 이 날짜를 모르므로,
+  // "이 날짜로 신청하면 어떻게 되는지" 미리보기용으로만 프론트에서 같은
+  // 규칙을 재계산한다 — 실제 신청 전까지는 이 미리보기 값이 아직 서버
+  // amount에는 반영되지 않은 상태임에 유의.
+  const lateNoticeRate = exitRequested
+    ? breakdown.lateNotice
+      ? 50
+      : 0
+    : (() => {
+        const daysUntilLastAttend = selectedDate
+          ? Math.round((new Date(selectedDate).getTime() - new Date(todayStr()).getTime()) / 86_400_000)
+          : null;
+        return daysUntilLastAttend !== null && daysUntilLastAttend < 3 ? 50 : 0;
+      })();
 
   // 차감 원인을 고정된 순서(벌금 미납 → 예치금 미납 → 30일 미만 참여자 →
   // 페널티 → 고지지연)로 보여준다. "직권 P"/"예치금 재납 대상자"는 관리자가

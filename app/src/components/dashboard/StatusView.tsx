@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Clock, Timer, CalendarDays, Award, ListChecks, ShieldAlert, CircleDollarSign, CircleCheck } from "lucide-react";
 import { cn, ICON_STROKE } from "@/lib/utils";
@@ -65,6 +65,15 @@ export function StatusView({
   // 과거 사이클은 오늘 요일과 무관하게 마지막 요일(일)을 기본으로 보여준다 —
   // 실시간 조회는 지금까지처럼 오늘 요일을 기본 선택한다.
   const [selectedDay, setSelectedDay] = useState<number>(isViewingCycle ? 6 : TODAY_INDEX);
+  // 🔧 [미래 요일 잔존 버그 수정] StatusPage/DashboardPage가 페이지 전환에도
+  // 언마운트되지 않는 구조라, 위 useState 초기값은 최초 마운트 1회만
+  // 적용된다 — 과거 사이클에서 일요일(6)을 본 뒤 "현재"로 돌아와도
+  // selectedDay가 6에 그대로 남아, 아직 오지 않은 요일이 선택된 채 표시되는
+  // 문제가 있었다. isViewingCycle이 바뀔 때마다 그 상황에 맞는 기본값으로
+  // 다시 맞춘다.
+  useEffect(() => {
+    setSelectedDay(isViewingCycle ? 6 : TODAY_INDEX);
+  }, [isViewingCycle]);
 
   if (!status) return null;
 
