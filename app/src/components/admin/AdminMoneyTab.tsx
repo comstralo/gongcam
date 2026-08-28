@@ -7,6 +7,7 @@ import { InfoCard, DayDetailCard } from "@/components/dashboard/shared";
 import { SectionHeader, ItemTitle, FieldLabel, SectionCard } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
+import { useTodayIndex } from "@/hooks/useTodayIndex";
 import { ApiError } from "@/lib/api/client";
 import { ICON_STROKE, cn } from "@/lib/utils";
 import type {
@@ -26,7 +27,6 @@ const FINE_RESOLVE_OPTIONS: Exclude<FineStatus, "미납">[] = ["납부", "면제
 // 면제 현황 목록은 이미 면제된 항목이므로 "면제" 버튼은 불필요하다.
 const FINE_REVERT_OPTIONS: Exclude<FineStatus, "면제">[] = ["납부", "미납"];
 const STATUS_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
-const TODAY_INDEX = (new Date().getDay() + 6) % 7; // 월=0 ... 일=6
 
 function fineKey(f: Pick<UnpaidFine, "number" | "day">) {
   return `${f.number}-${f.day}`;
@@ -73,6 +73,7 @@ function PaidFineList({
   isVisible: boolean;
 }) {
   const { call } = useApi();
+  const TODAY_INDEX = useTodayIndex();
 
   const [paid, setPaid] = useState<PaidFine[] | null>(null);
   const [totalAmount, setTotalAmount] = useState(0);
@@ -270,6 +271,7 @@ function FineList({
   isVisible: boolean;
 }) {
   const { call } = useApi();
+  const TODAY_INDEX = useTodayIndex();
 
   const [unpaid, setUnpaid] = useState<UnpaidFine[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -462,6 +464,7 @@ function ExemptFineList({
   isVisible: boolean;
 }) {
   const { call } = useApi();
+  const TODAY_INDEX = useTodayIndex();
 
   const [exempt, setExempt] = useState<ExemptFine[] | null>(null);
   const [error, setError] = useState<string | null>(null);

@@ -11,9 +11,9 @@ import { TotalPenaltyDialog } from "@/components/dashboard/TotalPenaltyDialog";
 import { StudyTimeDialog } from "@/components/dashboard/StudyTimeDialog";
 import { HalfDayLeaveDialog } from "@/components/dashboard/HalfDayLeaveDialog";
 import { useAuth } from "@/lib/auth/useAuth";
+import { useTodayIndex } from "@/hooks/useTodayIndex";
 import type { StatusResponse } from "@/lib/api/types";
 
-const TODAY_INDEX = (new Date().getDay() + 6) % 7; // 월=0 ... 일=6
 const STATUS_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
 
 // 시트 원본 값은 "8H (교시제)"처럼 괄호가 붙어 있어 그대로 노출하면 답답해
@@ -62,6 +62,11 @@ export function StatusView({
   onReasonLeaveSubmitted?: () => void;
 }) {
   const { session } = useAuth();
+  // 🔧 [자정 경과 후 "오늘" 고정 버그 수정] 이전엔 모듈 스코프 상수로 최초
+  // 로드 시점에 한 번만 계산해, 화면을 자정 너머까지 열어두면 "오늘" 표시·
+  // 미래 요일 비활성화 기준이 전날에 고정된 채 남았다. 다음 자정에 자동
+  // 재계산되는 훅으로 교체한다.
+  const TODAY_INDEX = useTodayIndex();
   // 과거 사이클은 오늘 요일과 무관하게 마지막 요일(일)을 기본으로 보여준다 —
   // 실시간 조회는 지금까지처럼 오늘 요일을 기본 선택한다.
   const [selectedDay, setSelectedDay] = useState<number>(isViewingCycle ? 6 : TODAY_INDEX);
@@ -69,11 +74,11 @@ export function StatusView({
   // 언마운트되지 않는 구조라, 위 useState 초기값은 최초 마운트 1회만
   // 적용된다 — 과거 사이클에서 일요일(6)을 본 뒤 "현재"로 돌아와도
   // selectedDay가 6에 그대로 남아, 아직 오지 않은 요일이 선택된 채 표시되는
-  // 문제가 있었다. isViewingCycle이 바뀔 때마다 그 상황에 맞는 기본값으로
-  // 다시 맞춘다.
+  // 문제가 있었다. isViewingCycle이나 TODAY_INDEX(자정 경과)가 바뀔 때마다
+  // 그 상황에 맞는 기본값으로 다시 맞춘다.
   useEffect(() => {
     setSelectedDay(isViewingCycle ? 6 : TODAY_INDEX);
-  }, [isViewingCycle]);
+  }, [isViewingCycle, TODAY_INDEX]);
 
   if (!status) return null;
 
