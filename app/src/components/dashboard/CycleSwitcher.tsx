@@ -50,8 +50,11 @@ export function CycleSwitcher({
   // 버튼 자체가 안 보였다 — 몇 주째인지, 앞으로 몇 자리가 더 채워질지
   // 가늠할 수 없었다. 실제 존재하는 주차(최신순 응답을 오래된 순으로
   // 뒤집은 것) 앞쪽을, 아직 없는 주차 수만큼 비활성화 슬롯으로 채운다.
+  // maxWeeks(3)는 "사이클 전체 주 수"이고 그중 하나는 항상 아래의 "현재"
+  // 버튼이 차지하므로, 채워야 할 과거 슬롯 예산은 maxWeeks - 1이다 —
+  // 이걸 안 빼서 총 버튼이 4개(빈슬롯 3 + 현재 1)로 보이던 버그였다.
   const oldestFirst = [...weeks].reverse();
-  const missingCount = Math.max(0, maxWeeks - oldestFirst.length);
+  const missingCount = Math.max(0, maxWeeks - 1 - oldestFirst.length);
   const slots: (CycleWeek | null)[] = [...Array(missingCount).fill(null), ...oldestFirst];
 
   return (
