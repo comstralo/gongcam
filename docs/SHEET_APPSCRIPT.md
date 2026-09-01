@@ -58,7 +58,7 @@
 
 | 함수 | 주기 | 권장 시각 | 역할 |
 |---|---|---|---|
-| `daily_calc()` | 일 단위 | 자정~오전 1시 | **일간집계**: 미입력 교시를 `ERR`/`00:00`으로 채우고, 구루미 오류 보정 가산시간 적용, 벌금 발생 시 미입력 납부확인 칸을 "미납"으로, 페널티 누적 2 이상이면 예치금 재납(R3)을 "미납"으로 자동 설정 |
+| `daily_calc()` | 일 단위 | 자정~오전 1시 | **일간집계**: 미입력 교시를 `ERR`/`00:00`으로 채우고, 구루미 오류 보정 가산시간 적용, 벌금 발생 시 미입력 납부확인 칸을 "미납"으로, 페널티 누적 2 이상이면 예치금 재납(R3)을 "미납"으로 자동 설정. 🔧 2026-09: 루프 진입 전 `_fetchExitDates()`로 Worker의 `GET /bot/exit-requests`를 1회 조회해 "회원번호→exitDate" 맵을 가져오고, 그 회원의 마지막 참여일(exitDate)이 지난 시트는 이 모든 처리를 통째로 건너뛴다(§"마지막 참여일 이후 집계 차단" 참고) |
 | `sheet_reset()` | 주 단위(월) | 오전 5~6시 | **주간 전체 초기화**: Drive에 전체 시트 백업 복사본 생성 → 이월상금/퇴실벌금/퇴실예치 리셋 → 페널티 사이클에 따라 누적치 초기화 또는 갱신 → 개인 탭 C6:W23 내용 삭제 → 제보상점 초기화 → "퇴실"/"재납" 백업 탭 전체 삭제 |
 | `grant_editor_column_n()` | 주 단위(월) | 오전 7~8시 | 집계 탭 N열(목표시간 변경 신청)에 회원별 편집 권한 부여(스마트 diff로 필요한 경우만 API 호출) |
 | `revoke_editor_column_n()` | 주 단위(월) | 오후 2~3시 | N열 입력값을 검증해 유효하면 해당 개인 탭 O3(목표시간)에 반영하고, N열 편집 권한을 관리자만으로 회수 — **웹앱의 `/goal-schedule` 마감 시각(매주 월 14:00)과 정확히 일치** |
@@ -130,10 +130,43 @@
 | `sort_sheets(spread_sheet)` | 탭 순서를 "집계 → 1~15 → 나머지"로 정렬하고 template/권한관리/제보상점을 숨김, 1~15는 항상 표시 — 신규/퇴실/재납 처리 후 매번 호출됨 |
 | `make_all_sheet()` | 1~15 전체를 template로 강제 재생성(초기 세팅/전면 리셋용, 트리거 미연결 추정) |
 
+## 마지막 참여일 이후 집계 차단 (`_fetchExitDates`, 2026-09 추가)
+
+퇴실 신청 회원이 신청서에 적은 "마지막 참여일"(exitDate)이 지났는데도 관리자가
+확정 처리(`docs/WEB_ADMIN.md` §3.6 `ExitProcessDialog`)를 늦게 하면, 그 사이
+`daily_calc()`가 매일 밤 그 회원의 빈 칸을 그대로 `00:00`/`ERR`로 채우고 벌금
+미납을 켜고, 일요일엔 새 주간 P 페널티까지 추가해버리는 문제가 있었다(도움봇도
+매 교시 같은 문제를 일으킴 — `docs/HELPERBOT.md`의 "마지막 참여일 이후 집계
+차단" 절 참고). 회원은 이미 그만두겠다고 통보했는데 관리자 처리가 늦어졌다는
+이유만으로 불리한 벌금·페널티가 계속 쌓이는 것을 막기 위한 조치다.
+
+- **`_fetchExitDates()`**: `daily_calc()` 루프 진입 전에 딱 한 번,
+  `UrlFetchApp.fetch(worker_base_url + "/bot/exit-requests", ...)`로 Worker의
+  `GET /bot/exit-requests`(`X-Bot-Secret` 인증, `frame-checker-worker/src/index.js`의
+  `handleBotExitRequests`)를 호출해 `{"번호": "exitDate", ...}` 맵을 가져온다.
+  이 시크릿은 **소스에 하드코딩하지 않고** Apps Script 프로젝트의 "스크립트
+  속성"(프로젝트 설정 > 스크립트 속성)에 키 `BOT_SECRET`으로 등록해야 한다 —
+  `.env`/Cloudflare Worker의 `BOT_SECRET`과 동일한 값. **미등록이거나 조회
+  실패 시 빈 객체를 반환해, 이 기능이 없던 것처럼 아무도 건너뛰지 않고 그대로
+  처리한다**(안전한 방향의 폴백 — 조회 실패로 정상 회원의 집계가 통째로
+  막히는 일은 없다).
+- **판정 기준**: exitDate **당일까지는 정상 처리**하고, 그 다음날(`오늘 날짜
+  문자열 > exitDate`)부터 그 회원의 시트를 이번 실행에서 통째로 건너뛴다
+  (`daily_calc()` 루프의 `continue`).
+- **Apps Script가 외부 HTTP를 호출하는 첫 사례**다 — 이전까지 이 스크립트는
+  `UrlFetchApp`을 전혀 쓰지 않았다. 코드 저장/실행 시 `script.external_request`
+  권한 재승인 팝업이 한 번 뜰 수 있다.
+- 이 로직은 **웹앱(exitRequest KV)에 의존**한다 — 웹앱이 exit-request 인덱스를
+  지우거나(취소) 갱신하면 다음 `daily_calc()` 실행부터 즉시 반영된다. 관리자가
+  실제로 "확정 처리"를 눌러 `performExitReset`/`performDepositAgainReset`이
+  시트를 백업 탭으로 옮기고 나면 그 회원 번호는 다시 빈 슬롯이 되어
+  `check_no_member_sheet`에서 이미 걸러지므로, 이 exitDate 스킵 로직 자체가
+  필요 없어진다(정상적인 다음 단계로 자연스럽게 넘어감).
+
 ## 웹앱(frame-checker-worker)과의 관계 요약
 
 - **읽기는 대부분 웹앱이 커버**: 개인 상태, 집계 랭킹, 로스터, 벌금/예치금 미납 목록 등은 `index.js`가 서비스 계정으로 직접 조회.
 - **쓰기는 영역이 나뉘어 있음**:
-  - 웹앱이 담당: 신규 등록(`handleAdminCreateMember`), 목표시간 예약(`/goal-schedule`), 벌금 미납/납부/면제 상태 변경(`/admin/fines/status`), 예치금 미납/납부 변경(`/admin/deposits/status`).
-  - 앱스크립트만 담당: 일간/주간 자동 정산(`daily_calc`, `sheet_reset`), 신청 권한 부여/회수(N/O열), **퇴실·재납 최종 확정 처리**(`_exit_define` → `_set_sheet_init`), 상점/벌점 수동 가감, 상금 대상자 계산.
-- **아직 웹앱으로 옮기지 않은 핵심 로직**: 퇴실/재납 확정 처리 시의 시트 백업·리셋(`_set_sheet_init`)과 그로 인한 "일요일 발생 시 원본+백업 파일 이중 반영" 분기. 이전 세션에서 "다른 기능부터 다 만들고 나중에"로 보류된 작업이 바로 이 부분이다.
+  - 웹앱이 담당: 신규 등록(`handleAdminCreateMember`), 목표시간 예약(`/goal-schedule`), 벌금 미납/납부/면제 상태 변경(`/admin/fines/status`), 예치금 미납/납부 변경(`/admin/deposits/status`), **퇴실·재납 최종 확정 처리**(`/admin/exit/confirm` → `handleAdminExitConfirm` → `performExitReset`/`performDepositAgainReset`, `docs/WEB_ADMIN.md` §3.6). 🔧 2026-09: 이 부분은 예전에 앱스크립트(`_exit_define`→`_set_sheet_init`) 전담이었으나 이후 세션에서 웹앱으로 이관되었다 — 지금은 앱스크립트의 `manage_member_selector()`/`_exit_define()`이 프롬프트 기반 수동 대체 경로로 여전히 존재하지만, 실제 운영은 웹앱 쪽이 담당한다(둘 다 최종적으로 `_set_sheet_init`과 동일한 "백업 탭으로 이동 + template 재생성" 패턴을 각자 구현하고 있어, 하나를 고칠 때 다른 쪽도 같은 문제가 있는지 확인하는 습관이 필요).
+  - 앱스크립트만 담당: 일간/주간 자동 정산(`daily_calc`, `sheet_reset`), 신청 권한 부여/회수(N/O열), 상점/벌점 수동 가감, 상금 대상자 계산.
+- **Worker와 완전히 무관하다는 설명은 더 이상 정확하지 않다**: `daily_calc()`가 위 "마지막 참여일 이후 집계 차단" 절에서 설명한 대로 이제 Worker의 `/bot/exit-requests`를 직접 호출한다.

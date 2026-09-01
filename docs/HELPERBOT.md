@@ -1,11 +1,25 @@
 # 공부합시당 캠스터디 — "도움봇" 구조 문서
 
-원본:
+> ⚠️ **2026-09 확인: 이 문서의 상당 부분이 낡았다.** `study_manager_260418.py`가
+> 설명 당시엔 2619줄 단일 스크립트였지만, 지금은 109줄짜리 진입점 + `study_sw/bot/`
+> 패키지(`context.py`, `lifecycle.py`, `dashboard_server.py`, `tunnel.py`,
+> `roster_sync.py`, `report_intake.py`, `scheduling.py`, `sheets.py`,
+> `gooroomee_room.py`, `tracking.py`, `usage_tracker.py`, `exit_sync.py` 등)로
+> 리팩터링되어 있다. 아래 2~8절의 **함수 줄 번호 표와 "외부 통신/상태 확인/원격
+> 제어 전혀 없음" 결론은 더 이상 정확하지 않다** — `dashboard_server.py`/
+> `tunnel.py`가 이미 `docs/WEB_ADMIN.md` §5.2("도움봇 상태")가 쓰는 상태
+> 조회·재시작 서버이고, `roster_sync.py`/`report_intake.py`가 `docs/WEB_REPORT.md`
+> §3.1이 쓰는 실시간 명단 PUT/제보 폴링이다. 아래 9절에 새로 확인된 `exit_sync.py`
+> 만 정확히 반영했고, 나머지는 재조사 전까지 옛 구조(단일 스크립트) 설명으로
+> 남아있다는 점을 감안해서 읽을 것 — `study_sw/bot/*.py`를 직접 열어 확인하는
+> 편이 안전하다.
+
+원본(옛 구조 기준, 위 경고 참고):
 - `study_sw/study_manager_260418.py` (2619줄) — 메인 스크립트, 봇 본체
 - `study_sw/study_manager_cam_260418.py` (207줄) — 가상카메라(교시 안내판) 서브 프로세스
 - `study_sw/analyze_daily_fines.py` (134줄) — 벌금 산출 근거를 조회만 하는 독립 진단 스크립트
 
-이 문서는 로컬(또는 특정 서버) PC에서 상시 실행되는 Python 자동화 프로그램 "도움봇"의 구조를 코드 기준으로 정리한 것이다. React+Vite 프론트엔드/Cloudflare Worker 백엔드(`frame-checker-worker`)와는 완전히 별개의 프로세스이며, 서로 직접 통신하는 코드는 **현재 없다** (아래 4절 참고).
+이 문서는 로컬(또는 특정 서버) PC에서 상시 실행되는 Python 자동화 프로그램 "도움봇"의 구조를 코드 기준으로 정리한 것이다. ~~React+Vite 프론트엔드/Cloudflare Worker 백엔드(`frame-checker-worker`)와는 완전히 별개의 프로세스이며, 서로 직접 통신하는 코드는 현재 없다~~ — **더 이상 사실이 아니다.** `bot/dashboard_server.py`+`bot/tunnel.py`(상태/재시작), `bot/roster_sync.py`(참여자 명단 PUT), `bot/report_intake.py`(제보 폴링), `bot/exit_sync.py`(퇴실 예약 exitDate 조회, 9절)가 모두 Worker와 직접 통신한다.
 
 ## 1. 개요
 
@@ -160,3 +174,37 @@ if __name__ == "__main__":
   1. `tracking_capture()`가 목표 횟수를 다 채우기 전에 `stop_event`가 걸리거나(브라우저 재시작 등) 스레드가 강제 정리되면(2528~2550행), 지금까지 찍은 스크린샷을 `temp_captures/`에 낱장으로 저장하고 `{target_name, reason_txt, sender_name, remaining_count, interval, previous_temp_files}` 형태의 딕셔너리를 `save_task_to_disk()`로 이 파일에 append한다.
   2. `daily_browser_reset()`(1378~1400행) 또는 `schedule_process()`(994~1020행)가 브라우저 재입장에 성공한 직후 `load_tasks_from_disk()`를 호출해 파일 내용을 읽고 **즉시 파일을 빈 문자열로 초기화**한 뒤, 저장돼 있던 각 작업을 `tracking_capture` 스레드로 재기동한다.
   3. 즉 이 파일은 상시 상태 기록/하트비트가 아니라, **"캡처 작업이 중단된 그 순간에만 잠깐 채워졌다가 다음 재시작 때 바로 소비되어 비워지는" 일회성 복구 큐**다. 평상시(정상 운영 중)에는 항상 비어 있는 것이 정상이다.
+
+## 9. 마지막 참여일 이후 집계 차단 (`bot/exit_sync.py`, 2026-09 추가)
+
+퇴실 신청 회원이 신청서에 적은 "마지막 참여일"(exitDate)이 지났는데도 관리자가
+확정 처리(`docs/WEB_ADMIN.md` §3.6)를 늦게 하면, 그 사이 이 봇이 매 교시마다
+그 회원의 결석을 "00:00"/ERR로 능동적으로 기록해(§3의 `_update_member_studylog`
+설명 참고 — 이 부분은 리팩터링 후에도 `bot/sheets.py`에 그대로 있고, 지금도
+"미시작 인원"(I3가 D+0/음수) 외에는 아무도 거르지 않는다) 시트의 벌금 수식을
+계속 새로 발동시키던 문제가 있었다. `docs/SHEET_APPSCRIPT.md`의 "마지막 참여일
+이후 집계 차단"과 쌍을 이루는 조치 — 앱스크립트 `daily_calc()`가 밤에 하는 일을
+이 모듈은 낮 동안(교시마다) 막는다. 둘 중 하나만 있으면 다른 쪽이 그날 밤/낮에
+같은 문제를 다시 만들어내므로 반드시 함께 있어야 한다.
+
+- **`bot/context.py`**: `BotContext.__init__`에 `self.exit_requests = {}` 필드
+  추가 — 시트번호(문자열) → exitDate("YYYY-MM-DD") 캐시.
+- **`bot/exit_sync.py`**(신규): `start_exit_requests_sync(ctx)`가 데몬 스레드를
+  하나 띄워 60초 간격으로 `GET {WORKER_BASE}/bot/exit-requests`
+  (`X-Bot-Secret` 헤더, `frame-checker-worker/src/index.js`의
+  `handleBotExitRequests`)를 조회해 `ctx.exit_requests`를 갱신한다.
+  `bot/roster_sync.py`(참여자 명단 동기화)와 동일한 폴백 원칙 — `BOT_SECRET`
+  환경변수가 없으면 스레드 자체를 시작하지 않고 조용히 넘어가며(`ctx.exit_requests`
+  는 빈 dict로 남아 아무도 스킵되지 않는 기존 동작 그대로), 조회 중 예외가
+  나면 **직전 캐시 값을 그대로 유지**한다(값을 비우면 오히려 방금 걸러지고
+  있던 회원이 다시 기록 대상이 되는 예상 밖의 동작이 되므로).
+- **`bot/sheets.py`의 `set_sheet()`**: `write_studylog` 처리 루프에서
+  `member_sheet_name`을 구한 직후, `ctx.exit_requests.get(member_sheet_name)`
+  으로 그 회원의 exitDate를 찾아 **오늘 날짜(기기 로컬 시간, `datetime.now()`)가
+  exitDate보다 늦으면** `_update_member_studylog()` 호출 자체를 건너뛴다
+  (exitDate 당일까지는 정상 기록).
+- **`study_manager_260418.py`**: 진입점에서 `start_exit_requests_sync(ctx)`를
+  `start_participants_sync(ctx)` 바로 다음 줄에서 함께 호출하도록 추가.
+- 회원이 퇴실 신청을 취소하면 Worker의 `exitRequestIndex:current`에서 그
+  항목이 즉시 삭제되므로, 다음 60초 폴링부터 이 회원은 다시 정상 기록된다 —
+  캐시가 최대 60초 정도 낡을 수 있다는 것 외에는 실시간에 가깝다.
