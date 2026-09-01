@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Users, User, DoorOpen, ChevronDown, Hash, Star, Bell } from "lucide-react";
+import { Users, User, DoorOpen, ChevronDown, Hash, Star, Bell, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
@@ -30,6 +30,8 @@ export function MemberRosterList() {
   // 바꾸는 데 쓴다 — 서버가 roster 응답과 함께 내려준다(/notify-prefs와
   // 동일한 카테고리 정의를 그대로 재사용).
   const [notifyCategories, setNotifyCategories] = useState<Record<string, string> | null>(null);
+  // 시트번호를 눌렀을 때 그 회원 탭으로 바로 이동하는 링크를 만드는 데 쓴다.
+  const [spreadsheetId, setSpreadsheetId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedNumber, setExpandedNumber] = useState<string | null>(null);
@@ -43,6 +45,7 @@ export function MemberRosterList() {
       .then((data) => {
         setMembers(data.members || []);
         setNotifyCategories(data.notifyCategories || null);
+        setSpreadsheetId(data.spreadsheetId || null);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "스터디원 목록을 불러오지 못했습니다."))
       .finally(() => setLoading(false));
@@ -128,7 +131,24 @@ export function MemberRosterList() {
                           상태 정보
                         </span>
                         <SubRow label="참여유형" value={formatGoalType(m.goalType)} />
-                        <SubRow label="시트번호" value={`${m.number}번`} />
+                        <SubRow
+                          label="시트번호"
+                          value={
+                            spreadsheetId && m.sheetGid !== null ? (
+                              <a
+                                href={`https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${m.sheetGid}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 text-primary underline-offset-2 hover:underline"
+                              >
+                                {m.number}번
+                                <ExternalLink className="size-3 shrink-0" strokeWidth={ICON_STROKE.default} />
+                              </a>
+                            ) : (
+                              `${m.number}번`
+                            )
+                          }
+                        />
                         <SubRow label="구글 계정" value={m.googleAccount || "-"} />
                         <SubRow label="구루미 계정" value={m.gooroomeeAccount || "-"} />
                         <SubRow label="준비 중인 시험" value={m.examKind || "-"} />

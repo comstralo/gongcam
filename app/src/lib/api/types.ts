@@ -493,11 +493,14 @@ export type MemberRosterEntry = {
   // 마지막 로그인 IP. lastLoginAt이 null이거나, 이 기능 추가 이전에 저장된
   // 구형 기록이면 빈 문자열.
   lastLoginIp: string;
+  // 이 회원 개인 탭의 실제 구글 시트 gid. 시트에서 그 탭을 찾지 못하면 null.
+  sheetGid: number | null;
 };
 
 export type AdminMembersRosterResponse = {
   members: MemberRosterEntry[];
   notifyCategories: Record<NotifyCategory, string>;
+  spreadsheetId: string;
 };
 
 export type SetPartiStatusResponse = {
