@@ -21,6 +21,7 @@ import type {
   StatusResponse,
   RosterStatusResponse,
   RosterMember,
+  PrizeSettleResponse,
 } from "@/lib/api/types";
 
 const STATUS_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
@@ -356,6 +357,7 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
 // 숨기는데, 관리자는 그 시간 제한 없이 항상 봐야 하므로(사용자 지시대로
 // 상시 처리 화면) 백엔드에 isAdmin 조건을 추가해 우회한다(handleRosterStatus).
 function PrizeRecipientList({ isVisible }: { isVisible: boolean }) {
+  const { call } = useApi();
   const [collectMoney, setCollectMoney] = useState(0);
   // "랭킹"(RosterView)의 타이머·상점을 그대로 보여주려면 members(그 두
   // 값을 가진 원본)와 settlement(순위·분배금)을 회원번호로 매칭해야
@@ -364,6 +366,8 @@ function PrizeRecipientList({ isVisible }: { isVisible: boolean }) {
   const [settlement, setSettlement] = useState<RosterStatusResponse["settlement"]>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [settling, setSettling] = useState(false);
+  const [settled, setSettled] = useState(false);
 
   // 🧪 [임시 더미 미리보기] 실제 서비스 화면에서 렌더링을 확인하기 위한
   // 임시 조치 — 확인 끝나면 반드시 원래 /roster-status 호출로 되돌릴 것.
@@ -392,6 +396,24 @@ function PrizeRecipientList({ isVisible }: { isVisible: boolean }) {
 
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
   useRefreshOnVisible(isVisible, load);
+
+  // "상금 정산 집행" — 관리자가 이번 주 1~5등에게 실제로 상금을 지급했음을
+  // 집계!P6 셀에 "완료"로 기록한다(handleAdminPrizeSettle). 다른 상태
+  // 변경(납부/미납/면제)처럼 별도 확인 다이얼로그 없이 클릭 즉시 실행한다
+  // (사용자 지시) — 대신 실수로 중복 집행하지 않도록, 성공한 뒤에는
+  // 버튼을 "집행 완료"로 바꾸고 다시 누를 수 없게 한다.
+  async function handleSettle() {
+    setSettling(true);
+    setError(null);
+    try {
+      await call<PrizeSettleResponse>("/admin/prize/settle", { method: "POST" });
+      setSettled(true);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "상금 정산 집행에 실패했습니다.");
+    } finally {
+      setSettling(false);
+    }
+  }
 
   return (
     <Collapsible defaultOpen className="flex flex-col gap-4">
@@ -455,6 +477,17 @@ function PrizeRecipientList({ isVisible }: { isVisible: boolean }) {
               );
             })}
           </div>
+        )}
+
+        {settlement && settlement.length > 0 && (
+          <Button
+            variant="outline"
+            className="w-full sm:h-12 sm:text-base"
+            disabled={settling || settled}
+            onClick={handleSettle}
+          >
+            {settled ? "집행 완료" : settling ? "집행 중..." : "상금 정산 집행"}
+          </Button>
         )}
       </CollapsiblePanel>
     </Collapsible>

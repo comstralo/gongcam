@@ -427,6 +427,10 @@ export type SetFineStatusResponse = {
   status: FineStatus;
 };
 
+export type PrizeSettleResponse = {
+  ok: true;
+};
+
 export type ExitKind = "forced" | "admin_forced" | "settle" | "deposit_again";
 
 export type ExitReasonCode = {
