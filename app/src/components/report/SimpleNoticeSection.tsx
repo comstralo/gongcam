@@ -111,8 +111,8 @@ export function SimpleNoticeSection({
               {members.map((name) => {
                 const notSubscribed = subscribedNames !== null && !subscribedNames.has(name);
                 return (
-                  <SelectItem key={name} value={name} className="sm:text-base">
-                    {notSubscribed ? `${name} (알림구독 X)` : name}
+                  <SelectItem key={name} value={name} disabled={notSubscribed} className="sm:text-base">
+                    {notSubscribed ? `${name} (PUSH OFF)` : name}
                   </SelectItem>
                 );
               })}
