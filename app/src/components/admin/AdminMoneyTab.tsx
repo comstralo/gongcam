@@ -16,13 +16,16 @@ import type {
   AdminFinesExemptResponse,
   FineStatus,
   SetFineStatusResponse,
-  UnpaidFine,
   StatusResponse,
 } from "@/lib/api/types";
 
 const STATUS_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
 
-function fineKey(f: Pick<UnpaidFine, "number" | "day">) {
+// 세 API(paid/unpaid/exempt)가 공통으로 내려주는 최소 필드 — 어느 목록에서
+// 왔는지와 무관하게 하나의 행으로 합쳐 다룬다.
+type FineRecord = { number: string; name: string; day: string; baseStatus: FineStatus };
+
+function fineKey(f: Pick<FineRecord, "number" | "day">) {
   return `${f.number}-${f.day}`;
 }
 
@@ -44,7 +47,7 @@ function thisWeekDateLabel(dayKr: string): string {
 }
 
 // 같은 요일의 여러 항목을 요일별로 하나로 묶는다.
-function groupByDay<T extends { number: string; name: string; day: string }>(items: T[]) {
+function groupByDay<T extends { day: string }>(items: T[]) {
   const map = new Map<string, T[]>();
   for (const item of items) {
     const existing = map.get(item.day);
@@ -69,36 +72,28 @@ const FINE_BADGE_TONE: Record<FineAction, "ok" | "warn" | "amber" | "primary"> =
   "직권 P": "primary",
 };
 
-// 일간집계(daily_calc)가 벌금이 발생한 날 기본으로 "미납"을 세팅해두면,
-// 그때부터 이 화면이 "처리를 기다리는 대상자" 목록이 된다(사용자 설명) —
-// 그래서 목록 자체는 /admin/fines/unpaid(미납 항목)를 기준으로 삼는다.
-// /admin/fines/paid·/admin/fines/exempt는 이미 처리 완료된 항목의 요일별
-// 개수(+납부 총액)만 참고용으로 함께 가져와 요일 헤더 배지에 반영한다.
+// 시트의 "납부확인" 값은 회원·요일마다 항상 미납/납부/면제 중 하나다 — 이
+// 화면은 그 값이 무엇이든 전원을 요일별로 보여주고(사용자 지적: 미납만
+// 보여선 안 되고 세 상태 모두 보여야 함), 각 행은 실제 그 값을 배지로,
+// 나머지 두 상태 + "직권 P"를 버튼으로 제공한다. 세 상태를 각각 다른
+// API(/admin/fines/paid·unpaid·exempt)로 나눠 조회한 뒤 하나의 목록으로
+// 합친다 — 백엔드가 이 세 목록을 합쳐주는 API가 따로 없기 때문.
 function PaidFineList({ isVisible }: { isVisible: boolean }) {
   const { call } = useApi();
   const TODAY_INDEX = useTodayIndex();
 
-  const [unpaid, setUnpaid] = useState<UnpaidFine[] | null>(null);
+  const [records, setRecords] = useState<FineRecord[] | null>(null);
   const [totalAmount, setTotalAmount] = useState(0);
-  const [paidByDay, setPaidByDay] = useState<Map<string, number>>(new Map());
-  const [exemptByDay, setExemptByDay] = useState<Map<string, number>>(new Map());
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   // 항목별로 이 세션에서 방금 바꾼 상태 — §3.1(제보 확인)의 applied/rejected와
   // 동일한 패턴으로, 상태를 바꿔도 목록에서 항목을 지우지 않고 그 자리에
-  // 남겨 배지만 바꾼다(사용자 지적: "제보 확인"처럼 계속 보이면서 배지만
-  // 바뀌길 원함).
+  // 남겨 배지만 바꾼다.
   const [statusOverride, setStatusOverride] = useState<Record<string, FineStatus>>({});
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [dayDetail, setDayDetail] = useState<Record<string, StatusResponse | "loading" | "error">>({});
-
-  function countByDay<T extends { day: string }>(items: T[]): Map<string, number> {
-    const map = new Map<string, number>();
-    for (const item of items) map.set(item.day, (map.get(item.day) || 0) + 1);
-    return map;
-  }
 
   function load() {
     setLoading(true);
@@ -109,10 +104,13 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
       call<AdminFinesExemptResponse>("/admin/fines/exempt"),
     ])
       .then(([unpaidData, paidData, exemptData]) => {
-        setUnpaid(unpaidData.unpaid || []);
+        const merged: FineRecord[] = [
+          ...(unpaidData.unpaid || []).map((f) => ({ ...f, baseStatus: "미납" as const })),
+          ...(paidData.paid || []).map((f) => ({ ...f, baseStatus: "납부" as const })),
+          ...(exemptData.exempt || []).map((f) => ({ ...f, baseStatus: "면제" as const })),
+        ];
+        setRecords(merged);
         setTotalAmount(paidData.totalAmount || 0);
-        setPaidByDay(countByDay(paidData.paid || []));
-        setExemptByDay(countByDay(exemptData.exempt || []));
         setStatusOverride({});
       })
       .catch((err) => setError(err instanceof Error ? err.message : "벌금 납부 대상자 목록을 불러오지 못했습니다."))
@@ -124,7 +122,7 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
   // Money 탭으로 돌아올 때마다 새로 불러온다.
   useRefreshOnVisible(isVisible, load);
 
-  async function handleSetStatus(f: UnpaidFine, status: FineStatus) {
+  async function handleSetStatus(f: FineRecord, status: FineStatus) {
     const key = fineKey(f);
     setPendingKey(key);
     setError(null);
@@ -141,7 +139,7 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
     }
   }
 
-  function toggleMember(f: UnpaidFine) {
+  function toggleMember(f: FineRecord) {
     const key = fineKey(f);
     if (expandedKey === key) {
       setExpandedKey(null);
@@ -156,15 +154,12 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
     }
   }
 
-  // 이 목록은 애초에 "미납" 항목만 불러오므로, 아직 아무것도 안 바꿨다면
-  // 기본 상태는 "미납"이다 — 관리자가 버튼을 눌러야만 다른 상태로 바뀐다.
-  function effectiveStatus(f: UnpaidFine): FineStatus {
-    return statusOverride[fineKey(f)] ?? "미납";
+  // 로컬에서 바꾼 적이 있으면 그 값, 없으면 서버가 알려준 실제 현재 상태.
+  function effectiveStatus(f: FineRecord): FineStatus {
+    return statusOverride[fineKey(f)] ?? f.baseStatus;
   }
 
-  // 목록 원본(unpaid)은 그대로 유지하고(항목을 지우지 않음), 로컬에서 상태를
-  // 바꾼 항목만 배지가 바뀐 채로 계속 보인다.
-  const groups = groupByDay(unpaid || []);
+  const groups = groupByDay(records || []);
 
   return (
     <Collapsible defaultOpen className="flex flex-col gap-4">
@@ -182,11 +177,11 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
         <span className="font-mono text-base font-bold tabular-nums text-ok sm:text-lg">{won(totalAmount)}</span>
       </InfoCard>
 
-      {loading && !unpaid && (
+      {loading && !records && (
         <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">불러오는 중...</p>
       )}
 
-      {!loading && unpaid && groups.length === 0 && (
+      {!loading && records && groups.length === 0 && (
         <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">처리 대상이 없습니다.</p>
       )}
 
@@ -194,15 +189,11 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
         <div className="flex flex-col gap-2 sm:gap-2.5">
           {groups.map((group) => {
             const isDayExpanded = expandedDay === group.day;
-            // 로컬에서 상태를 바꾼 항목만큼 그날의 납부/미납/면제 배지 숫자를
-            // 실시간으로 보정한다 — 서버 값(paidByDay/exemptByDay)은 이 화면을
-            // 처음 열었을 때 기준이라, 그 사이 이 세션에서 직접 바꾼 항목은
-            // 반영되어 있지 않다.
+            // 요일 헤더 배지는 그날 전체 인원을 실시간 상태(로컬 변경 포함)
+            // 기준으로 다시 센다.
+            const paidCount = group.members.filter((f) => effectiveStatus(f) === "납부").length;
             const unpaidCount = group.members.filter((f) => effectiveStatus(f) === "미납").length;
-            const movedToPaid = group.members.filter((f) => effectiveStatus(f) === "납부").length;
-            const movedToExempt = group.members.filter((f) => effectiveStatus(f) === "면제").length;
-            const paidCount = (paidByDay.get(group.day) || 0) + movedToPaid;
-            const exemptCount = (exemptByDay.get(group.day) || 0) + movedToExempt;
+            const exemptCount = group.members.filter((f) => effectiveStatus(f) === "면제").length;
             return (
               <InfoCard key={group.day} className="flex flex-col gap-2.5">
                 <button
@@ -252,8 +243,8 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
 
                       const status = effectiveStatus(f);
                       // 뱃지는 지금 상태 하나만, 버튼은 지금 상태를 뺀 나머지
-                      // 선택지만 보여준다(사용자 설명) — 이미 그 상태인데 같은
-                      // 버튼을 또 누르는 무의미한 액션을 없앤다.
+                      // 선택지만 보여준다 — 이미 그 상태인데 같은 버튼을 또
+                      // 누르는 무의미한 액션을 없앤다.
                       const otherActions = ALL_FINE_ACTIONS.filter((a) => a !== status);
 
                       return (
@@ -298,13 +289,13 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
                               {/* "일간 총 벌금 · 재납 예치금" 바로 아래 —
                                   DayDetailCard의 마지막 섹션이라 그 카드
                                   바깥(아래)에 놓으면 시각적으로 그 자리다. */}
-                              <div className="grid grid-cols-2 gap-2">
+                              <div className="flex items-center gap-2">
                                 {otherActions.map((action) =>
                                   action === "직권 P" ? (
                                     // 🧪 [자리표시자] 헤더의 "직권 P" 배지와
                                     // 동일하게 아직 실제 동작(강제퇴실 처리
                                     // 트리거 등)이 연결되어 있지 않다.
-                                    <Button key={action} variant="outline" disabled className="w-full sm:h-11">
+                                    <Button key={action} variant="outline" disabled className="flex-1 sm:h-11">
                                       직권 P
                                     </Button>
                                   ) : (
@@ -313,7 +304,7 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
                                       variant="outline"
                                       disabled={isPending}
                                       onClick={() => handleSetStatus(f, action)}
-                                      className="w-full sm:h-11"
+                                      className="flex-1 sm:h-11"
                                     >
                                       {action}
                                     </Button>

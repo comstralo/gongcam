@@ -139,6 +139,16 @@ DashboardPage (app/src/pages/DashboardPage.tsx)
 (`day.isDepositAgainDay`)에만 "재납 예치금" 서브로우가 붙는다 — 다른 요일에 중복 표시되지
 않도록 서버가 이미 그 요일 하나로 한정해서 내려준다.
 
+카드 상단에는 요일/마감·진행중/벌금 납부·미납/예치금 납부·미납 뱃지 한 줄
+(`TintedPill` 여러 개)이 있다 — MY 대시보드(이 화면)는 이 뱃지가 핵심 정보라
+기본값(`showStatusBadges = true`)대로 그대로 보여준다. 🔧 2026-09: 이 뱃지 줄
+전체를 끌 수 있는 `showStatusBadges` prop이 추가됐다 — `docs/WEB_ADMIN.md`
+§4의 "벌금 납부 대상자 처리"(`AdminMoneyTab`)가 `false`로 꺼서 쓴다(그
+화면은 이미 요일별 그룹 헤더와 "납부확인" SubRow에 같은 정보가 있어 중복
+이었음). **이 컴포넌트를 고칠 때는 두 호출부(이 화면과 AdminMoneyTab)
+모두에 영향이 없는지 확인할 것** — 공용 컴포넌트라 한쪽만 보고 수정하면
+다른 쪽이 깨질 수 있다.
+
 ### 4.2 예치금 재납 전/후 병합 (`depositAgainSplit`)
 
 이번 주 안에 예치금 재납(`performDepositAgainReset`)이 있었으면 `status.depositAgainSplit`
