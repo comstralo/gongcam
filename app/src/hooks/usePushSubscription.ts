@@ -15,6 +15,10 @@ export function usePushSubscription() {
   // 저장 키 이름). NotifyPrefsCard가 "이 기기 자신"을 지울 때, 브라우저의
   // 실제 구독도 함께 해지시키는 데 쓴다.
   const [selfDeviceId, setSelfDeviceId] = useState<string | null>(null);
+  // enable() 직후 NotifyPrefsCard가 "알림 받는 기기" 목록에 새 기기를
+  // 낙관적으로 바로 얹을 수 있도록 함께 넘긴다(재조회 시 KV 결과적
+  // 일관성으로 아직 안 보일 수 있으므로).
+  const [justEnabledLabel, setJustEnabledLabel] = useState<string | null>(null);
 
   // 브라우저가 구독 객체를 갖고 있는지뿐 아니라, 그 endpoint가 서버에도
   // 실제로 등록돼 있는지까지 확인한다 — "알림 받는 기기" 목록에서 이
@@ -73,8 +77,19 @@ export function usePushSubscription() {
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
       });
-      await call("/push/subscribe", { method: "POST", body: { subscription: sub.toJSON() } });
-      await check();
+      // 🔧 [알림 켜기 직후 상태가 안 바뀌던 문제 수정] 원래는 여기서 다시
+      // check()를 불러 /push/devices로 재확인했는데, Cloudflare KV는 쓰기
+      // 직후 list 조회에 결과적 일관성만 보장해 방금 등록한 구독이 곧바로
+      // 안 보일 수 있었다(사용자 지적: 메시지는 "켜짐"인데 상단 상태·버튼은
+      // 계속 "꺼짐"으로 남음). 서버가 /push/subscribe 응답에 실어주는
+      // deviceId를 그대로 신뢰해 즉시 상태를 맞춘다 — 재조회가 필요 없다.
+      const { deviceId, deviceLabel } = await call<{ ok: true; deviceId: string; deviceLabel: string }>(
+        "/push/subscribe",
+        { method: "POST", body: { subscription: sub.toJSON() } }
+      );
+      setSelfDeviceId(deviceId);
+      setJustEnabledLabel(deviceLabel);
+      setState("on");
       setMessage({ text: "알림이 켜졌습니다.", type: "ok" });
     } catch (err) {
       setMessage({ text: `오류: ${err instanceof Error ? err.message : String(err)}`, type: "error" });
@@ -113,5 +128,5 @@ export function usePushSubscription() {
     }
   }
 
-  return { state, message, enable, sendTest, selfDeviceId, unsubscribeSelf };
+  return { state, message, enable, sendTest, selfDeviceId, unsubscribeSelf, justEnabledLabel };
 }

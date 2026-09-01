@@ -29,7 +29,7 @@ const PUSH_STATE_LABEL: Record<string, string> = {
 export function NotifyPrefsCard({ name }: { name?: string }) {
   const { call } = useApi();
   const { isAdmin } = useAuth();
-  const { state, message, enable, selfDeviceId, unsubscribeSelf } = usePushSubscription();
+  const { state, message, enable, selfDeviceId, unsubscribeSelf, justEnabledLabel } = usePushSubscription();
 
   const [categories, setCategories] = useState<Record<NotifyCategory, string> | null>(null);
   const [prefs, setPrefs] = useState<Record<NotifyCategory, boolean> | null>(null);
@@ -48,7 +48,17 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
 
   function loadDevices() {
     call<ListPushDevicesResponse>("/push/devices")
-      .then((data) => setDevices(data.devices || []))
+      .then((data) => {
+        const list = data.devices || [];
+        // 🔧 [방금 켠 기기가 목록에 안 뜨던 문제 대응] KV는 쓰기 직후
+        // list 조회에 결과적 일관성만 보장해, 알림을 막 켠 직후엔 이
+        // 재조회 결과에 그 기기가 아직 안 보일 수 있다 — enable()이 넘겨준
+        // 값으로 낙관적으로 보정한다.
+        if (selfDeviceId && justEnabledLabel && !list.some((d) => d.id === selfDeviceId)) {
+          list.unshift({ id: selfDeviceId, deviceLabel: justEnabledLabel, enabled: true, savedAt: Date.now() });
+        }
+        setDevices(list);
+      })
       .catch(() => {});
   }
 
