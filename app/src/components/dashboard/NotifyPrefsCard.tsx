@@ -28,12 +28,18 @@ const PUSH_STATE_LABEL: Record<string, string> = {
   unsupported: "이 브라우저는 푸시 알림을 지원하지 않습니다.",
 };
 
-// "송출 P 제보"의 주의사항과 동일한 패턴 — 기기별 설정 순서를 그대로 나열.
-const PUSH_NOTICE_CAUTIONS = [
-  "아이폰: Safari로 열기 → 공유 버튼 → 홈 화면에 추가 → 추가된 앱에서 열기 → 알림 켜기",
-  "아이폰에서 이미 차단했다면: 설정 앱 → Safari(또는 추가한 앱) → 알림 → 허용으로 변경",
-  "PC·Android: 알림 켜기 → 권한 팝업에서 허용",
-  "PC·Android에서 이미 차단했다면: 주소창 자물쇠 아이콘 → 알림 → 허용으로 변경",
+// "송출 P 제보"의 주의사항과 동일한 패턴이되, 기기별로 항목이 여러 줄이라
+// 그룹 제목 아래 하위 항목을 들여써서 보여준다(사용자 지적: 평평하게
+// 나열하니 가독성이 떨어짐).
+const PUSH_NOTICE_CAUTIONS: { group: string; items: string[] }[] = [
+  {
+    group: "아이폰",
+    items: ["Safari로 열기 → 공유 버튼 → 홈 화면에 추가 → 추가된 앱에서 열기 → 알림 켜기", "이미 차단했다면: 설정 앱 → Safari(또는 추가한 앱) → 알림 → 허용으로 변경"],
+  },
+  {
+    group: "PC·Android",
+    items: ["알림 켜기 → 권한 팝업에서 허용", "이미 차단했다면: 주소창 자물쇠 아이콘 → 알림 → 허용으로 변경"],
+  },
 ];
 
 export function NotifyPrefsCard({ name }: { name?: string }) {
@@ -328,13 +334,22 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
           <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
           <span className="text-xs font-semibold sm:text-sm">주의사항</span>
         </div>
-        <ul className="flex flex-col gap-0.5">
-          {PUSH_NOTICE_CAUTIONS.map((text) => (
-            <li
-              key={text}
-              className="text-micro-lg leading-relaxed text-muted-foreground before:mr-1 before:content-['·'] sm:text-xs"
-            >
-              {text}
+        <ul className="flex flex-col gap-1">
+          {PUSH_NOTICE_CAUTIONS.map(({ group, items }) => (
+            <li key={group} className="flex flex-col gap-0.5">
+              <span className="text-micro-lg font-semibold leading-relaxed text-muted-foreground before:mr-1 before:content-['·'] sm:text-xs">
+                {group}
+              </span>
+              <ul className="flex flex-col gap-0.5 pl-3">
+                {items.map((text) => (
+                  <li
+                    key={text}
+                    className="text-micro-lg leading-relaxed text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs"
+                  >
+                    {text}
+                  </li>
+                ))}
+              </ul>
             </li>
           ))}
         </ul>
