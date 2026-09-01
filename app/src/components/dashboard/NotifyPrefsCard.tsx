@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Bell } from "lucide-react";
+import { Bell, Smartphone, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -8,7 +8,16 @@ import { usePushSubscription } from "@/hooks/usePushSubscription";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/lib/auth/useAuth";
 import { ICON_STROKE } from "@/lib/utils";
-import type { AdminPushSendCategoryResponse, NotifyCategory, NotifyPrefsResponse, SetNotifyPrefsResponse } from "@/lib/api/types";
+import type {
+  AdminPushSendCategoryResponse,
+  ListPushDevicesResponse,
+  NotifyCategory,
+  NotifyPrefsResponse,
+  PushDevice,
+  PushDeviceRemoveResponse,
+  PushDeviceToggleResponse,
+  SetNotifyPrefsResponse,
+} from "@/lib/api/types";
 
 const PUSH_STATE_LABEL: Record<string, string> = {
   checking: "알림 상태 확인 중...",
@@ -29,6 +38,20 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
   const [error, setError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ text: string; type: "error" | "ok" } | null>(null);
 
+  // 🔧 [푸시 중복 발송 대응] 서비스워커 재등록 등으로 endpoint가 바뀌면
+  // 옛 구독이 정리되지 않고 남아있어, 같은 사람 앞으로 알림이 여러 번(예:
+  // 2번) 가는 원인이 됐다(사용자 지적) — 정확한 기기 식별은 웹에서 불가능
+  // 하므로, 대신 이 기기 목록을 보여주고 사용자가 직접 죽은/중복 기기를
+  // 끄거나 지울 수 있게 한다.
+  const [devices, setDevices] = useState<PushDevice[] | null>(null);
+  const [pendingDeviceId, setPendingDeviceId] = useState<string | null>(null);
+
+  function loadDevices() {
+    call<ListPushDevicesResponse>("/push/devices")
+      .then((data) => setDevices(data.devices || []))
+      .catch(() => {});
+  }
+
   useEffect(() => {
     if (state !== "on") return;
     let cancelled = false;
@@ -39,11 +62,30 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
         setPrefs(data.prefs);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "알림 설정을 불러오지 못했습니다."));
+    loadDevices();
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
+
+  function toggleDevice(device: PushDevice, enabled: boolean) {
+    setPendingDeviceId(device.id);
+    setError(null);
+    call<PushDeviceToggleResponse>("/push/devices/toggle", { method: "POST", body: { id: device.id, enabled } })
+      .then(() => setDevices((prev) => (prev ? prev.map((d) => (d.id === device.id ? { ...d, enabled } : d)) : prev)))
+      .catch((err) => setError(err instanceof Error ? err.message : "기기 설정 변경에 실패했습니다."))
+      .finally(() => setPendingDeviceId(null));
+  }
+
+  function removeDevice(device: PushDevice) {
+    setPendingDeviceId(device.id);
+    setError(null);
+    call<PushDeviceRemoveResponse>("/push/devices/remove", { method: "POST", body: { id: device.id } })
+      .then(() => setDevices((prev) => (prev ? prev.filter((d) => d.id !== device.id) : prev)))
+      .catch((err) => setError(err instanceof Error ? err.message : "기기 삭제에 실패했습니다."))
+      .finally(() => setPendingDeviceId(null));
+  }
 
   function toggleCategory(category: NotifyCategory, enabled: boolean) {
     setPendingCategory(category);
@@ -124,6 +166,39 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
                     disabled={pendingCategory === key}
                     onCheckedChange={(checked) => toggleCategory(key, checked)}
                     aria-label={categories[key]}
+                  />
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {state === "on" && devices && devices.length > 0 && (
+          <div className="flex flex-col gap-1.5 border-t pt-2.5">
+            <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+              <Smartphone className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
+              알림 받는 기기
+            </span>
+            {devices.map((d) => (
+              <div key={d.id} className="flex items-center justify-between gap-2 pl-5 sm:pl-5.5">
+                <span className="truncate text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
+                  {d.deviceLabel}
+                </span>
+                <span className="inline-flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    className="inline-flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground/70 outline-none hover:text-destructive focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 sm:size-4.5"
+                    disabled={pendingDeviceId === d.id}
+                    onClick={() => removeDevice(d)}
+                    aria-label={`${d.deviceLabel} 삭제`}
+                  >
+                    <X className="size-3 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                  </button>
+                  <Switch
+                    checked={d.enabled}
+                    disabled={pendingDeviceId === d.id}
+                    onCheckedChange={(checked) => toggleDevice(d, checked)}
+                    aria-label={`${d.deviceLabel} 알림 수신`}
                   />
                 </span>
               </div>

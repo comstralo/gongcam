@@ -313,6 +313,25 @@ export type PushSubscriptionStatusResponse = {
   items: PushSubscriptionStatusItem[];
 };
 
+export type PushDevice = {
+  id: string;
+  deviceLabel: string;
+  enabled: boolean;
+  savedAt: number | null;
+};
+
+export type ListPushDevicesResponse = {
+  devices: PushDevice[];
+};
+
+export type PushDeviceToggleResponse = {
+  ok: true;
+};
+
+export type PushDeviceRemoveResponse = {
+  ok: true;
+};
+
 export type RecentNoticeItem = {
   nickname: string;
   message: string;
