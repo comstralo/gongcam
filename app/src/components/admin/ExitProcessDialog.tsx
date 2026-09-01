@@ -208,7 +208,6 @@ export function ExitProcessDialog({
                   placeholder="예: 비매너 행위로 인한 즉시 퇴실"
                   className="sm:h-12 sm:text-base"
                   readOnly={lockForcedReason !== undefined}
-                  disabled={lockForcedReason !== undefined}
                 />
               </InfoCard>
 
