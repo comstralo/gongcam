@@ -54,8 +54,9 @@ function groupByDay<T extends { number: string; name: string; day: string }>(ite
   return STATUS_DAYS.filter((d) => map.has(d)).map((day) => ({ day, members: map.get(day)! }));
 }
 
-// 납부 대상자 목록은 이미 납부된 항목만 다루므로 "납부" 버튼은 불필요하다.
-const FINE_UNDO_PAID_OPTIONS: Exclude<FineStatus, "납부">[] = ["미납", "면제"];
+// 항목별 액션 버튼 — 세 상태(납부/미납/면제) 모두 이 자리에서 바로 바꿀 수
+// 있다(이미 "납부" 상태인 항목에서 "납부"를 다시 눌러도 결과는 그대로다).
+const FINE_STATUS_OPTIONS: FineStatus[] = ["납부", "미납", "면제"];
 
 function PaidFineList({ isVisible }: { isVisible: boolean }) {
   const { call } = useApi();
@@ -225,8 +226,8 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
                               <User className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
                               {f.name}
                             </span>
-                            <div className="flex items-center gap-1.5">
-                              {FINE_UNDO_PAID_OPTIONS.map((status) => (
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {FINE_STATUS_OPTIONS.map((status) => (
                                 <Button
                                   key={status}
                                   size="sm"
@@ -238,6 +239,12 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
                                   {status}
                                 </Button>
                               ))}
+                              {/* 🧪 [자리표시자] 헤더의 "직권 P" 배지와 동일하게
+                                  아직 실제 동작(강제퇴실 처리 트리거 등)이
+                                  연결되어 있지 않다. */}
+                              <Button size="sm" variant="outline" disabled className="flex-1 sm:flex-none">
+                                직권 P
+                              </Button>
                               <Button
                                 variant="outline"
                                 size="icon-sm"
@@ -263,9 +270,9 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
                               {day && detail && detail !== "loading" && detail !== "error" && (
                                 <DayDetailCard
                                   day={day}
-                                  dayLabel={`${f.day}요일`}
                                   isPast={STATUS_DAYS.indexOf(f.day) < TODAY_INDEX}
                                   depositRefundBreakdown={detail.depositRefundBreakdown}
+                                  showStatusBadges={false}
                                 />
                               )}
                             </>

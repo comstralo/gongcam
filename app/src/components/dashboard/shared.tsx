@@ -273,6 +273,11 @@ export function DayDetailCard({
   isPast = false,
   footer,
   depositRefundBreakdown,
+  // 요일/마감·진행중/벌금 납부·미납/예치금 납부·미납 뱃지 한 줄을 보여줄지.
+  // MY 대시보드는 이 뱃지들이 핵심 정보라 그대로 두지만, 관리자 "벌금 납부
+  // 대상자 처리"(AdminMoneyTab)는 이미 요일별 그룹 헤더·납부확인 SubRow에
+  // 같은 정보가 다 있어 중복이라 꺼둔다(사용자 지적).
+  showStatusBadges = true,
 }: {
   day: StatusDay;
   dayLabel?: string;
@@ -281,6 +286,7 @@ export function DayDetailCard({
   // 예치금 재납 여부(미납/납부)는 요일이 아니라 개인 탭 상단의 주간값
   // 하나뿐이라, 모든 요일 카드가 이 값을 그대로 반복해 보여준다.
   depositRefundBreakdown?: DepositRefundBreakdown;
+  showStatusBadges?: boolean;
 }) {
   // 예치금 재납 미납은 요일별 기록이 아니라 개인 탭 상단의 "현재 시점" 값이라,
   // 2회 달성 시점의 요일 카드(day.isDepositAgainDay)에만 뱃지를 띄운다 — 그러지
@@ -297,19 +303,21 @@ export function DayDetailCard({
         day.total > 0 || showDepositAgainUnpaidBadge ? "border-destructive/30" : "border-border"
       )}
     >
-      <div className="flex items-center justify-start gap-1.5">
-        {dayLabel && <TintedPill tone="warn">{dayLabel}</TintedPill>}
-        <TintedPill
-          tone={day.confirmed || isPast ? "muted" : "primary"}
-          icon={day.confirmed || isPast ? CircleCheck : CircleDot}
-        >
-          {day.confirmed || isPast ? "마감" : "진행중"}
-        </TintedPill>
-        {day.paymentStatus === "미납" && <TintedPill tone="warn">벌금 미납</TintedPill>}
-        {day.paymentStatus === "납부" && <TintedPill tone="ok">벌금 납부</TintedPill>}
-        {showDepositAgainUnpaidBadge && <TintedPill tone="warn">예치금 미납</TintedPill>}
-        {showDepositAgainPaidBadge && <TintedPill tone="ok">예치금 납부</TintedPill>}
-      </div>
+      {showStatusBadges && (
+        <div className="flex items-center justify-start gap-1.5">
+          {dayLabel && <TintedPill tone="warn">{dayLabel}</TintedPill>}
+          <TintedPill
+            tone={day.confirmed || isPast ? "muted" : "primary"}
+            icon={day.confirmed || isPast ? CircleCheck : CircleDot}
+          >
+            {day.confirmed || isPast ? "마감" : "진행중"}
+          </TintedPill>
+          {day.paymentStatus === "미납" && <TintedPill tone="warn">벌금 미납</TintedPill>}
+          {day.paymentStatus === "납부" && <TintedPill tone="ok">벌금 납부</TintedPill>}
+          {showDepositAgainUnpaidBadge && <TintedPill tone="warn">예치금 미납</TintedPill>}
+          {showDepositAgainPaidBadge && <TintedPill tone="ok">예치금 납부</TintedPill>}
+        </div>
+      )}
 
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between gap-2">
