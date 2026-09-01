@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, CircleDollarSign, CalendarDays, User, Trophy, PiggyBank } from "lucide-react";
+import { ChevronDown, CircleDollarSign, CalendarDays, User, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
-import { InfoCard, DayDetailCard, TintedPill, ItemTitle, DividedValue } from "@/components/dashboard/shared";
+import { InfoCard, DayDetailCard, TintedPill, ItemTitle } from "@/components/dashboard/shared";
 import { SectionHeader, FieldLabel, SectionCard } from "@/components/admin/shared";
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
 import { RankBadge } from "@/components/dashboard/RosterView";
@@ -406,29 +406,16 @@ function PrizeRecipientList({ isVisible }: { isVisible: boolean }) {
         )}
 
         {settlement && settlement.length > 0 && (
-          // §"랭킹"(RosterView)과 동일한 카드 레이아웃(RankBadge + 이름 +
-          // 아이콘 서브로우)으로 맞췄다(사용자 지시: "출력 형태를 여기서
-          // 출력하는 형태로 가져와") — 다만 두 번째 줄은 타이머·상점 대신
-          // 이 회원이 받을 분배 금액 하나만 보여준다(RosterView는 항목이
-          // 2개라 DividedValue로 구분선을 넣지만, 여기는 항목이 1개라
-          // 그대로 아이콘+금액만 쓴다).
+          // §"랭킹"(RosterView)과 동일한 카드 레이아웃(RankBadge + 이름)을
+          // 그대로 가져오되(사용자 지시: "출력 형태를 동일하게 맞춰"),
+          // 우측에 이 회원이 받을 분배 금액만 추가한다 — RosterView의
+          // 타이머·상점 서브로우는 이 화면과 무관해 넣지 않는다.
           <div className="flex flex-col gap-2 sm:gap-2.5">
             {settlement.map((s) => (
               <InfoCard key={s.number} className="flex items-center gap-3 sm:gap-4">
                 <RankBadge rank={String(s.rank)} />
-                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <ItemTitle className="truncate">{s.name}</ItemTitle>
-                  <div className="text-xs tabular-nums text-muted-foreground sm:text-sm">
-                    <DividedValue
-                      items={[
-                        <span key="amount" className="inline-flex items-center gap-1">
-                          <PiggyBank className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
-                          {won(s.amount)}
-                        </span>,
-                      ]}
-                    />
-                  </div>
-                </div>
+                <ItemTitle className="min-w-0 flex-1 truncate">{s.name}</ItemTitle>
+                <span className="font-mono text-xs font-semibold tabular-nums sm:text-sm">{won(s.amount)}</span>
               </InfoCard>
             ))}
           </div>
