@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, CircleDollarSign, CalendarDays, User } from "lucide-react";
+import { ChevronDown, CircleDollarSign, CalendarDays, User, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, DayDetailCard, TintedPill } from "@/components/dashboard/shared";
 import { SectionHeader, FieldLabel, SectionCard } from "@/components/admin/shared";
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
+import { RANK_EMOJI } from "@/components/dashboard/RosterView";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { useTodayIndex } from "@/hooks/useTodayIndex";
@@ -18,6 +19,7 @@ import type {
   FineStatus,
   SetFineStatusResponse,
   StatusResponse,
+  RosterStatusResponse,
 } from "@/lib/api/types";
 
 const STATUS_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
@@ -344,11 +346,92 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
   );
 }
 
+// "상금 수령 대상자 처리" — §4.2. 이번 주 1~5등에게 분배될 정산 금액을
+// 보여준다. RosterPage의 "이번 주 정산"(회원 대시보드)과 완전히 같은
+// 원본(GET /roster-status, settlement 필드)을 그대로 재사용한다 — 순위
+// 산정·1/n 균등 분배 로직이 이미 백엔드에 있어(buildRosterStatus,
+// index.js) 별도 API를 새로 만들 필요가 없다. 다만 그 엔드포인트는 기본적
+// 으로 스터디원에게는 일요일 14교시 종료(23:30 KST) 전까지 settlement을
+// 숨기는데, 관리자는 그 시간 제한 없이 항상 봐야 하므로(사용자 지시대로
+// 상시 처리 화면) 백엔드에 isAdmin 조건을 추가해 우회한다(handleRosterStatus).
+function PrizeRecipientList({ isVisible }: { isVisible: boolean }) {
+  const [collectMoney, setCollectMoney] = useState(0);
+  const [settlement, setSettlement] = useState<RosterStatusResponse["settlement"]>(undefined);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // 🧪 [임시 더미 미리보기] 실제 서비스 화면에서 렌더링을 확인하기 위한
+  // 임시 조치 — 확인 끝나면 반드시 원래 /roster-status 호출로 되돌릴 것.
+  function load() {
+    setLoading(true);
+    setError(null);
+    setTimeout(() => {
+      setCollectMoney(142000);
+      setSettlement([
+        { number: "3", name: "김재희", rank: 1, amount: 28400 },
+        { number: "7", name: "이서준", rank: 2, amount: 28400 },
+        { number: "1", name: "박도윤", rank: 3, amount: 28400 },
+        { number: "9", name: "최하은", rank: 4, amount: 28400 },
+        { number: "5", name: "정유나", rank: 5, amount: 28400 },
+      ]);
+      setLoading(false);
+    }, 300);
+  }
+
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useRefreshOnVisible(isVisible, load);
+
+  return (
+    <Collapsible defaultOpen className="flex flex-col gap-4">
+      <SectionHeader icon={Trophy} title="상금 수령 대상자 처리" loading={loading} onRefresh={load} />
+      <div className="h-px w-full bg-border" />
+      <CollapsiblePanel className="flex flex-col gap-4">
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        <InfoCard className="flex items-center justify-between gap-2">
+          <FieldLabel>납부된 총 벌금액</FieldLabel>
+          <span className="font-mono text-base font-bold tabular-nums text-ok sm:text-lg">{won(collectMoney)}</span>
+        </InfoCard>
+
+        {loading && !settlement && (
+          <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">불러오는 중...</p>
+        )}
+
+        {!loading && settlement && settlement.length === 0 && (
+          <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">이번 주 정산 대상이 없습니다.</p>
+        )}
+
+        {settlement && settlement.length > 0 && (
+          <div className="flex flex-col gap-2 sm:gap-2.5">
+            {settlement.map((s) => (
+              <InfoCard key={s.number} className="flex items-center justify-between gap-2">
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+                  <span className="text-base sm:text-lg">{RANK_EMOJI[s.rank] || s.rank}</span>
+                  <User className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                  {s.name}
+                </span>
+                <span className="font-mono text-xs font-semibold tabular-nums sm:text-sm">{won(s.amount)}</span>
+              </InfoCard>
+            ))}
+          </div>
+        )}
+      </CollapsiblePanel>
+    </Collapsible>
+  );
+}
+
 export function AdminMoneyTab({ visible }: { visible: boolean }) {
   return (
     <div className="flex flex-col gap-4">
       <SectionCard>
         <PaidFineList isVisible={visible} />
+      </SectionCard>
+      <SectionCard>
+        <PrizeRecipientList isVisible={visible} />
       </SectionCard>
     </div>
   );
