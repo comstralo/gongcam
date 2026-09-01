@@ -23,8 +23,8 @@ import type {
 
 const PUSH_STATE_LABEL: Record<string, string> = {
   checking: "알림 상태 확인 중...",
-  on: "알림 켜짐",
-  off: "알림 꺼짐",
+  on: "ON",
+  off: "OFF",
   unsupported: "이 브라우저는 푸시 알림을 지원하지 않습니다.",
 };
 
