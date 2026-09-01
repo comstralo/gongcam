@@ -1,4 +1,4 @@
-import { CalendarDays, DoorOpen, PiggyBank, Search, TrendingDown, TriangleAlert } from "lucide-react";
+import { CalendarDays, CheckCircle2, DoorOpen, PiggyBank, Search, TrendingDown, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import {
   Dialog,
@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { SubRow, InfoCard } from "@/components/dashboard/shared";
+import { SubRow, InfoCard, buildDepositCauseItems } from "@/components/dashboard/shared";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/lib/auth/useAuth";
 import { cn } from "@/lib/utils";
@@ -26,11 +26,30 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// 🔧 [일간 집계 완료 시점 반영] "마지막 참여일" 당일이 KST로 지났다고
+// 해서 그날의 최종 반환액이 바로 확정되는 게 아니다 — 앱스크립트의
+// daily_calc()가 "그날 다음날 자정~오전 1시 사이"에 실행돼야 그날치 벌금
+// 미납/페널티 판정이 최종 반영된다(사용자 지적). 그래서 exitDate 당일이
+// 지났다고 바로 "동의합니다" 버튼을 보여주면, 아직 집계가 안 끝난 값을
+// 회원이 동의해버릴 수 있다 — exitDate 다음날 오전 2시(집계 시각보다
+// 넉넉히 여유를 둔 시각) 이후부터 노출한다.
+function exitDateSettled(exitDate: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(exitDate);
+  if (!m) return false;
+  // exitDate(그 날짜)의 KST 자정을 UTC ms로 표현: KST는 UTC+9이므로,
+  // "그 날짜 00:00 KST"는 "그 날짜 00:00 UTC - 9시간"과 같다.
+  const exitDateMidnightUtcMs = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) - 9 * 60 * 60 * 1000;
+  // 다음날 오전 2시(KST) = 그 날짜 자정(UTC 환산) + 24시간 + 2시간.
+  const settledAtUtcMs = exitDateMidnightUtcMs + 26 * 60 * 60 * 1000;
+  return Date.now() >= settledAtUtcMs;
+}
+
 export function DepositRefundDialog({
   depositRefundEstimate,
   breakdown,
   exitRequested,
   exitRequestDate,
+  exitAgreedAt,
   onExitRequestChange,
   children,
 }: {
@@ -38,6 +57,10 @@ export function DepositRefundDialog({
   breakdown: DepositRefundBreakdown;
   exitRequested: boolean;
   exitRequestDate: string | null;
+  // 마지막 참여일이 지난 뒤 "예치금 정산액에 동의합니다"를 누른 시각. 아직
+  // 안 눌렀으면 null — 이 경우 퇴실일이 지나도 관리자의 정산 처리 버튼은
+  // 비활성 상태로 남는다.
+  exitAgreedAt: number | null;
   onExitRequestChange: () => void;
   children: ReactNode;
 }) {
@@ -46,6 +69,12 @@ export function DepositRefundDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState(exitRequestDate || todayStr());
+
+  // 🔧 [퇴실 프로세스 확장] 마지막 참여일(exitRequestDate)의 일간 집계가
+  // 실제로 끝나야만(다음날 오전 2시 이후) "예치금 정산액에 동의합니다"
+  // 버튼이 나타난다 — 그 전까지는 지금까지처럼 "퇴실 신청 취소하기"만
+  // 보여준다(사용자 지시).
+  const exitDatePassed = exitRequested && !!exitRequestDate && exitDateSettled(exitRequestDate);
 
   function handleRequestExit() {
     setSubmitting(true);
@@ -65,11 +94,17 @@ export function DepositRefundDialog({
       .finally(() => setSubmitting(false));
   }
 
+  function handleAgreeExit() {
+    setSubmitting(true);
+    setError(null);
+    call<{ ok: boolean }>("/exit-request/agree", { method: "POST" })
+      .then(onExitRequestChange)
+      .catch((err) => setError(err instanceof Error ? err.message : "동의 처리에 실패했습니다."))
+      .finally(() => setSubmitting(false));
+  }
+
   const amount = breakdown.amount ?? 0;
   const isReduced = amount < 10000;
-  const penaltyTotal = (breakdown.outputPen ?? 0) + (breakdown.timePen ?? 0);
-  const penaltyRate = penaltyTotal >= 2 ? 100 : penaltyTotal === 1 ? 50 : 0;
-  const daysSinceJoin = breakdown.daysSinceJoin ?? -1;
 
   // 🔧 [고지지연 실제 반영] 오늘과 마지막 참여일 사이가 3일 미만이면(임박
   // 신청) 50% 차감이고, 페널티 1개(50%)와 겹치면 100%가 된다 — 서버
@@ -91,32 +126,7 @@ export function DepositRefundDialog({
         return daysUntilLastAttend !== null && daysUntilLastAttend < 3 ? 50 : 0;
       })();
 
-  // 차감 원인을 고정된 순서(벌금 미납 → 예치금 미납 → 30일 미만 참여자 →
-  // 페널티 → 고지지연)로 보여준다. "직권 P"/"예치금 재납 대상자"는 관리자가
-  // 그때그때 입력하거나 실제 반환액 계산에 반영되지 않는 항목이라 제외.
-  const causeItems = [
-    { key: "fine", label: "벌금 미납", rate: breakdown.fineUnpaid ? 100 : 0 },
-    {
-      key: "depositUnpaid",
-      label: "예치금 미납",
-      rate: breakdown.depositAgainStatus === "미납" ? 100 : 0,
-    },
-    {
-      key: "days",
-      label: `30일 미만 참여자 (D+${daysSinceJoin >= 0 ? daysSinceJoin : "-"})`,
-      rate: daysSinceJoin >= 0 && daysSinceJoin < 30 ? 100 : 0,
-    },
-    {
-      key: "penalty",
-      label: `페널티 (송출 P ${breakdown.outputPen ?? 0}회 + 주간 P ${breakdown.timePen ?? 0}회)`,
-      rate: penaltyRate,
-    },
-    {
-      key: "lateNotice",
-      label: "퇴실 통보 지연 (3일내)",
-      rate: lateNoticeRate,
-    },
-  ];
+  const causeItems = buildDepositCauseItems(breakdown, lateNoticeRate);
 
   return (
     <Dialog>
@@ -176,29 +186,29 @@ export function DepositRefundDialog({
               </span>
             </div>
 
-            <div className="my-0.5 h-px w-full bg-border" />
-
-            {isAdmin ? (
-              <>
-                <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
-                  <TrendingDown className="size-3.5 shrink-0 text-primary sm:size-4" />
-                  차감 원인
-                </span>
-                {causeItems.map((item) => (
-                  <SubRow
-                    key={item.key}
-                    label={item.label}
-                    value={`${item.rate}%`}
-                    valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
-                  />
-                ))}
-              </>
-            ) : (
+            {!isAdmin && (
               <span className="text-micro-lg text-muted-foreground sm:text-xs">
                 마지막 참여일 다음 날 확인하실 수 있습니다.
               </span>
             )}
           </InfoCard>
+
+          {isAdmin && (
+            <InfoCard className="flex flex-col gap-1.5">
+              <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+                <TrendingDown className="size-3.5 shrink-0 text-primary sm:size-4" />
+                차감 원인
+              </span>
+              {causeItems.map((item) => (
+                <SubRow
+                  key={item.key}
+                  label={item.label}
+                  value={`${item.rate}%`}
+                  valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
+                />
+              ))}
+            </InfoCard>
+          )}
 
           <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
             <div className="flex items-center gap-1.5 text-destructive">
@@ -229,7 +239,35 @@ export function DepositRefundDialog({
             </Alert>
           )}
 
-          {exitRequested ? (
+          {exitDatePassed ? (
+            exitAgreedAt ? (
+              <Alert>
+                <AlertDescription>
+                  예치금 정산액에 동의하셨습니다. 관리자 확인 후 처리됩니다.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant="outline"
+                  className="w-full sm:h-12 sm:text-base"
+                  disabled={submitting}
+                  onClick={handleCancelExit}
+                >
+                  퇴실 신청 취소
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="w-full sm:h-12 sm:text-base"
+                  disabled={submitting}
+                  onClick={handleAgreeExit}
+                >
+                  <CheckCircle2 className="size-3.5 shrink-0" />
+                  동의합니다
+                </Button>
+              </div>
+            )
+          ) : exitRequested ? (
             <Button variant="outline" className="w-full sm:h-12 sm:text-base" disabled={submitting} onClick={handleCancelExit}>
               퇴실 신청 취소
             </Button>

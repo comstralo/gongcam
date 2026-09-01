@@ -1,17 +1,21 @@
-import { useState, type ReactNode } from "react";
-import { DoorOpen, TriangleAlert, CircleCheck, Circle, MessageSquareWarning } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { DoorOpen, TriangleAlert, CircleCheck, Circle, MessageSquareWarning, Eye, PiggyBank, TrendingDown, ArrowRightLeft, ClipboardList } from "lucide-react";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { InfoCard } from "@/components/dashboard/shared";
+import { InfoCard, SubRow, buildDepositCauseItems } from "@/components/dashboard/shared";
 import { FieldValue } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 import type { ExitCandidate, ExitCheckItem, ExitKind, ExitPreviewResponse, ExitConfirmResponse } from "@/lib/api/types";
+
+function won(n: number) {
+  return `₩${(n || 0).toLocaleString()}`;
+}
 
 // MemberRosterList(전체 명단)와 PenaltyCandidateList(예치금 재납 대상자) 둘
 // 다 이 다이얼로그를 쓰지만, 서로 다른 타입(MemberRosterEntry/ExitCandidate)의
@@ -80,6 +84,11 @@ export function ExitProcessDialog({
   // 없다(사용자 지적) — discountRatio가 이미 항상 1(0% 반환)로 고정되어
   // 있어 미리보기가 보여줄 새로운 정보도 없다.
   const isAdminForcedOnly = lockKind === "admin_forced";
+  // 🔧 [정산 퇴실 전용 UI] 이 처리는 "미리보기 계산" 버튼을 별도로 눌러야
+  // 하는 단계가 필요 없다 — 처리 유형이 이미 settle로 고정돼 있어 다이얼로그가
+  // 열리자마자 바로 계산해 보여줄 수 있다(사용자 지적: "미리보기 계산을
+  // 눌러서 뜨게 하지 말고 바로 표시해").
+  const isSettleOnly = lockKind === "settle";
 
   const [previewing, setPreviewing] = useState(false);
   const [preview, setPreview] = useState<ExitPreviewResponse | null>(null);
@@ -109,6 +118,13 @@ export function ExitProcessDialog({
       setPreviewing(false);
     }
   }
+
+  useEffect(() => {
+    if (open && isSettleOnly && !preview && !previewing) {
+      handlePreview();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isSettleOnly]);
 
   async function handleConfirm() {
     setConfirming(true);
@@ -155,6 +171,8 @@ export function ExitProcessDialog({
             <DoorOpen className="size-4 text-primary sm:size-5" />
             {isAdminForcedOnly ? (
               <>직권 P 퇴실 처리 · {candidate.name}</>
+            ) : isSettleOnly ? (
+              <>정산 퇴실자 처리 · {candidate.name}</>
             ) : (
               <>{candidate.name} · 퇴실·재납 처리</>
             )}
@@ -206,6 +224,113 @@ export function ExitProcessDialog({
               >
                 {confirming ? "처리 중..." : "확정 처리"}
               </Button>
+            </>
+          ) : isSettleOnly ? (
+            <>
+              {previewing && !preview && (
+                <p className="py-4 text-center text-sm text-muted-foreground sm:text-base">계산 중...</p>
+              )}
+
+              {preview && (
+                <InfoCard className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+                    <PiggyBank className="size-3.5 shrink-0 sm:size-4" />
+                    반환 예치금
+                  </span>
+                  <span className="text-xs font-semibold sm:text-sm">{won(preview.refundAmount)}</span>
+                </InfoCard>
+              )}
+
+              {/* 🔧 [DepositRefundDialog와 동일한 차감 원인 카드] 정산
+                  퇴실은 이미 확정된 퇴실 신청 건이라, 고지지연 여부는
+                  선택 중인 날짜가 아니라 서버가 이미 판정한 breakdown.
+                  lateNotice를 그대로 신뢰한다. */}
+              {preview && preview.breakdown && (
+                <InfoCard className="flex flex-col gap-1.5">
+                  <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+                    <TrendingDown className="size-3.5 shrink-0 sm:size-4" />
+                    차감 원인
+                  </span>
+                  {buildDepositCauseItems(preview.breakdown, preview.breakdown.lateNotice ? 50 : 0).map((item) => (
+                    <SubRow
+                      key={item.key}
+                      label={item.label}
+                      value={`${item.rate}%`}
+                      valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
+                    />
+                  ))}
+                </InfoCard>
+              )}
+
+              {preview && (
+                <InfoCard className="flex flex-col gap-1.5">
+                  <span className="flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                    <Eye className="size-3.5 shrink-0 sm:size-4" />
+                    처리 결과
+                  </span>
+                  <SubRow label="반환 예치금" value={won(preview.refundAmount)} />
+                  <SubRow label="귀속 예치금" value={won(preview.heldAmount)} />
+                  <SubRow label="주간 납부 벌금" value={won(preview.fineAlreadyPayment)} />
+                  <SubRow label="처리일자" value={preview.processedDate} />
+                </InfoCard>
+              )}
+
+              {preview && (
+                <InfoCard className="flex flex-col gap-1.5">
+                  <span className="flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                    <ArrowRightLeft className="size-3.5 shrink-0 sm:size-4" />
+                    시트 변동사항
+                  </span>
+                  <SubRow label="(집계) 퇴실자 벌금" value={`${won(preview.fineOuter)} → ${won(preview.newFineOuter)}`} />
+                  <SubRow label="(집계) 퇴실자 예치금" value={`${won(preview.depositOuter)} → ${won(preview.newDepositOuter)}`} />
+                </InfoCard>
+              )}
+
+              {preview && preview.exitProcess && (
+                <InfoCard className="flex flex-col gap-1.5">
+                  <span className="flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                    <ClipboardList className="size-3.5 shrink-0 sm:size-4" />
+                    퇴실 프로세스
+                  </span>
+                  <SubRow
+                    label="신청일자"
+                    value={preview.exitProcess.requestedAt ? new Date(preview.exitProcess.requestedAt).toLocaleString("ko-KR") : "-"}
+                  />
+                  <SubRow label="예약일자" value={preview.exitProcess.exitDate || "-"} />
+                  <SubRow
+                    label="예치금 정산액 동의일자"
+                    value={preview.exitProcess.agreedAt ? new Date(preview.exitProcess.agreedAt).toLocaleString("ko-KR") : "미동의"}
+                    valueClassName={!preview.exitProcess.agreedAt ? "text-destructive" : undefined}
+                  />
+                  {preview.fromBackup && (
+                    <SubRow label="데이터 기준" value="지난 주 백업 시트" valueClassName="text-muted-foreground" />
+                  )}
+                </InfoCard>
+              )}
+
+              {preview && (
+                <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
+                  <div className="flex items-center gap-1.5 text-destructive">
+                    <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
+                    <span className="text-xs font-semibold sm:text-sm">주의사항</span>
+                  </div>
+                  <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
+                    확정하면 현재 시트가 백업 탭으로 옮겨지고 원래 슬롯이 초기화됩니다. 되돌릴 수 없으니
+                    내용을 다시 확인한 뒤 진행하세요.
+                  </p>
+                </InfoCard>
+              )}
+
+              {preview && (
+                <Button
+                  className="w-full sm:h-12 sm:text-base"
+                  variant="destructive"
+                  disabled={confirming}
+                  onClick={handleConfirm}
+                >
+                  {confirming ? "처리 중..." : "확정 처리"}
+                </Button>
+              )}
             </>
           ) : (
             <>

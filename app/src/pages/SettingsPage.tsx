@@ -37,6 +37,7 @@ export function SettingsPage({ visible = true }: { visible?: boolean }) {
                   breakdown={status.depositRefundBreakdown}
                   exitRequested={!!status.exitRequested}
                   exitRequestDate={status.exitRequestDate}
+                  exitAgreedAt={status.exitAgreedAt}
                   onExitRequestChange={refresh}
                 >
                   <InfoCard className="flex items-center justify-between gap-2.5">

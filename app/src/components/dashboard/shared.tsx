@@ -130,6 +130,48 @@ export function formatTotalPenalty(outputPen: number, timePen: number): ReactNod
   return <DividedValue items={[`${total}회`, kind]} />;
 }
 
+export type DepositCauseItem = { key: string; label: string; rate: number };
+
+// "예치금 반환액이 왜 깎였는지" 항목별 사유를 고정된 순서(벌금 미납 →
+// 예치금 미납 → 30일 미만 참여자 → 페널티 → 고지지연)로 만든다.
+// DepositRefundDialog(회원 본인 대시보드)와 ExitProcessDialog(관리자
+// 정산 퇴실 처리) 둘 다 같은 breakdown 구조를 받아 이 항목들을 그대로
+// 보여준다. lateNoticeRate는 호출부가 각자의 방식으로 계산해 넘긴다 —
+// 회원 대시보드는 "아직 신청 전"일 수 있어 선택한 날짜로 미리 계산하고,
+// 관리자 정산 처리는 이미 확정된 신청이라 breakdown.lateNotice를 그대로 쓴다.
+export function buildDepositCauseItems(
+  breakdown: DepositRefundBreakdown,
+  lateNoticeRate: number
+): DepositCauseItem[] {
+  const penaltyTotal = (breakdown.outputPen ?? 0) + (breakdown.timePen ?? 0);
+  const penaltyRate = penaltyTotal >= 2 ? 100 : penaltyTotal === 1 ? 50 : 0;
+  const daysSinceJoin = breakdown.daysSinceJoin ?? -1;
+
+  return [
+    { key: "fine", label: "벌금 미납", rate: breakdown.fineUnpaid ? 100 : 0 },
+    {
+      key: "depositUnpaid",
+      label: "예치금 미납",
+      rate: breakdown.depositAgainStatus === "미납" ? 100 : 0,
+    },
+    {
+      key: "days",
+      label: `30일 미만 참여자 (D+${daysSinceJoin >= 0 ? daysSinceJoin : "-"})`,
+      rate: daysSinceJoin >= 0 && daysSinceJoin < 30 ? 100 : 0,
+    },
+    {
+      key: "penalty",
+      label: `페널티 (송출 P ${breakdown.outputPen ?? 0}회 + 주간 P ${breakdown.timePen ?? 0}회)`,
+      rate: penaltyRate,
+    },
+    {
+      key: "lateNotice",
+      label: "퇴실 통보 지연 (3일내)",
+      rate: lateNoticeRate,
+    },
+  ];
+}
+
 // "└" 접두 트리 표기로 상위 행 아래 들여쓰기된 세부 항목을 표시하는 서브로우.
 // indent: 상위 행 없이 박스 안에 항목만 나열할 때는 false로 꺼서 불필요한
 // 좌측 여백/트리 기호 없이 일반 목록처럼 보이게 한다.

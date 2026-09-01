@@ -196,6 +196,9 @@ export type StatusResponse = {
   // 본인이 대시보드에서 "퇴실 신청"을 접수해둔 상태인지.
   exitRequested: boolean;
   exitRequestDate: string | null;
+  // 마지막 참여일이 지난 뒤 "예치금 정산액에 동의합니다"를 누른 시각(ms
+  // epoch). 아직 안 눌렀으면 null.
+  exitAgreedAt: number | null;
   periodAttendanceRate: string;
   periodAttendanceBreakdown: PeriodAttendanceBreakdown;
   periodGrid: PeriodGridDay[];
@@ -356,9 +359,13 @@ export type CreateMemberRequest = {
   number: string;
   name: string;
   email: string;
+  gooroomeeAccount?: string;
   goalHours: string;
   goalKind: string;
   examKind?: string;
+  // "YYYY-MM-DD". 미지정 시 서버가 오늘(KST) 날짜로 대체한다 — 서버가 최근
+  // 일주일 이내인지 다시 검증하므로 그 범위 밖 값은 400으로 거부된다.
+  joinDate?: string;
 };
 
 export type CreateMemberResponse = {
@@ -475,6 +482,11 @@ export type MemberRosterEntry = {
   // 무관한 예약 표시일 뿐이며, 관리자가 퇴실을 확정하면 자동으로 꺼진다.
   exitRequested: boolean;
   exitRequestDate: string | null;
+  // 신청일자(ms epoch)와 동의일자(ms epoch, 아직 동의 전이면 null). 회원이
+  // 마지막 참여일이 지난 뒤 "예치금 정산액에 동의합니다"를 눌러야 정산
+  // 퇴실 처리 버튼이 활성화된다.
+  exitRequestedAt: number | null;
+  exitAgreedAt: number | null;
   partiStatus: "스터디장" | "부스터디장" | "스터디원";
   // PUSH 알림 자체를 켰는지(웹 푸시 구독 여부) — 이게 꺼져 있으면 아래
   // notifyPrefs가 전부 켜져 있어도 실제로는 아무 알림도 못 받는다.
@@ -524,6 +536,21 @@ export type ExitPreviewResponse = {
   newFineOuter: number;
   newDepositOuter: number;
   kindStr: string;
+  name: string;
+  heldAmount: number;
+  refundAmount: number;
+  fineAlreadyPayment: number;
+  processedDate: string;
+  fineOuter: number;
+  depositOuter: number;
+  breakdown: DepositRefundBreakdown;
+  // "퇴실 프로세스" 섹션(신청일자/예약일자/동의일자)에 쓰인다. 신청 기록
+  // 자체가 없으면(직권 P 등 신청 없이 처리하는 경우) null.
+  exitProcess: { requestedAt: number | null; exitDate: string | null; agreedAt: number | null } | null;
+  // true면 원본이 아니라 sheet_reset 직전 자동 백업 파일(지난 주 시트)에서
+  // 이 값을 읽었다는 뜻 — 마지막 참여일이 속한 주의 월요일 새벽 리셋이
+  // 이미 지난 뒤 정산 처리를 하는 경우에만 true가 된다.
+  fromBackup: boolean;
 };
 
 export type ExitConfirmResponse = {

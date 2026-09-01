@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { User, Mail, Video, Hash, ListChecks, GraduationCap } from "lucide-react";
+import { User, Mail, Video, Hash, ListChecks, GraduationCap, CalendarDays } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +17,23 @@ import type {
 
 const GOAL_HOURS = ["8", "9", "10"];
 const GOAL_KINDS = ["교시제", "달성제"];
+
+// KST 기준 "오늘"의 "YYYY-MM-DD" — en-CA 로케일은 이 형식을 직접 만들어준다.
+// 브라우저 로컬 타임존이 임의값일 수 있어 반드시 timeZone을 명시해야 한다
+// (백엔드의 todayKSTDateString()과 동일한 값을 내야 첫 참여일 범위 검증이
+// 서버 재검증과 어긋나지 않는다).
+function todayKSTStr(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
+}
+
+// "YYYY-MM-DD"에 일수를 더한다(음수 가능). 순수 날짜 연산이라 UTC 자정
+// 기준으로 계산해도 타임존 이슈가 없다.
+function addDaysToDateStr(dateStr: string, delta: number): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + delta);
+  return dt.toISOString().slice(0, 10);
+}
 
 // "8시간 교시제"(표시용) <-> goalHours="8"/goalKind="교시제"(내부 상태) 조합.
 // 시트에 반영할 때는 handleSubmit에서 "8H (교시제)" 형태로 다시 변환한다.
@@ -38,6 +55,10 @@ export function NewMemberForm() {
   const [gooroomeeAccount, setGooroomeeAccount] = useState("");
   const [participationType, setParticipationType] = useState("8|교시제");
   const [examKind, setExamKind] = useState("");
+  // 정식 등록 전에 이미 참여를 시작한 회원의 실제 첫 참여일(시트 I2, "가입일")을
+  // 오늘로 고정하지 않고 최근 일주일 이내에서 고를 수 있게 한다 — D+N/"30일
+  // 미만 참여자" 판정이 실제 시작일 기준으로 정확히 맞아떨어져야 하기 때문.
+  const [joinDate, setJoinDate] = useState(todayKSTStr());
 
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: "error" | "ok" } | null>(null);
@@ -65,6 +86,7 @@ export function NewMemberForm() {
     setGooroomeeAccount("");
     setParticipationType("8|교시제");
     setExamKind("");
+    setJoinDate(todayKSTStr());
   }
 
   function openDriveAuthLink() {
@@ -98,6 +120,7 @@ export function NewMemberForm() {
           goalHours,
           goalKind,
           examKind: examKind.trim(),
+          joinDate,
         },
       });
 
@@ -142,7 +165,7 @@ export function NewMemberForm() {
   const noSlots = slots?.length === 0;
   const selectedType = PARTICIPATION_TYPES.find((t) => t.value === participationType);
   const allFieldsFilled =
-    !!number && !!name.trim() && !!email.trim() && !!gooroomeeAccount.trim() && !!examKind.trim();
+    !!number && !!name.trim() && !!email.trim() && !!gooroomeeAccount.trim() && !!examKind.trim() && !!joinDate;
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:gap-3.5 sm:p-5">
@@ -248,21 +271,42 @@ export function NewMemberForm() {
         </div>
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <Label
-          htmlFor="new-member-exam"
-          className="inline-flex items-center gap-1.25 text-xs font-medium text-muted-foreground sm:text-sm"
-        >
-          <GraduationCap className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
-          준비 중인 시험
-        </Label>
-        <Input
-          id="new-member-exam"
-          value={examKind}
-          onChange={(e) => setExamKind(e.target.value)}
-          placeholder="예: 공시, CPA"
-          className="sm:h-12 sm:text-base md:text-base"
-        />
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1.5">
+          <Label
+            htmlFor="new-member-exam"
+            className="inline-flex items-center gap-1.25 text-xs font-medium text-muted-foreground sm:text-sm"
+          >
+            <GraduationCap className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+            준비 중인 시험
+          </Label>
+          <Input
+            id="new-member-exam"
+            value={examKind}
+            onChange={(e) => setExamKind(e.target.value)}
+            placeholder="예: 공시, CPA"
+            className="sm:h-12 sm:text-base md:text-base"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label
+            htmlFor="new-member-join-date"
+            className="inline-flex items-center gap-1.25 text-xs font-medium text-muted-foreground sm:text-sm"
+          >
+            <CalendarDays className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+            첫 참여일 설정
+          </Label>
+          <Input
+            id="new-member-join-date"
+            type="date"
+            value={joinDate}
+            min={addDaysToDateStr(todayKSTStr(), -6)}
+            max={todayKSTStr()}
+            onChange={(e) => setJoinDate(e.target.value)}
+            className="sm:h-12 sm:text-base md:text-base"
+          />
+        </div>
       </div>
 
       <Button

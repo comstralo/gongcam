@@ -202,8 +202,12 @@ export function MemberRosterList() {
                           걸 방지하기 위함, 사용자 지적: "무조건 계산은 어디서나
                           일치해야 해"). "직권 P"(admin_forced, 즉시 0% 반환)와
                           "정산"(settle, 페널티 0/1회 기준 100%/50% 반환) 두
-                          가지로 고정하고, 정산은 회원이 실제로 퇴실 신청(예약)
-                          한 경우에만 누를 수 있게 한다. */}
+                          가지로 고정한다. 정산은 회원이 실제로 퇴실 신청(예약)
+                          했을 뿐 아니라, 마지막 참여일이 지난 뒤 "예치금
+                          정산액에 동의합니다"까지 눌러야만 누를 수 있다 —
+                          신청만으로 관리자가 바로 확정 처리할 수 있으면 회원이
+                          실제 반환액을 확인하기도 전에 처리가 끝나버릴 수
+                          있다(사용자 지시로 동의 단계 추가). */}
                       <div className={cn("grid gap-2", m.exitRequested ? "grid-cols-4" : "grid-cols-3")}>
                         <Button
                           variant="outline"
@@ -224,12 +228,12 @@ export function MemberRosterList() {
                           candidate={m}
                           lockKind="settle"
                           onConfirmed={load}
-                          triggerClassName={cn("w-full", !m.exitRequested && "pointer-events-none")}
+                          triggerClassName={cn("w-full", !m.exitAgreedAt && "pointer-events-none")}
                         >
                           <Button
                             variant="destructive"
                             className="w-full sm:h-12 sm:text-base"
-                            disabled={!m.exitRequested}
+                            disabled={!m.exitAgreedAt}
                           >
                             <DoorOpen className="size-3.5 shrink-0" strokeWidth={ICON_STROKE.default} />
                             퇴실 처리 (정산)
