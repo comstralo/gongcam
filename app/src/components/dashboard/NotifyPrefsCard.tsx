@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Bell, Send } from "lucide-react";
+import { Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -104,28 +104,28 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
           <div className="flex flex-col gap-1.5">
             {(Object.keys(categories) as NotifyCategory[]).map((key) => (
               <div key={key} className="flex items-center justify-between gap-2 pl-5 sm:pl-5.5">
-                <span className="inline-flex items-center gap-1">
+                <span className="text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
+                  {categories[key]}
+                </span>
+                <span className="inline-flex shrink-0 items-center gap-2">
                   {isAdmin && (
                     <button
                       type="button"
-                      className="inline-flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground/70 outline-none hover:text-primary focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 sm:size-4.5"
+                      className="text-micro-lg font-medium text-muted-foreground/70 outline-none hover:text-primary focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 sm:text-xs"
                       disabled={testingCategory === key}
                       onClick={() => sendTestToSelf(key)}
                       aria-label={`${categories[key]} 테스트 발송`}
                     >
-                      <Send className="size-3 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                      전송
                     </button>
                   )}
-                  <span className="text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
-                    {categories[key]}
-                  </span>
+                  <Switch
+                    checked={prefs[key]}
+                    disabled={pendingCategory === key}
+                    onCheckedChange={(checked) => toggleCategory(key, checked)}
+                    aria-label={categories[key]}
+                  />
                 </span>
-                <Switch
-                  checked={prefs[key]}
-                  disabled={pendingCategory === key}
-                  onCheckedChange={(checked) => toggleCategory(key, checked)}
-                  aria-label={categories[key]}
-                />
               </div>
             ))}
           </div>
