@@ -228,12 +228,11 @@ export function MemberRosterList() {
                           candidate={m}
                           lockKind="settle"
                           onConfirmed={load}
-                          triggerClassName={cn("w-full", !m.exitAgreedAt && "pointer-events-none")}
+                          triggerClassName="w-full"
                         >
                           <Button
                             variant="destructive"
                             className="w-full sm:h-12 sm:text-base"
-                            disabled={!m.exitAgreedAt}
                           >
                             <DoorOpen className="size-3.5 shrink-0" strokeWidth={ICON_STROKE.default} />
                             퇴실 처리 (정산)
