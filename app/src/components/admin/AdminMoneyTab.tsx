@@ -193,13 +193,11 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
                       <span className="rounded-full bg-amber-600/15 px-2 py-1 text-micro-lg leading-none font-semibold text-amber-600 sm:text-xs dark:bg-amber-400/15 dark:text-amber-400">
                         면제 : {exemptByDay.get(group.day) || 0}건
                       </span>
-                      {/* 🧪 [자리표시자] "강퇴" 인원을 어떤 기준으로 셀지(예:
-                          그날 미납으로 인한 강제퇴실 조건 해당자 vs 이미
-                          처리 확정된 강제퇴실자 전체)는 아직 정해지지
-                          않았다 — 배지 자리와 스타일만 먼저 만들어두고
-                          집계 로직은 추후 반영 예정. */}
+                      {/* 🧪 [자리표시자] "직권 P" 인원을 어떤 기준으로 셀지는
+                          아직 정해지지 않았다 — 배지 자리와 스타일만 먼저
+                          만들어두고 집계 로직은 추후 반영 예정. */}
                       <span className="rounded-full bg-primary/15 px-2 py-1 text-micro-lg leading-none font-semibold text-primary sm:text-xs">
-                        강퇴 : 0건
+                        직권 P : 0건
                       </span>
                     </span>
                   </span>
