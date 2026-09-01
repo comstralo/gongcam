@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { DoorOpen, TriangleAlert, CircleCheck, Circle } from "lucide-react";
+import { DoorOpen, TriangleAlert, CircleCheck, Circle, MessageSquareWarning } from "lucide-react";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -74,6 +74,12 @@ export function ExitProcessDialog({
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<ExitKind>(lockKind ?? candidate.suggestedKind);
   const [forcedReason, setForcedReason] = useState("");
+  // 🔧 [직권 페널티 퇴실 전용 UI] 이 처리는 관리자가 사유만 입력하면 바로
+  // 확정할 수 있는 단순한 흐름이라, 다른 유형(강제/정산/재납)과 공유하는
+  // "처리 유형 선택 → 미리보기 계산 → 확정" 단계를 그대로 노출할 필요가
+  // 없다(사용자 지적) — discountRatio가 이미 항상 1(0% 반환)로 고정되어
+  // 있어 미리보기가 보여줄 새로운 정보도 없다.
+  const isAdminForcedOnly = lockKind === "admin_forced";
 
   const [previewing, setPreviewing] = useState(false);
   const [preview, setPreview] = useState<ExitPreviewResponse | null>(null);
@@ -147,7 +153,11 @@ export function ExitProcessDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-1.5">
             <DoorOpen className="size-4 text-primary sm:size-5" />
-            {candidate.name} · 퇴실·재납 처리
+            {isAdminForcedOnly ? (
+              <>직권 페널티 퇴실 처리 · {candidate.name}</>
+            ) : (
+              <>{candidate.name} · 퇴실·재납 처리</>
+            )}
           </DialogTitle>
         </DialogHeader>
 
@@ -158,6 +168,45 @@ export function ExitProcessDialog({
                 처리가 완료되었습니다. 시트가 백업 탭으로 옮겨지고 원래 슬롯은 초기화되었습니다.
               </AlertDescription>
             </Alert>
+          ) : isAdminForcedOnly ? (
+            <>
+              <InfoCard className="flex flex-col gap-1.5">
+                <Label
+                  htmlFor="forced-reason"
+                  className="flex items-center gap-1.25 text-xs font-semibold text-muted-foreground sm:text-sm"
+                >
+                  <MessageSquareWarning className="size-3.5 shrink-0 sm:size-4" />
+                  직권 퇴실 사유
+                </Label>
+                <Input
+                  id="forced-reason"
+                  value={forcedReason}
+                  onChange={(e) => setForcedReason(e.target.value)}
+                  placeholder="예: 비매너 행위로 인한 즉시 퇴실"
+                  className="sm:h-12 sm:text-base"
+                />
+              </InfoCard>
+
+              <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
+                <div className="flex items-center gap-1.5 text-destructive">
+                  <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
+                  <span className="text-xs font-semibold sm:text-sm">주의사항</span>
+                </div>
+                <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
+                  확정하면 현재 시트가 백업 탭으로 옮겨지고 원래 슬롯이 초기화됩니다. 되돌릴 수 없으니
+                  내용을 다시 확인한 뒤 진행하세요.
+                </p>
+              </InfoCard>
+
+              <Button
+                className="w-full sm:h-12 sm:text-base"
+                variant="destructive"
+                disabled={confirming || !forcedReason.trim()}
+                onClick={handleConfirm}
+              >
+                {confirming ? "처리 중..." : "확정 처리"}
+              </Button>
+            </>
           ) : (
             <>
               <InfoCard className="flex flex-col gap-2">
