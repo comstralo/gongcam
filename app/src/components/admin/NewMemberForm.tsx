@@ -55,9 +55,10 @@ export function NewMemberForm() {
   const [gooroomeeAccount, setGooroomeeAccount] = useState("");
   const [participationType, setParticipationType] = useState("8|교시제");
   const [examKind, setExamKind] = useState("");
-  // 정식 등록 전에 이미 참여를 시작한 회원의 실제 첫 참여일(시트 I2, "가입일")을
-  // 오늘로 고정하지 않고 최근 일주일 이내에서 고를 수 있게 한다 — D+N/"30일
-  // 미만 참여자" 판정이 실제 시작일 기준으로 정확히 맞아떨어져야 하기 때문.
+  // 등록 시점이 아니라 앞으로 최대 일주일 뒤부터 실제 참여를 시작할 회원의
+  // 첫 참여일(시트 I2, "가입일")을 오늘로 고정하지 않고 오늘~일주일 뒤
+  // 범위에서 고를 수 있게 한다 — D+N/"30일 미만 참여자" 판정이 실제 시작일
+  // 기준으로 정확히 맞아떨어져야 하기 때문.
   const [joinDate, setJoinDate] = useState(todayKSTStr());
 
   const [submitting, setSubmitting] = useState(false);
@@ -301,8 +302,8 @@ export function NewMemberForm() {
             id="new-member-join-date"
             type="date"
             value={joinDate}
-            min={addDaysToDateStr(todayKSTStr(), -6)}
-            max={todayKSTStr()}
+            min={todayKSTStr()}
+            max={addDaysToDateStr(todayKSTStr(), 6)}
             onChange={(e) => setJoinDate(e.target.value)}
             className="sm:h-12 sm:text-base md:text-base"
           />

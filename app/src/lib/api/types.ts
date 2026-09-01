@@ -363,8 +363,8 @@ export type CreateMemberRequest = {
   goalHours: string;
   goalKind: string;
   examKind?: string;
-  // "YYYY-MM-DD". 미지정 시 서버가 오늘(KST) 날짜로 대체한다 — 서버가 최근
-  // 일주일 이내인지 다시 검증하므로 그 범위 밖 값은 400으로 거부된다.
+  // "YYYY-MM-DD". 미지정 시 서버가 오늘(KST) 날짜로 대체한다 — 서버가
+  // 오늘~일주일 뒤 범위인지 다시 검증하므로 그 범위 밖 값은 400으로 거부된다.
   joinDate?: string;
 };
 
