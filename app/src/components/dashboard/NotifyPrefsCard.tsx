@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Bell, Smartphone, X } from "lucide-react";
+import { Bell, Check, Pencil, Smartphone, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { DividedValue, InfoCard } from "@/components/dashboard/shared";
@@ -15,6 +16,7 @@ import type {
   NotifyPrefsResponse,
   PushDevice,
   PushDeviceRemoveResponse,
+  PushDeviceRenameResponse,
   PushDeviceToggleResponse,
   SetNotifyPrefsResponse,
 } from "@/lib/api/types";
@@ -45,6 +47,10 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
   // 끄거나 지울 수 있게 한다.
   const [devices, setDevices] = useState<PushDevice[] | null>(null);
   const [pendingDeviceId, setPendingDeviceId] = useState<string | null>(null);
+  // 자동 추정된 기기명("Windows · Chrome")은 같은 종류 기기가 여러 대면
+  // 겹칠 수 있어, 사용자가 직접 구분할 수 있는 이름으로 바꿀 수 있게 한다.
+  const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState("");
 
   function loadDevices() {
     call<ListPushDevicesResponse>("/push/devices")
@@ -105,6 +111,38 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
         if (device.id === selfDeviceId) unsubscribeSelf();
       })
       .catch((err) => setError(err instanceof Error ? err.message : "기기 삭제에 실패했습니다."))
+      .finally(() => setPendingDeviceId(null));
+  }
+
+  function startRename(device: PushDevice) {
+    setEditingDeviceId(device.id);
+    setEditingValue(device.deviceLabel);
+  }
+
+  function cancelRename() {
+    setEditingDeviceId(null);
+    setEditingValue("");
+  }
+
+  function confirmRename(device: PushDevice) {
+    const trimmed = editingValue.trim();
+    if (!trimmed || trimmed === device.deviceLabel) {
+      cancelRename();
+      return;
+    }
+    setPendingDeviceId(device.id);
+    setError(null);
+    call<PushDeviceRenameResponse>("/push/devices/rename", {
+      method: "POST",
+      body: { id: device.id, deviceLabel: trimmed },
+    })
+      .then((data) => {
+        setDevices((prev) =>
+          prev ? prev.map((d) => (d.id === device.id ? { ...d, deviceLabel: data.deviceLabel } : d)) : prev
+        );
+        cancelRename();
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : "기기 이름 변경에 실패했습니다."))
       .finally(() => setPendingDeviceId(null));
   }
 
@@ -200,30 +238,79 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
               <Smartphone className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
               알림 받는 기기
             </span>
-            {devices.map((d) => (
-              <div key={d.id} className="flex items-center justify-between gap-2 pl-5 sm:pl-5.5">
-                <span className="truncate text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
-                  {d.deviceLabel}
-                </span>
-                <span className="inline-flex shrink-0 items-center gap-2">
-                  <button
-                    type="button"
-                    className="inline-flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground/70 outline-none hover:text-destructive focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 sm:size-4.5"
+            {devices.map((d) =>
+              editingDeviceId === d.id ? (
+                <div key={d.id} className="flex items-center gap-2 pl-5 sm:pl-5.5">
+                  <Input
+                    autoFocus
+                    value={editingValue}
+                    maxLength={30}
                     disabled={pendingDeviceId === d.id}
-                    onClick={() => removeDevice(d)}
-                    aria-label={`${d.deviceLabel} 삭제`}
-                  >
-                    <X className="size-3 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
-                  </button>
-                  <Switch
-                    checked={d.enabled}
-                    disabled={pendingDeviceId === d.id}
-                    onCheckedChange={(checked) => toggleDevice(d, checked)}
-                    aria-label={`${d.deviceLabel} 알림 수신`}
+                    onChange={(e) => setEditingValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") confirmRename(d);
+                      if (e.key === "Escape") cancelRename();
+                    }}
+                    className="h-6 flex-1 text-micro-lg sm:text-xs"
+                    aria-label="기기 이름"
                   />
-                </span>
-              </div>
-            ))}
+                  <span className="inline-flex shrink-0 items-center gap-1">
+                    <button
+                      type="button"
+                      className="inline-flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground/70 outline-none hover:text-ok focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 sm:size-4.5"
+                      disabled={pendingDeviceId === d.id}
+                      onClick={() => confirmRename(d)}
+                      aria-label="이름 변경 확인"
+                    >
+                      <Check className="size-3 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                    </button>
+                    <button
+                      type="button"
+                      className="inline-flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground/70 outline-none hover:text-destructive focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 sm:size-4.5"
+                      disabled={pendingDeviceId === d.id}
+                      onClick={cancelRename}
+                      aria-label="이름 변경 취소"
+                    >
+                      <X className="size-3 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                    </button>
+                  </span>
+                </div>
+              ) : (
+                <div key={d.id} className="flex items-center justify-between gap-2 pl-5 sm:pl-5.5">
+                  <span className="inline-flex min-w-0 items-center gap-1">
+                    <span className="truncate text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
+                      {d.deviceLabel}
+                    </span>
+                    <button
+                      type="button"
+                      className="inline-flex size-3.5 shrink-0 items-center justify-center rounded text-muted-foreground/50 outline-none hover:text-primary focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 sm:size-4"
+                      disabled={pendingDeviceId === d.id}
+                      onClick={() => startRename(d)}
+                      aria-label={`${d.deviceLabel} 이름 변경`}
+                    >
+                      <Pencil className="size-2.5 sm:size-3" strokeWidth={ICON_STROKE.default} />
+                    </button>
+                  </span>
+                  <span className="inline-flex shrink-0 items-center gap-2">
+                    <button
+                      type="button"
+                      className="inline-flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground/70 outline-none hover:text-destructive focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 sm:size-4.5"
+                      disabled={pendingDeviceId === d.id}
+                      onClick={() => removeDevice(d)}
+                      aria-label={`${d.deviceLabel} 삭제`}
+                    >
+                      <X className="size-3 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                    </button>
+                    <Switch
+                      checked={d.enabled}
+                      disabled={pendingDeviceId === d.id}
+                      onCheckedChange={(checked) => toggleDevice(d, checked)}
+                      aria-label={`${d.deviceLabel} 알림 수신`}
+                    />
+                  </span>
+                </div>
+              )
+            )}
           </div>
         )}
       </InfoCard>

@@ -332,6 +332,11 @@ export type PushDeviceRemoveResponse = {
   ok: true;
 };
 
+export type PushDeviceRenameResponse = {
+  ok: true;
+  deviceLabel: string;
+};
+
 export type RecentNoticeItem = {
   nickname: string;
   message: string;
