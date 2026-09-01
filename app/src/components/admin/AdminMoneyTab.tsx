@@ -310,8 +310,8 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
                                       onConfirmed={load}
                                       triggerClassName="flex-1"
                                     >
-                                      <Button variant="outline" className="w-full sm:h-11">
-                                        직권 P
+                                      <Button variant="destructive" className="w-full sm:h-11">
+                                        퇴실 처리 (직권 P)
                                       </Button>
                                     </ExitProcessDialog>
                                   ) : (

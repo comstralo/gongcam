@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Users, User, DoorOpen, ChevronDown, Hash, Star, Bell, ExternalLink } from "lucide-react";
+import { Users, User, ChevronDown, Hash, Bell, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
@@ -215,12 +215,10 @@ export function MemberRosterList() {
                           disabled={m.partiStatus === "스터디장" || togglingNumber === m.number}
                           onClick={() => toggleViceLeader(m)}
                         >
-                          <Star className="size-3.5 shrink-0" strokeWidth={ICON_STROKE.default} />
                           {m.partiStatus === "부스터디장" ? "임명 해제" : "부스터디장 임명"}
                         </Button>
                         <ExitProcessDialog candidate={m} lockKind="admin_forced" onConfirmed={load} triggerClassName="w-full">
                           <Button variant="destructive" className="w-full sm:h-12 sm:text-base">
-                            <DoorOpen className="size-3.5 shrink-0" strokeWidth={ICON_STROKE.default} />
                             퇴실 처리 (직권 P)
                           </Button>
                         </ExitProcessDialog>
@@ -234,7 +232,6 @@ export function MemberRosterList() {
                             variant="destructive"
                             className="w-full sm:h-12 sm:text-base"
                           >
-                            <DoorOpen className="size-3.5 shrink-0" strokeWidth={ICON_STROKE.default} />
                             퇴실 처리 (정산)
                           </Button>
                         </ExitProcessDialog>
