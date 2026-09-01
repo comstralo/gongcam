@@ -131,8 +131,8 @@ export function MemberRosterList() {
                           상태 정보
                         </span>
                         <SubRow label="참여유형" value={formatGoalType(m.goalType)} />
-                        <SubRow label="준비 중인 시험" value={m.examKind || "-"} />
                         <SubRow label="가입일자" value={m.joinDate || "-"} />
+                        <SubRow label="준비 중인 시험" value={m.examKind || "-"} />
                         <SubRow label="구글 계정" value={m.googleAccount || "-"} />
                         <SubRow label="구루미 계정" value={m.gooroomeeAccount || "-"} />
                         <SubRow
