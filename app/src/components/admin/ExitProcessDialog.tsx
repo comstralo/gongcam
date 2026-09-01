@@ -131,6 +131,20 @@ export function ExitProcessDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isSettleOnly]);
 
+  // admin_forced도 settle과 동일하게 미리보기 카드를 보여준다 — 다만
+  // calcAdminForcedExit는 forcedReason이 없으면 null을 돌려주는 서버
+  // 로직이라, 사유가 채워져 있을 때만 계산한다. lockForcedReason이 없는
+  // 호출부(MemberRosterList, 관리자가 직접 입력)는 타이핑할 때마다 값이
+  // 바뀌므로 300ms 디바운스로 재계산 — 매 타건마다 API를 부르지 않는다.
+  useEffect(() => {
+    if (!open || !isAdminForcedOnly || !forcedReason.trim()) return;
+    const timer = setTimeout(() => {
+      handlePreview();
+    }, 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isAdminForcedOnly, forcedReason]);
+
   async function handleConfirm() {
     setConfirming(true);
     setError(null);
@@ -210,6 +224,70 @@ export function ExitProcessDialog({
                   readOnly={lockForcedReason !== undefined}
                 />
               </InfoCard>
+
+              {previewing && !preview && (
+                <p className="py-4 text-center text-sm text-muted-foreground sm:text-base">계산 중...</p>
+              )}
+
+              {/* 🔧 정산(settle) 미리보기와 동일한 카드 구성 — 직권 P도
+                  반환율이 이미 0%로 고정돼 있을 뿐, 계산 결과 형태는
+                  같아서 그대로 재사용한다(사용자 요청: "직권 P 모달에도
+                  정산 모달과 같은 내용을 보여달라"). 단, 직권 P는 동의를
+                  기다릴 필요가 없는 즉시 처리라 "확정 처리" 버튼은
+                  agreedAt과 무관하게 forcedReason만 있으면 바로 활성화된다
+                  (아래 버튼 참고). */}
+              {preview && (
+                <InfoCard className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+                    <PiggyBank className="size-3.5 shrink-0 sm:size-4" />
+                    반환 예치금
+                  </span>
+                  <span className={cn("text-xs font-semibold sm:text-sm", preview.refundAmount === 10000 && "text-ok")}>
+                    {won(preview.refundAmount)}
+                  </span>
+                </InfoCard>
+              )}
+
+              {preview && preview.breakdown && (
+                <InfoCard className="flex flex-col gap-1.5">
+                  <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+                    <TrendingDown className="size-3.5 shrink-0 sm:size-4" />
+                    차감 원인
+                  </span>
+                  {buildDepositCauseItems(preview.breakdown, preview.breakdown.lateNotice ? 50 : 0).map((item) => (
+                    <SubRow
+                      key={item.key}
+                      label={item.label}
+                      value={`${item.rate}%`}
+                      valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
+                    />
+                  ))}
+                </InfoCard>
+              )}
+
+              {preview && (
+                <InfoCard className="flex flex-col gap-1.5">
+                  <span className="flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                    <Eye className="size-3.5 shrink-0 sm:size-4" />
+                    처리 결과
+                  </span>
+                  <SubRow label="반환 예치금" value={won(preview.refundAmount)} />
+                  <SubRow label="귀속 예치금" value={won(preview.heldAmount)} />
+                  <SubRow label="주간 납부 벌금" value={won(preview.fineAlreadyPayment)} />
+                  <SubRow label="처리일자" value={preview.processedDate} />
+                </InfoCard>
+              )}
+
+              {preview && (
+                <InfoCard className="flex flex-col gap-1.5">
+                  <span className="flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                    <ArrowRightLeft className="size-3.5 shrink-0 sm:size-4" />
+                    시트 변동사항
+                  </span>
+                  <SubRow label="(집계) 퇴실자 벌금" value={`${won(preview.fineOuter)} → ${won(preview.newFineOuter)}`} />
+                  <SubRow label="(집계) 퇴실자 예치금" value={`${won(preview.depositOuter)} → ${won(preview.newDepositOuter)}`} />
+                </InfoCard>
+              )}
 
               <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
                 <div className="flex items-center gap-1.5 text-destructive">
