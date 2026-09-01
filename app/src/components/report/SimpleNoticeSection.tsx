@@ -11,8 +11,11 @@ import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
 import type { PushSendToMemberResponse } from "@/lib/api/types";
 
-// TODO: 실제 알림 원인 옵션은 나중에 채운다 — 지금은 드롭다운 모양만 잡아둔 상태.
-const NOTICE_REASON_OPTIONS: { value: string; label: string }[] = [];
+// 드롭다운에서 고르는 값(짧은 이름)과 실제로 푸시 알림에 담겨 나가는 문구를
+// 분리한다 — value는 화면 표시·선택용, message는 수신자가 실제로 받는 문장.
+const NOTICE_REASON_OPTIONS: { value: string; label: string; message: string }[] = [
+  { value: "타이머 멈춤", label: "타이머 멈춤", message: "타이머가 멈춰있어요. 확인해 주세요." },
+];
 
 // "송출 P 제보"의 주의사항과 동일한 패턴 — 배열이라 문구가 늘어나도 목록에
 // 항목만 추가하면 된다.
@@ -51,9 +54,10 @@ export function SimpleNoticeSection({
     setSending(true);
     setResult(null);
     try {
+      const message = NOTICE_REASON_OPTIONS.find((opt) => opt.value === reason)?.message ?? reason;
       await call<PushSendToMemberResponse>("/push/send-to-member", {
         method: "POST",
-        body: { nickname, message: reason },
+        body: { nickname, message },
       });
       setResult({ text: `${nickname}님에게 알림을 보냈습니다.`, type: "ok" });
       setReason("");
