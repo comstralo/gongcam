@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, CircleDollarSign, CalendarDays, User, Trophy, Timer, Award, PiggyBank } from "lucide-react";
+import { ChevronDown, CircleDollarSign, CalendarDays, User, Trophy, Timer, Award, Coins } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
@@ -444,7 +444,7 @@ function PrizeRecipientList({ isVisible }: { isVisible: boolean }) {
                             {m?.merit || "-"}
                           </span>,
                           <span key="amount" className="inline-flex items-center gap-1">
-                            <PiggyBank className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                            <Coins className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
                             {won(s.amount)}
                           </span>,
                         ]}
