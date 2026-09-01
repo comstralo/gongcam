@@ -61,6 +61,7 @@ export function ExitProcessDialog({
   onConfirmed,
   triggerClassName,
   lockKind,
+  lockForcedReason,
   children,
 }: {
   candidate: ExitProcessCandidate;
@@ -72,12 +73,16 @@ export function ExitProcessDialog({
   // 페널티 2 이상은 반환율이 항상 0%로 고정되는 정산 퇴실자(settle) 단일
   // 경로라, PENALTY 탭에서는 유형 선택 UI 자체를 숨기고 이 값으로 고정한다.
   lockKind?: ExitKind;
+  // admin_forced 전용 — 호출부가 사유를 이미 알고 있을 때(예: Money 탭의
+  // "직권 P"는 항상 "벌금 시한 내 미납자") 입력란을 그 값으로 고정하고
+  // 편집을 막는다. 없으면 기존처럼 관리자가 자유롭게 입력한다.
+  lockForcedReason?: string;
   children: ReactNode;
 }) {
   const { call } = useApi();
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<ExitKind>(lockKind ?? candidate.suggestedKind);
-  const [forcedReason, setForcedReason] = useState("");
+  const [forcedReason, setForcedReason] = useState(lockForcedReason ?? "");
   // 🔧 [직권 P 퇴실 전용 UI] 이 처리는 관리자가 사유만 입력하면 바로
   // 확정할 수 있는 단순한 흐름이라, 다른 유형(강제/정산/재납)과 공유하는
   // "처리 유형 선택 → 미리보기 계산 → 확정" 단계를 그대로 노출할 필요가
@@ -152,7 +157,7 @@ export function ExitProcessDialog({
           setPreview(null);
           setError(null);
           setConfirmed(false);
-          setForcedReason("");
+          setForcedReason(lockForcedReason ?? "");
           setKind(lockKind ?? candidate.suggestedKind);
         }
       }}
@@ -202,6 +207,8 @@ export function ExitProcessDialog({
                   onChange={(e) => setForcedReason(e.target.value)}
                   placeholder="예: 비매너 행위로 인한 즉시 퇴실"
                   className="sm:h-12 sm:text-base"
+                  readOnly={lockForcedReason !== undefined}
+                  disabled={lockForcedReason !== undefined}
                 />
               </InfoCard>
 

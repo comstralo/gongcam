@@ -248,6 +248,12 @@ OFF로 표시한다 — "구독은 꺼졌는데 세부 항목은 죄다 ON"으�
 
 - **`admin_forced`**: 사유 입력 하나만 받고 바로 확정. 미리보기 계산 단계 없음
   (discountRatio가 항상 1로 고정돼 미리보기가 보여줄 새 정보가 없기 때문).
+  🔧 2026-09: `lockForcedReason?: string` prop이 추가됐다 — 값을 넘기면
+  사유 입력란이 그 문자열로 고정되고(`readOnly`+`disabled`) 편집이 막힌다.
+  `MemberRosterList`(호출부 그대로 빈 문자열로 시작, 관리자가 직접 입력)는
+  넘기지 않고, `AdminMoneyTab`의 "직권 P"(§4)는 항상
+  `"벌금 시한 내 미납자"`로 고정해서 넘긴다 — 그 화면에서 열리는 직권 P는
+  용도가 이미 정해져 있어 사유를 매번 타이핑할 필요가 없기 때문.
 - **`settle`**: 다이얼로그가 열리자마자(useEffect) 자동으로 `POST
   /admin/exit/preview`를 호출해 계산 결과를 바로 보여준다 — 별도의 "미리보기
   계산" 버튼 클릭이 필요 없다. "반환 예치금"/"차감 원인"(`buildDepositCauseItems`,
@@ -312,10 +318,14 @@ OFF로 표시한다 — "구독은 꺼졌는데 세부 항목은 죄다 ON"으�
 - **"직권 P" 버튼은 §3.5(`MemberRosterList`)의 "퇴실 처리 (직권 P)"와 동일한
   `ExitProcessDialog(lockKind="admin_forced")`를 그대로 재사용한다.** 🔧
   2026-09: 처음엔 항상 비활성화된 자리표시자였으나, 사용자 지시로 실제
-  퇴실 처리 다이얼로그와 연결됐다 — 사유 입력 후 확정하면
-  `POST /admin/exit/confirm`(kind: `admin_forced`, 반환율 항상 0%)이
-  그대로 실행되고, 성공 시 `onConfirmed={load}`로 Money 탭 목록을 다시
-  불러와 처리 결과를 반영한다. 이 화면엔 `MemberRosterEntry`가 갖는
+  퇴실 처리 다이얼로그와 연결됐다 — 확정하면 `POST /admin/exit/confirm`
+  (kind: `admin_forced`, 반환율 항상 0%)이 그대로 실행되고, 성공 시
+  `onConfirmed={load}`로 Money 탭 목록을 다시 불러와 처리 결과를 반영한다.
+  **사유 입력란은 `lockForcedReason="벌금 시한 내 미납자"`로 고정되어
+  있다** — `MemberRosterList`(사유 자유 입력)와 달리, 이 화면에서 여는
+  직권 P는 용도가 이미 정해져 있어 관리자가 매번 사유를 타이핑하지 않고
+  바로 확정만 하면 된다(입력란은 `readOnly`+`disabled`, §3.6 참고). 이
+  화면엔 `MemberRosterEntry`가 갖는
   실제 `suggestedKind`/`allChecks`가 없지만, `lockKind="admin_forced"`일
   때는 그 두 필드가 UI에서 전혀 읽히지 않는다(체크리스트는 `kind ===
   "forced"`일 때만 노출, `suggestedKind`는 `lockKind`가 없을 때의

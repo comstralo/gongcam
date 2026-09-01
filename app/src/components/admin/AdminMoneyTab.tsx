@@ -306,6 +306,7 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
                                       key={action}
                                       candidate={{ number: f.number, name: f.name, suggestedKind: "settle", allChecks: [] }}
                                       lockKind="admin_forced"
+                                      lockForcedReason="벌금 시한 내 미납자"
                                       onConfirmed={load}
                                       triggerClassName="flex-1"
                                     >
