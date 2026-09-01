@@ -482,6 +482,11 @@ export type MemberRosterEntry = {
   // 카테고리별 수신 on/off. 관리자는 여기서 조회만 할 수 있고, 실제 변경은
   // 회원 본인이 /notify-prefs로만 할 수 있다.
   notifyPrefs: Record<NotifyCategory, boolean>;
+  googleAccount: string;
+  gooroomeeAccount: string;
+  examKind: string;
+  // 마지막으로 로그인한 시각(ms epoch). 한 번도 로그인한 적 없으면 null.
+  lastLoginAt: number | null;
 };
 
 export type AdminMembersRosterResponse = {

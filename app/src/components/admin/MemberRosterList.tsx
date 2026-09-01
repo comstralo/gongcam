@@ -118,18 +118,26 @@ export function MemberRosterList() {
                       <div className="flex flex-col gap-1.5 rounded-xl border bg-card p-4 sm:p-5">
                         <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
                           <Hash className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
-                          기본 정보
+                          상태 정보
                         </span>
+                        <SubRow label="참여유형" value={m.partiStatus} />
                         <SubRow label="시트번호" value={`${m.number}번`} />
+                        <SubRow label="구글 계정" value={m.googleAccount || "-"} />
+                        <SubRow label="구루미 계정" value={m.gooroomeeAccount || "-"} />
+                        <SubRow label="준비 중인 시험" value={m.examKind || "-"} />
                         <SubRow label="가입일자" value={m.joinDate || "-"} />
                         <SubRow
                           label="총 페널티"
                           value={`${m.totalPenalty}회`}
                           valueClassName={m.totalPenalty > 0 ? "text-destructive" : undefined}
                         />
+                        <SubRow
+                          label="최근 접속일자"
+                          value={m.lastLoginAt ? new Date(m.lastLoginAt).toLocaleString("ko-KR") : "-"}
+                        />
                         {m.exitRequested && (
                           <SubRow
-                            label="퇴실 신청"
+                            label="퇴실 신청일자"
                             value={m.exitRequestDate ? `${m.exitRequestDate} 희망` : "접수됨"}
                             valueClassName="text-amber-600 dark:text-amber-400"
                           />
