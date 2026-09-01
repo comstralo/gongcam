@@ -139,7 +139,7 @@ export function MemberRosterList() {
                                 href={`https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${m.sheetGid}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-0.5 text-primary underline-offset-2 hover:underline"
+                                className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
                               >
                                 {m.number}번
                                 <ExternalLink className="size-3 shrink-0" strokeWidth={ICON_STROKE.default} />
