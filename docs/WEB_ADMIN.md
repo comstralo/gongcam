@@ -269,36 +269,52 @@ OFF로 표시한다 — "구독은 꺼졌는데 세부 항목은 죄다 ON"으�
 
 ## 4. Money 탭 (`AdminMoneyTab`)
 
-세 개의 거의-동형 리스트 컴포넌트(`PaidFineList`/`FineList`/`ExemptFineList`)가
-렌더 순서(납부 → 미납 → 면제)로 나열된다. 셋 다 개인 탭 "✅ 납부확인" 행
-(`docs/WEB_DASHBOARD.md` §10의 `ROW_PAYMENT_CHECK`)에서 상태값이 각각 "납부"/
-"미납"/"면제"인 (회원, 요일) 쌍을 요일별로 그룹핑해 보여주는 동일한 패턴이다.
+🔧 2026-09: 원래 세 개의 거의-동형 리스트(납부/미납/면제 현황)가 나란히
+있었으나, 사용자 지시로 **"벌금 미납 현황"(`FineList`)과 "벌금 면제
+현황"(`ExemptFineList`)을 완전히 제거**하고 **"벌금 납부 현황"만 남겨
+"벌금 납부 대상자 처리"로 개명**했다 — 지금 `AdminMoneyTab`은
+`PaidFineList` 하나만 렌더링한다. 개인 탭 "✅ 납부확인" 행
+(`docs/WEB_DASHBOARD.md` §10의 `ROW_PAYMENT_CHECK`)에서 상태값이 "납부"인
+(회원, 요일) 쌍을 요일별로 그룹핑해 보여주는 §3.1(`ReportReviewList`)과
+동일한 디자인 패턴(아이콘+무채색 요일 라벨, 상태 필 배지, 요일별 아코디언 →
+인원별 토글)으로 맞춰져 있다.
 
-- **백엔드 공유 조회**: `listUnpaidFines`/`listPaidFines`/`listExemptFines`
-  모두 `getAllPaymentRows` → `getSharedMemberRows`(15명 개인 탭 A1:U40을
-  batchGet, 60초 캐시)를 공유한다 — 이 캐시는 §3.2/§3.5가 쓰는
-  `getAllExitRelevantStatus`(→ `listExitCandidates`/
-  `listActiveMembersWithExitInfo`가 공유)가 내부적으로 호출하는 것과
-  **같은 캐시 키**(`memberRows:{fileId}`)다(둘 다 "개인 탭 A1:U(30~40행)"
-  이라는 거의 같은 범위를 조회하던 걸 통합한 것).
-- **상태 변경**: `POST /admin/fines/status`(회원번호+요일+새 상태)가 3분류
-  전체의 유일한 쓰기 경로다. 세 리스트 중 어디서 상태를 바꾸든, 그 값이 향하는
-  다른 리스트가 즉시 재조회되도록 부모(`AdminMoneyTab`)가 `refreshToken`
-  카운터 3개로 교차 트리거한다(`handleFineResolved`).
+- `PaidFineList`가 부르는 `listPaidFines`는 여전히 `getAllPaymentRows` →
+  `getSharedMemberRows`(15명 개인 탭 A1:U40을 batchGet, 60초 캐시)를 거친다
+  — 이 캐시는 §3.2/§3.5가 쓰는 `getAllExitRelevantStatus`(→
+  `listExitCandidates`/`listActiveMembersWithExitInfo`가 공유)가 내부적으로
+  호출하는 것과 **같은 캐시 키**(`memberRows:{fileId}`)다.
+- **요일 헤더 3배지**: 🔧 2026-09 추가 — `load()`가 `/admin/fines/paid`뿐
+  아니라 `/admin/fines/unpaid`/`/admin/fines/exempt`도 `Promise.all`로 함께
+  불러와(`AdminFinesUnpaidResponse`/`AdminFinesExemptResponse`, §3.1
+  `ReportReviewList`의 대기/적용/반려 3배지와 동일한 위계) 요일별 인원수만
+  센다(`countByDay`). 다만 **요일 그룹 자체는 여전히 "납부" 항목 기준으로만
+  나열된다** — 그날 미납/면제만 있고 납부 건이 0이면 그 요일은 아예 그룹으로
+  나타나지 않아, 그 요일의 미납/면제 배지도 함께 보이지 않는다(순수 카운트
+  참고용이지, 이 목록이 미납/면제 항목 자체를 펼쳐 보여주거나 조작하지는
+  않는다).
+- **상태 변경**: `POST /admin/fines/status`(회원번호+요일+새 상태) — "미납"/
+  "면제" 버튼으로 되돌릴 수 있다. 세 리스트가 있던 시절엔 이 변경이 다른
+  두 리스트를 교차 재조회시켰지만(`refreshToken`/`handleFineResolved`),
+  그 두 리스트 자체가 사라지면서 이 플러밍도 함께 제거됐다 — 지금은 상태를
+  바꾼 항목이 이 목록에서만 조용히 빠질 뿐이다(3배지 카운트는 다음
+  `load()` 전까지 갱신되지 않는다).
 - **회원 상세**: 각 항목을 펼치면 `GET /admin/members/{번호}`
   (`handleAdminMemberStatus`, `docs/WEB_DASHBOARD.md`의 `buildPersonalStatus`를
   그대로 재사용)로 그 회원의 전체 `StatusResponse`를 불러와 해당 요일만
   `DayDetailCard`(`docs/WEB_DASHBOARD.md` §4.1)로 보여준다 — 회원별로 처음
   펼칠 때만 조회하고 이후엔 캐싱된 `dayDetail` state를 재사용.
-- **납부된 총 벌금액**: `PaidFineList` 상단에만 있는 요약 — `집계!D22`
-  (`getWeeklyPaidFineTotal`, 60초 캐시)를 그대로 읽는다.
+- **납부된 총 벌금액**: 상단 요약 — `집계!D22`(`getWeeklyPaidFineTotal`,
+  60초 캐시)를 그대로 읽는다.
 
-> ⚠️ **"미납" 목록의 "직권 P" 버튼은 항상 비활성화된 자리표시자다.** 코드 주석
-> 그대로 "강제퇴실 처리 — 아직 미구현, 버튼만 우선 배치". 미납 벌금 건에서
-> 곧바로 강제퇴실을 트리거하는 기능은 아직 없다 — §3.5의 "퇴실 처리 (직권 P)"
-> (`MemberRosterList`, `ExitProcessDialog(lockKind="admin_forced")`)는 이미
-> 동작하는 완전히 다른 진입점이니 혼동하지 말 것. 이 미납 목록의 버튼이 나중에
-> 구현되면 아마 그 다이얼로그를 여기서도 재사용하는 형태가 될 것이다.
+> ⚠️ **백엔드 `/admin/fines/unpaid`/`/admin/fines/exempt`는 UI가 다시
+> 호출하기 시작했지만(위 "요일 헤더 3배지"), 오직 카운트용이다.** `FineList`/
+> `ExemptFineList` 자체(개별 항목 펼치기, 상세 조회, 상태 변경 버튼)는
+> 부활하지 않았다 — "미납"/"직권 P" 버튼이 하던 "강제퇴실 처리 — 아직
+> 미구현" 자리표시자도 그 두 컴포넌트와 함께 여전히 사라진 상태다. 그
+> 기능이 필요해지면 §3.5의 "퇴실 처리 (직권 P)"(`MemberRosterList`,
+> `ExitProcessDialog(lockKind="admin_forced")`, 이미 동작 중)를 참고해
+> 어디에 다시 넣을지 새로 정해야 한다.
 
 ---
 
