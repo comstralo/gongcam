@@ -102,7 +102,7 @@ export function ReportPage() {
             송출 P 제보
           </TabsTrigger>
           <TabsTrigger value="notice" className="flex-1 font-mono text-xs tracking-wide uppercase">
-            간단한 알림 전송
+            PUSH 알림 전송
           </TabsTrigger>
         </TabsList>
       </Tabs>
@@ -232,7 +232,7 @@ export function ReportPage() {
           <Card className="w-full">
             <CardContent>
               <Collapsible defaultOpen className="flex flex-col gap-4">
-                <SectionHeader icon={Bell} title="간단한 알림" onRefresh={refresh} />
+                <SectionHeader icon={Bell} title="PUSH 알림" onRefresh={refresh} />
                 <div className="h-px w-full bg-border" />
                 <CollapsiblePanel className="flex flex-col gap-4">
                   <SimpleNoticeSection members={members} noMembers={noMembers} stale={stale} />
