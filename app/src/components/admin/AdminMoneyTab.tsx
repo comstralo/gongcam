@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, CircleDollarSign, CalendarDays, User, Trophy } from "lucide-react";
+import { ChevronDown, CircleDollarSign, CalendarDays, User, Trophy, PiggyBank } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
@@ -406,16 +406,21 @@ function PrizeRecipientList({ isVisible }: { isVisible: boolean }) {
         )}
 
         {settlement && settlement.length > 0 && (
-          // §"랭킹"(RosterView)과 동일한 카드 레이아웃(RankBadge + 이름)을
-          // 그대로 가져오되(사용자 지시: "출력 형태를 동일하게 맞춰"),
-          // 우측에 이 회원이 받을 분배 금액만 추가한다 — RosterView의
-          // 타이머·상점 서브로우는 이 화면과 무관해 넣지 않는다.
+          // §"랭킹"(RosterView)과 완전히 동일한 카드 구조(RankBadge + 이름
+          // + 아래줄 아이콘 서브로우) — 다만 랭킹의 서브로우(타이머·상점)
+          // 대신 이 화면에 맞는 값인 "받을 금액"을 서브로우 자리에 넣는다.
+          // 우측에는 아무것도 두지 않는다(사용자 지시로 확정).
           <div className="flex flex-col gap-2 sm:gap-2.5">
             {settlement.map((s) => (
               <InfoCard key={s.number} className="flex items-center gap-3 sm:gap-4">
                 <RankBadge rank={String(s.rank)} />
-                <ItemTitle className="min-w-0 flex-1 truncate">{s.name}</ItemTitle>
-                <span className="font-mono text-xs font-semibold tabular-nums sm:text-sm">{won(s.amount)}</span>
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <ItemTitle className="truncate">{s.name}</ItemTitle>
+                  <div className="inline-flex items-center gap-1 text-xs tabular-nums text-muted-foreground sm:text-sm">
+                    <PiggyBank className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                    {won(s.amount)}
+                  </div>
+                </div>
               </InfoCard>
             ))}
           </div>
