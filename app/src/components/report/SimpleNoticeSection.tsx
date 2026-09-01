@@ -59,11 +59,12 @@ export function SimpleNoticeSection({
         method: "POST",
         body: { nickname, message },
       });
-      setResult({ text: `${nickname}님에게 알림을 보냈습니다.`, type: "ok" });
+      setResult({ text: `${nickname}님께 PUSH 알림 전송을 성공했습니다. 감사합니다.`, type: "ok" });
       setReason("");
       setNoticeRefreshSignal((n) => n + 1);
     } catch (err) {
-      setResult({ text: err instanceof ApiError ? err.message : "네트워크 오류입니다.", type: "error" });
+      const reasonText = err instanceof ApiError ? err.message : "네트워크 오류입니다.";
+      setResult({ text: `${nickname}님께 PUSH 알림 전송을 실패했습니다. (${reasonText})`, type: "error" });
     } finally {
       setSending(false);
     }
