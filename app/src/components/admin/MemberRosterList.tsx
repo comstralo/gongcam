@@ -143,14 +143,17 @@ export function MemberRosterList() {
                           <Bell className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
                           알림 설정
                         </span>
-                        <SubRow
-                          label="PUSH 구독"
-                          value={m.pushSubscribed ? "ON" : "OFF"}
-                          valueClassName={m.pushSubscribed ? "text-ok" : "text-muted-foreground"}
-                        />
+                        {/* 🔧 [PUSH 구독 OFF 시 세부 항목도 OFF로 표시] PUSH
+                            구독은 알림 수신의 최상위 조건이다 — 꺼져 있으면
+                            카테고리별 설정이 ON이어도 실제로는 아무 알림도
+                            못 받는다. 저장된 원본값을 그대로 보여주면 "구독은
+                            꺼졌는데 세부 항목은 죄다 ON"으로 보여 혼란을
+                            줬다(사용자 지적) — PUSH 구독 행 자체는 없애고,
+                            구독이 꺼진 회원은 세부 항목을 실제 저장값과
+                            무관하게 전부 OFF로 보여준다. */}
                         {notifyCategories &&
                           Object.entries(notifyCategories).map(([key, label]) => {
-                            const enabled = m.notifyPrefs[key as NotifyCategory];
+                            const enabled = m.pushSubscribed && m.notifyPrefs[key as NotifyCategory];
                             return (
                               <SubRow
                                 key={key}
