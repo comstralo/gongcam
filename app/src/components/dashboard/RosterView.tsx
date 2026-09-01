@@ -55,8 +55,10 @@ export function formatRankInline(rank: string): string {
 }
 
 // timer는 백엔드에서 "달성 / 목표"(예: "42:10 / 50:00") 형태로 오는데,
-// 여기서는 목표시간 없이 달성 시간만 보여준다.
-function achievedTime(timer: string): string {
+// 여기서는 목표시간 없이 달성 시간만 보여준다. AdminMoneyTab의 "상금
+// 수령 대상자 처리"도 이 화면과 동일한 타이머·상점 서브로우를 그대로
+// 재활용하면서 세 번째 항목(분배 금액)만 덧붙이므로 함께 export한다.
+export function achievedTime(timer: string): string {
   const [achieved] = timer.split("/");
   return achieved?.trim() || "";
 }

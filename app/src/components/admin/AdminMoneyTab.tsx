@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, CircleDollarSign, CalendarDays, User, Trophy, PiggyBank } from "lucide-react";
+import { ChevronDown, CircleDollarSign, CalendarDays, User, Trophy, Timer, Award, PiggyBank } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
-import { InfoCard, DayDetailCard, TintedPill, ItemTitle } from "@/components/dashboard/shared";
+import { InfoCard, DayDetailCard, TintedPill, ItemTitle, DividedValue } from "@/components/dashboard/shared";
 import { SectionHeader, FieldLabel, SectionCard } from "@/components/admin/shared";
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
-import { RankBadge } from "@/components/dashboard/RosterView";
+import { RankBadge, achievedTime } from "@/components/dashboard/RosterView";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { useTodayIndex } from "@/hooks/useTodayIndex";
@@ -20,6 +20,7 @@ import type {
   SetFineStatusResponse,
   StatusResponse,
   RosterStatusResponse,
+  RosterMember,
 } from "@/lib/api/types";
 
 const STATUS_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
@@ -356,6 +357,10 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
 // 상시 처리 화면) 백엔드에 isAdmin 조건을 추가해 우회한다(handleRosterStatus).
 function PrizeRecipientList({ isVisible }: { isVisible: boolean }) {
   const [collectMoney, setCollectMoney] = useState(0);
+  // "랭킹"(RosterView)의 타이머·상점을 그대로 보여주려면 members(그 두
+  // 값을 가진 원본)와 settlement(순위·분배금)을 회원번호로 매칭해야
+  // 한다 — settlement 자체엔 timer/merit가 없다.
+  const [members, setMembers] = useState<RosterMember[]>([]);
   const [settlement, setSettlement] = useState<RosterStatusResponse["settlement"]>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -367,6 +372,13 @@ function PrizeRecipientList({ isVisible }: { isVisible: boolean }) {
     setError(null);
     setTimeout(() => {
       setCollectMoney(142000);
+      setMembers([
+        { number: "3", name: "김재희", timer: "48:20 / 50:00", merit: "12.500", rank: "🥇", status: "" },
+        { number: "7", name: "이서준", timer: "45:10 / 50:00", merit: "10.200", rank: "🥈", status: "" },
+        { number: "1", name: "박도윤", timer: "43:55 / 50:00", merit: "9.800", rank: "🥉", status: "" },
+        { number: "9", name: "최하은", timer: "41:30 / 50:00", merit: "8.100", rank: "🏅", status: "" },
+        { number: "5", name: "정유나", timer: "40:05 / 50:00", merit: "7.600", rank: "5", status: "" },
+      ]);
       setSettlement([
         { number: "3", name: "김재희", rank: 1, amount: 28400 },
         { number: "7", name: "이서준", rank: 2, amount: 28400 },
@@ -406,27 +418,42 @@ function PrizeRecipientList({ isVisible }: { isVisible: boolean }) {
         )}
 
         {settlement && settlement.length > 0 && (
-          // §"랭킹"(RosterView)과 동일한 카드 레이아웃(InfoCard + RankBadge
-          // + 이름 + 아이콘 서브로우 한 줄)을 그대로 재현한다 — 다만
-          // RosterView 컴포넌트 자체는 재사용하지 않는다: 그 컴포넌트는
-          // "타이머 | 상점" 두 항목이 고정된 형태라, 억지로 끼워맞추면
-          // (예: 상점 자리에 금액) 라벨과 값의 의미가 어긋난다(사용자
-          // 지적). 이 화면엔 실제로 보여줄 값이 "받을 금액" 하나뿐이라,
-          // 서브로우에도 그 의미에 맞는 아이콘(PiggyBank)과 금액 하나만
-          // 넣는다.
+          // §"랭킹"(RosterView)의 카드 출력 형태를 그대로 재활용한다 —
+          // 타이머·상점 서브로우(DividedValue)는 그대로 두고, 거기에
+          // 구분선으로 세 번째 항목만 추가해 분배받을 금액을 보여준다
+          // (사용자 지시: "상점 옆에 구분자 하나 더 넣고 분배받을 금액을
+          // 표시"). settlement 자체엔 timer/merit가 없어 members에서
+          // 회원번호로 찾아 합친다.
           <div className="flex flex-col gap-2 sm:gap-2.5">
-            {settlement.map((s) => (
-              <InfoCard key={s.number} className="flex items-center gap-3 sm:gap-4">
-                <RankBadge rank={String(s.rank)} />
-                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <ItemTitle className="truncate">{s.name}</ItemTitle>
-                  <div className="inline-flex items-center gap-1 text-xs tabular-nums text-muted-foreground sm:text-sm">
-                    <PiggyBank className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
-                    {won(s.amount)}
+            {settlement.map((s) => {
+              const m = members.find((mm) => mm.number === s.number);
+              return (
+                <InfoCard key={s.number} className="flex items-center gap-3 sm:gap-4">
+                  <RankBadge rank={String(s.rank)} />
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <ItemTitle className="truncate">{s.name}</ItemTitle>
+                    <div className="text-xs tabular-nums text-muted-foreground sm:text-sm">
+                      <DividedValue
+                        items={[
+                          <span key="timer" className="inline-flex items-center gap-1">
+                            <Timer className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                            {(m && achievedTime(m.timer)) || "-"}
+                          </span>,
+                          <span key="merit" className="inline-flex items-center gap-1">
+                            <Award className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                            {m?.merit || "-"}
+                          </span>,
+                          <span key="amount" className="inline-flex items-center gap-1">
+                            <PiggyBank className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                            {won(s.amount)}
+                          </span>,
+                        ]}
+                      />
+                    </div>
                   </div>
-                </div>
-              </InfoCard>
-            ))}
+                </InfoCard>
+              );
+            })}
           </div>
         )}
       </CollapsiblePanel>
