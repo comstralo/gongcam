@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { RotateCw } from "lucide-react";
 import { useApi } from "@/hooks/useApi";
 import { cn } from "@/lib/utils";
 import type { CycleListResponse, CycleWeek } from "@/lib/api/types";
@@ -35,9 +36,16 @@ export function CycleSwitcher({
   // ("과거 주차 있어도 응답 오기 전엔 안 보임")를 재현하지 않도록 슬롯을
   // 아예 안 그린다. 응답이 오면 실제 서버 값으로 갱신된다.
   const [maxWeeks, setMaxWeeks] = useState(0);
+  // 🔧 [실패 시 무피드백 수정] 원래 실패를 그냥 삼켜서(catch(()=>{})) weeks가
+  // 계속 null로 남아 토글 전체가 에러 표시 없이 조용히 사라졌다 — 사용자가
+  // "지난 주 보기" 기능이 원래 있었는지조차 알 수 없었다. 실패 시 작은
+  // 재시도 버튼을 보여준다.
+  const [error, setError] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    setError(false);
     const memberParam = memberNumber ? `?member=${encodeURIComponent(memberNumber)}` : "";
     call<CycleListResponse>(`/cycles${memberParam}`)
       .then((data) => {
@@ -45,12 +53,27 @@ export function CycleSwitcher({
         setWeeks(data.weeks || []);
         setMaxWeeks(data.maxWeeks || 0);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setError(true);
+      });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [memberNumber]);
+  }, [memberNumber, retryToken]);
+
+  if (error) {
+    return (
+      <button
+        type="button"
+        onClick={() => setRetryToken((n) => n + 1)}
+        className="flex items-center gap-1.5 rounded-full border border-border bg-card px-3.5 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:border-primary/50 hover:bg-muted sm:text-base"
+      >
+        <RotateCw className="size-3.5" />
+        지난 주 목록 다시 불러오기
+      </button>
+    );
+  }
 
   if (weeks === null || maxWeeks === 0) return null;
 

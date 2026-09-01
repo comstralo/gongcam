@@ -99,7 +99,13 @@ export function StatusPage({
     <Card className="w-full">
       <CardContent className="flex flex-col gap-5">
         {isAdmin && (
-          <Select value={selected} onValueChange={(v) => setSelected(v ?? SELF_VALUE)}>
+          // 🔧 [로딩 중 빈 목록 오해 방지] members가 아직 null(회원 목록
+          // 응답 전)일 때 드롭다운을 열면 "내 대시보드" 옵션만 있고 다른
+          // 회원은 하나도 안 보여, 순간적으로 "다른 회원이 없다"로 오해할
+          // 수 있었다. 이 짧은 로딩 구간엔 트리거 자체를 비활성화한다 —
+          // 이 앱의 다른 Select들(NewMemberForm, SimpleNoticeSection 등)과
+          // 동일한 컨벤션.
+          <Select value={selected} onValueChange={(v) => setSelected(v ?? SELF_VALUE)} disabled={!members}>
             <SelectTrigger className="w-fit data-[size=default]:h-9 sm:data-[size=default]:h-11 sm:text-base">
               <SelectValue>
                 {selected === SELF_VALUE ? "내 대시보드" : members?.find((m) => m.number === selected)?.name}

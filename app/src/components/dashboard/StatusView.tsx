@@ -80,7 +80,11 @@ export function StatusView({
     setSelectedDay(isViewingCycle ? 6 : TODAY_INDEX);
   }, [isViewingCycle, TODAY_INDEX]);
 
-  if (!status) return null;
+  // 🔧 [최초 로딩 시 빈 화면 방지] status가 아직 없을 때(최초 로딩 중)
+  // 아무것도 안 그리면, 요일 버튼·요약 타일 자리가 통째로 비어있다가 그
+  // 아래 "불러오는 중..." 텍스트만 뜨는 식이라 레이아웃이 뚝 끊기는
+  // 느낌을 줬다 — 실제 레이아웃과 같은 크기의 자리표시자를 보여준다.
+  if (!status) return <StatusViewSkeleton />;
 
   const split = status.depositAgainSplit;
   // 재납이 발생한 주는 요일별 카드를 재납 전(백업 탭)/후(현재 탭) 병합본으로
@@ -411,6 +415,29 @@ export function StatusView({
             }
           />
         )}
+      </section>
+    </div>
+  );
+}
+
+// StatusView 최초 로딩 중(status가 아직 없을 때) 보여주는 자리표시자 —
+// 실제 레이아웃(요약 타일 6칸 + 요일 버튼 7칸 + 상세 카드)과 같은 크기로
+// 잡아둬, 데이터가 도착했을 때 레이아웃이 뚝 끊기지 않게 한다.
+function StatusViewSkeleton() {
+  return (
+    <div className="flex animate-pulse flex-col gap-5">
+      <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="h-16 rounded-xl bg-muted/50 sm:h-20" />
+        ))}
+      </section>
+      <section className="flex flex-col gap-2">
+        <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+          {Array.from({ length: 7 }).map((_, i) => (
+            <div key={i} className="h-14 rounded-full bg-muted/50 sm:h-16" />
+          ))}
+        </div>
+        <div className="h-40 rounded-xl bg-muted/50 sm:h-48" />
       </section>
     </div>
   );
