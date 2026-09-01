@@ -74,7 +74,7 @@ export function ExitProcessDialog({
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<ExitKind>(lockKind ?? candidate.suggestedKind);
   const [forcedReason, setForcedReason] = useState("");
-  // 🔧 [직권 페널티 퇴실 전용 UI] 이 처리는 관리자가 사유만 입력하면 바로
+  // 🔧 [직권 P 퇴실 전용 UI] 이 처리는 관리자가 사유만 입력하면 바로
   // 확정할 수 있는 단순한 흐름이라, 다른 유형(강제/정산/재납)과 공유하는
   // "처리 유형 선택 → 미리보기 계산 → 확정" 단계를 그대로 노출할 필요가
   // 없다(사용자 지적) — discountRatio가 이미 항상 1(0% 반환)로 고정되어
@@ -154,7 +154,7 @@ export function ExitProcessDialog({
           <DialogTitle className="flex items-center gap-1.5">
             <DoorOpen className="size-4 text-primary sm:size-5" />
             {isAdminForcedOnly ? (
-              <>직권 페널티 퇴실 처리 · {candidate.name}</>
+              <>직권 P 퇴실 처리 · {candidate.name}</>
             ) : (
               <>{candidate.name} · 퇴실·재납 처리</>
             )}
