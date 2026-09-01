@@ -153,13 +153,11 @@ export function MemberRosterList() {
                             )
                           }
                         />
-                        {m.exitRequested && (
-                          <SubRow
-                            label="퇴실 예약일자"
-                            value={m.exitRequestDate ? `${m.exitRequestDate} 희망` : "접수됨"}
-                            valueClassName="text-amber-600 dark:text-amber-400"
-                          />
-                        )}
+                        <SubRow
+                          label="퇴실 예약일자"
+                          value={m.exitRequested ? (m.exitRequestDate ? `${m.exitRequestDate} 희망` : "접수됨") : "-"}
+                          valueClassName={m.exitRequested ? "text-amber-600 dark:text-amber-400" : undefined}
+                        />
                         <SubRow
                           label="최근 접속일자"
                           value={m.lastLoginAt ? new Date(m.lastLoginAt).toLocaleString("ko-KR") : "-"}
