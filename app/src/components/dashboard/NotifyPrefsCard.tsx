@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Bell, Check, Pencil, Smartphone, X } from "lucide-react";
+import { Bell, Check, Pencil, Smartphone, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -27,6 +27,14 @@ const PUSH_STATE_LABEL: Record<string, string> = {
   off: "OFF",
   unsupported: "이 브라우저는 푸시 알림을 지원하지 않습니다.",
 };
+
+// "송출 P 제보"의 주의사항과 동일한 패턴 — 기기·브라우저별로 알림 켜는
+// 방법이 서로 달라 헷갈리기 쉬워, 각 화면 아래 안내로 모아 보여준다.
+const PUSH_NOTICE_CAUTIONS = [
+  "아이폰(iOS)에서는 Safari로 이 페이지를 연 뒤, 공유 버튼 → \"홈 화면에 추가\"로 설치한 앱에서 열어야 알림을 켤 수 있습니다(일반 Safari 탭에서는 켜지지 않습니다).",
+  "PC/Android에서는 이 페이지에서 \"알림 켜기\"를 누른 뒤, 브라우저가 띄우는 권한 요청 팝업에서 \"허용\"을 눌러야 합니다.",
+  "브라우저 설정에서 알림 권한을 이미 \"차단\"으로 바꾼 적이 있다면, \"알림 켜기\"를 눌러도 다시 권한 요청이 뜨지 않습니다 — 주소창 옆 자물쇠 아이콘에서 알림 권한을 직접 \"허용\"으로 바꿔주세요.",
+];
 
 export function NotifyPrefsCard({ name }: { name?: string }) {
   const { call } = useApi();
@@ -313,6 +321,23 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
             )}
           </div>
         )}
+      </InfoCard>
+
+      <InfoCard className="flex flex-col gap-1 border-amber-600/30 bg-amber-600/5 dark:border-amber-400/30 dark:bg-amber-400/5">
+        <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+          <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
+          <span className="text-xs font-semibold sm:text-sm">주의사항</span>
+        </div>
+        <ul className="flex flex-col gap-0.5">
+          {PUSH_NOTICE_CAUTIONS.map((text) => (
+            <li
+              key={text}
+              className="text-micro-lg leading-relaxed text-muted-foreground before:mr-1 before:content-['·'] sm:text-xs"
+            >
+              {text}
+            </li>
+          ))}
+        </ul>
       </InfoCard>
 
       {(message || error || testResult) && (
