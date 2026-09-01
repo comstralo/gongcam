@@ -31,8 +31,9 @@ const PUSH_STATE_LABEL: Record<string, string> = {
 // "송출 P 제보"의 주의사항과 동일한 패턴 — 기기별 설정 순서를 그대로 나열.
 const PUSH_NOTICE_CAUTIONS = [
   "아이폰: Safari로 열기 → 공유 버튼 → 홈 화면에 추가 → 추가된 앱에서 열기 → 알림 켜기",
+  "아이폰에서 이미 차단했다면: 설정 앱 → Safari(또는 추가한 앱) → 알림 → 허용으로 변경",
   "PC·Android: 알림 켜기 → 권한 팝업에서 허용",
-  "이미 차단했다면: 주소창 자물쇠 아이콘 → 알림 → 허용으로 변경",
+  "PC·Android에서 이미 차단했다면: 주소창 자물쇠 아이콘 → 알림 → 허용으로 변경",
 ];
 
 export function NotifyPrefsCard({ name }: { name?: string }) {
