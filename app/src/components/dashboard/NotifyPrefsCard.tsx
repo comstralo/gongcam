@@ -134,7 +134,7 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
 
       {(message || error || testResult) && (
         <Alert
-          variant={error || testResult?.type === "error" ? "destructive" : message?.type === "error" ? "destructive" : "default"}
+          variant={error || testResult?.type === "error" ? "destructive" : message?.type === "error" ? "destructive" : "success"}
         >
           <AlertDescription>{error || testResult?.text || message?.text}</AlertDescription>
         </Alert>

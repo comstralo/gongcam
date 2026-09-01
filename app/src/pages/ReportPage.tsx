@@ -216,7 +216,7 @@ export function ReportPage() {
                   </InfoCard>
 
                   {message && (
-                    <Alert variant={message.type === "error" ? "destructive" : "default"}>
+                    <Alert variant={message.type === "error" ? "destructive" : "success"}>
                       <AlertDescription>{message.text}</AlertDescription>
                     </Alert>
                   )}

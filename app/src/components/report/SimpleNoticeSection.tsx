@@ -148,7 +148,7 @@ export function SimpleNoticeSection({
       </InfoCard>
 
       {result && (
-        <Alert variant={result.type === "error" ? "destructive" : "default"}>
+        <Alert variant={result.type === "error" ? "destructive" : "success"}>
           <AlertDescription>{result.text}</AlertDescription>
         </Alert>
       )}
