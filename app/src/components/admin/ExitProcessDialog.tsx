@@ -243,7 +243,9 @@ export function ExitProcessDialog({
                     <PiggyBank className="size-3.5 shrink-0 sm:size-4" />
                     반환 예치금
                   </span>
-                  <span className="text-xs font-semibold sm:text-sm">{won(preview.refundAmount)}</span>
+                  <span className={cn("text-xs font-semibold sm:text-sm", preview.refundAmount === 10000 && "text-ok")}>
+                    {won(preview.refundAmount)}
+                  </span>
                 </InfoCard>
               )}
 
@@ -331,7 +333,7 @@ export function ExitProcessDialog({
                 <Button
                   className="w-full sm:h-12 sm:text-base"
                   variant="destructive"
-                  disabled={confirming}
+                  disabled={confirming || !preview.exitProcess?.agreedAt}
                   onClick={handleConfirm}
                 >
                   {confirming ? "처리 중..." : "확정 처리"}
