@@ -15,6 +15,13 @@ import type {
   SetPartiStatusResponse,
 } from "@/lib/api/types";
 
+// StatusView.tsx의 동일 함수와 같은 표시 규칙 — "8H (교시제)" 같은 시트
+// 원본 값에서 괄호만 제거해 "8H 교시제"로 보여준다.
+function formatGoalType(raw: string): string {
+  if (!raw) return "-";
+  return raw.replace(/[()]/g, "").replace(/\s+/g, " ").trim();
+}
+
 export function MemberRosterList() {
   const { call } = useApi();
 
@@ -120,7 +127,7 @@ export function MemberRosterList() {
                           <Hash className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
                           상태 정보
                         </span>
-                        <SubRow label="참여유형" value={m.partiStatus} />
+                        <SubRow label="참여유형" value={formatGoalType(m.goalType)} />
                         <SubRow label="시트번호" value={`${m.number}번`} />
                         <SubRow label="구글 계정" value={m.googleAccount || "-"} />
                         <SubRow label="구루미 계정" value={m.gooroomeeAccount || "-"} />
@@ -135,6 +142,7 @@ export function MemberRosterList() {
                           label="최근 접속일자"
                           value={m.lastLoginAt ? new Date(m.lastLoginAt).toLocaleString("ko-KR") : "-"}
                         />
+                        <SubRow label="최근 접속 IP" value={m.lastLoginIp || "-"} />
                         {m.exitRequested && (
                           <SubRow
                             label="퇴실 신청일자"

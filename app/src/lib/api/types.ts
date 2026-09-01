@@ -485,8 +485,14 @@ export type MemberRosterEntry = {
   googleAccount: string;
   gooroomeeAccount: string;
   examKind: string;
+  // 목표시간 유형("8H (교시제)" 등, 개인 탭 O3). formatGoalType으로 괄호를
+  // 벗겨 표시한다 — StatusView.tsx와 동일한 표시 규칙.
+  goalType: string;
   // 마지막으로 로그인한 시각(ms epoch). 한 번도 로그인한 적 없으면 null.
   lastLoginAt: number | null;
+  // 마지막 로그인 IP. lastLoginAt이 null이거나, 이 기능 추가 이전에 저장된
+  // 구형 기록이면 빈 문자열.
+  lastLoginIp: string;
 };
 
 export type AdminMembersRosterResponse = {
