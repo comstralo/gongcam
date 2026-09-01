@@ -148,8 +148,7 @@ export function MemberRosterList() {
                           value={m.pushSubscribed ? "ON" : "OFF"}
                           valueClassName={m.pushSubscribed ? "text-ok" : "text-muted-foreground"}
                         />
-                        {m.pushSubscribed &&
-                          notifyCategories &&
+                        {notifyCategories &&
                           Object.entries(notifyCategories).map(([key, label]) => {
                             const enabled = m.notifyPrefs[key as NotifyCategory];
                             return (
