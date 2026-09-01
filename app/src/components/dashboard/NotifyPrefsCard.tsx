@@ -29,7 +29,7 @@ const PUSH_STATE_LABEL: Record<string, string> = {
 export function NotifyPrefsCard({ name }: { name?: string }) {
   const { call } = useApi();
   const { isAdmin } = useAuth();
-  const { state, message, enable } = usePushSubscription();
+  const { state, message, enable, selfDeviceId, unsubscribeSelf } = usePushSubscription();
 
   const [categories, setCategories] = useState<Record<NotifyCategory, string> | null>(null);
   const [prefs, setPrefs] = useState<Record<NotifyCategory, boolean> | null>(null);
@@ -69,11 +69,19 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
+  // 🔧 [삭제 시 브라우저-서버 상태 어긋남 수정] 이 목록에서 "지금 이
+  // 브라우저 자신"의 항목을 끄거나 지울 때는, 서버 기록뿐 아니라 브라우저의
+  // 실제 구독도 함께 해지해야 한다 — 서버 기록만 지우면 브라우저는 계속
+  // 자기가 구독 중이라 믿어(실제로는 알림이 전혀 안 오는데도) "알림 켜짐"
+  // 으로 표시되는 어긋남이 있었다(사용자 지적).
   function toggleDevice(device: PushDevice, enabled: boolean) {
     setPendingDeviceId(device.id);
     setError(null);
     call<PushDeviceToggleResponse>("/push/devices/toggle", { method: "POST", body: { id: device.id, enabled } })
-      .then(() => setDevices((prev) => (prev ? prev.map((d) => (d.id === device.id ? { ...d, enabled } : d)) : prev)))
+      .then(() => {
+        setDevices((prev) => (prev ? prev.map((d) => (d.id === device.id ? { ...d, enabled } : d)) : prev));
+        if (!enabled && device.id === selfDeviceId) unsubscribeSelf();
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "기기 설정 변경에 실패했습니다."))
       .finally(() => setPendingDeviceId(null));
   }
@@ -82,7 +90,10 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
     setPendingDeviceId(device.id);
     setError(null);
     call<PushDeviceRemoveResponse>("/push/devices/remove", { method: "POST", body: { id: device.id } })
-      .then(() => setDevices((prev) => (prev ? prev.filter((d) => d.id !== device.id) : prev)))
+      .then(() => {
+        setDevices((prev) => (prev ? prev.filter((d) => d.id !== device.id) : prev));
+        if (device.id === selfDeviceId) unsubscribeSelf();
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "기기 삭제에 실패했습니다."))
       .finally(() => setPendingDeviceId(null));
   }
