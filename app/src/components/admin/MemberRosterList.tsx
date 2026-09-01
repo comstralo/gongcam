@@ -162,7 +162,17 @@ export function MemberRosterList() {
                           })}
                       </div>
 
-                      <div className={cn("grid gap-2", m.exitRequested ? "grid-cols-3" : "grid-cols-2")}>
+                      {/* 🔧 [퇴실 처리 버튼 분리] "스터디원 목록"은 자진 퇴실
+                          전용 화면이다 — 페널티 누적으로 인한 강제퇴실/예치금
+                          재납은 "페널티 대상자" 화면에서 별도로 처리하므로
+                          여기서는 유형을 직접 고를 필요가 없다(오히려 관리자가
+                          같은 회원에게 kind만 다르게 골라 반환율이 달라지는
+                          걸 방지하기 위함, 사용자 지적: "무조건 계산은 어디서나
+                          일치해야 해"). "직권 P"(admin_forced, 즉시 0% 반환)와
+                          "정산"(settle, 페널티 0/1회 기준 100%/50% 반환) 두
+                          가지로 고정하고, 정산은 회원이 실제로 퇴실 신청(예약)
+                          한 경우에만 누를 수 있게 한다. */}
+                      <div className={cn("grid gap-2", m.exitRequested ? "grid-cols-4" : "grid-cols-3")}>
                         <Button
                           variant="outline"
                           className="w-full sm:h-12 sm:text-base"
@@ -172,10 +182,25 @@ export function MemberRosterList() {
                           <Star className="size-3.5 shrink-0" strokeWidth={ICON_STROKE.default} />
                           {m.partiStatus === "부스터디장" ? "임명 해제" : "부스터디장 임명"}
                         </Button>
-                        <ExitProcessDialog candidate={m} onConfirmed={load} triggerClassName="w-full">
+                        <ExitProcessDialog candidate={m} lockKind="admin_forced" onConfirmed={load} triggerClassName="w-full">
                           <Button variant="destructive" className="w-full sm:h-12 sm:text-base">
                             <DoorOpen className="size-3.5 shrink-0" strokeWidth={ICON_STROKE.default} />
-                            퇴실 처리
+                            퇴실 처리 (직권 P)
+                          </Button>
+                        </ExitProcessDialog>
+                        <ExitProcessDialog
+                          candidate={m}
+                          lockKind="settle"
+                          onConfirmed={load}
+                          triggerClassName={cn("w-full", !m.exitRequested && "pointer-events-none")}
+                        >
+                          <Button
+                            variant="destructive"
+                            className="w-full sm:h-12 sm:text-base"
+                            disabled={!m.exitRequested}
+                          >
+                            <DoorOpen className="size-3.5 shrink-0" strokeWidth={ICON_STROKE.default} />
+                            퇴실 처리 (정산)
                           </Button>
                         </ExitProcessDialog>
                         {m.exitRequested && (
