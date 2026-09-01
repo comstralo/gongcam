@@ -35,7 +35,7 @@ function normalizeView(raw: string | null): ReportView {
 
 export function ReportPage() {
   const { call } = useApi();
-  const { members, stale, refresh } = useRosterPolling();
+  const { members, stale, hint, refresh } = useRosterPolling();
   const [nickname, setNickname] = useState("");
   const [reason, setReason] = useState("");
   const [submittingMode, setSubmittingMode] = useState<ReportMode | null>(null);
@@ -135,7 +135,11 @@ export function ReportPage() {
                               stale
                                 ? "도움봇이 가동중이지 않습니다."
                                 : noMembers
-                                  ? "현재 접속 중인 참여자가 없습니다"
+                                  ? // 🔧 [로딩 실패가 "0명"으로 오인되던 문제 수정] hint는
+                                    // useRosterPolling이 로딩 중/실패 시 채워두는 값이다 —
+                                    // 원래 이걸 안 써서 /participants 조회가 실패해도 항상
+                                    // "접속 중인 참여자가 없습니다"로만 보였다.
+                                    hint || "현재 접속 중인 참여자가 없습니다"
                                   : "참여자를 선택하세요"
                             }
                           />

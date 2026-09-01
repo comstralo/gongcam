@@ -25,15 +25,24 @@ export function ActiveReportsSection({ refreshSignal }: { refreshSignal?: number
   const { call } = useApi();
   const [items, setItems] = useState<ActiveCooldownItem[]>([]);
   const [now, setNow] = useState(() => Date.now());
+  // 🔧 [조회 실패 무피드백 수정] 원래 실패를 그냥 삼켜서, 조회가 안 되는
+  // 동안에도 "최근 진행된 제보가 없습니다"와 똑같이 보였다 — 실제로는
+  // 쿨다운 중인 대상이 있는데도 없는 것처럼 보여, 제보를 시도했다가
+  // 뒤늦게 429로 헛수고할 수 있었다. 실패 상태를 별도로 구분해 보여준다.
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     function load() {
       call<ReportCooldownsResponse>("/report-cooldowns")
         .then((data) => {
-          if (!cancelled) setItems(data.items || []);
+          if (cancelled) return;
+          setItems(data.items || []);
+          setError(false);
         })
-        .catch(() => {});
+        .catch(() => {
+          if (!cancelled) setError(true);
+        });
     }
     load();
     const pollTimer = setInterval(load, COOLDOWN_POLL_MS);
@@ -59,7 +68,9 @@ export function ActiveReportsSection({ refreshSignal }: { refreshSignal?: number
         <Clock className="size-3 shrink-0 sm:size-3.5" />
         최근 진행된 제보
       </span>
-      {active.length === 0 ? (
+      {error ? (
+        <SubRow label="목록을 불러오지 못했습니다. 잠시 후 다시 확인해주세요." value="" />
+      ) : active.length === 0 ? (
         <SubRow label="최근 진행된 제보가 없습니다." value="" />
       ) : (
         <div className="flex flex-col gap-1">
