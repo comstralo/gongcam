@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { MessageSquareWarning, TriangleAlert, User } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { InfoCard } from "@/components/dashboard/shared";
 import { RecentNoticesSection } from "@/components/report/RecentNoticesSection";
 import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
-import type { PushSendToMemberResponse } from "@/lib/api/types";
+import type { PushSendToMemberResponse, PushSubscriptionStatusResponse } from "@/lib/api/types";
 
 // 드롭다운에서 고르는 값(짧은 이름)과 실제로 푸시 알림에 담겨 나가는 문구를
 // 분리한다 — value는 화면 표시·선택용, message는 수신자가 실제로 받는 문장.
@@ -41,6 +41,23 @@ export function SimpleNoticeSection({
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ text: string; type: "error" | "ok" } | null>(null);
   const [noticeRefreshSignal, setNoticeRefreshSignal] = useState(0);
+  // 대상자 드롭다운에 "(알림구독 X)"를 미리 보여주기 위한 구독 현황 —
+  // 실제 발송 전 회원이 알림을 켠 적 없는 대상인지 미리 알 수 있게 한다.
+  const [subscribedNames, setSubscribedNames] = useState<Set<string> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    call<PushSubscriptionStatusResponse>("/push/subscription-status")
+      .then((data) => {
+        if (cancelled) return;
+        setSubscribedNames(new Set((data.items || []).filter((i) => i.subscribed).map((i) => i.name)));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleSend() {
     if (!nickname) {
@@ -91,11 +108,14 @@ export function SimpleNoticeSection({
               />
             </SelectTrigger>
             <SelectContent>
-              {members.map((name) => (
-                <SelectItem key={name} value={name} className="sm:text-base">
-                  {name}
-                </SelectItem>
-              ))}
+              {members.map((name) => {
+                const notSubscribed = subscribedNames !== null && !subscribedNames.has(name);
+                return (
+                  <SelectItem key={name} value={name} className="sm:text-base">
+                    {notSubscribed ? `${name} (알림구독 X)` : name}
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
         </div>

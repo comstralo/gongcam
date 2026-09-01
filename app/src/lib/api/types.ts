@@ -304,6 +304,15 @@ export type PushSendToMemberResponse = {
   ok: true;
 };
 
+export type PushSubscriptionStatusItem = {
+  name: string;
+  subscribed: boolean;
+};
+
+export type PushSubscriptionStatusResponse = {
+  items: PushSubscriptionStatusItem[];
+};
+
 export type RecentNoticeItem = {
   nickname: string;
   message: string;
