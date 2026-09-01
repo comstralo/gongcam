@@ -131,6 +131,10 @@ export function MemberRosterList() {
                           상태 정보
                         </span>
                         <SubRow label="참여유형" value={formatGoalType(m.goalType)} />
+                        <SubRow label="준비 중인 시험" value={m.examKind || "-"} />
+                        <SubRow label="가입일자" value={m.joinDate || "-"} />
+                        <SubRow label="구글 계정" value={m.googleAccount || "-"} />
+                        <SubRow label="구루미 계정" value={m.gooroomeeAccount || "-"} />
                         <SubRow
                           label="시트번호"
                           value={
@@ -149,27 +153,18 @@ export function MemberRosterList() {
                             )
                           }
                         />
-                        <SubRow label="구글 계정" value={m.googleAccount || "-"} />
-                        <SubRow label="구루미 계정" value={m.gooroomeeAccount || "-"} />
-                        <SubRow label="준비 중인 시험" value={m.examKind || "-"} />
-                        <SubRow label="가입일자" value={m.joinDate || "-"} />
-                        <SubRow
-                          label="총 페널티"
-                          value={`${m.totalPenalty}회`}
-                          valueClassName={m.totalPenalty > 0 ? "text-destructive" : undefined}
-                        />
+                        {m.exitRequested && (
+                          <SubRow
+                            label="퇴실 예약일자"
+                            value={m.exitRequestDate ? `${m.exitRequestDate} 희망` : "접수됨"}
+                            valueClassName="text-amber-600 dark:text-amber-400"
+                          />
+                        )}
                         <SubRow
                           label="최근 접속일자"
                           value={m.lastLoginAt ? new Date(m.lastLoginAt).toLocaleString("ko-KR") : "-"}
                         />
                         <SubRow label="최근 접속 IP" value={m.lastLoginIp || "-"} />
-                        {m.exitRequested && (
-                          <SubRow
-                            label="퇴실 신청일자"
-                            value={m.exitRequestDate ? `${m.exitRequestDate} 희망` : "접수됨"}
-                            valueClassName="text-amber-600 dark:text-amber-400"
-                          />
-                        )}
                       </div>
 
                       {/* 🔧 [관리자용 알림 설정 열람] 조회 전용 — 실제 변경은
