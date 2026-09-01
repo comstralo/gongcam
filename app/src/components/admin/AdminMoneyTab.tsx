@@ -12,6 +12,8 @@ import { ApiError } from "@/lib/api/client";
 import { ICON_STROKE, cn } from "@/lib/utils";
 import type {
   AdminFinesPaidResponse,
+  AdminFinesUnpaidResponse,
+  AdminFinesExemptResponse,
   FineStatus,
   SetFineStatusResponse,
   PaidFine,
@@ -61,6 +63,13 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
 
   const [paid, setPaid] = useState<PaidFine[] | null>(null);
   const [totalAmount, setTotalAmount] = useState(0);
+  // 이 목록 자체는 여전히 "납부" 항목만 다루지만(펼치면 미납/면제로 되돌리는
+  // 액션만 있음), 요일 헤더 배지에는 그날의 미납/면제 인원수도 함께 참고용으로
+  // 보여준다 — 그 두 상태를 따로 조회해 개수만 센다(개별 항목을 이 목록에서
+  // 펼쳐보거나 조작할 수 있게 하려는 게 아니라, §3.1(제보 확인)과 동일한
+  // "대기/적용/반려" 3배지 위계를 맞추기 위한 참고 정보다).
+  const [unpaidByDay, setUnpaidByDay] = useState<Map<string, number>>(new Map());
+  const [exemptByDay, setExemptByDay] = useState<Map<string, number>>(new Map());
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
@@ -69,13 +78,25 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [dayDetail, setDayDetail] = useState<Record<string, StatusResponse | "loading" | "error">>({});
 
+  function countByDay<T extends { day: string }>(items: T[]): Map<string, number> {
+    const map = new Map<string, number>();
+    for (const item of items) map.set(item.day, (map.get(item.day) || 0) + 1);
+    return map;
+  }
+
   function load() {
     setLoading(true);
     setError(null);
-    call<AdminFinesPaidResponse>("/admin/fines/paid")
-      .then((data) => {
-        setPaid(data.paid || []);
-        setTotalAmount(data.totalAmount || 0);
+    Promise.all([
+      call<AdminFinesPaidResponse>("/admin/fines/paid"),
+      call<AdminFinesUnpaidResponse>("/admin/fines/unpaid"),
+      call<AdminFinesExemptResponse>("/admin/fines/exempt"),
+    ])
+      .then(([paidData, unpaidData, exemptData]) => {
+        setPaid(paidData.paid || []);
+        setTotalAmount(paidData.totalAmount || 0);
+        setUnpaidByDay(countByDay(unpaidData.unpaid || []));
+        setExemptByDay(countByDay(exemptData.exempt || []));
         setResolvedKeys(new Set());
       })
       .catch((err) => setError(err instanceof Error ? err.message : "벌금 납부 목록을 불러오지 못했습니다."))
@@ -164,7 +185,13 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
                     </span>
                     <span className="ml-auto flex flex-wrap items-center justify-end gap-1">
                       <span className="rounded-full bg-ok/15 px-2 py-1 text-micro-lg leading-none font-semibold text-ok sm:text-xs">
-                        납부 : {group.members.length}명
+                        납부 : {group.members.length}건
+                      </span>
+                      <span className="rounded-full bg-destructive/15 px-2 py-1 text-micro-lg leading-none font-semibold text-destructive sm:text-xs">
+                        미납 : {unpaidByDay.get(group.day) || 0}건
+                      </span>
+                      <span className="rounded-full bg-amber-600/15 px-2 py-1 text-micro-lg leading-none font-semibold text-amber-600 sm:text-xs dark:bg-amber-400/15 dark:text-amber-400">
+                        면제 : {exemptByDay.get(group.day) || 0}건
                       </span>
                     </span>
                   </span>
