@@ -226,7 +226,7 @@ OFF로 표시한다 — "구독은 꺼졌는데 세부 항목은 죄다 ON"으�
 ### 3.6 퇴실·재납 공유 다이얼로그 (`ExitProcessDialog`)
 
 `docs/WEB_REPORT.md`·`docs/WEB_DASHBOARD.md`의 §9.2(예치금 반환 계산)와
-직결되는 이 저장소에서 가장 복잡한 다이얼로그. `ExitKind`(4종) × 호출부(2곳)
+직결되는 이 저장소에서 가장 복잡한 다이얼로그. `ExitKind`(4종) × 호출부(3곳)
 조합이 전부 `lockKind`로 고정되어 있어, **관리자가 유형을 자유 선택하는 실제
 경로는 현재 코드베이스 어디에도 없다**:
 
@@ -234,8 +234,14 @@ OFF로 표시한다 — "구독은 꺼졌는데 세부 항목은 죄다 ON"으�
 |---|---|---|---|---|
 | `forced` | 강제 퇴실(페널티 2회 이상 등 자동 감지) | 항상 0% | PenaltyCandidateList | `"forced"` |
 | `deposit_again` | 예치금 재납(회원 행 리셋, 퇴실은 아님) | 항상 0%(재납액 전액) | PenaltyCandidateList | `"deposit_again"` |
-| `admin_forced` | 직권 퇴실(관리자 임의 사유) | 항상 0% | MemberRosterList | `"admin_forced"` |
+| `admin_forced` | 직권 퇴실(관리자 임의 사유) | 항상 0% | MemberRosterList, AdminMoneyTab(§4 "직권 P") | `"admin_forced"` |
 | `settle` | 정산(자진) 퇴실 | 페널티 0회→100% / 1회→50% | MemberRosterList | `"settle"` |
+
+🔧 2026-09: `AdminMoneyTab`(Money 탭)이 세 번째 호출부로 추가됐다 — 이
+화면은 회원 목록을 `MemberRosterEntry`가 아니라 벌금 레코드(`FineRecord`)로
+다루기 때문에 `suggestedKind`/`allChecks`(둘 다 `admin_forced`일 땐 UI에서
+읽히지 않는 필드)를 타입만 맞춘 더미 값으로 채워 넘긴다. 자세한 내용은
+§4 참고.
 
 이 표에 따라 다이얼로그 내부는 세 가지 렌더 분기로 나뉜다(`isAdminForcedOnly`/
 `isSettleOnly`/그 외):
@@ -255,9 +261,10 @@ OFF로 표시한다 — "구독은 꺼졌는데 세부 항목은 죄다 ON"으�
   드롭다운 자리에 고정 라벨만 보이고, **"미리보기 계산" 버튼을 명시적으로 눌러야
   하는 3단계 흐름**(계산 → `resultMsg`를 `<pre>`로 그대로 출력 → 확정)을 그대로
   쓴다. 이 분기 안의 `Select` 드롭다운(유형을 자유 선택하는 UI)은 `lockKind`가
-  전달되지 않을 때만 노출되는데, **현재 두 호출부 모두 항상 `lockKind`를
-  넘기므로 이 드롭다운은 실제로 렌더링될 일이 없다** — 향후 세 번째 호출부가
-  `lockKind` 없이 이 다이얼로그를 열지 않는 한 죽은 UI 경로다.
+  전달되지 않을 때만 노출되는데, **`forced`/`deposit_again`을 넘기는
+  PenaltyCandidateList 호출부는 항상 `lockKind`를 함께 넘기므로 이
+  드롭다운은 실제로 렌더링될 일이 없다** — 어떤 호출부든 `lockKind` 없이
+  이 다이얼로그를 열지 않는 한 죽은 UI 경로다.
 
 확정(`POST /admin/exit/confirm`) 시 서버는 프론트가 보낸 `kind`를 그대로
 신뢰하지 않고 §3.5에서 언급한 "정산은 동의까지 필요" 검증을 다시 수행한다
@@ -302,14 +309,22 @@ OFF로 표시한다 — "구독은 꺼졌는데 세부 항목은 죄다 ON"으�
   나머지(`ALL_FINE_ACTIONS.filter(a => a !== status)` — 최대 "납부"/"미납"/
   "면제"/**"직권 P"** 4종 중 3개)만 버튼으로 제시한다. 이미 그 상태인데
   같은 버튼을 또 누르는 무의미한 액션을 없앤 것.
-- **"직권 P" 버튼(요일 헤더 배지 포함)은 아직 자리표시자다.** 항상
-  비활성화 상태이고, 요일 헤더의 카운트도 `직권 P : 0건`으로 고정 표시된다
-  — 어떤 인원을 세고 눌렀을 때 무슨 동작을 할지(집계/처리 로직)가 아직
-  정해지지 않아 실제로 연결되어 있지 않다 — 코드 주석에 "🧪 [자리표시자]"로
-  명시. 처음엔 "강퇴"라는 라벨로 추가됐다가 §3.5/§3.6의 "직권 P"
-  (`admin_forced`, `ExitProcessDialog(lockKind="admin_forced")`) 용어에
-  맞춰 이름만 바뀐 상태 — 실제로 그 처리와 연결되어 있는 건 아니다. 집계
-  기준을 나중에 사용자가 정해 알려주기로 함.
+- **"직권 P" 버튼은 §3.5(`MemberRosterList`)의 "퇴실 처리 (직권 P)"와 동일한
+  `ExitProcessDialog(lockKind="admin_forced")`를 그대로 재사용한다.** 🔧
+  2026-09: 처음엔 항상 비활성화된 자리표시자였으나, 사용자 지시로 실제
+  퇴실 처리 다이얼로그와 연결됐다 — 사유 입력 후 확정하면
+  `POST /admin/exit/confirm`(kind: `admin_forced`, 반환율 항상 0%)이
+  그대로 실행되고, 성공 시 `onConfirmed={load}`로 Money 탭 목록을 다시
+  불러와 처리 결과를 반영한다. 이 화면엔 `MemberRosterEntry`가 갖는
+  실제 `suggestedKind`/`allChecks`가 없지만, `lockKind="admin_forced"`일
+  때는 그 두 필드가 UI에서 전혀 읽히지 않는다(체크리스트는 `kind ===
+  "forced"`일 때만 노출, `suggestedKind`는 `lockKind`가 없을 때의
+  fallback일 뿐)는 걸 `ExitProcessDialog.tsx` 소스로 확인한 뒤, 타입만
+  맞추는 더미 값(`suggestedKind: "settle"`, `allChecks: []`)을 넘긴다.
+  **단, 요일 헤더의 "직권 P : 0건" 카운트는 여전히 자리표시자다** — 이
+  목록(paid/unpaid/exempt 병합)에는 애초에 admin_forced로 처리된 인원을
+  구분할 필드가 없어, 몇 명이 그 상태인지 셀 기준 자체가 아직 정해지지
+  않았다.
 - **버튼 배치**: 상세를 펼치면 `DayDetailCard`(아래 항목) 바로 다음,
   "일간 총 벌금 · 재납 예치금" 카드 아래에 나머지 상태 버튼들이 한 줄
   (`flex` + `flex-1`)로 나열된다. 앱 전반의 표준 액션 버튼 높이
@@ -428,12 +443,14 @@ Cloudflare Tunnel로 노출한 로컬 상태 서버를 그때그때 프록시한
   끼워지는 가짜 데이터다.** 실제 주간 P 이력이 쌓이기 시작하면 조용히 사라져야
   정상이며, 코드에 남아있는 이 상수와 fallback 로직은 제거 대상으로 명시되어
   있다.
-- **Money 탭 "벌금 납부 대상자 처리" 목록의 "직권 P" 배지/버튼은 항상
-  비활성화된 자리표시자다**(§4). 같은 이름의 실제 기능
-  (`ExitProcessDialog(lockKind="admin_forced")`)은 `MemberRosterList`에
-  이미 있다 — 서로 다른 화면의 서로 다른 진입점이니 착각 주의.
+- **Money 탭 "벌금 납부 대상자 처리" 목록의 "직권 P" 버튼과
+  `MemberRosterList`의 "퇴실 처리 (직권 P)" 버튼은 같은
+  `ExitProcessDialog(lockKind="admin_forced")`를 각자 다른 회원 데이터로
+  호출하는 서로 다른 진입점이다**(§4, §3.5) — 둘 다 실제로 확정하면 그
+  회원을 admin_forced로 즉시 퇴실 처리한다. 요일 헤더의 "직권 P : 0건"
+  카운트만 아직 자리표시자로 남아있다(§4).
 - **`ExitProcessDialog`의 "유형 선택 드롭다운" 분기는 현재 코드베이스에서 실제로
-  렌더링될 수 없다**(§3.6). 두 호출부 모두 항상 `lockKind`를 넘기기 때문 — 다만
+  렌더링될 수 없다**(§3.6). 세 호출부 모두 항상 `lockKind`를 넘기기 때문 — 다만
   `lockKind`가 있어도 "미리보기 계산 버튼 → `<pre>` 결과 → 확정"이라는 그 분기의
   나머지 흐름 자체는 `forced`/`deposit_again` 처리에 실제로 쓰인다. "드롭다운이
   죽은 코드"와 "그 분기 전체가 죽은 코드"를 혼동하지 말 것.

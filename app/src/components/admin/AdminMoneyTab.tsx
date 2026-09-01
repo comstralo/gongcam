@@ -5,6 +5,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, DayDetailCard, TintedPill } from "@/components/dashboard/shared";
 import { SectionHeader, FieldLabel, SectionCard } from "@/components/admin/shared";
+import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { useTodayIndex } from "@/hooks/useTodayIndex";
@@ -292,12 +293,26 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
                               <div className="flex items-center gap-2">
                                 {otherActions.map((action) =>
                                   action === "직권 P" ? (
-                                    // 🧪 [자리표시자] 헤더의 "직권 P" 배지와
-                                    // 동일하게 아직 실제 동작(강제퇴실 처리
-                                    // 트리거 등)이 연결되어 있지 않다.
-                                    <Button key={action} variant="outline" disabled className="flex-1 sm:h-11">
-                                      직권 P
-                                    </Button>
+                                    // 🔧 §3.5 MemberRosterList의 "퇴실 처리
+                                    // (직권 P)"와 동일한 ExitProcessDialog를
+                                    // 그대로 재사용 — 이 화면엔 roster 조회로
+                                    // 얻는 suggestedKind/allChecks가 없지만,
+                                    // lockKind="admin_forced"일 땐 그 값이
+                                    // 실제로 읽히지 않는다(체크리스트도 숨김,
+                                    // useState 초기값 fallback도 lockKind가
+                                    // 우선). 확정 후 목록을 다시 불러와야
+                                    // 상태가 반영되므로 onConfirmed에서 load().
+                                    <ExitProcessDialog
+                                      key={action}
+                                      candidate={{ number: f.number, name: f.name, suggestedKind: "settle", allChecks: [] }}
+                                      lockKind="admin_forced"
+                                      onConfirmed={load}
+                                      triggerClassName="flex-1"
+                                    >
+                                      <Button variant="outline" className="w-full sm:h-11">
+                                        직권 P
+                                      </Button>
+                                    </ExitProcessDialog>
                                   ) : (
                                     <Button
                                       key={action}
