@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Users, User, DoorOpen, ChevronDown, Hash, Star } from "lucide-react";
+import { Users, User, DoorOpen, ChevronDown, Hash, Star, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
@@ -8,12 +8,21 @@ import { SectionHeader } from "@/components/admin/shared";
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
 import { useApi } from "@/hooks/useApi";
 import { ICON_STROKE, cn } from "@/lib/utils";
-import type { AdminMembersRosterResponse, MemberRosterEntry, SetPartiStatusResponse } from "@/lib/api/types";
+import type {
+  AdminMembersRosterResponse,
+  MemberRosterEntry,
+  NotifyCategory,
+  SetPartiStatusResponse,
+} from "@/lib/api/types";
 
 export function MemberRosterList() {
   const { call } = useApi();
 
   const [members, setMembers] = useState<MemberRosterEntry[] | null>(null);
+  // 카테고리 키("report_result" 등)를 사람이 읽을 라벨("제보 처리 결과")로
+  // 바꾸는 데 쓴다 — 서버가 roster 응답과 함께 내려준다(/notify-prefs와
+  // 동일한 카테고리 정의를 그대로 재사용).
+  const [notifyCategories, setNotifyCategories] = useState<Record<string, string> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedNumber, setExpandedNumber] = useState<string | null>(null);
@@ -24,7 +33,10 @@ export function MemberRosterList() {
     setLoading(true);
     setError(null);
     call<AdminMembersRosterResponse>("/admin/members/roster")
-      .then((data) => setMembers(data.members || []))
+      .then((data) => {
+        setMembers(data.members || []);
+        setNotifyCategories(data.notifyCategories || null);
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "스터디원 목록을 불러오지 못했습니다."))
       .finally(() => setLoading(false));
   }
@@ -122,6 +134,33 @@ export function MemberRosterList() {
                             valueClassName="text-amber-600 dark:text-amber-400"
                           />
                         )}
+                      </div>
+
+                      {/* 🔧 [관리자용 알림 설정 열람] 조회 전용 — 실제 변경은
+                          회원 본인만 자기 대시보드의 알림 설정에서 할 수 있다. */}
+                      <div className="flex flex-col gap-1.5 rounded-xl border bg-card p-4 sm:p-5">
+                        <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                          <Bell className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
+                          알림 설정
+                        </span>
+                        <SubRow
+                          label="PUSH 구독"
+                          value={m.pushSubscribed ? "ON" : "OFF"}
+                          valueClassName={m.pushSubscribed ? "text-ok" : "text-muted-foreground"}
+                        />
+                        {m.pushSubscribed &&
+                          notifyCategories &&
+                          Object.entries(notifyCategories).map(([key, label]) => {
+                            const enabled = m.notifyPrefs[key as NotifyCategory];
+                            return (
+                              <SubRow
+                                key={key}
+                                label={label}
+                                value={enabled ? "ON" : "OFF"}
+                                valueClassName={enabled ? "text-ok" : "text-muted-foreground"}
+                              />
+                            );
+                          })}
                       </div>
 
                       <div className={cn("grid gap-2", m.exitRequested ? "grid-cols-3" : "grid-cols-2")}>

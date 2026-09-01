@@ -452,10 +452,17 @@ export type MemberRosterEntry = {
   exitRequested: boolean;
   exitRequestDate: string | null;
   partiStatus: "스터디장" | "부스터디장" | "스터디원";
+  // PUSH 알림 자체를 켰는지(웹 푸시 구독 여부) — 이게 꺼져 있으면 아래
+  // notifyPrefs가 전부 켜져 있어도 실제로는 아무 알림도 못 받는다.
+  pushSubscribed: boolean;
+  // 카테고리별 수신 on/off. 관리자는 여기서 조회만 할 수 있고, 실제 변경은
+  // 회원 본인이 /notify-prefs로만 할 수 있다.
+  notifyPrefs: Record<NotifyCategory, boolean>;
 };
 
 export type AdminMembersRosterResponse = {
   members: MemberRosterEntry[];
+  notifyCategories: Record<NotifyCategory, string>;
 };
 
 export type SetPartiStatusResponse = {
