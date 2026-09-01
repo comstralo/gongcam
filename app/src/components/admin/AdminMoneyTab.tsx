@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, CircleDollarSign, CalendarDays, User, Trophy } from "lucide-react";
+import { ChevronDown, CircleDollarSign, CalendarDays, User, Trophy, PiggyBank } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
-import { InfoCard, DayDetailCard, TintedPill } from "@/components/dashboard/shared";
+import { InfoCard, DayDetailCard, TintedPill, ItemTitle } from "@/components/dashboard/shared";
 import { SectionHeader, FieldLabel, SectionCard } from "@/components/admin/shared";
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
-import { RosterView } from "@/components/dashboard/RosterView";
+import { RankBadge } from "@/components/dashboard/RosterView";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { useTodayIndex } from "@/hooks/useTodayIndex";
@@ -20,7 +20,6 @@ import type {
   SetFineStatusResponse,
   StatusResponse,
   RosterStatusResponse,
-  RosterMember,
 } from "@/lib/api/types";
 
 const STATUS_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
@@ -407,25 +406,28 @@ function PrizeRecipientList({ isVisible }: { isVisible: boolean }) {
         )}
 
         {settlement && settlement.length > 0 && (
-          // §"랭킹"(RosterPage/RosterView)과 렌더링 결과가 완전히 같아야
-          // 한다는 사용자 지시 — 마크업을 손으로 다시 그리지 않고
-          // RosterView 컴포넌트 자체를 재사용한다. 이 컴포넌트는
-          // RosterMember(number/name/timer/merit/rank/status)를 받아
-          // "타이머 | 상점" 서브로우를 그리므로, settlement 항목을 그
-          // 형태로 매핑하되 merit 자리에 "받을 금액"을 넣는다(timer는
-          // 이 화면에 대응 데이터가 없어 빈 값 "-"로 남긴다).
-          <RosterView
-            members={settlement.map(
-              (s): RosterMember => ({
-                number: s.number,
-                name: s.name,
-                timer: "",
-                merit: won(s.amount),
-                rank: String(s.rank),
-                status: "",
-              })
-            )}
-          />
+          // §"랭킹"(RosterView)과 동일한 카드 레이아웃(InfoCard + RankBadge
+          // + 이름 + 아이콘 서브로우 한 줄)을 그대로 재현한다 — 다만
+          // RosterView 컴포넌트 자체는 재사용하지 않는다: 그 컴포넌트는
+          // "타이머 | 상점" 두 항목이 고정된 형태라, 억지로 끼워맞추면
+          // (예: 상점 자리에 금액) 라벨과 값의 의미가 어긋난다(사용자
+          // 지적). 이 화면엔 실제로 보여줄 값이 "받을 금액" 하나뿐이라,
+          // 서브로우에도 그 의미에 맞는 아이콘(PiggyBank)과 금액 하나만
+          // 넣는다.
+          <div className="flex flex-col gap-2 sm:gap-2.5">
+            {settlement.map((s) => (
+              <InfoCard key={s.number} className="flex items-center gap-3 sm:gap-4">
+                <RankBadge rank={String(s.rank)} />
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <ItemTitle className="truncate">{s.name}</ItemTitle>
+                  <div className="inline-flex items-center gap-1 text-xs tabular-nums text-muted-foreground sm:text-sm">
+                    <PiggyBank className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                    {won(s.amount)}
+                  </div>
+                </div>
+              </InfoCard>
+            ))}
+          </div>
         )}
       </CollapsiblePanel>
     </Collapsible>
