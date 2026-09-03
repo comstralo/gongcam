@@ -433,7 +433,25 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
 | `forced` | 강제 퇴실(페널티 2회 이상 등 자동 감지) | 항상 0% | PenaltyCandidateList | `"forced"` |
 | `deposit_again` | 예치금 재납(회원 행 리셋, 퇴실은 아님) | 항상 0%(재납액 전액) | PenaltyCandidateList | `"deposit_again"` |
 | `admin_forced` | 직권 퇴실(관리자 임의 사유) | 항상 0% | MemberRosterList, AdminMoneyTab(§4 "직권 P") | `"admin_forced"` |
-| `settle` | 정산(자진) 퇴실 | 페널티 0회→100% / 1회→50% | MemberRosterList | `"settle"` |
+| `settle` | 정산(자진) 퇴실 | 페널티 0회: 고지지연 없으면 100%/있으면 50%. 페널티 1회: 고지지연 없으면 50%/있으면 0%(전액 차감) | MemberRosterList | `"settle"` |
+
+> 🔧 2026-09 버그 수정: **`settle`의 반환율(`calcSettleReturnDeposit`)이
+> 고지지연(`isLateNotice`)을 전혀 반영하지 않던 실제 처리 로직 버그를
+> 고쳤다.** 회원 대시보드(`DepositRefundDialog`)가 퇴실 신청 전 미리
+> 보여주는 "예상 반환액"은 `depositRefundBreakdown().amount`(§`docs/
+> WEB_DASHBOARD.md` §9.2 — "페널티 1개(50%) + 고지지연(50%)이 겹치면
+> 100% 차감"을 이미 반영)를 쓰는데, 관리자가 실제로 정산 퇴실을 확정
+> 처리할 때는 별도의 `calcSettleReturnDeposit`이 페널티 횟수만으로
+> 0%/50%를 계산해 고지지연을 무시했다 — 회원이 신청 전 미리 본 예상액과
+> 관리자가 실제로 확정하는 반환액이 어긋나는 버그였다(더미 데이터를
+> 검토하던 중 사용자가 발견: "통보 지연 50% + 페널티 1회 50%면 100%
+> 차감 아닌가"). `depositBreakdown.lateNotice`를 반영해 두 계산이 다시
+> 일치하도록 고쳤다 — 이제 페널티 1회 + 고지지연이면 `settle`도
+> `depositRefundBreakdown`과 동일하게 100% 차감(반환 0원)이 된다.
+> `resultStr`/`reasons`(`{code: "settle_return_rate", label: "N% 반환"}`)
+> 도 함께 채워, "퇴실 스터디원 목록"의 "퇴실유형" 카드가 "정산 퇴실자
+> (N% 반환)"처럼 반환율만 짧게 보여줄 수 있게 했다(사용자 지시 — 이전엔
+> `reasons`가 아예 비어 있어 괄호 없이 "정산 퇴실자"만 나왔었다).
 
 🔧 2026-09: `AdminMoneyTab`(Money 탭)이 세 번째 호출부로 추가됐다 — 이
 화면은 회원 목록을 `MemberRosterEntry`가 아니라 벌금 레코드(`FineRecord`)로
@@ -487,11 +505,12 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
   백업 시트" 서브로우가 추가된다** — `sheet_reset`(매주 월요일 새벽) 이후에
   정산 처리가 이루어지는 경우 원본 대신 자동 백업 파일에서 계산했다는 뜻(이번
   세션에 구현된 로직, `computeExitResult`/`resolveExitSourceFileId`, index.js).
-  🔧 2026-09: "반환 예치금" 표시값이 정확히 10,000원이면 `text-ok`(초록),
-  0원이면 `text-destructive`(빨강)로 강조된다(`preview.refundAmount === 10000
-  \| 0`, `admin_forced`/`settle` 두 분기 공통 — 같은 카드를 각자 렌더링).
-  숫자 자체는 굵기를 강조하지 않는다(`font-semibold` 제거, 사용자 지시).
-  그리고 **"확정 처리" 버튼은
+  🔧 2026-09: "반환 예치금" 표시값이 5,000원 이상이면 `text-ok`(초록),
+  0원이면 `text-destructive`(빨강)로 강조된다(`preview.refundAmount >= 5000`
+  / `=== 0`, `admin_forced`/`settle` 두 분기 공통, `ExitedMemberList`도
+  동일 — 원래는 정확히 10,000원일 때만 초록이었으나 사용자 지시로 기준을
+  5,000원으로 낮췄다). 숫자 자체는 굵기를 강조하지 않는다(`font-semibold`
+  제거, 사용자 지시). 그리고 **"확정 처리" 버튼은
   `preview.exitProcess?.agreedAt`이 없으면 비활성화된다** — "예치금 정산액
   동의일자: 미동의"가 붉은 글씨로만 표시되고 버튼은 그대로 눌리던 예전
   동작을 사용자 지적으로 고쳤다. 트리거 버튼(`MemberRosterList`의 "퇴실
