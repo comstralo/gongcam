@@ -133,6 +133,9 @@ export type DepositRefundBreakdown = {
   timePen: number;
   daysSinceJoin: number;
   fineUnpaid: boolean;
+  // fineUnpaid의 근거가 된 요일("월"~"일") 목록 — 개인 탭 "✅ 납부확인" 행에서
+  // "미납"인 요일만 뽑는다. fineUnpaid가 false여도 항상 존재(빈 배열).
+  fineUnpaidDays: string[];
   depositAgainStatus: string | null;
   // 실제 제출된 퇴실 신청일 기준으로 서버가 판정한 "퇴실 통보 지연" 여부.
   // amount에 이미 반영되어 있으므로, 신청 완료 상태에서는 이 값을 그대로
