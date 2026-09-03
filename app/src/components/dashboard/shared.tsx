@@ -132,8 +132,12 @@ export function formatTotalPenalty(outputPen: number, timePen: number): ReactNod
 
 export type DepositCauseItem = { key: string; label: string; rate: number };
 
-// "예치금 반환액이 왜 깎였는지" 항목별 사유를 고정된 순서(벌금 미납 →
-// 30일 미만 참여자 → 페널티 → 고지지연)로 만든다.
+// "예치금 반환액이 왜 깎였는지" 항목별 사유를, 각 항목이 낼 수 있는 최대
+// 차감률이 낮은 순서(고지지연 최대 50% → 벌금 미납/30일 미만/페널티
+// 각 최대 100%)로 고정해 만든다(🔧 2026-09, 사용자 지시 — 실제 rate 값
+// 기준으로 회원마다 동적 정렬하면 카드 순서가 매번 달라져 오히려 훑어보기
+// 어려워지므로, "이 항목이 발생하면 최대 몇 % 깎이는지" 기준의 고정
+// 순서를 택했다).
 // DepositRefundDialog(회원 본인 대시보드)와 ExitProcessDialog(관리자
 // 정산 퇴실 처리) 둘 다 같은 breakdown 구조를 받아 이 항목들을 그대로
 // 보여준다. lateNoticeRate는 호출부가 각자의 방식으로 계산해 넘긴다 —
@@ -157,6 +161,11 @@ export function buildDepositCauseItems(
   const daysSinceJoin = breakdown.daysSinceJoin ?? -1;
 
   return [
+    {
+      key: "lateNotice",
+      label: "퇴실 통보 지연 (3일내)",
+      rate: lateNoticeRate,
+    },
     { key: "fine", label: "벌금 미납", rate: breakdown.fineUnpaid ? 100 : 0 },
     {
       key: "days",
@@ -167,11 +176,6 @@ export function buildDepositCauseItems(
       key: "penalty",
       label: `페널티 (송출 P ${breakdown.outputPen ?? 0}회 + 주간 P ${breakdown.timePen ?? 0}회)`,
       rate: penaltyRate,
-    },
-    {
-      key: "lateNotice",
-      label: "퇴실 통보 지연 (3일내)",
-      rate: lateNoticeRate,
     },
   ];
 }
