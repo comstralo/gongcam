@@ -131,13 +131,23 @@ export function ExitProcessDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isSettleOnly]);
 
-  // admin_forced도 settle과 동일하게 미리보기 카드를 보여준다 — 다만
-  // calcAdminForcedExit는 forcedReason이 없으면 null을 돌려주는 서버
-  // 로직이라, 사유가 채워져 있을 때만 계산한다. lockForcedReason이 없는
-  // 호출부(MemberRosterList, 관리자가 직접 입력)는 타이핑할 때마다 값이
-  // 바뀌므로 300ms 디바운스로 재계산 — 매 타건마다 API를 부르지 않는다.
+  // admin_forced도 settle과 동일하게 미리보기 카드를 보여준다. discountRatio가
+  // 사유 여부와 무관하게 항상 0% 반환으로 고정이라, 서버(calcAdminForcedExit)도
+  // 이제 사유 없이 계산을 허용한다 — 모달이 열리자마자(사유 미입력 상태에서도)
+  // 바로 계산 결과가 보이도록 settle과 동일하게 open 시점에 1회 즉시 계산하고,
+  // 이후 사유를 타이핑할 때마다(사유가 결과 문구에 반영되므로) 300ms
+  // 디바운스로 재계산한다. 열릴 때 이 두 효과가 동시에 도니 첫 렌더에서
+  // 중복 호출되지 않도록, "아직 한 번도 계산 안 한 최초 오픈"만 여기서
+  // 즉시 처리하고 디바운스 효과에서는 그 몫을 건너뛴다.
   useEffect(() => {
-    if (!open || !isAdminForcedOnly || !forcedReason.trim()) return;
+    if (open && isAdminForcedOnly && !preview && !previewing) {
+      handlePreview();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isAdminForcedOnly]);
+
+  useEffect(() => {
+    if (!open || !isAdminForcedOnly || (!preview && !previewing)) return;
     const timer = setTimeout(() => {
       handlePreview();
     }, 300);
@@ -242,7 +252,13 @@ export function ExitProcessDialog({
                     <PiggyBank className="size-3.5 shrink-0 sm:size-4" />
                     반환 예치금
                   </span>
-                  <span className={cn("text-xs font-semibold sm:text-sm", preview.refundAmount === 10000 && "text-ok")}>
+                  <span
+                    className={cn(
+                      "text-xs sm:text-sm",
+                      preview.refundAmount === 10000 && "text-ok",
+                      preview.refundAmount === 0 && "text-destructive"
+                    )}
+                  >
                     {won(preview.refundAmount)}
                   </span>
                 </InfoCard>
@@ -321,7 +337,13 @@ export function ExitProcessDialog({
                     <PiggyBank className="size-3.5 shrink-0 sm:size-4" />
                     반환 예치금
                   </span>
-                  <span className={cn("text-xs font-semibold sm:text-sm", preview.refundAmount === 10000 && "text-ok")}>
+                  <span
+                    className={cn(
+                      "text-xs sm:text-sm",
+                      preview.refundAmount === 10000 && "text-ok",
+                      preview.refundAmount === 0 && "text-destructive"
+                    )}
+                  >
                     {won(preview.refundAmount)}
                   </span>
                 </InfoCard>

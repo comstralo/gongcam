@@ -322,14 +322,19 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
     막되 입력창은 시각적으로 평범한 활성 상태(테두리/배경 정상, 포커스
     가능)로 남는다. `AdminMoneyTab`의 "직권 P"(§4)는 항상
     `"벌금 시한 내 미납자"`로 고정해서 넘긴다.
-  - **미리보기 호출 시점이 두 갈래다.** `lockForcedReason`이 있으면(사유가
-    이미 정해져 있음) 다이얼로그가 열리자마자 바로 `handlePreview()`를
-    호출한다(settle과 동일). `lockForcedReason`이 없는 자유 입력 호출부
-    (`MemberRosterList`, 관리자가 직접 입력)는 `forcedReason`이 바뀔
-    때마다 300ms 디바운스 후 재계산한다 — 매 타건마다 API를 부르지
-    않으면서도, 사유를 다 입력하면 곧 반환액/차감 원인이 갱신된다.
-    (서버 `calcAdminForcedExit`가 `forcedReason`이 빈 문자열이면 `null`을
-    돌려주는 로직이라, 사유가 비어 있는 동안은 애초에 호출하지 않는다.)
+  - **미리보기는 사유 유무와 무관하게 다이얼로그가 열리자마자 자동으로
+    뜬다**(🔧 2026-09 변경, settle과 동일). `discountRatio`가 사유 여부와
+    무관하게 항상 1(0% 반환)로 고정되므로, 서버 `calcAdminForcedExit`도
+    이제 `forcedReason`이 빈 문자열이면 `null`을 돌려주던 기존 로직을
+    버리고 항상 계산 결과를 반환한다(사유가 없으면 결과 문구에
+    "(사유 미입력)"으로 표시). `lockForcedReason`이 없는 자유 입력 호출부
+    (`MemberRosterList`, 관리자가 직접 입력)는 이후 `forcedReason`이 바뀔
+    때마다 300ms 디바운스로 재계산한다 — 사유를 다 입력하면 결과 문구의
+    사유 부분만 갱신된다(반환액 자체는 이미 0원으로 고정 표시돼 있었으므로
+    바뀌지 않음). **사유 필수 검증은 실제 시트를 바꾸는 확정 단계
+    (`handleAdminExitConfirm`)로 옮겨졌다** — "확정 처리" 버튼은 여전히
+    `forcedReason.trim()`이 있어야 눌리고, API를 직접 호출하는 경로도
+    서버가 `kind === "admin_forced"`일 때 사유 없으면 400으로 거부한다.
 - **`settle`**: 다이얼로그가 열리자마자(useEffect) 자동으로 `POST
   /admin/exit/preview`를 호출해 계산 결과를 바로 보여준다 — 별도의 "미리보기
   계산" 버튼 클릭이 필요 없다. "반환 예치금"/"차감 원인"(`buildDepositCauseItems`,
@@ -339,8 +344,11 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
   백업 시트" 서브로우가 추가된다** — `sheet_reset`(매주 월요일 새벽) 이후에
   정산 처리가 이루어지는 경우 원본 대신 자동 백업 파일에서 계산했다는 뜻(이번
   세션에 구현된 로직, `computeExitResult`/`resolveExitSourceFileId`, index.js).
-  🔧 2026-09: "반환 예치금" 표시값이 정확히 10,000원이면 `text-ok`(초록)로
-  강조된다(`preview.refundAmount === 10000`). 그리고 **"확정 처리" 버튼은
+  🔧 2026-09: "반환 예치금" 표시값이 정확히 10,000원이면 `text-ok`(초록),
+  0원이면 `text-destructive`(빨강)로 강조된다(`preview.refundAmount === 10000
+  \| 0`, `admin_forced`/`settle` 두 분기 공통 — 같은 카드를 각자 렌더링).
+  숫자 자체는 굵기를 강조하지 않는다(`font-semibold` 제거, 사용자 지시).
+  그리고 **"확정 처리" 버튼은
   `preview.exitProcess?.agreedAt`이 없으면 비활성화된다** — "예치금 정산액
   동의일자: 미동의"가 붉은 글씨로만 표시되고 버튼은 그대로 눌리던 예전
   동작을 사용자 지적으로 고쳤다. 트리거 버튼(`MemberRosterList`의 "퇴실
