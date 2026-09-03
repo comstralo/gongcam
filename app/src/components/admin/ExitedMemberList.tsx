@@ -72,6 +72,7 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
       },
       reasons: [{ code: "penalty_2_or_more", label: "페널티 누적 2회 이상 (송출 P 1회 / 주간 P 1회) ➡️ 0% 반환" }],
       processedDate: "2026-08-24",
+      blacklist: false,
     },
   },
   {
@@ -95,6 +96,7 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
       },
       reasons: [{ code: "admin_reason", label: "직권 사유: 비매너 행위로 인한 즉시 퇴실" }],
       processedDate: "2026-08-19",
+      blacklist: true,
     },
   },
   {
@@ -118,6 +120,7 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
       },
       reasons: [{ code: "deposit_again_unpaid", label: "예치금 시한 내 미납 ➡️ 0% 반환" }],
       processedDate: "2026-08-17",
+      blacklist: false,
     },
   },
   {
@@ -141,6 +144,7 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
       },
       reasons: [{ code: "fine_unpaid", label: "벌금 시한 내 미납 ➡️ 0% 반환" }],
       processedDate: "2026-08-12",
+      blacklist: false,
     },
   },
   {
@@ -164,6 +168,7 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
       },
       reasons: ["송출 P (0회) / 주간 P (0회) ➡️ 100% 반환"].map((label, i) => ({ code: `settle_${i}`, label })),
       processedDate: "2026-08-10",
+      blacklist: false,
     },
   },
   {
@@ -187,6 +192,7 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
       },
       reasons: ["송출 P (1회) / 주간 P (0회) ➡️ 50% 반환"].map((label, i) => ({ code: `settle_${i}`, label })),
       processedDate: "2026-08-03",
+      blacklist: false,
     },
   },
   {
@@ -321,6 +327,16 @@ export function ExitedMemberList() {
                               퇴실유형
                             </span>
                             <SubRow label="유형" value={exitTypeLabel(result.kindStr, result.reasons)} />
+                            {/* 🔧 [블랙리스트 등록] 직권 P(admin_forced)에서만
+                                의미 있는 값이라, 그 외 유형에서는 항상 false인
+                                "아니오" 행을 매번 반복해 보여주지 않는다. */}
+                            {result.kind === "admin_forced" && (
+                              <SubRow
+                                label="블랙리스트"
+                                value={result.blacklist ? "예" : "아니오"}
+                                valueClassName={result.blacklist ? "text-destructive" : undefined}
+                              />
+                            )}
                           </InfoCard>
                         </>
                       )}

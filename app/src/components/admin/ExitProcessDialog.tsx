@@ -4,6 +4,7 @@ import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { InfoCard, SubRow, buildDepositCauseItems } from "@/components/dashboard/shared";
@@ -83,6 +84,12 @@ export function ExitProcessDialog({
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<ExitKind>(lockKind ?? candidate.suggestedKind);
   const [forcedReason, setForcedReason] = useState(lockForcedReason ?? "");
+  // 🔧 [블랙리스트 등록] 직권 P는 강제퇴실 중 가장 강한 방식(상대 동의 없이
+  // 즉시 내쫓음)이라, 확정 처리 시 블랙리스트 등록 여부를 함께 표시할 수
+  // 있게 한다(사용자 지시). 미리보기(handlePreview)에는 영향이 없고,
+  // 확정 처리(handleConfirm) 시점에만 body에 실어 보낸다 — 이 값 자체가
+  // discountRatio/반환액 계산에 관여하지 않기 때문.
+  const [blacklist, setBlacklist] = useState(false);
   // 🔧 [직권 P 퇴실 전용 UI] 이 처리는 관리자가 사유만 입력하면 바로
   // 확정할 수 있는 단순한 흐름이라, 다른 유형(강제/정산/재납)과 공유하는
   // "처리 유형 선택 → 미리보기 계산 → 확정" 단계를 그대로 노출할 필요가
@@ -161,7 +168,12 @@ export function ExitProcessDialog({
     try {
       await call<ExitConfirmResponse>("/admin/exit/confirm", {
         method: "POST",
-        body: { number: candidate.number, kind, forcedReason: kind === "admin_forced" ? forcedReason : undefined },
+        body: {
+          number: candidate.number,
+          kind,
+          forcedReason: kind === "admin_forced" ? forcedReason : undefined,
+          blacklist: kind === "admin_forced" ? blacklist : undefined,
+        },
       });
       setConfirmed(true);
       onConfirmed?.(kind);
@@ -183,6 +195,7 @@ export function ExitProcessDialog({
           setConfirmed(false);
           setForcedReason(lockForcedReason ?? "");
           setKind(lockKind ?? candidate.suggestedKind);
+          setBlacklist(false);
         }
       }}
     >
@@ -233,6 +246,15 @@ export function ExitProcessDialog({
                   className="sm:h-12 sm:text-base"
                   readOnly={lockForcedReason !== undefined}
                 />
+                {/* 🔧 [블랙리스트 등록] 직권 P는 상대 동의 없이 즉시 내쫓는
+                    강제퇴실 중 가장 강한 방식이라, 확정 시 블랙리스트로도
+                    함께 등록할지 여기서 고를 수 있게 한다(사용자 지시).
+                    확정(handleConfirm)에서만 body에 실리고 미리보기 계산
+                    (반환액 등)에는 영향을 주지 않는다. */}
+                <Label className="mt-1 justify-start">
+                  <Checkbox checked={blacklist} onCheckedChange={(c) => setBlacklist(c === true)} />
+                  <span className="text-xs font-medium sm:text-sm">블랙리스트로 등록하시겠습니까?</span>
+                </Label>
               </InfoCard>
 
               {previewing && !preview && (

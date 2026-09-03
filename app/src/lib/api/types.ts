@@ -531,6 +531,9 @@ export type ExitedMemberResult = {
   breakdown: DepositRefundBreakdown;
   reasons: ExitReasonCode[];
   processedDate: string;
+  // 직권 P(admin_forced)로 확정하면서 "블랙리스트로 등록하시겠습니까?"를
+  // 체크했는지 — kind가 admin_forced가 아니면 항상 false.
+  blacklist: boolean;
 };
 
 export type ExitedMemberEntry = {

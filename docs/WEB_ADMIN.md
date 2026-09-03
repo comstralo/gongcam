@@ -356,6 +356,24 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
 > 텍스트 박스(`resultMsg`)에는 그대로 남아있다 — 이 화면의 짧은 표시만
 > 바뀐 것이지 원본 데이터가 소실된 건 아니다.
 
+> 🔧 2026-09: **직권 P 확정 시 "블랙리스트로 등록" 체크박스 추가.**
+> `admin_forced`는 상대 동의 없이 즉시 내쫓는 강제퇴실 중 가장 강한
+> 방식이라는 판단에 따라(사용자 지시), `ExitProcessDialog`의 "직권 퇴실
+> 사유" 입력 박스 안에 "블랙리스트로 등록하시겠습니까?" 체크박스
+> (`Checkbox`, `components/ui/checkbox.tsx`)를 배치했다 — `forced`/
+> `settle`에는 없다. 미리보기 계산(`handlePreview`, `/admin/exit/preview`)
+> 에는 관여하지 않고, 확정 처리(`handleConfirm`)에서만 `kind ===
+> "admin_forced"`일 때 body에 `blacklist: boolean`으로 함께 실려
+> `/admin/exit/confirm`으로 전송된다. 서버(`handleAdminExitConfirm`)는
+> `kind !== "admin_forced"`이면 값을 무시하고 항상 `false`로 저장한다
+> (`isBlacklisted = kind === "admin_forced" && blacklist === true`) —
+> 다른 유형에서는 애초에 의미 없는 개념이므로 API를 직접 호출해도
+> 강제로 걸리지 않는다. 저장은 §위 KV 결과(`EXIT_RESULT_KV_PREFIX`)에
+> `blacklist` 필드로 함께 들어가며, `ExitedMemberList`의 "퇴실유형"
+> 카드가 `kind === "admin_forced"`일 때만 "블랙리스트: 예/아니오" 행을
+> 추가로 보여준다(그 외 유형은 항상 false라 매번 반복해 보여줄 필요가
+> 없어 조건부 렌더링). "예"면 `text-destructive`로 강조.
+
 ### 3.6 퇴실·재납 공유 다이얼로그 (`ExitProcessDialog`)
 
 `docs/WEB_REPORT.md`·`docs/WEB_DASHBOARD.md`의 §9.2(예치금 반환 계산)와
