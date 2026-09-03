@@ -18,6 +18,34 @@ function displayName(name: string): string {
   return name.replace(/ \(퇴실\)$/, "");
 }
 
+// 🔧 2026-09: 백엔드가 kindStr을 "강제 퇴실자"(discountRatio===1인 모든
+// 경우 — 자동 감지된 강제 조건이든 관리자의 직권 사유든)로 통일했다.
+// reasons[].label은 "페널티 누적 2회 이상 (송출 P 1회 / 주간 P 1회) ➡️
+// 0% 반환"처럼 화살표·반환율까지 포함한 긴 문장이라, "강제 퇴실자
+// (사유)" 한 줄로 합칠 때는 code 기준으로 짧은 키워드만 뽑는다(사용자
+// 지시: "강제 퇴실자 (예치금 미납)"/"강제 퇴실자 (벌금 미납)" 형태).
+// admin_reason(직권 P, 관리자가 자유 입력한 사유)만 label에서 접두사
+// ("직권 사유: ")를 떼고 그대로 쓴다 — 그 값 자체가 이미 짧은 키워드가
+// 아니라 관리자가 쓴 문장이기 때문이다.
+const REASON_SHORT_LABEL: Record<string, string> = {
+  under_30_days: "가입 30일 미만",
+  fine_unpaid: "벌금 미납",
+  deposit_again_unpaid: "예치금 미납",
+  penalty_2_or_more: "페널티 2회 이상",
+};
+
+function shortReasonLabel(reason: { code: string; label: string }): string {
+  if (reason.code === "admin_reason") return reason.label.replace(/^직권 사유:\s*/, "");
+  return REASON_SHORT_LABEL[reason.code] ?? reason.label;
+}
+
+// "강제 퇴실자"/"정산 퇴실자" 등 유형에, 해당하는 사유를 괄호로 이어붙인다.
+// 사유가 여러 개(예: 벌금 미납 + 페널티 2회 이상 동시 해당)면 쉼표로 나열.
+function exitTypeLabel(kindStr: string, reasons: { code: string; label: string }[]): string {
+  if (reasons.length === 0) return kindStr;
+  return `${kindStr} (${reasons.map(shortReasonLabel).join(", ")})`;
+}
+
 // 🧪 [임시 더미 미리보기] 실제 서비스 화면에서 렌더링을 확인하기 위한
 // 임시 조치 — 확인 끝나면 반드시 원래 /admin/members/exited 호출로
 // 되돌릴 것. 강제/직권/정산(100%/50%) 4가지 유형과, 이 기능 도입 이전에
@@ -51,7 +79,7 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
     name: "이서준 (퇴실)",
     result: {
       kind: "admin_forced",
-      kindStr: "직권 퇴실자",
+      kindStr: "강제 퇴실자",
       refundAmount: 0,
       heldAmount: 10000,
       fineAlreadyPayment: 0,
@@ -67,6 +95,52 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
       },
       reasons: [{ code: "admin_reason", label: "직권 사유: 비매너 행위로 인한 즉시 퇴실" }],
       processedDate: "2026-08-19",
+    },
+  },
+  {
+    number: "exited:윤아름 (퇴실)",
+    name: "윤아름 (퇴실)",
+    result: {
+      kind: "forced",
+      kindStr: "강제 퇴실자",
+      refundAmount: 0,
+      heldAmount: 10000,
+      fineAlreadyPayment: 0,
+      breakdown: {
+        amount: 0,
+        reason: "예치금 시한 내 미납",
+        outputPen: 0,
+        timePen: 0,
+        daysSinceJoin: 60,
+        fineUnpaid: false,
+        depositAgainStatus: "미납",
+        lateNotice: false,
+      },
+      reasons: [{ code: "deposit_again_unpaid", label: "예치금 시한 내 미납 ➡️ 0% 반환" }],
+      processedDate: "2026-08-17",
+    },
+  },
+  {
+    number: "exited:한지민 (퇴실)",
+    name: "한지민 (퇴실)",
+    result: {
+      kind: "forced",
+      kindStr: "강제 퇴실자",
+      refundAmount: 0,
+      heldAmount: 10000,
+      fineAlreadyPayment: 5000,
+      breakdown: {
+        amount: 0,
+        reason: "벌금 시한 내 미납",
+        outputPen: 0,
+        timePen: 0,
+        daysSinceJoin: 70,
+        fineUnpaid: true,
+        depositAgainStatus: null,
+        lateNotice: false,
+      },
+      reasons: [{ code: "fine_unpaid", label: "벌금 시한 내 미납 ➡️ 0% 반환" }],
+      processedDate: "2026-08-12",
     },
   },
   {
@@ -246,10 +320,7 @@ export function ExitedMemberList() {
                               <ClipboardList className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
                               퇴실유형
                             </span>
-                            <SubRow label="유형" value={result.kindStr} />
-                            {result.reasons.map((r) => (
-                              <SubRow key={r.code} label="원인" value={r.label} />
-                            ))}
+                            <SubRow label="유형" value={exitTypeLabel(result.kindStr, result.reasons)} />
                           </InfoCard>
                         </>
                       )}
