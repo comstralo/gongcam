@@ -370,9 +370,12 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
 > 다른 유형에서는 애초에 의미 없는 개념이므로 API를 직접 호출해도
 > 강제로 걸리지 않는다. 저장은 §위 KV 결과(`EXIT_RESULT_KV_PREFIX`)에
 > `blacklist` 필드로 함께 들어가며, `ExitedMemberList`의 "퇴실유형"
-> 카드가 `kind === "admin_forced"`일 때만 "블랙리스트: 예/아니오" 행을
-> 추가로 보여준다(그 외 유형은 항상 false라 매번 반복해 보여줄 필요가
-> 없어 조건부 렌더링). "예"면 `text-destructive`로 강조.
+> 카드가 이 값을 **모든 퇴실 유형에 항상** "블랙리스트: Y/N" 행으로
+> 보여준다(🔧 2026-09: 처음엔 `kind === "admin_forced"`일 때만 조건부로
+> 표시했으나, 사용자 지시로 항상 표시하도록 바꿨다 — `forced`/`settle`은
+> 체크박스 자체가 없어 항상 `false`로 저장된 값이 "N"으로 그대로 뜬다.
+> 표기도 "예/아니오"에서 "Y/N"으로 바꿨다). "Y"면 `text-destructive`로
+> 강조.
 
 > 🔧 2026-09: **"차감 원인" 카드 항목 정리·재정렬**(`buildDepositCauseItems`,
 > `docs/WEB_SETTINGS.md` §3.2와 공유) — "예치금 미납"(개인 탭 R3="미납")
