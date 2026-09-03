@@ -1,7 +1,8 @@
 # 관리자 기능 구조 지도 (WEB_ADMIN.md)
 
 > 이 문서는 웹 서비스(`app/`, Cloudflare Worker `frame-checker-worker/`)의 **관리자**
-> 기능(하단 내비게이션의 "/admin" 경로, "MEM · PEN"/"Money"/"Bot · Sheet" 세 탭)을
+> 기능(하단 내비게이션의 "/admin" 경로, "Account"/"PEN · Money"/"Bot · Sheet" 세
+> 탭 — 🔧 2026-09 개편, 원래는 "MEM · PEN"/"Money"/"Bot · Sheet"였다)을
 > 프론트~백엔드~시트/KV까지 실제 코드를 읽어 조사한 결과입니다. `docs/WEB_DASHBOARD.md`,
 > `docs/WEB_REPORT.md`, `docs/WEB_SETTINGS.md`와 같은 목적·형식으로 작성했으며,
 > 구현 명령을 내릴 때 이 문서를 참조점으로 삼습니다. 코드가 바뀌면 이 문서도 함께
@@ -27,13 +28,20 @@
 `AdminPage`는 세 하위 탭을 가진다(URL 쿼리 `tab`으로 관리, 최초 마운트 이후 로컬
 state):
 
-- **MEM · PEN**(`view=member`, 기본값) → `AdminMemberPenaltyTab` — 제보 심사,
-  강제퇴실 후보 처리, 사유반휴 승인, 신규 회원 등록, 스터디원 목록 5개 섹션을
-  세로로 나열.
-- **Money**(`view=money`) → `AdminMoneyTab` — 벌금 납부 대상자 처리(납부/미납/
-  면제 통합 목록).
+- **Account**(`view=account`, 기본값) → `AdminMemberPenaltyTab` — 신규 회원
+  등록, 스터디원 목록 2개 섹션(계정/회원 관리 전용).
+- **PEN · Money**(`view=money`) → `AdminMoneyTab` — 제보 심사, 예치금 재납
+  대상자, 사유반휴 승인, 벌금 납부 대상자 처리, 상금 수령 대상자 처리 5개
+  섹션(페널티·벌금·상금 처리 전용).
 - **Bot · Sheet**(`view=botsheet`) → `AdminBotSheetTab` — API 사용량 모니터링,
   로컬 도움봇 상태/재시작, 회원 번호 정렬.
+
+> 🔧 2026-09: 원래 "MEM · PEN"(`view=member`)/"Money"(`view=money`) 두 탭으로
+> 나뉘어 있었으나, "계정/회원 관리"와 "페널티·벌금·상금 처리"라는 성격
+> 차이에 맞춰 재편했다 — `view=member`는 여전히 `account`로 정규화되어
+> 옛 북마크/링크와 호환된다. 컴포넌트 파일명(`AdminMemberPenaltyTab.tsx`/
+> `AdminMoneyTab.tsx`)은 바뀌지 않았으므로, 파일명만 보고 내용을 유추하지
+> 말 것 — 지금은 각각 Account 탭/PEN · Money 탭의 컨테이너다.
 
 세 탭 모두 `docs/WEB_DASHBOARD.md` §3.1과 동일한 "언마운트하지 않고 hidden으로만
 감춘다" 패턴(`everOpened` ref)을 쓴다 — 관리자가 탭을 오갈 때마다 각 섹션의
@@ -47,19 +55,22 @@ state):
 
 ```
 AdminPage (app/src/pages/AdminPage.tsx)
-├─ [member] AdminMemberPenaltyTab (components/admin/AdminMemberPenaltyTab.tsx)
-│   ├─ ReportReviewList        — "송출 P 제보 확인" (§3.1)
-│   ├─ PenaltyCandidateList    — "예치금 재납 대상자" (§3.2)
-│   ├─ ReasonLeaveReviewList   — "사유 반휴 신청" (§3.3)
+├─ [account] AdminMemberPenaltyTab (components/admin/AdminMemberPenaltyTab.tsx)
 │   ├─ NewMemberForm           — "스터디원 등록" (기본 접힘) (§3.4)
 │   └─ MemberRosterList        — "스터디원 목록" (§3.5)
-│       └─ (PenaltyCandidateList/MemberRosterList 공용) ExitProcessDialog (§3.6)
-├─ [money] AdminMoneyTab (components/admin/AdminMoneyTab.tsx)
-│   └─ PaidFineList — "벌금 납부 대상자 처리" (§4, paid/unpaid/exempt 통합 목록)
-└─ [botsheet] AdminBotSheetTab (components/admin/AdminBotSheetTab.tsx)
-    ├─ UsageMonitorSection  — "사용량 모니터링" (§5.1)
-    ├─ BotStatusSection     — "도움봇 상태" (§5.2)
-    └─ MemberReorderSection — "번호 정렬" (§5.3)
+│       └─ (MemberRosterList 전용) ExitProcessDialog (§3.6)
+├─ [money] AdminMoneyTab (components/admin/AdminMoneyTab.tsx) — 🔧 2026-09 순서/이름 변경
+│   ├─ ReportReviewList        — "송출 P 대상 처리" (§3.1)
+│   ├─ ReasonLeaveReviewList   — "사유 반휴 신청 대상 처리" (§3.3)
+│   ├─ PaidFineList            — "벌금 납부 대상 처리" (§4.1, paid/unpaid/exempt 통합 목록)
+│   ├─ PenaltyCandidateList    — "예치금 재납 대상 처리" (§3.2)
+│   └─ PrizeRecipientList      — "상금 수령 대상 처리" (§4 안내 참고, 상세 미기술)
+│       └─ (PenaltyCandidateList/PaidFineList 공용) ExitProcessDialog (§3.6)
+└─ [botsheet] AdminBotSheetTab (components/admin/AdminBotSheetTab.tsx) — 🔧 2026-09 순서/이름 변경
+    ├─ BotStatusSection          — "도움봇 오퍼레이터" (§5.2)
+    ├─ SpreadsheetOperatorSection — "스프레드시트 오퍼레이터" (§5.3, 새 상위 카드)
+    │   └─ MemberReorderSection  — "번호 정렬" (§5.3, 하위 항목으로 편입)
+    └─ UsageMonitorSection       — "사용량 모니터링" (§5.1)
 
 components/admin/shared.tsx — 공용 프리미티브(§6): SectionCard/SectionHeader,
   ItemTitle/FieldLabel/FieldValue, CapturePreview, PenaltyHistorySection/
@@ -71,9 +82,17 @@ components/admin/PushNotificationSection.tsx — ⚠️ 어디서도 import되�
 
 ---
 
-## 3. MEM · PEN 탭
+## 3. 섹션 상세 (§3.1~3.3, §4는 PEN · Money 탭 / §3.4~3.6은 Account 탭)
 
-### 3.1 송출 P 제보 확인 (`ReportReviewList`)
+> 🔧 2026-09 탭 재편 이후에도 섹션 번호(§3.1~3.6)는 유지한다 — 각 절 제목에
+> 실제로 속한 탭을 표기했으니, "§3.x = 예전 MEM·PEN 탭"이라는 옛 매핑으로
+> 읽지 말 것. 소속 탭은 §2의 트리를 기준으로 삼는다.
+
+### 3.1 송출 P 대상 처리 (`ReportReviewList`) — PEN · Money 탭
+
+> 🔧 2026-09: 화면 제목이 "송출 P 제보 확인"에서 "송출 P 대상 처리"로
+> 바뀌었다. 아래 본문은 아직 옛 제목으로 서술된 부분이 있을 수 있으니
+> 실제 표시 문구는 이 헤더를 기준으로 삼을 것.
 
 `docs/WEB_REPORT.md` §6("제보 → 페널티 반영 전체 흐름")에서 데이터 흐름 관점으로
 이미 다룬 화면의 **실제 UI 구현**이다. `GET /admin/captures`로 대기 중(+최근 24시간
@@ -113,7 +132,10 @@ components/admin/PushNotificationSection.tsx — ⚠️ 어디서도 import되�
   `occurrence`/`col` 등 세부 정보를 로컬에서 잃으므로, 이 경우 "취소" 버튼
   자체를 숨기고 "이미 처리된 제보입니다"로만 표시한다.
 
-### 3.2 예치금 재납 대상자 (`PenaltyCandidateList`)
+### 3.2 예치금 재납 대상 처리 (`PenaltyCandidateList`) — PEN · Money 탭
+
+> 🔧 2026-09: 화면 제목이 "예치금 재납 대상자"에서 "예치금 재납 대상
+> 처리"로 바뀌었다.
 
 `GET /admin/exit/candidates`(→ `handleAdminExitCandidates` → `listExitCandidates`)
 가 반환하는 **페널티 누적 2회 이상**(`calcForcedOutDeposit`이 `penalty_2_or_more`
@@ -134,7 +156,10 @@ components/admin/PushNotificationSection.tsx — ⚠️ 어디서도 import되�
 > 하라고 명시되어 있다 — 실제 주간 P 이력이 있는 회원을 조회했는데 낯선
 > 이력이 보이면 이 더미일 가능성을 먼저 의심할 것.
 
-### 3.3 사유 반휴 신청 (`ReasonLeaveReviewList`)
+### 3.3 사유 반휴 신청 대상 처리 (`ReasonLeaveReviewList`) — PEN · Money 탭
+
+> 🔧 2026-09: 화면 제목이 "사유 반휴 신청"에서 "사유 반휴 신청 대상
+> 처리"로 바뀌었다.
 
 `GET /admin/leave-proof`가 **봇(도움봇)이 든 대기열**과 **KV 큐(봇이 아직 못 받은
 신청)**를 합쳐서 보여준다(`docs/HELPERBOT.md` 참고 대상, `handleAdminLeaveProofList`).
@@ -152,7 +177,7 @@ components/admin/PushNotificationSection.tsx — ⚠️ 어디서도 import되�
   재사용. 큐에만 있는 신청이면 KV에 저장된 base64를 그대로 서빙하고, 봇에 이미
   전달된 신청이면 봇에 프록시한다.
 
-### 3.4 스터디원 등록 (`NewMemberForm`)
+### 3.4 스터디원 등록 (`NewMemberForm`) — Account 탭
 
 기본 접힘 상태(`defaultOpen={false}`)인 유일한 섹션. `GET /admin/open-slots`로
 "데이터" 시트 B열(번호)은 있지만 D열(이메일)이 비어 있는 빈 시트번호 목록을
@@ -189,7 +214,7 @@ components/admin/PushNotificationSection.tsx — ⚠️ 어디서도 import되�
   인프라이며, 이 문서에서는 깊이 다루지 않는다(`handleAdminOAuthAuthorize`/
   `handleAdminOAuthCallback`, index.js).
 
-### 3.5 스터디원 목록 (`MemberRosterList`)
+### 3.5 스터디원 목록 (`MemberRosterList`) — Account 탭
 
 `GET /admin/members/roster`(→ `handleAdminMembersRoster`)가 전체 활성 회원의
 상태·알림 설정·최근 접속 정보를 한 번에 모아 내려준다. 요일별이 아니라 회원별
@@ -202,19 +227,49 @@ components/admin/PushNotificationSection.tsx — ⚠️ 어디서도 import되�
 없음), 퇴실 예약일자, 최근 접속일자/IP(`lastLogin:{번호}` KV, `handleVerify`가
 로그인 시 CF-Connecting-IP 헤더로 기록).
 
+> 🔧 2026-09: **"가입일자" 값의 기반은 `listActiveMembersWithExitInfo`가
+> 넘겨주는 `s.joinDate`(=개인 탭 I3, "D+n" 상대 표시)이며 이건 의도된
+> 표시다** — `docs/WEB_DASHBOARD.md` §4의 개인 대시보드 "가입일자" 요약
+> 타일과 동일한 값·형식으로 맞춘 것(사용자 확인). 다만 관리자가 실제
+> 등록 날짜도 함께 확인할 수 있도록, `handleAdminMembersRoster`가 O3와
+> 같은 batchGet 호출에 I2(원본 "YYYY-MM-DD")를 묶어 조회해
+> `"D+n (YYMMDD)"` 형식으로 병기한다(예: `D+236 (260101)`) — I2 값이
+> 없거나 형식이 어긋나면 괄호 병기 없이 `D+n`만 표시한다. I2/I3 셀
+> 위치는 `docs/SHEET_STRUCTURE.md`가 원본.
+
 **"알림 설정" 카드**: 회원별 카테고리 on/off를 **조회 전용**으로 보여준다(변경은
 회원 본인만 `/notify-prefs`로 가능, `docs/WEB_SETTINGS.md` §4.2). PUSH 구독
 (`pushSubscribed`) 자체가 꺼져 있으면 카테고리별 저장값이 ON이어도 화면에는 전부
 OFF로 표시한다 — "구독은 꺼졌는데 세부 항목은 죄다 ON"으로 보이는 혼란을
 막기 위한 의도적 표시 로직(저장값 자체를 바꾸는 건 아님).
 
+> 🔧 2026-09 확인(잠재 함정, 미수정): `pushSubscribed`는 "이 회원 이메일로
+> `PUSH_SUBS_KV`에 `sub:{email}:*` 키가 하나라도 있는지"만 본다 —
+> `docs/WEB_SETTINGS.md` §4.2의 기기별 `enabled` 토글은 반영하지 않는다.
+> `handlePushSendToMember`(실제 발송 경로)의 최상위 게이트(`list.keys.length
+> === 0`이면 404)와는 정확히 같은 기준이라 이 필드 자체는 정확하지만,
+> 회원이 등록된 기기를 **전부** `enabled: false`로 꺼둔 극단적 케이스에서는
+> `pushSubscribed: true`(+ 카테고리 저장값이 ON)로 보여도 실제 발송은
+> 기기별 필터에서 전부 걸러져 실패한다("이 회원 알림 받을 수 있음"으로
+> 보이는데 실제로는 못 받는 사각지대). 별도 지시 전까지는 수정하지 않음 —
+> 새 기능을 얹을 때 이 사각지대를 감안할 것.
+
 **액션 버튼**(§3.6과 연결): 부스터디장 임명/해제(`POST
-/admin/members/parti-status`, L3 셀 직접 전환, 스터디장은 이 API로 건드릴 수
-없음), "퇴실 처리 (직권 P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리
-(정산)"(`lockKind="settle"`, **`m.exitAgreedAt`이 있어야만 활성** — 회원이
-"예치금 정산액에 동의합니다"를 누르기 전엔 클릭 자체가 막힌다), 그리고
-`m.exitRequested`일 때만 나타나는 "신청 취소"(`POST /exit-request/cancel`을
-관리자 권한으로, body에 `number` 포함).
+/admin/members/parti-status` → `handleAdminSetPartiStatus`, L3 셀 직접 전환,
+스터디장·퇴실자·재납자는 이 API로 건드릴 수 없음), "퇴실 처리 (직권
+P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKind="settle"`,
+**`m.exitAgreedAt`이 있어야만 활성** — 회원이 "예치금 정산액에 동의합니다"를
+누르기 전엔 클릭 자체가 막힌다), 그리고 `m.exitRequested`일 때만 나타나는
+"신청 취소"(`POST /exit-request/cancel`을 관리자 권한으로, body에 `number` 포함).
+
+> 🔧 2026-09 수정: 부스터디장 임명/해제는 원래 `currentStatus === "스터디장"`
+> 만 막고, "퇴실자 (0% 반환)"/"재납자 (0% 반환)" 같은 처리 완료 상태는
+> 서버가 재검증하지 않았다 — 정상 UI 경로로는 이 화면의 `members` 자체가
+> `listActiveMembersWithExitInfo`에서 이미 퇴실자/재납자를 필터링해 도달
+> 불가능했지만(코드 검토로 발견, 실사용 재현 이력 없음), API를 직접
+> 호출하면 이미 확정된 퇴실/재납 이력이 "부스터디장"/"스터디원"으로
+> 조용히 덮어써질 수 있었다. `currentStatus`가 `/^(퇴실자|재납자)/`와
+> 일치하면 400으로 거부하도록 서버에 방어를 추가했다.
 
 > 이 화면은 **자진 퇴실 전용**으로 설계 의도가 명확하다(코드 주석): 페널티
 > 누적으로 인한 강제퇴실/예치금 재납은 §3.2("예치금 재납 대상자")에서 별도로
@@ -309,12 +364,31 @@ OFF로 표시한다 — "구독은 꺼졌는데 세부 항목은 죄다 ON"으�
 
 ---
 
-## 4. Money 탭 (`AdminMoneyTab`)
+## 4. PEN · Money 탭의 벌금/상금 처리 (`AdminMoneyTab`)
+
+> 🔧 2026-09 탭 재편: `AdminMoneyTab`은 이제 §3.1~3.3(송출 P 대상 처리/
+> 예치금 재납 대상 처리/사유 반휴 신청 대상 처리)까지 함께 렌더링하는
+> PEN · Money 탭 전체의 컨테이너다. 이 §4는 그중 아래쪽 두 섹션
+> (`PaidFineList`/`PrizeRecipientList`)만 다룬다 — 위 세 섹션은 §3.1~3.3을
+> 참고할 것. **탭 안 실제 표시 순서는 송출P대상처리 → 사유반휴신청대상처리
+> → 벌금납부대상처리 → 예치금재납대상처리 → 상금수령대상처리다**(§2
+> 트리 순서 그대로) — 이 문서의 절 번호(§3.1→3.2→3.3→4.1) 순서와 다르니
+> 혼동하지 말 것. **`PrizeRecipientList`("상금 수령 대상 처리")는 아직
+> 이 문서에 상세 기술되지 않았다** — 현재 더미 데이터로 랭킹 화면
+> (`RosterView`) 레이아웃을 재사용해 UI만 먼저 완성하는 단계이며
+> (`/admin/prize/settle` 백엔드는 배포됨, `handleAdminPrizeSettle`),
+> 프론트가 실제 `/roster-status` 호출로 전환되면 이 섹션도 별도로
+> 채워야 한다.
+
+### 4.1 벌금 납부 대상 처리 (`PaidFineList`)
+
+> 🔧 2026-09: 화면 제목이 "벌금 납부 대상자 처리"에서 "벌금 납부 대상
+> 처리"로 바뀌었다.
 
 🔧 2026-09: 원래 세 개의 거의-동형 리스트(납부/미납/면제 현황)가 나란히
 있었으나, 사용자 지시로 **"벌금 미납 현황"(`FineList`)과 "벌금 면제
 현황"(`ExemptFineList`)을 완전히 제거**하고 **"벌금 납부 현황"만 남겨
-"벌금 납부 대상자 처리"로 개명**했다 — 지금 `AdminMoneyTab`은
+"벌금 납부 대상자 처리"로 개명**했다 — 지금 이 섹션은
 `PaidFineList` 하나만 렌더링한다. 개인 탭 "✅ 납부확인" 행
 (`docs/WEB_DASHBOARD.md` §10의 `ROW_PAYMENT_CHECK`)에서 나온 (회원, 요일,
 상태) 레코드를 요일별로 그룹핑해 보여주는 §3.1(`ReportReviewList`)과 동일한
@@ -395,27 +469,18 @@ OFF로 표시한다 — "구독은 꺼졌는데 세부 항목은 죄다 ON"으�
 
 ## 5. Bot · Sheet 탭 (`AdminBotSheetTab`)
 
-### 5.1 사용량 모니터링 (`UsageMonitorSection`)
+> 🔧 2026-09: 실제 표시 순서와 이름이 바뀌었다 — "도움봇 상태" →
+> "도움봇 오퍼레이터"(§5.2, 개명만), "번호 정렬" → 새 상위 카드
+> "스프레드시트 오퍼레이터"의 하위 항목으로 편입(§5.3), 그 아래
+> "사용량 모니터링"(§5.1, 순서만 맨 뒤로) 순으로 렌더링된다. 절 번호
+> (§5.1~5.3)는 이전 문서와의 연속성을 위해 그대로 두었으니, **화면 순서는
+> §2 트리를 기준으로 삼을 것** — 절 번호 순서(5.1→5.2→5.3)와 실제 렌더링
+> 순서(5.2→5.3→5.1)가 다르다.
 
-`GET /admin/usage`가 두 종류의 사용량을 한 화면에 보여준다:
+### 5.2 도움봇 오퍼레이터 (`BotStatusSection`)
 
-- **Google Sheets(분당 60회 읽기/쓰기)**: Worker 메모리에만 존재하는 근사 카운터
-  (`_usageCounters`, `_bumpUsageCounter`) — Cloudflare Workers가 요청을 여러
-  isolate로 분산 처리하기 때문에 **정확한 전체 사용량이 아니라 "이 요청을 처리한
-  isolate가 최근에 직접 본 호출"만 집계한 하한값**이다(콜드스타트마다 리셋). 로컬
-  도움봇도 같은 서비스 계정으로 Sheets API를 호출하므로, 봇이 `POST
-  /admin/bot-sheets-usage`(`X-Bot-Secret` 인증)로 자신의 호출 수를 5초 간격
-  보고하면 이 카운터에 합산된다 — Worker 자신의 호출만 셌다면 실제 사용량을
-  과소평가하게 되기 때문.
-- **Cloudflare(오늘 하루 한도)**: `CF_API_TOKEN`/`CF_ACCOUNT_ID`가 설정돼 있을
-  때만 GraphQL Analytics API로 실측치(Workers 요청·KV 읽기/쓰기·KV 저장 용량)를
-  가져온다. **UTC 자정~자정 단위인 Cloudflare의 date 필터를 KST 자정 기준으로
-  재집계**한다(`datetimeHourToKSTDateString`, 이번 세션 이전에 "클라우드플레어
-  시간도 한국 시간대로" 요청에 따라 구현된 부분) — 그러지 않으면 KST 기준
-  "오늘"이 오전 0~9시엔 실제로는 UTC 기준 "어제" 데이터에 걸쳐 있어 하루 사용량이
-  자정에 정확히 리셋되지 않는다. 토큰 미설정 시 이 부분만 안내 문구로 대체.
-
-### 5.2 도움봇 상태 (`BotStatusSection`)
+> 🔧 2026-09: 화면 제목이 "도움봇 상태"에서 "도움봇 오퍼레이터"로
+> 바뀌었다(컴포넌트/엔드포인트는 그대로).
 
 `GET /admin/bot/status` → `handleAdminBotStatus` → `proxyToBotDashboard(env,
 "/status")`. 로컬 도움봇(`study_manager_260418.py`, `docs/HELPERBOT.md`)이
@@ -427,7 +492,19 @@ Cloudflare Tunnel로 노출한 로컬 상태 서버를 그때그때 프록시한
 꺼져 있으면(`proxyToBotDashboard`가 null) 프론트는 "오프라인"으로만 표시하고
 502가 아니라 200으로 조용히 응답한다.
 
-### 5.3 번호 정렬 (`MemberReorderSection`)
+### 5.3 스프레드시트 오퍼레이터 (`SpreadsheetOperatorSection`) — "번호 정렬"을 하위 항목으로 편입
+
+> 🔧 2026-09 신설: 시트 자체를 직접 조작하는 관리 기능들을 모으는 상위
+> 카드. `SectionHeader`가 `CollapsibleTrigger`를 내부에서 렌더링해 부모
+> `Collapsible` 컨텍스트가 필수이므로, 이 카드는 접이식이 아니라 고정
+> 헤더(아이콘+제목)로만 구성되고 — `Collapsible`을 중첩하면 `<Collapsible
+> Trigger>` 컴포넌트가 부모 컨텍스트를 못 찾아 런타임 에러가 난다 — 실제
+> 접힘/펼침은 안에 있는 하위 섹션(`MemberReorderSection`, 자체
+> `Collapsible`을 그대로 유지)에서만 일어난다. 지금은 "번호 정렬" 하나만
+> 하위 항목이지만, 향후 시트 관련 기능이 추가되면 같은 카드 안에 나란히
+> 넣는 걸 염두에 둔 구조다.
+
+#### 번호 정렬 (`MemberReorderSection`)
 
 퇴실 등으로 비워진 시트번호를 앞으로 당겨 채우는 일괄 이동 기능. "데이터" 시트의
 점유 슬롯을 번호 오름차순으로 나열해 1번부터 빈틈없이 재배정하는 계획을 계산한다
@@ -447,6 +524,29 @@ Cloudflare Tunnel로 노출한 로컬 상태 서버를 그때그때 프록시한
   번호에 template을 새로 복사(`docs/WEB_DASHBOARD.md`의 `performExitReset`과
   같은 "삭제+template 복사" 패턴). "데이터" 시트의 D~V(이메일~제보상점 슬롯)도
   함께 이동시킨다.
+
+### 5.1 사용량 모니터링 (`UsageMonitorSection`)
+
+> 🔧 2026-09: 화면 표시 순서만 맨 뒤(§5.2/§5.3 다음)로 바뀌었다 — 절 번호는
+> 이전 문서와의 연속성을 위해 그대로 §5.1이다.
+
+`GET /admin/usage`가 두 종류의 사용량을 한 화면에 보여준다:
+
+- **Google Sheets(분당 60회 읽기/쓰기)**: Worker 메모리에만 존재하는 근사 카운터
+  (`_usageCounters`, `_bumpUsageCounter`) — Cloudflare Workers가 요청을 여러
+  isolate로 분산 처리하기 때문에 **정확한 전체 사용량이 아니라 "이 요청을 처리한
+  isolate가 최근에 직접 본 호출"만 집계한 하한값**이다(콜드스타트마다 리셋). 로컬
+  도움봇도 같은 서비스 계정으로 Sheets API를 호출하므로, 봇이 `POST
+  /admin/bot-sheets-usage`(`X-Bot-Secret` 인증)로 자신의 호출 수를 5초 간격
+  보고하면 이 카운터에 합산된다 — Worker 자신의 호출만 셌다면 실제 사용량을
+  과소평가하게 되기 때문.
+- **Cloudflare(오늘 하루 한도)**: `CF_API_TOKEN`/`CF_ACCOUNT_ID`가 설정돼 있을
+  때만 GraphQL Analytics API로 실측치(Workers 요청·KV 읽기/쓰기·KV 저장 용량)를
+  가져온다. **UTC 자정~자정 단위인 Cloudflare의 date 필터를 KST 자정 기준으로
+  재집계**한다(`datetimeHourToKSTDateString`, 이번 세션 이전에 "클라우드플레어
+  시간도 한국 시간대로" 요청에 따라 구현된 부분) — 그러지 않으면 KST 기준
+  "오늘"이 오전 0~9시엔 실제로는 UTC 기준 "어제" 데이터에 걸쳐 있어 하루 사용량이
+  자정에 정확히 리셋되지 않는다. 토큰 미설정 시 이 부분만 안내 문구로 대체.
 
 ---
 
@@ -490,12 +590,12 @@ Cloudflare Tunnel로 노출한 로컬 상태 서버를 그때그때 프록시한
   끼워지는 가짜 데이터다.** 실제 주간 P 이력이 쌓이기 시작하면 조용히 사라져야
   정상이며, 코드에 남아있는 이 상수와 fallback 로직은 제거 대상으로 명시되어
   있다.
-- **Money 탭 "벌금 납부 대상자 처리" 목록의 "직권 P" 버튼과
-  `MemberRosterList`의 "퇴실 처리 (직권 P)" 버튼은 같은
-  `ExitProcessDialog(lockKind="admin_forced")`를 각자 다른 회원 데이터로
-  호출하는 서로 다른 진입점이다**(§4, §3.5) — 둘 다 실제로 확정하면 그
-  회원을 admin_forced로 즉시 퇴실 처리한다. 요일 헤더의 "직권 P : 0건"
-  카운트만 아직 자리표시자로 남아있다(§4).
+- **PEN · Money 탭 "벌금 납부 대상자 처리" 목록의 "직권 P" 버튼(§4.1)과
+  Account 탭 `MemberRosterList`의 "퇴실 처리 (직권 P)" 버튼(§3.5)은 서로
+  다른 탭에서 같은 `ExitProcessDialog(lockKind="admin_forced")`를 각자
+  다른 회원 데이터로 호출하는 서로 다른 진입점이다** — 둘 다 실제로
+  확정하면 그 회원을 admin_forced로 즉시 퇴실 처리한다. 요일 헤더의
+  "직권 P : 0건" 카운트만 아직 자리표시자로 남아있다(§4.1).
 - **`ExitProcessDialog`의 "유형 선택 드롭다운" 분기는 현재 코드베이스에서 실제로
   렌더링될 수 없다**(§3.6). 세 호출부 모두 항상 `lockKind`를 넘기기 때문 — 다만
   `lockKind`가 있어도 "미리보기 계산 버튼 → `<pre>` 결과 → 확정"이라는 그 분기의
