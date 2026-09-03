@@ -11,6 +11,13 @@ function won(n: number) {
   return `₩${(n || 0).toLocaleString()}`;
 }
 
+// m.name/m.number는 백엔드가 "{이름} (퇴실)" 형태(백업 탭 이름 그대로)로
+// 내려준다 — 이미 이 화면 자체가 "퇴실 스터디원"만 모아 보여주므로 목록
+// 안에서 "(퇴실)"을 매번 반복해 붙일 필요가 없어, 표시용으로만 이름만 뽑는다.
+function displayName(name: string): string {
+  return name.replace(/ \(퇴실\)$/, "");
+}
+
 // 🧪 [임시 더미 미리보기] 실제 서비스 화면에서 렌더링을 확인하기 위한
 // 임시 조치 — 확인 끝나면 반드시 원래 /admin/members/exited 호출로
 // 되돌릴 것. 강제/직권/정산(100%/50%) 4가지 유형과, 이 기능 도입 이전에
@@ -174,7 +181,7 @@ export function ExitedMemberList() {
                   >
                     <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
                       <User className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
-                      {m.name}
+                      {displayName(m.name)}
                     </span>
                     <ChevronDown
                       className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", isExpanded && "rotate-180")}
@@ -192,7 +199,7 @@ export function ExitedMemberList() {
 
                       {result && (
                         <>
-                          <InfoCard className="flex items-center justify-between gap-2">
+                          <InfoCard className="flex items-center justify-between gap-2 bg-card">
                             <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
                               <PiggyBank className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
                               반환 예치금
@@ -208,7 +215,7 @@ export function ExitedMemberList() {
                             </span>
                           </InfoCard>
 
-                          <InfoCard className="flex flex-col gap-1.5">
+                          <InfoCard className="flex flex-col gap-1.5 bg-card">
                             <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
                               <TrendingDown className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
                               차감 원인
@@ -223,7 +230,7 @@ export function ExitedMemberList() {
                             ))}
                           </InfoCard>
 
-                          <InfoCard className="flex flex-col gap-1.5">
+                          <InfoCard className="flex flex-col gap-1.5 bg-card">
                             <span className="flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
                               <Eye className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
                               처리 결과
@@ -234,7 +241,7 @@ export function ExitedMemberList() {
                             <SubRow label="처리일자" value={result.processedDate} />
                           </InfoCard>
 
-                          <InfoCard className="flex flex-col gap-1.5">
+                          <InfoCard className="flex flex-col gap-1.5 bg-card">
                             <span className="flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
                               <ClipboardList className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
                               퇴실유형
