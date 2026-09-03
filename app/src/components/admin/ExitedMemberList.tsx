@@ -3,9 +3,10 @@ import { UserX, User, ChevronDown, PiggyBank, TrendingDown, Eye, ClipboardList }
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { InfoCard, SubRow, buildDepositCauseItems } from "@/components/dashboard/shared";
+import type { DepositCauseItem } from "@/components/dashboard/shared";
 import { SectionHeader } from "@/components/admin/shared";
 import { ICON_STROKE, cn } from "@/lib/utils";
-import type { ExitedMemberEntry } from "@/lib/api/types";
+import type { ExitedMemberEntry, ExitKind } from "@/lib/api/types";
 
 function won(n: number) {
   return `₩${(n || 0).toLocaleString()}`;
@@ -44,6 +45,24 @@ function shortReasonLabel(reason: { code: string; label: string }): string {
 function exitTypeLabel(kindStr: string, reasons: { code: string; label: string }[]): string {
   if (reasons.length === 0) return kindStr;
   return `${kindStr} (${reasons.map(shortReasonLabel).join(", ")})`;
+}
+
+// 🔧 2026-09: "차감 원인" 카드(buildDepositCauseItems)는 회원 대시보드/
+// ExitProcessDialog와 공유하는 함수라, 그 회원의 실제 시트 상태(벌금·
+// 예치금 미납, 가입일수, 송출P/주간P 페널티)만 보여준다 — kind=admin_forced
+// (직권 P)로 처리됐다는 사실 자체는 여기에 전혀 반영되지 않는다(계산에도
+// 관여하지 않음, ExitProcessDialog의 admin_forced 미리보기와 동일하게
+// discountRatio가 사유와 무관하게 항상 1로 고정이기 때문). 관리자가 "이
+// 회원은 직권 P로 처리됐다"는 사실을 차감 원인 목록에서도 명시적으로
+// 확인할 수 있도록, "퇴실 스터디원 목록"에서만(사용자 지시 — 다른 화면은
+// 그대로 둠) "페널티 (직권 P 1회)" 항목을 "퇴실 통보 지연" 바로 위에
+// 끼워 넣는다. rate는 직권 P가 항상 반환율 0%(전액 차감)이므로 100 고정.
+function insertAdminForcedCauseItem(items: DepositCauseItem[], kind: ExitKind): DepositCauseItem[] {
+  if (kind !== "admin_forced") return items;
+  const lateNoticeIndex = items.findIndex((item) => item.key === "lateNotice");
+  const adminForcedItem: DepositCauseItem = { key: "adminForced", label: "페널티 (직권 P 1회)", rate: 100 };
+  if (lateNoticeIndex === -1) return [...items, adminForcedItem];
+  return [...items.slice(0, lateNoticeIndex), adminForcedItem, ...items.slice(lateNoticeIndex)];
 }
 
 // 🧪 [임시 더미 미리보기] 실제 서비스 화면에서 렌더링을 확인하기 위한
@@ -300,7 +319,10 @@ export function ExitedMemberList() {
                               <TrendingDown className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
                               차감 원인
                             </span>
-                            {buildDepositCauseItems(result.breakdown, result.breakdown.lateNotice ? 50 : 0).map((item) => (
+                            {insertAdminForcedCauseItem(
+                              buildDepositCauseItems(result.breakdown, result.breakdown.lateNotice ? 50 : 0),
+                              result.kind
+                            ).map((item) => (
                               <SubRow
                                 key={item.key}
                                 label={item.label}
