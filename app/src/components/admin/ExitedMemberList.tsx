@@ -4,13 +4,118 @@ import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { InfoCard, SubRow, buildDepositCauseItems } from "@/components/dashboard/shared";
 import { SectionHeader } from "@/components/admin/shared";
-import { useApi } from "@/hooks/useApi";
 import { ICON_STROKE, cn } from "@/lib/utils";
-import type { AdminExitedMembersResponse, ExitedMemberEntry } from "@/lib/api/types";
+import type { ExitedMemberEntry } from "@/lib/api/types";
 
 function won(n: number) {
   return `₩${(n || 0).toLocaleString()}`;
 }
+
+// 🧪 [임시 더미 미리보기] 실제 서비스 화면에서 렌더링을 확인하기 위한
+// 임시 조치 — 확인 끝나면 반드시 원래 /admin/members/exited 호출로
+// 되돌릴 것. 강제/직권/정산(100%/50%) 4가지 유형과, 이 기능 도입 이전에
+// 처리되어 result가 없는 케이스까지 함께 보여준다.
+const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
+  {
+    number: "exited:김재희 (퇴실)",
+    name: "김재희 (퇴실)",
+    result: {
+      kind: "forced",
+      kindStr: "강제 퇴실자",
+      refundAmount: 0,
+      heldAmount: 10000,
+      fineAlreadyPayment: 3000,
+      breakdown: {
+        amount: 0,
+        reason: "페널티 2회 이상",
+        outputPen: 1,
+        timePen: 1,
+        daysSinceJoin: 82,
+        fineUnpaid: false,
+        depositAgainStatus: null,
+        lateNotice: false,
+      },
+      reasons: [{ code: "penalty_2_or_more", label: "페널티 누적 2회 이상 (송출 P 1회 / 주간 P 1회) ➡️ 0% 반환" }],
+      processedDate: "2026-08-24",
+    },
+  },
+  {
+    number: "exited:이서준 (퇴실)",
+    name: "이서준 (퇴실)",
+    result: {
+      kind: "admin_forced",
+      kindStr: "직권 퇴실자",
+      refundAmount: 0,
+      heldAmount: 10000,
+      fineAlreadyPayment: 0,
+      breakdown: {
+        amount: 0,
+        reason: null,
+        outputPen: 0,
+        timePen: 0,
+        daysSinceJoin: 45,
+        fineUnpaid: false,
+        depositAgainStatus: null,
+        lateNotice: false,
+      },
+      reasons: [{ code: "admin_reason", label: "직권 사유: 비매너 행위로 인한 즉시 퇴실" }],
+      processedDate: "2026-08-19",
+    },
+  },
+  {
+    number: "exited:박도윤 (퇴실)",
+    name: "박도윤 (퇴실)",
+    result: {
+      kind: "settle",
+      kindStr: "정산 퇴실자",
+      refundAmount: 10000,
+      heldAmount: 0,
+      fineAlreadyPayment: 0,
+      breakdown: {
+        amount: 10000,
+        reason: null,
+        outputPen: 0,
+        timePen: 0,
+        daysSinceJoin: 120,
+        fineUnpaid: false,
+        depositAgainStatus: null,
+        lateNotice: false,
+      },
+      reasons: ["송출 P (0회) / 주간 P (0회) ➡️ 100% 반환"].map((label, i) => ({ code: `settle_${i}`, label })),
+      processedDate: "2026-08-10",
+    },
+  },
+  {
+    number: "exited:최하은 (퇴실)",
+    name: "최하은 (퇴실)",
+    result: {
+      kind: "settle",
+      kindStr: "정산 퇴실자",
+      refundAmount: 5000,
+      heldAmount: 5000,
+      fineAlreadyPayment: 1500,
+      breakdown: {
+        amount: 5000,
+        reason: null,
+        outputPen: 1,
+        timePen: 0,
+        daysSinceJoin: 95,
+        fineUnpaid: false,
+        depositAgainStatus: null,
+        lateNotice: true,
+      },
+      reasons: ["송출 P (1회) / 주간 P (0회) ➡️ 50% 반환"].map((label, i) => ({ code: `settle_${i}`, label })),
+      processedDate: "2026-08-03",
+    },
+  },
+  {
+    // 이 기능(2026-09) 도입 이전에 처리된 퇴실자 — 저장된 결과가 없어
+    // "조회 불가" 안내만 뜨는 케이스도 함께 확인한다.
+    number: "exited:정유나 (퇴실)",
+    name: "정유나 (퇴실)",
+    result: null,
+  },
+];
 
 // "참여 스터디원 목록"과 짝을 이루는 화면 — 원본 스프레드시트에 남은
 // "{이름} (퇴실)" 백업 탭 목록을 보여주고, 각 항목을 펼치면 확정 처리
@@ -20,8 +125,6 @@ function won(n: number) {
 // 전용 화면이라 별도 API 호출(미리보기/확정) 없이 목록 응답에 함께
 // 실려온다.
 export function ExitedMemberList() {
-  const { call } = useApi();
-
   const [members, setMembers] = useState<ExitedMemberEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -30,10 +133,10 @@ export function ExitedMemberList() {
   function load() {
     setLoading(true);
     setError(null);
-    call<AdminExitedMembersResponse>("/admin/members/exited")
-      .then((data) => setMembers(data.members || []))
-      .catch((err) => setError(err instanceof Error ? err.message : "퇴실 스터디원 목록을 불러오지 못했습니다."))
-      .finally(() => setLoading(false));
+    setTimeout(() => {
+      setMembers(DUMMY_EXITED_MEMBERS);
+      setLoading(false);
+    }, 300);
   }
 
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
