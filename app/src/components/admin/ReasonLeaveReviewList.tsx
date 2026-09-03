@@ -101,7 +101,7 @@ export function ReasonLeaveReviewList({ visible }: { visible: boolean }) {
 
   return (
     <Collapsible defaultOpen className="flex flex-col gap-4">
-      <SectionHeader icon={BedDouble} title="사유 반휴 신청" loading={loading} onRefresh={load} />
+      <SectionHeader icon={BedDouble} title="사유 반휴 신청 대상 처리" loading={loading} onRefresh={load} />
       <div className="h-px w-full bg-border" />
       <CollapsiblePanel className="flex flex-col gap-4">
         {error && (

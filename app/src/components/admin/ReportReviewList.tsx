@@ -372,7 +372,7 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
 
   return (
     <Collapsible defaultOpen className="flex flex-col gap-4">
-      <SectionHeader icon={Flag} title="송출 P 제보 확인" loading={loading} onRefresh={load} />
+      <SectionHeader icon={Flag} title="송출 P 대상 처리" loading={loading} onRefresh={load} />
       <div className="h-px w-full bg-border" />
       <CollapsiblePanel className="flex flex-col gap-4">
         {error && (

@@ -6,12 +6,12 @@ import { AdminMemberPenaltyTab } from "@/components/admin/AdminMemberPenaltyTab"
 import { AdminMoneyTab } from "@/components/admin/AdminMoneyTab";
 import { AdminBotSheetTab } from "@/components/admin/AdminBotSheetTab";
 
-type AdminView = "member" | "money" | "botsheet";
+type AdminView = "account" | "money" | "botsheet";
 
-// "penalty"였던 값도(기존 북마크/링크 호환) member(통합 뷰)로 흡수한다.
+// "member"/"penalty"였던 값도(기존 북마크/링크 호환) account(통합 뷰)로 흡수한다.
 function normalizeView(raw: string | null): AdminView {
   if (raw === "money" || raw === "botsheet") return raw;
-  return "member";
+  return "account";
 }
 
 export function AdminPage({ visible = true }: { visible?: boolean }) {
@@ -20,7 +20,7 @@ export function AdminPage({ visible = true }: { visible?: boolean }) {
   // 않고 hidden으로만 유지된다(App.tsx) — 그런데 view를 매 렌더 URL 쿼리에서
   // 다시 계산하면, 하단 탭바로 다른 페이지에 갔다가 "관리자"를 다시 눌러
   // 쿼리 없는 "/admin" 경로로 돌아올 때마다 마지막에 보던 탭(Money 등)이
-  // 조용히 기본값(member)으로 리셋됐다. 최초 마운트 시 한 번만 URL에서
+  // 조용히 기본값(account)으로 리셋됐다. 최초 마운트 시 한 번만 URL에서
   // 초기값을 읽고, 그 뒤로는 로컬 state로만 관리한다(북마크/공유를 위해
   // URL에는 계속 반영하되, 되읽지는 않는다).
   const [view, setView] = useState<AdminView>(() => normalizeView(params.get("tab")));
@@ -28,24 +28,24 @@ export function AdminPage({ visible = true }: { visible?: boolean }) {
   // 한 번이라도 열린 탭은 계속 마운트 상태로 남겨(hidden으로만 감춤) 탭을
   // 오갈 때마다 다시 로드되지 않게 한다. 리렌더를 유발할 필요가 없는
   // "지금까지 열린 적 있는지" 플래그라 ref로 충분하다.
-  const everOpened = useRef({ member: false, money: false, botsheet: false });
+  const everOpened = useRef({ account: false, money: false, botsheet: false });
   everOpened.current[view] = true;
 
   function changeView(v: string) {
     const next = normalizeView(v);
     setView(next);
-    setParams(next === "member" ? {} : { tab: next }, { replace: true });
+    setParams(next === "account" ? {} : { tab: next }, { replace: true });
   }
 
   return (
     <div className="flex w-full page-content flex-col items-center gap-4">
       <Tabs value={view} onValueChange={changeView} className="w-full">
         <TabsList className="w-full">
-          <TabsTrigger value="member" className="flex-1 font-mono text-xs tracking-wide uppercase">
-            MEM · PEN
+          <TabsTrigger value="account" className="flex-1 font-mono text-xs tracking-wide uppercase">
+            Account
           </TabsTrigger>
           <TabsTrigger value="money" className="flex-1 font-mono text-xs tracking-wide uppercase">
-            Money
+            PEN · Money
           </TabsTrigger>
           <TabsTrigger value="botsheet" className="flex-1 font-mono text-xs tracking-wide uppercase">
             Bot · Sheet
@@ -62,8 +62,8 @@ export function AdminPage({ visible = true }: { visible?: boolean }) {
               몇 번만으로 429 RESOURCE_EXHAUSTED 재현됨). 아직 한 번도
               열지 않은 탭은 그대로 마운트를 미뤄 불필요한 초기 로드를
               피한다. */}
-          <div hidden={view !== "member"}>
-            {everOpened.current.member && <AdminMemberPenaltyTab visible={visible && view === "member"} />}
+          <div hidden={view !== "account"}>
+            {everOpened.current.account && <AdminMemberPenaltyTab visible={visible && view === "account"} />}
           </div>
           <div hidden={view !== "money"}>
             {everOpened.current.money && <AdminMoneyTab visible={visible && view === "money"} />}

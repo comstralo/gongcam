@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowRightLeft, Bot, Gauge, RotateCw } from "lucide-react";
+import { ArrowRightLeft, Bot, Database, Gauge, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
@@ -251,7 +251,7 @@ function BotStatusSection({ visible }: { visible: boolean }) {
   return (
     <SectionCard>
       <Collapsible defaultOpen className="flex flex-col gap-4">
-        <SectionHeader icon={Bot} title="도움봇 상태" loading={loading} onRefresh={load} />
+        <SectionHeader icon={Bot} title="도움봇 오퍼레이터" loading={loading} onRefresh={load} />
         <div className="h-px w-full bg-border" />
         <CollapsiblePanel className="flex flex-col gap-4">
           {error && (
@@ -329,6 +329,9 @@ function BotStatusSection({ visible }: { visible: boolean }) {
 // 번호는 시트 탭 이름 자체이자 권한관리/제보상점의 고정 행 번호라, 잘못
 // 실행하면 실제 출석/타이머 이력이 섞일 수 있다 — 그래서 미리보기로 이동
 // 계획을 먼저 보여주고 관리자가 확인해야만 실행하도록 두 단계로 나눴다.
+// "스프레드시트 오퍼레이터"(시트 자체를 조작하는 기능들을 모으는 상위
+// 섹션)의 첫 하위 항목 — 지금은 이것 하나뿐이지만, 향후 시트 관련 기능이
+// 늘어나면 같은 상위 카드 안에 나란히 추가한다.
 function MemberReorderSection() {
   const { call } = useApi();
 
@@ -361,53 +364,73 @@ function MemberReorderSection() {
   }
 
   return (
+    <Collapsible defaultOpen className="flex flex-col gap-4">
+      <SectionHeader icon={ArrowRightLeft} title="번호 정렬" />
+      <div className="h-px w-full bg-border" />
+      <CollapsiblePanel className="flex flex-col gap-4">
+        <p className="text-xs text-muted-foreground sm:text-sm">
+          퇴실 등으로 비워진 번호를 앞으로 당겨 채웁니다. 진행 중인 교시가 없을 때 실행하는 것을 권장합니다.
+        </p>
+
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        {result && (
+          <Alert>
+            <AlertDescription>{result}</AlertDescription>
+          </Alert>
+        )}
+
+        <Button variant="outline" disabled={loading} onClick={loadPreview} className="w-full sm:h-11">
+          {loading ? <RotateCw className="size-4 animate-spin" strokeWidth={ICON_STROKE.default} /> : "이동 계획 미리보기"}
+        </Button>
+
+        {plan && plan.length === 0 && (
+          <p className="py-4 text-center text-sm text-muted-foreground sm:text-base">이미 정렬되어 있습니다.</p>
+        )}
+
+        {plan && plan.length > 0 && (
+          <>
+            <div className="flex flex-col gap-2">
+              {plan.map((item) => (
+                <InfoCard key={item.from} className="flex items-center justify-between gap-2">
+                  <ItemTitle>{item.name}</ItemTitle>
+                  <FieldValue>
+                    {item.from}번 → {item.to}번
+                  </FieldValue>
+                </InfoCard>
+              ))}
+            </div>
+            <Button variant="destructive" disabled={executing} onClick={execute} className="w-full sm:h-11">
+              {executing ? <RotateCw className="size-4 animate-spin" strokeWidth={ICON_STROKE.default} /> : "실행"}
+            </Button>
+          </>
+        )}
+      </CollapsiblePanel>
+    </Collapsible>
+  );
+}
+
+// "스프레드시트 오퍼레이터" — 공유 스프레드시트 자체를 직접 조작하는 관리
+// 기능들을 모으는 상위 섹션. 지금은 "번호 정렬" 하나만 하위 항목으로
+// 담지만, 향후 시트 관련 기능이 늘어나면 같은 카드 안에 나란히 추가한다.
+// SectionHeader는 내부적으로 CollapsibleTrigger를 렌더링해 부모 Collapsible
+// 컨텍스트가 필수라 여기서는 재사용하지 않는다 — 이 상위 카드는 접히지
+// 않고(하위 "번호 정렬"만 자체적으로 접힘), 제목만 같은 시각 스타일로
+// 직접 그린다.
+function SpreadsheetOperatorSection() {
+  return (
     <SectionCard>
-      <Collapsible defaultOpen className="flex flex-col gap-4">
-        <SectionHeader icon={ArrowRightLeft} title="번호 정렬" />
+      <div className="flex flex-col gap-4">
+        <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
+          <Database className="size-4 shrink-0 text-primary sm:size-5" strokeWidth={ICON_STROKE.default} />
+          스프레드시트 오퍼레이터
+        </span>
         <div className="h-px w-full bg-border" />
-        <CollapsiblePanel className="flex flex-col gap-4">
-          <p className="text-xs text-muted-foreground sm:text-sm">
-            퇴실 등으로 비워진 번호를 앞으로 당겨 채웁니다. 진행 중인 교시가 없을 때 실행하는 것을 권장합니다.
-          </p>
-
-          {error && (
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-          {result && (
-            <Alert>
-              <AlertDescription>{result}</AlertDescription>
-            </Alert>
-          )}
-
-          <Button variant="outline" disabled={loading} onClick={loadPreview} className="w-full sm:h-11">
-            {loading ? <RotateCw className="size-4 animate-spin" strokeWidth={ICON_STROKE.default} /> : "이동 계획 미리보기"}
-          </Button>
-
-          {plan && plan.length === 0 && (
-            <p className="py-4 text-center text-sm text-muted-foreground sm:text-base">이미 정렬되어 있습니다.</p>
-          )}
-
-          {plan && plan.length > 0 && (
-            <>
-              <div className="flex flex-col gap-2">
-                {plan.map((item) => (
-                  <InfoCard key={item.from} className="flex items-center justify-between gap-2">
-                    <ItemTitle>{item.name}</ItemTitle>
-                    <FieldValue>
-                      {item.from}번 → {item.to}번
-                    </FieldValue>
-                  </InfoCard>
-                ))}
-              </div>
-              <Button variant="destructive" disabled={executing} onClick={execute} className="w-full sm:h-11">
-                {executing ? <RotateCw className="size-4 animate-spin" strokeWidth={ICON_STROKE.default} /> : "실행"}
-              </Button>
-            </>
-          )}
-        </CollapsiblePanel>
-      </Collapsible>
+        <MemberReorderSection />
+      </div>
     </SectionCard>
   );
 }
@@ -415,9 +438,9 @@ function MemberReorderSection() {
 export function AdminBotSheetTab({ visible }: { visible: boolean }) {
   return (
     <div className="flex flex-col gap-4">
-      <UsageMonitorSection visible={visible} />
       <BotStatusSection visible={visible} />
-      <MemberReorderSection />
+      <SpreadsheetOperatorSection />
+      <UsageMonitorSection visible={visible} />
     </div>
   );
 }

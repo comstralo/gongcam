@@ -102,7 +102,7 @@ export function PenaltyCandidateList({ visible }: { visible: boolean }) {
     setError(null);
     call<AdminExitCandidatesResponse>("/admin/exit/candidates")
       .then((data) => setCandidates(data.candidates || []))
-      .catch((err) => setError(err instanceof Error ? err.message : "예치금 재납 대상자 목록을 불러오지 못했습니다."))
+      .catch((err) => setError(err instanceof Error ? err.message : "예치금 재납 대상 처리 목록을 불러오지 못했습니다."))
       .finally(() => setLoading(false));
   }
 
@@ -113,7 +113,7 @@ export function PenaltyCandidateList({ visible }: { visible: boolean }) {
 
   return (
     <Collapsible defaultOpen className="flex flex-col gap-4">
-      <SectionHeader icon={ShieldAlert} title="예치금 재납 대상자" loading={loading} onRefresh={load} />
+      <SectionHeader icon={ShieldAlert} title="예치금 재납 대상 처리" loading={loading} onRefresh={load} />
       <div className="h-px w-full bg-border" />
       <CollapsiblePanel className="flex flex-col gap-4">
         {error && (

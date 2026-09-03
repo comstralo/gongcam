@@ -6,6 +6,9 @@ import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, DayDetailCard, TintedPill, ItemTitle, DividedValue } from "@/components/dashboard/shared";
 import { SectionHeader, FieldLabel, SectionCard } from "@/components/admin/shared";
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
+import { ReportReviewList } from "@/components/admin/ReportReviewList";
+import { PenaltyCandidateList } from "@/components/admin/PenaltyCandidateList";
+import { ReasonLeaveReviewList } from "@/components/admin/ReasonLeaveReviewList";
 import { RankBadge, achievedTime } from "@/components/dashboard/RosterView";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
@@ -168,7 +171,7 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
 
   return (
     <Collapsible defaultOpen className="flex flex-col gap-4">
-      <SectionHeader icon={CircleDollarSign} title="벌금 납부 대상자 처리" loading={loading} onRefresh={load} />
+      <SectionHeader icon={CircleDollarSign} title="벌금 납부 대상 처리" loading={loading} onRefresh={load} />
       <div className="h-px w-full bg-border" />
       <CollapsiblePanel className="flex flex-col gap-4">
       {error && (
@@ -417,7 +420,7 @@ function PrizeRecipientList({ isVisible }: { isVisible: boolean }) {
 
   return (
     <Collapsible defaultOpen className="flex flex-col gap-4">
-      <SectionHeader icon={Trophy} title="상금 수령 대상자 처리" loading={loading} onRefresh={load} />
+      <SectionHeader icon={Trophy} title="상금 수령 대상 처리" loading={loading} onRefresh={load} />
       <div className="h-px w-full bg-border" />
       <CollapsiblePanel className="flex flex-col gap-4">
         {error && (
@@ -494,12 +497,28 @@ function PrizeRecipientList({ isVisible }: { isVisible: boolean }) {
   );
 }
 
+// PEN · MONEY 탭 — 페널티/벌금/상금 처리 전용: 송출P대상처리 → 사유반휴신청대상처리
+// → 벌금납부대상처리 → 예치금재납대상처리 → 상금수령대상처리.
+// (제보확인/예치금재납대상자/사유반휴신청은 기존 ACCOUNT 탭(구 MEM·PEN)에서 이동)
 export function AdminMoneyTab({ visible }: { visible: boolean }) {
   return (
     <div className="flex flex-col gap-4">
       <SectionCard>
+        <ReportReviewList visible={visible} />
+      </SectionCard>
+
+      <SectionCard>
+        <ReasonLeaveReviewList visible={visible} />
+      </SectionCard>
+
+      <SectionCard>
         <PaidFineList isVisible={visible} />
       </SectionCard>
+
+      <SectionCard>
+        <PenaltyCandidateList visible={visible} />
+      </SectionCard>
+
       <SectionCard>
         <PrizeRecipientList isVisible={visible} />
       </SectionCard>
