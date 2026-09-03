@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { UserX, User, ChevronDown, PiggyBank, TrendingDown, Eye, ClipboardList } from "lucide-react";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { InfoCard, SubRow, buildDepositCauseItems } from "@/components/dashboard/shared";
+import { InfoCard, SubRow, TintedPill, buildDepositCauseItems } from "@/components/dashboard/shared";
 import type { DepositCauseItem } from "@/components/dashboard/shared";
 import { SectionHeader } from "@/components/admin/shared";
 import { ICON_STROKE, cn } from "@/lib/utils";
@@ -295,10 +295,13 @@ export function ExitedMemberList() {
                       <User className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
                       {displayName(m.name)}
                     </span>
-                    <ChevronDown
-                      className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", isExpanded && "rotate-180")}
-                      strokeWidth={ICON_STROKE.default}
-                    />
+                    <span className="flex items-center gap-1.5">
+                      {result?.blacklist && <TintedPill tone="warn">블랙리스트</TintedPill>}
+                      <ChevronDown
+                        className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", isExpanded && "rotate-180")}
+                        strokeWidth={ICON_STROKE.default}
+                      />
+                    </span>
                   </button>
 
                   {isExpanded && (
