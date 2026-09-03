@@ -48,8 +48,8 @@ function exitTypeLabel(kindStr: string, reasons: { code: string; label: string }
 }
 
 // 🔧 2026-09: "차감 원인" 카드(buildDepositCauseItems)는 회원 대시보드/
-// ExitProcessDialog와 공유하는 함수라, 그 회원의 실제 시트 상태(벌금·
-// 예치금 미납, 가입일수, 송출P/주간P 페널티)만 보여준다 — kind=admin_forced
+// ExitProcessDialog와 공유하는 함수라, 그 회원의 실제 시트 상태(벌금
+// 미납, 가입일수, 송출P/주간P 페널티)만 보여준다 — kind=admin_forced
 // (직권 P)로 처리됐다는 사실 자체는 여기에 전혀 반영되지 않는다(계산에도
 // 관여하지 않음, ExitProcessDialog의 admin_forced 미리보기와 동일하게
 // discountRatio가 사유와 무관하게 항상 1로 고정이기 때문). 관리자가 "이
@@ -57,6 +57,9 @@ function exitTypeLabel(kindStr: string, reasons: { code: string; label: string }
 // 확인할 수 있도록, "퇴실 스터디원 목록"에서만(사용자 지시 — 다른 화면은
 // 그대로 둠) "페널티 (직권 P 1회)" 항목을 "퇴실 통보 지연" 바로 위에
 // 끼워 넣는다. rate는 직권 P가 항상 반환율 0%(전액 차감)이므로 100 고정.
+// (참고: buildDepositCauseItems의 "예치금 미납" 항목은 별도로 제거됨 —
+// R3="미납"은 항상 페널티 2회 이상의 파생 표시일 뿐이라 "페널티" 항목과
+// 중복이었다.)
 function insertAdminForcedCauseItem(items: DepositCauseItem[], kind: ExitKind): DepositCauseItem[] {
   if (kind !== "admin_forced") return items;
   const lateNoticeIndex = items.findIndex((item) => item.key === "lateNotice");
@@ -119,6 +122,10 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
     },
   },
   {
+    // 🔧 R3(예치금 재납)="미납"은 항상 페널티 2회 이상의 파생 결과라(코드
+    // 검토로 확인, daily_calc()가 total_pen>=2일 때만 이 값을 씀), 예치금
+    // 미납만 있고 페널티가 0회인 조합은 실제로 발생할 수 없다 — outputPen/
+    // timePen을 2회로 맞춰 실제 있을 수 있는 조합으로 더미를 구성한다.
     number: "exited:윤아름 (퇴실)",
     name: "윤아름 (퇴실)",
     result: {
@@ -129,15 +136,15 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
       fineAlreadyPayment: 0,
       breakdown: {
         amount: 0,
-        reason: "예치금 시한 내 미납",
-        outputPen: 0,
+        reason: "페널티 2회 이상",
+        outputPen: 2,
         timePen: 0,
         daysSinceJoin: 60,
         fineUnpaid: false,
         depositAgainStatus: "미납",
         lateNotice: false,
       },
-      reasons: [{ code: "deposit_again_unpaid", label: "예치금 시한 내 미납 ➡️ 0% 반환" }],
+      reasons: [{ code: "penalty_2_or_more", label: "페널티 누적 2회 이상 (송출 P 2회 / 주간 P 0회) ➡️ 0% 반환" }],
       processedDate: "2026-08-17",
       blacklist: false,
     },

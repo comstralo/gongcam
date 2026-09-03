@@ -133,12 +133,21 @@ export function formatTotalPenalty(outputPen: number, timePen: number): ReactNod
 export type DepositCauseItem = { key: string; label: string; rate: number };
 
 // "예치금 반환액이 왜 깎였는지" 항목별 사유를 고정된 순서(벌금 미납 →
-// 예치금 미납 → 30일 미만 참여자 → 페널티 → 고지지연)로 만든다.
+// 30일 미만 참여자 → 페널티 → 고지지연)로 만든다.
 // DepositRefundDialog(회원 본인 대시보드)와 ExitProcessDialog(관리자
 // 정산 퇴실 처리) 둘 다 같은 breakdown 구조를 받아 이 항목들을 그대로
 // 보여준다. lateNoticeRate는 호출부가 각자의 방식으로 계산해 넘긴다 —
 // 회원 대시보드는 "아직 신청 전"일 수 있어 선택한 날짜로 미리 계산하고,
 // 관리자 정산 처리는 이미 확정된 신청이라 breakdown.lateNotice를 그대로 쓴다.
+//
+// 🔧 2026-09: "예치금 미납"(depositAgainStatus==="미납") 항목을 제거했다 —
+// 개인 탭 R3가 "미납"으로 바뀌는 유일한 경로는 앱스크립트 daily_calc()가
+// "데이터" 시트 페널티 슬롯 총합(outputPen+timePen)이 2 이상일 때 자동으로
+// 써넣는 것뿐이라(코드 검토로 확인), R3="미납"은 항상 "페널티 2회 이상"의
+// 뒤늦은 파생 표시일 뿐 독립된 원인이 아니다 — 두 항목이 사실상 같은
+// 사건을 중복 표시하고 있었다(사용자 지적). 반환액 계산(depositRefundBreakdown
+// 의 amount)도 R3를 기다리지 않고 페널티 카운트만으로 이미 0원을 산출하므로,
+// 이 항목을 빼도 판정 정확도나 우회 가능성에는 영향이 없다.
 export function buildDepositCauseItems(
   breakdown: DepositRefundBreakdown,
   lateNoticeRate: number
@@ -149,11 +158,6 @@ export function buildDepositCauseItems(
 
   return [
     { key: "fine", label: "벌금 미납", rate: breakdown.fineUnpaid ? 100 : 0 },
-    {
-      key: "depositUnpaid",
-      label: "예치금 미납",
-      rate: breakdown.depositAgainStatus === "미납" ? 100 : 0,
-    },
     {
       key: "days",
       label: `30일 미만 참여자 (D+${daysSinceJoin >= 0 ? daysSinceJoin : "-"})`,
