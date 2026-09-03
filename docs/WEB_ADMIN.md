@@ -386,11 +386,13 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
 > 최대 50% → 벌금 미납/30일 미만 참여자/페널티 각 최대 100%)으로
 > 재배치했다 — 이 순서가 회원 대시보드(`DepositRefundDialog`)/
 > `ExitProcessDialog`/`ExitedMemberList` 전체 공통이다. **"퇴실 스터디원
-> 목록"에서 `kind === "admin_forced"`(직권 P)로 처리된 항목에 붙는
-> "페널티 (직권 P 1회)" 항목**(위 §참고, `insertAdminForcedCauseItem`)도
-> 같은 최대 100% 그룹에 속하므로 배열 맨 끝(마지막 100% 항목 뒤)에
-> 삽입한다 — 순서 재배치 전에는 "퇴실 통보 지연" 앞(당시 맨 위)에 넣고
-> 있었는데, 정렬 기준이 바뀌면서 위치도 함께 옮겼다.
+> 목록"은 "페널티 (직권 P N회)" 항목**(`insertAdminForcedCauseItem`)을
+> 배열 맨 끝(같은 최대 100% 그룹의 "페널티" 항목 바로 뒤)에 항상 추가로
+> 붙인다 — 🔧 2026-09: 처음엔 `kind === "admin_forced"`일 때만 조건부로
+> 붙었으나(그때는 "페널티 (직권 P 1회)" 고정 문구), 블랙리스트 SubRow와
+> 마찬가지로 사용자 지시에 따라 모든 퇴실 유형에 항상 표시하도록 바꿨다
+> — `admin_forced`가 아니면 "0회"(rate 0), `admin_forced`면 "1회"
+> (rate 100, 직권 P는 항상 반환율 0%=전액 차감)로 값만 다르게 채운다.
 
 ### 3.6 퇴실·재납 공유 다이얼로그 (`ExitProcessDialog`)
 
