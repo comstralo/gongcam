@@ -356,16 +356,17 @@ export function ExitedMemberList() {
                               퇴실유형
                             </span>
                             <SubRow label="유형" value={exitTypeLabel(result.kindStr, result.reasons)} />
-                            {/* 🔧 [블랙리스트 등록] 직권 P(admin_forced)에서만
-                                의미 있는 값이라, 그 외 유형에서는 항상 false인
-                                "아니오" 행을 매번 반복해 보여주지 않는다. */}
-                            {result.kind === "admin_forced" && (
-                              <SubRow
-                                label="블랙리스트"
-                                value={result.blacklist ? "예" : "아니오"}
-                                valueClassName={result.blacklist ? "text-destructive" : undefined}
-                              />
-                            )}
+                            {/* 🔧 2026-09: 처음엔 admin_forced(직권 P)에서만
+                                조건부로 보였으나, 사용자 지시로 모든 퇴실
+                                유형에 항상 표시하도록 변경 — forced/settle은
+                                블랙리스트 체크박스 자체가 없어(§ExitProcessDialog)
+                                항상 N으로 저장된 값이 그대로 뜬다. 표기도
+                                "예/아니오"에서 "Y/N"으로 변경. */}
+                            <SubRow
+                              label="블랙리스트"
+                              value={result.blacklist ? "Y" : "N"}
+                              valueClassName={result.blacklist ? "text-destructive" : undefined}
+                            />
                           </InfoCard>
                         </>
                       )}
