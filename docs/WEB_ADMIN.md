@@ -375,7 +375,9 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
 > 표시했으나, 사용자 지시로 항상 표시하도록 바꿨다 — `forced`/`settle`은
 > 체크박스 자체가 없어 항상 `false`로 저장된 값이 "N"으로 그대로 뜬다.
 > 표기도 "예/아니오"에서 "Y/N"으로 바꿨다). "Y"면 `text-destructive`로
-> 강조.
+> 강조. `blacklist === true`면 회원별 아코디언 헤더(이름 옆, ChevronDown
+> 앞)에도 `TintedPill(tone="warn")`로 "블랙리스트" 뱃지가 함께 뜬다 —
+> `MemberRosterList`의 부스터디장/퇴실예약 뱃지와 동일한 배치 패턴.
 
 > 🔧 2026-09: **"차감 원인" 카드 항목 정리·재정렬**(`buildDepositCauseItems`,
 > `docs/WEB_SETTINGS.md` §3.2와 공유) — "예치금 미납"(개인 탭 R3="미납")
