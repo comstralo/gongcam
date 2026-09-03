@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
-import { UserX, User, ChevronDown, PiggyBank, TrendingDown, Eye, ClipboardList } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { UserX, User, ChevronDown, PiggyBank, TrendingDown, Eye, ClipboardList, Search } from "lucide-react";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Input } from "@/components/ui/input";
 import { InfoCard, SubRow, TintedPill, buildDepositCauseItems } from "@/components/dashboard/shared";
 import type { DepositCauseItem } from "@/components/dashboard/shared";
 import { SectionHeader } from "@/components/admin/shared";
@@ -248,6 +249,10 @@ export function ExitedMemberList() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedNumber, setExpandedNumber] = useState<string | null>(null);
+  // 퇴실자가 많아지면 목록을 스크롤로 훑기보다 이름으로 바로 찾는 게
+  // 빠르다 — displayName()으로 "(퇴실)" 접미사를 뗀 이름 기준, 대소문자
+  // 구분 없이 부분 일치로 필터링한다.
+  const [query, setQuery] = useState("");
 
   function load() {
     setLoading(true);
@@ -260,6 +265,13 @@ export function ExitedMemberList() {
 
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const filteredMembers = useMemo(() => {
+    if (!members) return members;
+    const trimmed = query.trim().toLowerCase();
+    if (!trimmed) return members;
+    return members.filter((m) => displayName(m.name).toLowerCase().includes(trimmed));
+  }, [members, query]);
+
   return (
     <Collapsible defaultOpen className="flex flex-col gap-4">
       <SectionHeader icon={UserX} title="퇴실 스터디원 목록" loading={loading} onRefresh={load} />
@@ -271,6 +283,21 @@ export function ExitedMemberList() {
           </Alert>
         )}
 
+        {members && members.length > 0 && (
+          <div className="relative">
+            <Search
+              className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground sm:size-4"
+              strokeWidth={ICON_STROKE.default}
+            />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="이름으로 검색"
+              className="pl-9 sm:h-11 sm:pl-10 sm:text-base"
+            />
+          </div>
+        )}
+
         {loading && !members && (
           <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">불러오는 중...</p>
         )}
@@ -279,9 +306,15 @@ export function ExitedMemberList() {
           <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">퇴실한 스터디원이 없습니다.</p>
         )}
 
-        {members && members.length > 0 && (
+        {!loading && members && members.length > 0 && filteredMembers && filteredMembers.length === 0 && (
+          <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">
+            "{query}"와 일치하는 퇴실 스터디원이 없습니다.
+          </p>
+        )}
+
+        {filteredMembers && filteredMembers.length > 0 && (
           <div className="flex flex-col gap-2 sm:gap-2.5">
-            {members.map((m) => {
+            {filteredMembers.map((m) => {
               const isExpanded = expandedNumber === m.number;
               const result = m.result;
               return (
