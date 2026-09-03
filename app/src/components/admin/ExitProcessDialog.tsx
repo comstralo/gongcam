@@ -277,7 +277,7 @@ export function ExitProcessDialog({
                   <span
                     className={cn(
                       "text-xs sm:text-sm",
-                      preview.refundAmount === 10000 && "text-ok",
+                      preview.refundAmount >= 5000 && "text-ok",
                       preview.refundAmount === 0 && "text-destructive"
                     )}
                   >
@@ -362,7 +362,7 @@ export function ExitProcessDialog({
                   <span
                     className={cn(
                       "text-xs sm:text-sm",
-                      preview.refundAmount === 10000 && "text-ok",
+                      preview.refundAmount >= 5000 && "text-ok",
                       preview.refundAmount === 0 && "text-destructive"
                     )}
                   >

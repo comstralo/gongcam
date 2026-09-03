@@ -199,22 +199,26 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
         depositAgainStatus: null,
         lateNotice: false,
       },
-      reasons: ["송출 P (0회) / 주간 P (0회) ➡️ 100% 반환"].map((label, i) => ({ code: `settle_${i}`, label })),
+      reasons: [{ code: "settle_return_rate", label: "100% 반환" }],
       processedDate: "2026-08-10",
       blacklist: false,
     },
   },
   {
+    // 🔧 페널티 1회 + 고지지연이 동시에 있으면 100% 차감(반환 0원)이어야
+    // 한다(calcSettleReturnDeposit 수정으로 depositRefundBreakdown과 일치
+    // 시킴, 2026-09) — 이전 더미는 이 조합에서도 50%/₩5,000으로 남아있던
+    // 실제 처리 로직 버그를 그대로 반영한 상태였다.
     number: "exited:최하은 (퇴실)",
     name: "최하은 (퇴실)",
     result: {
       kind: "settle",
       kindStr: "정산 퇴실자",
-      refundAmount: 5000,
-      heldAmount: 5000,
+      refundAmount: 0,
+      heldAmount: 10000,
       fineAlreadyPayment: 1500,
       breakdown: {
-        amount: 5000,
+        amount: 0,
         reason: null,
         outputPen: 1,
         timePen: 0,
@@ -223,7 +227,7 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
         depositAgainStatus: null,
         lateNotice: true,
       },
-      reasons: ["송출 P (1회) / 주간 P (0회) ➡️ 50% 반환"].map((label, i) => ({ code: `settle_${i}`, label })),
+      reasons: [{ code: "settle_return_rate", label: "0% 반환" }],
       processedDate: "2026-08-03",
       blacklist: false,
     },
@@ -355,7 +359,7 @@ export function ExitedMemberList() {
                             <span
                               className={cn(
                                 "text-xs sm:text-sm",
-                                result.refundAmount === 10000 && "text-ok",
+                                result.refundAmount >= 5000 && "text-ok",
                                 result.refundAmount === 0 && "text-destructive"
                               )}
                             >
