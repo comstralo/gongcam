@@ -53,18 +53,24 @@ function exitTypeLabel(kindStr: string, reasons: { code: string; label: string }
 // (직권 P)로 처리됐다는 사실 자체는 여기에 전혀 반영되지 않는다(계산에도
 // 관여하지 않음, ExitProcessDialog의 admin_forced 미리보기와 동일하게
 // discountRatio가 사유와 무관하게 항상 1로 고정이기 때문). 관리자가 "이
-// 회원은 직권 P로 처리됐다"는 사실을 차감 원인 목록에서도 명시적으로
-// 확인할 수 있도록, "퇴실 스터디원 목록"에서만(사용자 지시 — 다른 화면은
-// 그대로 둠) "페널티 (직권 P 1회)" 항목을 끼워 넣는다. rate는 직권 P가
-// 항상 반환율 0%(전액 차감)이므로 100 고정 — buildDepositCauseItems가
-// 이제 최대 차감률이 낮은 순(고지지연 50% → 나머지 100%)으로 정렬되므로,
+// 회원이 직권 P로 처리됐는지"를 차감 원인 목록에서도 명시적으로 확인할
+// 수 있도록, "퇴실 스터디원 목록"에서만(사용자 지시 — 다른 화면은
+// 그대로 둠) "페널티 (직권 P N회)" 항목을 끼워 넣는다. 블랙리스트
+// SubRow와 마찬가지로(사용자 지시) admin_forced가 아닌 유형에서도 항상
+// 표시하되 "0회"(rate 0)로, admin_forced면 "1회"(rate 100, 직권 P는
+// 항상 반환율 0%=전액 차감)로 값만 다르게 채운다. buildDepositCauseItems
+// 가 최대 차감률이 낮은 순(고지지연 50% → 나머지 100%)으로 정렬되므로,
 // 이 항목도 같은 100% 그룹인 "페널티" 항목 바로 뒤(=배열 맨 끝)에 둔다.
 // (참고: buildDepositCauseItems의 "예치금 미납" 항목은 별도로 제거됨 —
 // R3="미납"은 항상 페널티 2회 이상의 파생 표시일 뿐이라 "페널티" 항목과
 // 중복이었다.)
 function insertAdminForcedCauseItem(items: DepositCauseItem[], kind: ExitKind): DepositCauseItem[] {
-  if (kind !== "admin_forced") return items;
-  const adminForcedItem: DepositCauseItem = { key: "adminForced", label: "페널티 (직권 P 1회)", rate: 100 };
+  const isAdminForced = kind === "admin_forced";
+  const adminForcedItem: DepositCauseItem = {
+    key: "adminForced",
+    label: `페널티 (직권 P ${isAdminForced ? 1 : 0}회)`,
+    rate: isAdminForced ? 100 : 0,
+  };
   return [...items, adminForcedItem];
 }
 
