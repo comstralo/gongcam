@@ -535,8 +535,14 @@ export type ExitedMemberResult = {
   reasons: ExitReasonCode[];
   processedDate: string;
   // 직권 P(admin_forced)로 확정하면서 "블랙리스트로 등록하시겠습니까?"를
-  // 체크했는지 — kind가 admin_forced가 아니면 항상 false.
+  // 체크했는지 — kind가 admin_forced가 아니면 항상 false. 확정 이후에도
+  // "퇴실 스터디원 목록"의 토글로 뒤늦게 바꿀 수 있다(POST /admin/exit/blacklist).
   blacklist: boolean;
+  // 🔧 2026-09: 확정 처리 시점(D열 초기화 직전)에 뽑아둔 계정 — "신규
+  // 스터디원 등록"이 블랙리스트 등록자의 계정 재입력을 감지하는 데 쓰인다
+  // (GET /admin/blacklist). 이 기능 도입 이전 처리된 퇴실자는 빈 문자열.
+  googleAccount: string;
+  gooroomeeAccount: string;
 };
 
 export type ExitedMemberEntry = {
@@ -550,6 +556,25 @@ export type ExitedMemberEntry = {
 
 export type AdminExitedMembersResponse = {
   members: ExitedMemberEntry[];
+};
+
+export type SetExitBlacklistResponse = {
+  ok: boolean;
+  name: string;
+  blacklist: boolean;
+};
+
+// GET /admin/blacklist — "신규 스터디원 등록"이 입력 중인 계정을 대조하는 데
+// 쓰는 가벼운 목록. 블랙리스트로 등록된 퇴실자만 담긴다(ExitedMemberResult의
+// 부분집합).
+export type BlacklistEntry = {
+  name: string;
+  googleAccount: string;
+  gooroomeeAccount: string;
+};
+
+export type AdminBlacklistResponse = {
+  entries: BlacklistEntry[];
 };
 
 export type SetPartiStatusResponse = {

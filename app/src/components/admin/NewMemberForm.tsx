@@ -1,15 +1,17 @@
-import { useEffect, useState } from "react";
-import { User, Mail, Video, Hash, ListChecks, GraduationCap, CalendarDays } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { User, Mail, Video, Hash, ListChecks, GraduationCap, CalendarDays, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { displayExitedName } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { ApiError, WORKER_BASE } from "@/lib/api/client";
 import { useAuth } from "@/lib/auth/useAuth";
 import { ICON_STROKE } from "@/lib/utils";
 import type {
+  AdminBlacklistResponse,
   AdminOpenSlotsResponse,
   CreateMemberResponse,
   GrantMemberAccessResponse,
@@ -49,6 +51,14 @@ export function NewMemberForm() {
   const [slots, setSlots] = useState<string[] | null>(null);
   const [slotsError, setSlotsError] = useState<string | null>(null);
 
+  // 🔧 2026-09: "블랙리스트로 등록되어 있는 회원의 구글/구루미 계정이
+  // 입력되면 표시해서 관리자에게 등록하지 않도록 알려줘"(사용자 지시) —
+  // 폼 진입 시 한 번만 불러와, 아래 이메일/구루미 계정 입력값과 매 타이핑마다
+  // 클라이언트에서만 대조한다(별도 API 호출 없음). 조회 실패해도 등록
+  // 자체를 막을 이유는 없어 조용히 빈 배열로 남긴다 — 신규 등록은 이
+  // 경고 없이도 그대로 가능해야 한다.
+  const [blacklist, setBlacklist] = useState<AdminBlacklistResponse["entries"]>([]);
+
   const [number, setNumber] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -80,6 +90,28 @@ export function NewMemberForm() {
   }
 
   useEffect(loadSlots, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    call<AdminBlacklistResponse>("/admin/blacklist")
+      .then((data) => setBlacklist(data.entries || []))
+      .catch(() => setBlacklist([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 구글 계정/구루미 계정 각각을 그 계정 종류끼리만 대조한다(사용자 지시:
+  // "구글, 구루미 계정이 입력되면" — 서로 다른 종류끼리 섞어 비교하지
+  // 않음). 이메일은 백엔드가 항상 소문자로 저장하므로(parseGoogleEmail)
+  // 대소문자 차이로 놓치지 않도록 양쪽 다 소문자로 맞춰 비교한다.
+  const emailBlacklistMatch = useMemo(() => {
+    const v = email.trim().toLowerCase();
+    if (!v) return null;
+    return blacklist.find((b) => b.googleAccount.toLowerCase() === v) ?? null;
+  }, [blacklist, email]);
+  const gooroomeeBlacklistMatch = useMemo(() => {
+    const v = gooroomeeAccount.trim().toLowerCase();
+    if (!v) return null;
+    return blacklist.find((b) => b.gooroomeeAccount.toLowerCase() === v) ?? null;
+  }, [blacklist, gooroomeeAccount]);
 
   function resetForm() {
     setName("");
@@ -249,6 +281,7 @@ export function NewMemberForm() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="example@gmail.com"
+            aria-invalid={!!emailBlacklistMatch}
             className="sm:h-12 sm:text-base md:text-base"
           />
         </div>
@@ -267,10 +300,31 @@ export function NewMemberForm() {
             value={gooroomeeAccount}
             onChange={(e) => setGooroomeeAccount(e.target.value)}
             placeholder="example@gmail.com"
+            aria-invalid={!!gooroomeeBlacklistMatch}
             className="sm:h-12 sm:text-base md:text-base"
           />
         </div>
       </div>
+
+      {(emailBlacklistMatch || gooroomeeBlacklistMatch) && (
+        <Alert variant="destructive">
+          <ShieldAlert className="size-4 shrink-0" strokeWidth={ICON_STROKE.default} />
+          <AlertDescription>
+            {emailBlacklistMatch && (
+              <p>
+                이 구글 계정은 블랙리스트로 등록된 스터디원(
+                {displayExitedName(emailBlacklistMatch.name)})의 계정입니다 — 등록하지 마세요.
+              </p>
+            )}
+            {gooroomeeBlacklistMatch && (
+              <p>
+                이 구루미 계정은 블랙리스트로 등록된 스터디원(
+                {displayExitedName(gooroomeeBlacklistMatch.name)})의 계정입니다 — 등록하지 마세요.
+              </p>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">

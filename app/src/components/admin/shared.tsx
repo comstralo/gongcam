@@ -16,6 +16,13 @@ import type { PenaltySlotHistoryEntry } from "@/lib/api/types";
 // 이전에는 섹션 제목과 리스트 아이템 이름, 카드 라벨이 모두 text-sm/base 크기를 공유해
 // 굵기 차이(bold vs semibold)만으로 위계를 나누려 해서 시각적으로 거의 구분되지 않았다.
 
+// 백엔드가 퇴실자를 "{이름} (퇴실)" 형태(백업 탭 이름 그대로)로 내려주는
+// 곳(ExitedMemberList, "다른 회원 보기" 드롭다운, 신규 등록 블랙리스트 경고
+// 등)이 여럿이라 표시용 이름만 뽑는 로직을 공용으로 둔다.
+export function displayExitedName(name: string): string {
+  return name.replace(/ \(퇴실\)$/, "");
+}
+
 export function ItemTitle({ children, className }: { children: ReactNode; className?: string }) {
   return <span className={cn("text-sm font-semibold sm:text-base", className)}>{children}</span>;
 }

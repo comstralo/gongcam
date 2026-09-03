@@ -1,23 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
-import { UserX, User, ChevronDown, PiggyBank, TrendingDown, Eye, ClipboardList, Search } from "lucide-react";
+import { UserX, User, ChevronDown, PiggyBank, TrendingDown, Eye, ClipboardList, Search, ShieldOff, ShieldAlert } from "lucide-react";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { InfoCard, SubRow, TintedPill, buildDepositCauseItems } from "@/components/dashboard/shared";
 import type { DepositCauseItem } from "@/components/dashboard/shared";
-import { SectionHeader } from "@/components/admin/shared";
+import { SectionHeader, displayExitedName as displayName } from "@/components/admin/shared";
+import { useApi } from "@/hooks/useApi";
+import { ApiError } from "@/lib/api/client";
 import { ICON_STROKE, cn } from "@/lib/utils";
-import type { ExitedMemberEntry, ExitKind } from "@/lib/api/types";
+import type { ExitedMemberEntry, ExitKind, SetExitBlacklistResponse } from "@/lib/api/types";
 
 function won(n: number) {
   return `₩${(n || 0).toLocaleString()}`;
-}
-
-// m.name/m.number는 백엔드가 "{이름} (퇴실)" 형태(백업 탭 이름 그대로)로
-// 내려준다 — 이미 이 화면 자체가 "퇴실 스터디원"만 모아 보여주므로 목록
-// 안에서 "(퇴실)"을 매번 반복해 붙일 필요가 없어, 표시용으로만 이름만 뽑는다.
-function displayName(name: string): string {
-  return name.replace(/ \(퇴실\)$/, "");
 }
 
 // 🔧 2026-09: 백엔드가 kindStr을 "강제 퇴실자"(discountRatio===1인 모든
@@ -103,6 +99,8 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
       reasons: [{ code: "penalty_2_or_more", label: "페널티 누적 2회 이상 (송출 P 1회 / 주간 P 1회) ➡️ 0% 반환" }],
       processedDate: "2026-08-24",
       blacklist: false,
+      googleAccount: "jaehee.kim@gmail.com",
+      gooroomeeAccount: "jaehee.kim@gmail.com",
     },
   },
   {
@@ -128,6 +126,8 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
       reasons: [{ code: "admin_reason", label: "직권 사유: 비매너 행위로 인한 즉시 퇴실" }],
       processedDate: "2026-08-19",
       blacklist: true,
+      googleAccount: "seojun.lee@gmail.com",
+      gooroomeeAccount: "seojun.lee@gmail.com",
     },
   },
   {
@@ -157,6 +157,8 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
       reasons: [{ code: "penalty_2_or_more", label: "페널티 누적 2회 이상 (송출 P 2회 / 주간 P 0회) ➡️ 0% 반환" }],
       processedDate: "2026-08-17",
       blacklist: false,
+      googleAccount: "areum.yoon@gmail.com",
+      gooroomeeAccount: "areum.yoon@gmail.com",
     },
   },
   {
@@ -182,6 +184,8 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
       reasons: [{ code: "fine_unpaid", label: "벌금 시한 내 미납 ➡️ 0% 반환" }],
       processedDate: "2026-08-12",
       blacklist: false,
+      googleAccount: "jimin.han@gmail.com",
+      gooroomeeAccount: "jimin.han@gmail.com",
     },
   },
   {
@@ -207,6 +211,8 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
       reasons: [{ code: "settle_return_rate", label: "100% 반환" }],
       processedDate: "2026-08-10",
       blacklist: false,
+      googleAccount: "doyoon.park@gmail.com",
+      gooroomeeAccount: "doyoon.park@gmail.com",
     },
   },
   {
@@ -236,6 +242,8 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
       reasons: [{ code: "settle_return_rate", label: "0% 반환" }],
       processedDate: "2026-08-03",
       blacklist: false,
+      googleAccount: "haeun.choi@gmail.com",
+      gooroomeeAccount: "haeun.choi@gmail.com",
     },
   },
   {
@@ -255,6 +263,7 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
 // 전용 화면이라 별도 API 호출(미리보기/확정) 없이 목록 응답에 함께
 // 실려온다.
 export function ExitedMemberList() {
+  const { call } = useApi();
   const [members, setMembers] = useState<ExitedMemberEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -263,6 +272,9 @@ export function ExitedMemberList() {
   // 빠르다 — displayName()으로 "(퇴실)" 접미사를 뗀 이름 기준, 대소문자
   // 구분 없이 부분 일치로 필터링한다.
   const [query, setQuery] = useState("");
+  // 블랙리스트 토글 진행 중인 회원(번호)만 잠근다 — 여러 항목을 동시에
+  // 눌러도 서로 막지 않는다.
+  const [togglingNumber, setTogglingNumber] = useState<string | null>(null);
 
   function load() {
     setLoading(true);
@@ -274,6 +286,32 @@ export function ExitedMemberList() {
   }
 
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 🔧 2026-09: 블랙리스트 등록/해제 토글(POST /admin/exit/blacklist) —
+  // 실제 백엔드를 호출하는 진짜 액션이다(목록 자체는 위 load()처럼 아직
+  // 더미 데이터지만, 이 버튼은 실제 KV 값을 바꾼다). 성공하면 이 화면이
+  // "그때 이미 확정된 값"을 그대로 보여주는 조회 전용이라는 원칙대로,
+  // 서버가 승인한 값으로 로컬 상태만 갱신한다 — load()를 다시 부르면
+  // 더미 데이터로 덮어써져 방금 바꾼 값이 사라지므로 쓰지 않는다.
+  function toggleBlacklist(m: ExitedMemberEntry) {
+    if (!m.result) return;
+    const nextBlacklist = !m.result.blacklist;
+    setTogglingNumber(m.number);
+    setError(null);
+    call<SetExitBlacklistResponse>("/admin/exit/blacklist", {
+      method: "POST",
+      body: { name: m.name, blacklist: nextBlacklist },
+    })
+      .then(() => {
+        setMembers(
+          (prev) =>
+            prev?.map((x) => (x.number === m.number && x.result ? { ...x, result: { ...x.result, blacklist: nextBlacklist } } : x)) ??
+            prev
+        );
+      })
+      .catch((err) => setError(err instanceof ApiError ? err.message : "블랙리스트 변경에 실패했습니다."))
+      .finally(() => setTogglingNumber(null));
+  }
 
   const filteredMembers = useMemo(() => {
     if (!members) return members;
@@ -420,6 +458,20 @@ export function ExitedMemberList() {
                               valueClassName={result.blacklist ? "text-destructive" : undefined}
                             />
                           </InfoCard>
+
+                          <Button
+                            variant="outline"
+                            className="w-full sm:h-11 sm:text-base"
+                            disabled={togglingNumber === m.number}
+                            onClick={() => toggleBlacklist(m)}
+                          >
+                            {result.blacklist ? (
+                              <ShieldOff className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
+                            ) : (
+                              <ShieldAlert className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
+                            )}
+                            {result.blacklist ? "블랙리스트 등록 해제" : "블랙리스트로 등록"}
+                          </Button>
                         </>
                       )}
                     </>
