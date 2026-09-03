@@ -285,6 +285,23 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
 조합이 전부 `lockKind`로 고정되어 있어, **관리자가 유형을 자유 선택하는 실제
 경로는 현재 코드베이스 어디에도 없다**:
 
+> 🔧 2026-09 추가: 확정 처리(`handleAdminExitConfirm` → `performExitReset`/
+> `performDepositAgainReset`)가 "데이터" 시트 행을 초기화하기 직전에
+> `appendDataAuditSnapshot`으로 그 시점 값을 "데이터 (감사)" 시트에
+> append-only로 남기고, `rewriteBackupAuditFormulas`로 백업 탭
+> ("{이름} (퇴실)" 등)의 수식(`INDIRECT("'데이터'!..." & C42)` 형태로
+> "데이터" 시트를 실시간 참조)을 그 감사 행(`'데이터 (감사)'!C43`)을
+> 가리키도록 통째 치환한다 — 앱스크립트 `_append_data_audit_snapshot`/
+> `_set_sheet_init`의 동일 로직을 재현한 것. 이게 없으면 백업 탭이
+> 원본 "데이터" 행을 계속 참조한 채로 남는데, 그 번호가 나중에 새
+> 회원에게 재배정되면 이미 확정된 퇴실자의 백업 탭 수식(상점/제보상점/
+> 페널티 표시 등)이 새 회원의 값을 잘못 참조해 과거 기록이 조용히
+> 오염될 위험이 있었다(퇴실·재납 확정 처리가 앱스크립트에서 웹앱으로
+> 이관될 당시 함께 옮겨지지 않았던 부분 — `docs/SHEET_APPSCRIPT.md`의
+> "웹앱(frame-checker-worker)과의 관계 요약" 절 참고). 두 함수 모두
+> 실패해도 `.catch()`로 흡수해 퇴실 처리 자체는 계속 진행된다 — 감사
+> 스냅샷은 부가 기능이지 확정 처리의 필수 전제가 아니다.
+
 | `ExitKind` | 의미 | 반환율 | 호출부 | `lockKind` |
 |---|---|---|---|---|
 | `forced` | 강제 퇴실(페널티 2회 이상 등 자동 감지) | 항상 0% | PenaltyCandidateList | `"forced"` |
