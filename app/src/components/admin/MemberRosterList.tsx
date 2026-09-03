@@ -47,7 +47,7 @@ export function MemberRosterList() {
         setNotifyCategories(data.notifyCategories || null);
         setSpreadsheetId(data.spreadsheetId || null);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "스터디원 목록을 불러오지 못했습니다."))
+      .catch((err) => setError(err instanceof Error ? err.message : "참여 스터디원 목록을 불러오지 못했습니다."))
       .finally(() => setLoading(false));
   }
 
@@ -76,7 +76,7 @@ export function MemberRosterList() {
 
   return (
     <Collapsible defaultOpen className="flex flex-col gap-4">
-      <SectionHeader icon={Users} title="스터디원 목록" loading={loading} onRefresh={load} />
+      <SectionHeader icon={Users} title="참여 스터디원 목록" loading={loading} onRefresh={load} />
       <div className="h-px w-full bg-border" />
       <CollapsiblePanel className="flex flex-col gap-4">
         {error && (

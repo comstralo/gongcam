@@ -519,6 +519,33 @@ export type AdminMembersRosterResponse = {
   spreadsheetId: string;
 };
 
+// 퇴실 확정 시점에 저장해둔 처리 결과 — ExitPreviewResponse에서 미리보기
+// 전용 필드(discountRatio/resultStr/allChecks/exitProcess/fromBackup 등)를
+// 뺀 부분집합. "퇴실 스터디원 목록"이 이 값을 그대로 카드로 보여준다.
+export type ExitedMemberResult = {
+  kind: ExitKind;
+  kindStr: string;
+  refundAmount: number;
+  heldAmount: number;
+  fineAlreadyPayment: number;
+  breakdown: DepositRefundBreakdown;
+  reasons: ExitReasonCode[];
+  processedDate: string;
+};
+
+export type ExitedMemberEntry = {
+  // "다른 회원 보기" 드롭다운과 동일한 형식("exited:{이름} (퇴실)").
+  number: string;
+  // 백업 탭 이름 그대로("{이름} (퇴실)").
+  name: string;
+  // 이 기능 도입(2026-09) 이전에 처리된 퇴실자는 저장된 값이 없어 null.
+  result: ExitedMemberResult | null;
+};
+
+export type AdminExitedMembersResponse = {
+  members: ExitedMemberEntry[];
+};
+
 export type SetPartiStatusResponse = {
   ok: boolean;
   partiStatus: "부스터디장" | "스터디원";

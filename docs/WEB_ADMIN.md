@@ -28,8 +28,9 @@
 `AdminPage`는 세 하위 탭을 가진다(URL 쿼리 `tab`으로 관리, 최초 마운트 이후 로컬
 state):
 
-- **Account**(`view=account`, 기본값) → `AdminMemberPenaltyTab` — 신규 회원
-  등록, 스터디원 목록 2개 섹션(계정/회원 관리 전용).
+- **Account**(`view=account`, 기본값) → `AdminMemberPenaltyTab` — 신규
+  스터디원 등록, 참여 스터디원 목록, 퇴실 스터디원 목록 3개 섹션(계정/회원
+  관리 전용).
 - **PEN · Money**(`view=money`) → `AdminMoneyTab` — 제보 심사, 예치금 재납
   대상자, 사유반휴 승인, 벌금 납부 대상자 처리, 상금 수령 대상자 처리 5개
   섹션(페널티·벌금·상금 처리 전용).
@@ -55,10 +56,11 @@ state):
 
 ```
 AdminPage (app/src/pages/AdminPage.tsx)
-├─ [account] AdminMemberPenaltyTab (components/admin/AdminMemberPenaltyTab.tsx)
-│   ├─ NewMemberForm           — "스터디원 등록" (기본 접힘) (§3.4)
-│   └─ MemberRosterList        — "스터디원 목록" (§3.5)
-│       └─ (MemberRosterList 전용) ExitProcessDialog (§3.6)
+├─ [account] AdminMemberPenaltyTab (components/admin/AdminMemberPenaltyTab.tsx) — 🔧 2026-09 이름 변경/신설
+│   ├─ NewMemberForm           — "신규 스터디원 등록" (기본 접힘) (§3.4)
+│   ├─ MemberRosterList        — "참여 스터디원 목록" (§3.5)
+│   │   └─ (MemberRosterList 전용) ExitProcessDialog (§3.6)
+│   └─ ExitedMemberList        — "퇴실 스터디원 목록" (§3.5.1, 신설)
 ├─ [money] AdminMoneyTab (components/admin/AdminMoneyTab.tsx) — 🔧 2026-09 순서/이름 변경
 │   ├─ ReportReviewList        — "송출 P 대상 처리" (§3.1)
 │   ├─ ReasonLeaveReviewList   — "사유 반휴 신청 대상 처리" (§3.3)
@@ -177,7 +179,10 @@ components/admin/PushNotificationSection.tsx — ⚠️ 어디서도 import되�
   재사용. 큐에만 있는 신청이면 KV에 저장된 base64를 그대로 서빙하고, 봇에 이미
   전달된 신청이면 봇에 프록시한다.
 
-### 3.4 스터디원 등록 (`NewMemberForm`) — Account 탭
+### 3.4 신규 스터디원 등록 (`NewMemberForm`) — Account 탭
+
+> 🔧 2026-09: 화면 제목이 "스터디원 등록"에서 "신규 스터디원 등록"으로
+> 바뀌었다.
 
 기본 접힘 상태(`defaultOpen={false}`)인 유일한 섹션. `GET /admin/open-slots`로
 "데이터" 시트 B열(번호)은 있지만 D열(이메일)이 비어 있는 빈 시트번호 목록을
@@ -214,7 +219,10 @@ components/admin/PushNotificationSection.tsx — ⚠️ 어디서도 import되�
   인프라이며, 이 문서에서는 깊이 다루지 않는다(`handleAdminOAuthAuthorize`/
   `handleAdminOAuthCallback`, index.js).
 
-### 3.5 스터디원 목록 (`MemberRosterList`) — Account 탭
+### 3.5 참여 스터디원 목록 (`MemberRosterList`) — Account 탭
+
+> 🔧 2026-09: 화면 제목이 "스터디원 목록"에서 "참여 스터디원 목록"으로
+> 바뀌었다(§3.5.1 "퇴실 스터디원 목록"과 짝을 이루는 이름).
 
 `GET /admin/members/roster`(→ `handleAdminMembersRoster`)가 전체 활성 회원의
 상태·알림 설정·최근 접속 정보를 한 번에 모아 내려준다. 요일별이 아니라 회원별
@@ -277,6 +285,52 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
 > "같은 회원에게 kind만 다르게 골라 반환율이 달라지는 것을 막기 위함"(사용자
 > 지시: "무조건 계산은 어디서나 일치해야 해"). §3.6에서 이 설계가 어떻게
 > `ExitProcessDialog`의 `lockKind` prop으로 구현됐는지 정리한다.
+
+### 3.5.1 퇴실 스터디원 목록 (`ExitedMemberList`) — Account 탭, 2026-09 신설
+
+`docs/WEB_DASHBOARD.md` §6.1이 다루는 "관리자 대시보드 다른 회원 보기"와는
+목적이 다르다 — 그쪽은 퇴실자의 **요일별 학습 기록**(개인 탭 셀 값)을
+조회하는 화면이고, 이 화면은 **퇴실 확정 처리 결과 자체**(반환 예치금/차감
+원인/처리 결과/퇴실유형)를 조회하는 화면이다. `MemberRosterList`("참여
+스터디원 목록") 바로 아래, 같은 아코디언 패턴(요일별이 아니라 회원별 하나씩
+펼치는 카드)으로 배치된다.
+
+- **`GET /admin/members/exited`** → `handleAdminExitedMembers`가
+  `listExitedMemberEntries`(§`docs/WEB_DASHBOARD.md` §6.1의 것과 동일 —
+  원본 스프레드시트의 `"{이름} (퇴실)"` 백업 탭을 정규식으로 스캔)로 목록을
+  구하고, 각 항목에 `EXIT_RESULT_KV_PREFIX + 백업탭이름` 키로 저장된 처리
+  결과를 붙여 반환한다.
+- **처리 결과 저장 시점**: `handleAdminExitConfirm`이 퇴실 확정
+  (`kind !== "deposit_again"`)을 처리하는 순간, `computeExitResult`가 이미
+  계산해 들고 있던 구조화된 값(`kindStr`/`refundAmount`/`heldAmount`/
+  `fineAlreadyPayment`/`breakdown`/`reasons`/`processedDate`)을 그대로
+  `EXIT_RESULT_KV_PREFIX + "{이름} (퇴실)"` 키에 JSON으로 저장한다(TTL
+  없음, 영구 보존). **재납(`deposit_again`)은 저장하지 않는다** — 재납자는
+  `performDepositAgainReset`이 L3를 곧바로 "스터디원"으로 되돌려 다시
+  정상 명단에 복귀하므로 이 화면의 대상이 아니다.
+  - 🔧 **왜 텍스트 파싱이 아니라 KV 구조화 저장인가**: 백업 탭의 처리결과
+    텍스트 박스(`resultMsg`, `writeExitResultBox`가 `Y2:AC18`에 쓰는
+    한 줄짜리 이모지 포맷 문자열)에서 정규식으로 값을 다시 뽑아낼 수도
+    있었지만, 이건 원문 포맷이 조금만 바뀌어도 조용히 깨지는 손실 있는
+    왕복 변환이다(특히 `breakdown`은 `resultStr`이라는 요약 문장으로만
+    녹아 있어 텍스트에서 역으로 복원이 사실상 불가능하다). `computeExitResult`
+    가 확정 시점에 이미 들고 있는 구조화된 값을 그대로 저장하는 편이
+    이 코드베이스의 기존 KV 저장 관례(퇴실 신청 `exitRequest:`, 알림
+    선호도 `notifyPref:` 등)와도 일관된다(사용자 판단 확인 후 구현).
+  - **키는 회원번호가 아니라 백업 탭 이름 기준**이다 — "데이터 (감사)"
+    스냅샷(§3.6)과 같은 이유로, 회원번호는 나중에 새 회원에게 재배정되므로
+    번호를 키로 쓰면 그 시점부터 옛 퇴실자의 처리 결과가 새 회원 것으로
+    오인될 위험이 있다.
+- **이 기능 도입 이전에 처리된 퇴실자**는 그 시점에 저장된 값이 없어
+  `result: null`로 내려간다 — 프론트는 이 경우 "처리 결과를 조회할 수
+  없습니다(이 기능 도입 이전 처리)"로 안내한다. 소급 적용은 하지 않는다.
+- **화면 구성**: 회원별 아코디언을 펼치면 `ExitProcessDialog`의 `admin_forced`/
+  `settle` 미리보기 카드와 동일한 시각 언어(반환 예치금 카드 — 10,000원이면
+  `text-ok`, 0원이면 `text-destructive`, 볼드 없음; 차감 원인 카드 —
+  `buildDepositCauseItems` 재사용; 처리 결과 카드)를 그대로 쓰되, "퇴실유형"
+  카드(유형명 + 원인 목록)를 추가로 보여준다. 다만 이건 **"지금 계산"이
+  아니라 "그때 이미 확정된 값"을 그대로 보여주는 조회 전용**이라, 미리보기/
+  확정 같은 별도 API 호출이 없다 — 목록 응답 하나에 결과가 함께 실려온다.
 
 ### 3.6 퇴실·재납 공유 다이얼로그 (`ExitProcessDialog`)
 
