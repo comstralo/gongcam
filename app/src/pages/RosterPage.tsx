@@ -110,7 +110,7 @@ export function RosterPage({
                     </span>
                     <span
                       className={cn(
-                        "text-sm font-semibold sm:text-base",
+                        "text-sm sm:text-base",
                         money.collectMoney > 0 ? "text-ok" : "text-muted-foreground"
                       )}
                     >
