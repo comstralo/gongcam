@@ -1,7 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { DoorOpen, TriangleAlert, CircleCheck, Circle, MessageSquareWarning, Eye, PiggyBank, TrendingDown, ArrowRightLeft, ClipboardList } from "lucide-react";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -22,7 +21,7 @@ function won(n: number) {
 // 다 이 다이얼로그를 쓰지만, 서로 다른 타입(MemberRosterEntry/ExitCandidate)의
 // 항목을 넘긴다. 이 다이얼로그가 실제로 쓰는 필드만 최소 타입으로 요구해야
 // 두 목록 타입이 각자 필요한 필드만 갖고도 호환된다.
-type ExitProcessCandidate = Pick<ExitCandidate, "number" | "name" | "suggestedKind" | "allChecks">;
+type ExitProcessCandidate = Pick<ExitCandidate, "number" | "name" | "allChecks">;
 
 const KIND_LABEL: Record<ExitKind, string> = {
   forced: "강제 퇴실자",
@@ -71,9 +70,13 @@ export function ExitProcessDialog({
   // 재납으로 처리됐는지"를 화면 상태로 구분해 보여줘야 하기 때문이다.
   onConfirmed?: (kind: ExitKind) => void;
   triggerClassName?: string;
-  // 페널티 2 이상은 반환율이 항상 0%로 고정되는 정산 퇴실자(settle) 단일
-  // 경로라, PENALTY 탭에서는 유형 선택 UI 자체를 숨기고 이 값으로 고정한다.
-  lockKind?: ExitKind;
+  // 🔧 2026-09 정리: 처리 유형을 관리자가 자유롭게 고르는 실제 경로는
+  // 코드베이스 어디에도 없다 — 4개 호출부(MemberRosterList ×2,
+  // PenaltyCandidateList ×2, AdminMoneyTab ×1) 전부 항상 이 값을 넘긴다
+  // (사용자 지시: "같은 회원에게 kind만 다르게 골라 반환율이 달라지는 것을
+  // 막기 위함"). 그래서 필수 prop으로 바꾸고, 자유 선택 드롭다운은 완전히
+  // 제거했다 — 렌더링될 수 없던 죽은 코드였다.
+  lockKind: ExitKind;
   // admin_forced 전용 — 호출부가 사유를 이미 알고 있을 때(예: Money 탭의
   // "직권 P"는 항상 "벌금 시한 내 미납자") 입력란을 그 값으로 고정하고
   // 편집을 막는다. 없으면 기존처럼 관리자가 자유롭게 입력한다.
@@ -82,7 +85,6 @@ export function ExitProcessDialog({
 }) {
   const { call } = useApi();
   const [open, setOpen] = useState(false);
-  const [kind, setKind] = useState<ExitKind>(lockKind ?? candidate.suggestedKind);
   const [forcedReason, setForcedReason] = useState(lockForcedReason ?? "");
   // 🔧 [블랙리스트 등록] 직권 P는 강제퇴실 중 가장 강한 방식(상대 동의 없이
   // 즉시 내쫓음)이라, 확정 처리 시 블랙리스트 등록 여부를 함께 표시할 수
@@ -108,12 +110,6 @@ export function ExitProcessDialog({
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function resetForNewKind(next: ExitKind) {
-    setKind(next);
-    setPreview(null);
-    setError(null);
-  }
-
   async function handlePreview() {
     setPreviewing(true);
     setError(null);
@@ -121,7 +117,11 @@ export function ExitProcessDialog({
     try {
       const data = await call<ExitPreviewResponse>("/admin/exit/preview", {
         method: "POST",
-        body: { number: candidate.number, kind, forcedReason: kind === "admin_forced" ? forcedReason : undefined },
+        body: {
+          number: candidate.number,
+          kind: lockKind,
+          forcedReason: lockKind === "admin_forced" ? forcedReason : undefined,
+        },
       });
       setPreview(data);
     } catch (err) {
@@ -170,13 +170,13 @@ export function ExitProcessDialog({
         method: "POST",
         body: {
           number: candidate.number,
-          kind,
-          forcedReason: kind === "admin_forced" ? forcedReason : undefined,
-          blacklist: kind === "admin_forced" ? blacklist : undefined,
+          kind: lockKind,
+          forcedReason: lockKind === "admin_forced" ? forcedReason : undefined,
+          blacklist: lockKind === "admin_forced" ? blacklist : undefined,
         },
       });
       setConfirmed(true);
-      onConfirmed?.(kind);
+      onConfirmed?.(lockKind);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "확정 처리에 실패했습니다.");
     } finally {
@@ -194,7 +194,6 @@ export function ExitProcessDialog({
           setError(null);
           setConfirmed(false);
           setForcedReason(lockForcedReason ?? "");
-          setKind(lockKind ?? candidate.suggestedKind);
           setBlacklist(false);
         }
       }}
@@ -464,48 +463,17 @@ export function ExitProcessDialog({
             </>
           ) : (
             <>
+              {/* 🔧 2026-09 정리: 이 분기(forced/deposit_again)에 도달했다는
+                  것 자체가 이미 lockKind !== "admin_forced"라는 뜻이라(그
+                  경우는 위 isAdminForcedOnly 분기에서 먼저 걸러짐), 예전에
+                  여기 있던 "kind === admin_forced일 때 사유 입력란을
+                  보여주는" 블록은 처리 유형 자유 선택 드롭다운과 마찬가지로
+                  절대 렌더링될 수 없는 죽은 코드였다 — 함께 제거했다. */}
               <InfoCard className="flex flex-col gap-2">
                 <Label className="text-xs font-semibold text-muted-foreground sm:text-sm">처리 유형</Label>
-                {lockKind ? (
-                  <FieldValue className="text-sm sm:text-base">{KIND_LABEL[lockKind]}</FieldValue>
-                ) : (
-                  <Select value={kind} onValueChange={(v) => v && resetForNewKind(v as ExitKind)}>
-                    <SelectTrigger className="bg-card data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base">
-                      <SelectValue>{KIND_LABEL[kind]}</SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="forced" className="sm:text-base">
-                        {KIND_LABEL.forced}
-                      </SelectItem>
-                      <SelectItem value="admin_forced" className="sm:text-base">
-                        {KIND_LABEL.admin_forced}
-                      </SelectItem>
-                      <SelectItem value="settle" className="sm:text-base">
-                        {KIND_LABEL.settle}
-                      </SelectItem>
-                      <SelectItem value="deposit_again" className="sm:text-base">
-                        {KIND_LABEL.deposit_again}
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                )}
+                <FieldValue className="text-sm sm:text-base">{KIND_LABEL[lockKind]}</FieldValue>
 
-                {kind === "admin_forced" && (
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="forced-reason" className="text-xs font-medium text-muted-foreground sm:text-sm">
-                      직권 퇴실 사유
-                    </Label>
-                    <Input
-                      id="forced-reason"
-                      value={forcedReason}
-                      onChange={(e) => setForcedReason(e.target.value)}
-                      placeholder="예: 비매너 행위로 인한 즉시 퇴실"
-                      className="sm:h-12 sm:text-base"
-                    />
-                  </div>
-                )}
-
-                {kind === "forced" && candidate.allChecks && candidate.allChecks.length > 0 && (
+                {lockKind === "forced" && candidate.allChecks && candidate.allChecks.length > 0 && (
                   <div className="flex flex-col gap-1.5">
                     <Label className="text-xs font-medium text-muted-foreground sm:text-sm">
                       강제퇴실 조건 (해당 항목만 적용됨)

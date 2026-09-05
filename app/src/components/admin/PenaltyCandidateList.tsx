@@ -10,7 +10,7 @@ import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { useAuth } from "@/lib/auth/useAuth";
 import { ICON_STROKE, cn } from "@/lib/utils";
-import type { AdminExitCandidatesResponse, ExitCandidate, ExitKind, PenaltySlotHistoryEntry } from "@/lib/api/types";
+import type { AdminExitCandidatesResponse, ExitCandidate, ExitKind } from "@/lib/api/types";
 
 const STATUS_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
 const UNKNOWN_DAY = "요일 미확인";
@@ -26,27 +26,6 @@ const OUTPUT_PEN_SLOT_LABELS = [
   "페널티 (1차)",
   "벌점 (3차)",
   "페널티 (2차)",
-];
-
-// 🧪 [임시 테스트용] 주간 P는 appscript.js daily_calc()가 자동으로 채워
-// 실제로 이력이 쌓인 회원이 아직 없어, UI 확인을 위해 화면에서만 더미
-// 항목을 강제로 보여준다. 실제 데이터가 쌓이면 이 상수와 사용처를 제거하고
-// c.timePenHistory를 그대로 쓰면 된다.
-const DUMMY_TIME_PEN_HISTORY: PenaltySlotHistoryEntry[] = [
-  {
-    label: "주간 P 1차",
-    cycle: 1,
-    when: "2026. 8. 25. 오전 9:03:11",
-    reason: "주간 학습시간 미달 (32:10 / 50:00)",
-    captureId: null,
-  },
-  {
-    label: "주간 P 2차",
-    cycle: 1,
-    when: "2026. 8. 18. 오전 9:01:47",
-    reason: "교시 참여율 미달 (72% / 85%)",
-    captureId: null,
-  },
 ];
 
 // 오늘 날짜 기준 이번 주(월~일)의 각 요일 실제 날짜를 "8월 19일" 형태로
@@ -216,7 +195,7 @@ export function PenaltyCandidateList({ visible }: { visible: boolean }) {
                                   <PenaltyHistorySection
                                     icon={CalendarClock}
                                     title="주간 P 원인"
-                                    history={c.timePenHistory.length > 0 ? c.timePenHistory : DUMMY_TIME_PEN_HISTORY}
+                                    history={c.timePenHistory}
                                     token={session?.token}
                                   />
                                 </div>

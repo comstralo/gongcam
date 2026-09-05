@@ -312,15 +312,14 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
                                     // 🔧 §3.5 MemberRosterList의 "퇴실 처리
                                     // (직권 P)"와 동일한 ExitProcessDialog를
                                     // 그대로 재사용 — 이 화면엔 roster 조회로
-                                    // 얻는 suggestedKind/allChecks가 없지만,
-                                    // lockKind="admin_forced"일 땐 그 값이
-                                    // 실제로 읽히지 않는다(체크리스트도 숨김,
-                                    // useState 초기값 fallback도 lockKind가
-                                    // 우선). 확정 후 목록을 다시 불러와야
-                                    // 상태가 반영되므로 onConfirmed에서 load().
+                                    // 얻는 allChecks가 없지만, lockKind=
+                                    // "admin_forced"일 땐 그 값이 실제로
+                                    // 읽히지 않는다(체크리스트도 숨김). 확정
+                                    // 후 목록을 다시 불러와야 상태가
+                                    // 반영되므로 onConfirmed에서 load().
                                     <ExitProcessDialog
                                       key={action}
-                                      candidate={{ number: f.number, name: f.name, suggestedKind: "settle", allChecks: [] }}
+                                      candidate={{ number: f.number, name: f.name, allChecks: [] }}
                                       lockKind="admin_forced"
                                       lockForcedReason="벌금 시한 내 미납자"
                                       onConfirmed={load}

@@ -190,12 +190,17 @@ components/admin/shared.tsx — 공용 프리미티브(§6): SectionCard/Section
 그룹핑한다 — 주석이 없으면 "요일 미확인" 그룹으로 따로 모은다. 펼치면
 `PenaltyHistorySection`(§6)으로 송출 P/주간 P 원인 이력을 보여준다.
 
-> ⚠️ **`DUMMY_TIME_PEN_HISTORY`**: 주간 P는 앱스크립트 `daily_calc()`가 자동으로
-> 채우는 슬롯이라 이 세션 조사 시점까지 실제 이력이 쌓인 회원이 없어,
-> `c.timePenHistory`가 비어 있으면 화면 확인용 더미 데이터(가짜 이력 2건)를
-> 대신 보여준다. 코드 주석에 "실제 데이터가 쌓이면 이 상수와 사용처를 제거"
-> 하라고 명시되어 있다 — 실제 주간 P 이력이 있는 회원을 조회했는데 낯선
-> 이력이 보이면 이 더미일 가능성을 먼저 의심할 것.
+> 🔧 **[정리 완료, 2026-09] `DUMMY_TIME_PEN_HISTORY` 제거.** 원래
+> "주간 P는 앱스크립트 `daily_calc()`가 자동으로 채우는 슬롯이라 실제
+> 이력이 쌓인 회원이 없을 때 `c.timePenHistory`가 비면 화면 확인용
+> 더미 2건을 대신 보여준다"는 임시 조치였다. 정리하며 다시 보니 애초에
+> 불필요했다 — `PenaltyHistorySection`(§6, `components/admin/shared.tsx`)
+> 이 빈 배열을 이미 `SubRow("해당 없음", "-")`로 정상 처리하고 있었다
+> (`entries.length === 0` 분기, 코드 확인). "송출 P 원인" 카드
+> (`c.outputPenHistory`)는 애초에 이 더미 없이 바로 넘겼는데도 문제
+> 없었던 이유가 바로 이거였다. 더미 상수와 사용처를 삭제하고
+> `c.timePenHistory`를 그대로 넘기도록 고쳤다 — 이제 이력이 없으면
+> "해당 없음"이 정직하게 뜬다.
 
 ### 3.3 사유 반휴 신청 대상 처리 (`ReasonLeaveReviewList`) — PEN · Money 탭
 
@@ -634,14 +639,14 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
   막아왔지만, 이 다이얼로그 내부 버튼 자체에도 같은 가드를 걸어 트리거
   쪽 가드가 어떤 이유로든 우회되어도(예: 디버깅 목적으로 일시적으로 푼
   경우) 실수로 미동의 회원을 확정 처리하는 일이 없도록 했다.
-- **`forced`/`deposit_again`(그 외 분기)**: `lockKind`가 있어도 유형 선택
-  드롭다운 자리에 고정 라벨만 보이고, **"미리보기 계산" 버튼을 명시적으로 눌러야
-  하는 3단계 흐름**(계산 → `resultMsg`를 `<pre>`로 그대로 출력 → 확정)을 그대로
-  쓴다. 이 분기 안의 `Select` 드롭다운(유형을 자유 선택하는 UI)은 `lockKind`가
-  전달되지 않을 때만 노출되는데, **`forced`/`deposit_again`을 넘기는
-  PenaltyCandidateList 호출부는 항상 `lockKind`를 함께 넘기므로 이
-  드롭다운은 실제로 렌더링될 일이 없다** — 어떤 호출부든 `lockKind` 없이
-  이 다이얼로그를 열지 않는 한 죽은 UI 경로다.
+- **`forced`/`deposit_again`(그 외 분기)**: 유형 고정 라벨(`FieldValue`)만
+  보이고, **"미리보기 계산" 버튼을 명시적으로 눌러야 하는 3단계 흐름**
+  (계산 → `resultMsg`를 `<pre>`로 그대로 출력 → 확정)을 그대로 쓴다. 🔧
+  2026-09 정리: 원래 이 분기에는 `lockKind`가 없을 때만 노출되는 자유
+  선택 `Select` 드롭다운이 있었으나, 3곳 화면의 실제 호출 지점 5곳 전부
+  항상 `lockKind`를
+  넘겨 절대 렌더링될 수 없는 죽은 코드였다 — `lockKind`를 필수 prop으로
+  바꾸며 드롭다운 자체를 삭제했다(자세한 내용은 §7 참고).
 
 확정(`POST /admin/exit/confirm`) 시 서버는 프론트가 보낸 `kind`를 그대로
 신뢰하지 않고 §3.5에서 언급한 "정산은 동의까지 필요" 검증을 다시 수행한다
@@ -957,11 +962,21 @@ Cloudflare Tunnel로 노출한 로컬 상태 서버를 그때그때 프록시한
   "직권 P" 버튼(고정 사유 "벌금 시한 내 미납자")으로 처리된 건만 센다** —
   MemberRosterList에서 자유 입력 사유로 처리된 admin_forced는 같은
   강제퇴실이라도 이 카운트에 잡히지 않는다(사유 문자열 정확 일치 판정).
-- **`ExitProcessDialog`의 "유형 선택 드롭다운" 분기는 현재 코드베이스에서 실제로
-  렌더링될 수 없다**(§3.6). 세 호출부 모두 항상 `lockKind`를 넘기기 때문 — 다만
-  `lockKind`가 있어도 "미리보기 계산 버튼 → `<pre>` 결과 → 확정"이라는 그 분기의
-  나머지 흐름 자체는 `forced`/`deposit_again` 처리에 실제로 쓰인다. "드롭다운이
-  죽은 코드"와 "그 분기 전체가 죽은 코드"를 혼동하지 말 것.
+- **[정리 완료, 2026-09] `ExitProcessDialog`의 "유형 선택 드롭다운"은 실제로
+  삭제됐다**(§3.6). 3곳 화면(MemberRosterList ×2, PenaltyCandidateList ×2,
+  AdminMoneyTab ×1 — 실제 호출 지점 5곳)이 전부 항상 `lockKind`를 넘겨
+  절대 렌더링될 수 없던 죽은
+  코드였다 — `lockKind`를 필수 prop으로 바꾸고, 자유 선택 `Select`와
+  그걸 지탱하던 `kind`/`setKind` 로컬 state, `resetForNewKind`, `candidate.
+  suggestedKind`(더 이상 아무도 안 읽음)까지 함께 제거했다. 정리하며 하나 더
+  발견: `forced`/`deposit_again` 분기(위 두 분기 다음 `else`) 안에 있던
+  "`kind === admin_forced`면 사유 입력란을 보여주는" 블록도 사실 도달
+  불가능했다 — 그 `else`에 도달했다는 것 자체가 이미 `lockKind !==
+  "admin_forced"`(그 경우는 `isAdminForcedOnly` 분기가 먼저 가져감)라는
+  뜻이었기 때문. 둘 다 삭제했다. **"미리보기 계산 버튼 → `<pre>` 결과 →
+  확정"이라는 그 분기의 나머지 흐름 자체는 그대로 남아 `forced`/
+  `deposit_again` 처리에 계속 쓰인다** — 죽은 건 유형을 고르는 UI뿐이었지
+  그 분기 전체가 아니었다.
 - **`_usageCounters`(사용량 모니터링, §5.1)는 정확한 전체 집계가 아니라 근사
   하한값이다.** Cloudflare Workers의 isolate 분산 특성상 콜드스타트마다
   리셋되고, 그 순간 요청을 받은 isolate가 본 것만 집계된다 — "지금 위험 수준인지"
