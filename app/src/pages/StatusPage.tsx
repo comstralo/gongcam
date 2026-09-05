@@ -4,7 +4,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusView } from "@/components/dashboard/StatusView";
 import { CycleSwitcher } from "@/components/dashboard/CycleSwitcher";
-import { NotificationDialog } from "@/components/dashboard/NotificationDialog";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { useAuth } from "@/lib/auth/useAuth";
@@ -124,18 +123,13 @@ export function StatusPage({
           </Select>
         )}
 
-        <div className="flex items-center gap-3">
-          {onSelectCycle && (
-            <div className="flex-1">
-              <CycleSwitcher
-                selectedFileId={cycleFileId ?? null}
-                onSelect={onSelectCycle}
-                memberNumber={selected === SELF_VALUE ? "self" : selected}
-              />
-            </div>
-          )}
-          <NotificationDialog />
-        </div>
+        {onSelectCycle && (
+          <CycleSwitcher
+            selectedFileId={cycleFileId ?? null}
+            onSelect={onSelectCycle}
+            memberNumber={selected === SELF_VALUE ? "self" : selected}
+          />
+        )}
         {membersError && (
           <Alert variant="destructive">
             <AlertDescription>{membersError}</AlertDescription>

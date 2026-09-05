@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { HashRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
-import { LayoutDashboard, ScanLine, Link2, Settings, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, ScanLine, Bell, Link2, Settings, ShieldCheck } from "lucide-react";
 import { AuthProvider } from "@/lib/auth/AuthContext";
 import { useAuth } from "@/lib/auth/useAuth";
 import { MyStatusProvider } from "@/lib/status/MyStatusContext";
@@ -12,13 +12,14 @@ import { LoginPage } from "@/pages/LoginPage";
 import { CheckerPage } from "@/pages/CheckerPage";
 import { ReportPage } from "@/pages/ReportPage";
 import { DashboardPage } from "@/pages/DashboardPage";
+import { NotificationsPage } from "@/pages/NotificationsPage";
 import { LinksPage } from "@/pages/LinksPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { AdminPage } from "@/pages/AdminPage";
 import { useVersionCheck } from "@/hooks/useVersionCheck";
 
-type MainView = "/" | "/report" | "/links" | "/settings" | "/admin";
-const MAIN_VIEWS: MainView[] = ["/", "/report", "/links", "/settings", "/admin"];
+type MainView = "/" | "/report" | "/notifications" | "/links" | "/settings" | "/admin";
+const MAIN_VIEWS: MainView[] = ["/", "/report", "/notifications", "/links", "/settings", "/admin"];
 
 // 로그인 후 오가는 5개 메인 페이지(대시보드/제보/링크/설정/관리자)는 예전
 // react-router <Routes>처럼 경로가 바뀔 때마다 언마운트/재마운트되면, 각
@@ -36,6 +37,7 @@ function MainViews() {
   const everVisited = useRef<Record<MainView, boolean>>({
     "/": false,
     "/report": false,
+    "/notifications": false,
     "/links": false,
     "/settings": false,
     "/admin": false,
@@ -59,6 +61,13 @@ function MainViews() {
         {everVisited.current["/report"] && (
           <AppShell title="제보" titleIcon={ScanLine}>
             <ReportPage />
+          </AppShell>
+        )}
+      </div>
+      <div hidden={path !== "/notifications"}>
+        {everVisited.current["/notifications"] && (
+          <AppShell title="알림" titleIcon={Bell}>
+            <NotificationsPage />
           </AppShell>
         )}
       </div>
