@@ -24,7 +24,12 @@ const IOS_STEPS = [
 export function InstallAppCard() {
   const { installed, canInstall, platform, promptInstall } = useInstallPrompt();
 
-  if (!canInstall || installed) return null;
+  // 🔧 2026-09: 설치 불가/이미 설치된 상태에서 카드 자체를 숨겼더니, 원래
+  // 설치 가능했던 환경(iOS Safari 등)에서 한 번 설치를 마치거나 브라우저가
+  // beforeinstallprompt 재발생을 억제한 뒤로 카드가 통째로 사라져 "기능이
+  // 없어졌다"는 오해를 샀다(사용자 지적) — 항상 카드는 보여주고, 지원하지
+  // 않거나 이미 설치된 경우엔 버튼만 비활성화해 상태를 그대로 드러낸다.
+  const label = installed ? "설치됨" : canInstall ? "설치하기" : "지원 안 함";
 
   return (
     <InfoCard className="flex items-center justify-between gap-2.5">
@@ -33,17 +38,11 @@ export function InstallAppCard() {
         <ItemTitle>앱으로 설치</ItemTitle>
       </span>
 
-      {platform === "android" ? (
-        <Button size="sm" variant="outline" className="shrink-0 text-xs sm:text-sm" onClick={promptInstall}>
-          설치하기
-        </Button>
-      ) : (
+      {canInstall && platform === "ios" ? (
         <Dialog>
-          <DialogTrigger
-            className="shrink-0 rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-          >
+          <DialogTrigger className="shrink-0 rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
             <span className="pointer-events-none inline-flex h-8 items-center rounded-md border bg-background px-3 text-xs shadow-xs sm:text-sm">
-              설치하기
+              {label}
             </span>
           </DialogTrigger>
           <DialogContent>
@@ -73,6 +72,10 @@ export function InstallAppCard() {
             </ol>
           </DialogContent>
         </Dialog>
+      ) : (
+        <Button size="sm" variant="outline" className="shrink-0 text-xs sm:text-sm" disabled={!canInstall} onClick={promptInstall}>
+          {label}
+        </Button>
       )}
     </InfoCard>
   );

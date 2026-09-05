@@ -1,6 +1,5 @@
 import { useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SectionCard } from "@/components/admin/shared";
 import { ReportReviewList } from "@/components/admin/ReportReviewList";
@@ -72,26 +71,31 @@ export function AdminPage({ visible = true }: { visible?: boolean }) {
         </TabsList>
       </Tabs>
 
-      <Card className="w-full">
-        <CardContent className="flex flex-col gap-4">
-          {/* 조건부 렌더링(view === "x" && ...) 대신 hidden으로 감춘다 — 한 번
-              마운트된 탭은 언마운트하지 않고 그대로 유지해, 관리자가 탭을
-              오갈 때마다 각 탭의 useEffect(load, [])가 매번 다시 실행되며
-              Sheets API를 재호출하는 문제를 없앤다(2026-08 실제로 탭 전환
-              몇 번만으로 429 RESOURCE_EXHAUSTED 재현됨). 아직 한 번도
-              열지 않은 탭은 그대로 마운트를 미뤄 불필요한 초기 로드를
-              피한다. */}
-          <div hidden={view !== "account"}>
-            {everOpened.current.account && <AdminMemberPenaltyTab visible={visible && view === "account"} />}
-          </div>
-          <div hidden={view !== "money"}>
-            {everOpened.current.money && <AdminMoneyTab visible={visible && view === "money"} />}
-          </div>
-          <div hidden={view !== "botsheet"}>
-            {everOpened.current.botsheet && <AdminBotSheetTab visible={visible && view === "botsheet"} />}
-          </div>
-        </CardContent>
-      </Card>
+      {/* 🔧 2026-09: 이 화면을 감싸던 바깥 Card/CardContent를 제거했다
+          (사용자 지시) — 안쪽 각 탭(AdminMemberPenaltyTab/AdminMoneyTab/
+          AdminBotSheetTab)이 이미 SectionCard 단위로 구성돼 있어, 바깥
+          Card는 이중 테두리·이중 배경만 만들 뿐이었다. RosterPage/
+          StatusPage/SettingsPage에서 같은 이유로 이미 제거한 것과 동일한
+          처리.
+
+          조건부 렌더링(view === "x" && ...) 대신 hidden으로 감춘다 — 한 번
+          마운트된 탭은 언마운트하지 않고 그대로 유지해, 관리자가 탭을
+          오갈 때마다 각 탭의 useEffect(load, [])가 매번 다시 실행되며
+          Sheets API를 재호출하는 문제를 없앤다(2026-08 실제로 탭 전환
+          몇 번만으로 429 RESOURCE_EXHAUSTED 재현됨). 아직 한 번도
+          열지 않은 탭은 그대로 마운트를 미뤄 불필요한 초기 로드를
+          피한다. */}
+      <div className="flex w-full flex-col gap-4">
+        <div hidden={view !== "account"}>
+          {everOpened.current.account && <AdminMemberPenaltyTab visible={visible && view === "account"} />}
+        </div>
+        <div hidden={view !== "money"}>
+          {everOpened.current.money && <AdminMoneyTab visible={visible && view === "money"} />}
+        </div>
+        <div hidden={view !== "botsheet"}>
+          {everOpened.current.botsheet && <AdminBotSheetTab visible={visible && view === "botsheet"} />}
+        </div>
+      </div>
     </div>
   );
 }
