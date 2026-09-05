@@ -97,7 +97,7 @@ export function SummaryTile({
       </div>
       <span
         className={cn(
-          "text-sm font-bold sm:text-base",
+          "text-sm sm:text-base",
           wrap ? "break-keep" : "truncate",
           valueClassName
         )}
@@ -332,7 +332,7 @@ export function DayDetailCard({
             tone={day.confirmed || isPast ? "muted" : "primary"}
             icon={day.confirmed || isPast ? CircleCheck : CircleDot}
           >
-            {day.confirmed || isPast ? "마감" : "진행중"}
+            {day.confirmed || isPast ? "마감" : "진행"}
           </TintedPill>
           {day.paymentStatus === "미납" && <TintedPill tone="warn">벌금 미납</TintedPill>}
           {day.paymentStatus === "납부" && <TintedPill tone="ok">벌금 납부</TintedPill>}
