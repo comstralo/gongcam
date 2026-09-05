@@ -51,24 +51,33 @@ export function MeritBreakdownDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
-          {/* 🔧 2026-09 정정: "주간 총 상점"을 다른 4개 카드 제목("상점
-              적립 원인" 등)보다 한 단계 키웠던 이전 시도는 사용자 의도와
-              반대였다 — 이 5개는 전부 같은 레벨의 카드 제목이라 크기가
-              같아야 한다(사용자 지적). text-xs sm:text-sm으로 되돌려 다른
-              카드 제목들과 동일하게 맞췄다. 실제 위계 문제는 "제목 vs
-              하위 항목"에 있었다 — 이 파일의 SubRow들만 labelClassName/
-              valueClassName으로 한 단계 더 작게(text-micro sm:text-micro-lg)
-              눌러, 제목(12px/14px)과 하위 항목(10px/11px) 간 차이를 확실히
-              벌렸다(공용 SubRow 컴포넌트 기본값은 다른 화면에 영향 없도록
-              그대로 둠). */}
+          {/* 🔧 2026-09 재정정: 1~2px 단위로 크기만 조금씩 밀고 당기는
+              시도를 두 차례 반복했지만 둘 다 위계가 안 읽혔다(사용자
+              확인) — 이 크기대(10~14px)에서는 폰트 크기 한 축만으로는
+              절대 눈에 띄는 차이가 나지 않는다. 모바일 하이브리드 웹에서
+              흔히 쓰는 3단 타이포 스케일(제목=크고 굵고 기본색 / 본문
+              보조정보=한 단계 작고 일반 굵기+회색조/muted / 각주=가장
+              작고 강조색)을 그대로 적용한다 — 크기·굵기·색 세 축을 함께
+              바꿔야 작은 화면에서도 위계가 확실히 읽힌다.
+              - 카드 제목(5개 전부 동일): text-sm/base(14/16px), font-bold,
+                기본 글자색.
+              - 하위 항목(SubRow, 제외 원인 목록): text-xs/sm(12/14px),
+                일반 굵기(SubRow 기본값), 회색조(muted-foreground, SubRow
+                라벨 기본값 그대로) — 제목과 2px 차이지만 굵기+색이 함께
+                바뀌어 실제로는 훨씬 크게 갈려 보인다.
+              - 각주(* 주중 랜덤 반영 등): text-micro/micro-lg(10/11px),
+                강조색(amber) — 가장 낮은 3번째 단.
+              공용 SubRow 컴포넌트의 기본값 자체는 다른 화면에 영향 없도록
+              바꾸지 않고, 이 다이얼로그에서만 labelClassName/valueClassName
+              으로 크기를 조정한다. */}
           <InfoCard className="flex items-center justify-between gap-2">
-            <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+            <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
               <Award className="size-3.5 shrink-0 text-primary sm:size-4" />
               주간 총 상점
             </span>
             <span
               className={cn(
-                "text-xs tabular-nums sm:text-sm",
+                "text-sm font-bold tabular-nums sm:text-base",
                 breakdown.isZero ? "text-muted-foreground" : "text-ok"
               )}
             >
@@ -82,16 +91,16 @@ export function MeritBreakdownDialog({
           </InfoCard>
 
           <InfoCard className="flex flex-col gap-1.5">
-            <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+            <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
               <TrendingUp className="size-3.5 shrink-0 text-primary sm:size-4" />
               상점 적립 원인
             </span>
             <SubRow
               label={`주간 학습시간 상점 (${breakdown.studyTimeHours ?? 0}H)`}
               value={(breakdown.studyTimeMerit ?? 0) > 0 ? `+${pt(breakdown.studyTimeMerit)}` : `+${pt(0)}`}
-              labelClassName="text-micro sm:text-micro-lg"
+              labelClassName="text-xs sm:text-sm"
               valueClassName={cn(
-                "font-sans text-micro sm:text-micro-lg",
+                "font-sans text-xs sm:text-sm",
                 (breakdown.studyTimeMerit ?? 0) > 0 ? "text-ok" : "text-muted-foreground"
               )}
             />
@@ -103,9 +112,9 @@ export function MeritBreakdownDialog({
                     ? `+${pt(breakdown.reportMerit)}`
                     : `+${pt(0)}`
                 }
-                labelClassName="text-micro sm:text-micro-lg"
+                labelClassName="text-xs sm:text-sm"
                 valueClassName={cn(
-                  "font-sans text-micro sm:text-micro-lg",
+                  "font-sans text-xs sm:text-sm",
                   breakdown.reportMeritIncluded && (breakdown.reportMerit ?? 0) > 0
                     ? "text-ok"
                     : "text-muted-foreground"
@@ -118,25 +127,25 @@ export function MeritBreakdownDialog({
           </InfoCard>
 
           <InfoCard className="flex flex-col gap-1.5">
-            <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+            <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
               <TrendingDown className="size-3.5 shrink-0 text-primary sm:size-4" />
               상점 차감 원인
             </span>
             <SubRow
               label="주간 송출 벌점"
               value={(breakdown.penaltyDeduction ?? 0) > 0 ? `-${pt(breakdown.penaltyDeduction)}` : `-${pt(0)}`}
-              labelClassName="text-micro sm:text-micro-lg"
+              labelClassName="text-xs sm:text-sm"
               valueClassName={cn(
-                "font-sans text-micro sm:text-micro-lg",
+                "font-sans text-xs sm:text-sm",
                 (breakdown.penaltyDeduction ?? 0) > 0 ? "text-destructive" : "text-muted-foreground"
               )}
             />
             <SubRow
               label="주간 벌금 (500원 당)"
               value={(breakdown.fineDeduction ?? 0) > 0 ? `-${pt(breakdown.fineDeduction)}` : `-${pt(0)}`}
-              labelClassName="text-micro sm:text-micro-lg"
+              labelClassName="text-xs sm:text-sm"
               valueClassName={cn(
-                "font-sans text-micro sm:text-micro-lg",
+                "font-sans text-xs sm:text-sm",
                 (breakdown.fineDeduction ?? 0) > 0 ? "text-destructive" : "text-muted-foreground"
               )}
             />
@@ -144,7 +153,7 @@ export function MeritBreakdownDialog({
 
           {breakdown.isZero && breakdown.zeroConditions?.length > 0 && (
             <InfoCard className="flex flex-col gap-1.5">
-              <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+              <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
                 <TrendingDown className="size-3.5 shrink-0 text-destructive sm:size-4" />
                 상점 제외 원인
               </span>
@@ -153,7 +162,7 @@ export function MeritBreakdownDialog({
                   <li
                     key={cond.key}
                     className={cn(
-                      "flex items-center gap-1.5 text-micro sm:text-micro-lg",
+                      "flex items-center gap-1.5 text-xs sm:text-sm",
                       cond.met ? "text-destructive" : "text-muted-foreground"
                     )}
                   >
@@ -170,7 +179,7 @@ export function MeritBreakdownDialog({
           )}
 
           <InfoCard className="flex flex-col gap-1.5">
-            <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+            <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
               <Gauge className="size-3.5 shrink-0 text-primary sm:size-4" />
               상점 배율
             </span>
@@ -178,9 +187,9 @@ export function MeritBreakdownDialog({
               <SubRow
                 label={formatGoalType(goalType)}
                 value={`× ${breakdown.multiplier ?? 1}`}
-                labelClassName="text-micro sm:text-micro-lg"
+                labelClassName="text-xs sm:text-sm"
                 valueClassName={cn(
-                  "font-sans text-micro sm:text-micro-lg",
+                  "font-sans text-xs sm:text-sm",
                   breakdown.multiplierDowngraded && "text-destructive"
                 )}
               />
