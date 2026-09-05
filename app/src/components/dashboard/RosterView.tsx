@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Timer, Award, ChevronDown } from "lucide-react";
 import { ICON_STROKE } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { InfoCard, ItemTitle, DividedValue } from "@/components/dashboard/shared";
+import { InfoCard, DividedValue } from "@/components/dashboard/shared";
 import type { RosterMember } from "@/lib/api/types";
 
 const COLLAPSED_COUNT = 7;
@@ -109,25 +109,25 @@ export function RosterView({ members }: { members: RosterMember[] }) {
   return (
     <div className="flex flex-col gap-2 sm:gap-2.5">
       {visible.map((m, i) => (
-        <InfoCard key={`${m.name}-${i}`} className="flex items-center gap-3 sm:gap-4">
-          <RankBadge rank={m.rank} />
-          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <ItemTitle className="truncate">{m.name}</ItemTitle>
-            <div className="text-xs tabular-nums text-muted-foreground sm:text-sm">
-              <DividedValue
-                items={[
-                  <span key="timer" className="inline-flex items-center gap-1">
-                    <Timer className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
-                    {achievedTime(m.timer) || "-"}
-                  </span>,
-                  <span key="merit" className="inline-flex items-center gap-1">
-                    <Award className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
-                    {m.merit || "-"}
-                  </span>,
-                ]}
-              />
-            </div>
-          </div>
+        <InfoCard key={`${m.name}-${i}`} className="flex items-center justify-between gap-3 sm:gap-4">
+          <span className="flex min-w-0 items-center gap-3 sm:gap-4">
+            <RankBadge rank={m.rank} />
+            <span className="truncate text-sm sm:text-base">{m.name}</span>
+          </span>
+          <span className="shrink-0 text-sm tabular-nums text-muted-foreground sm:text-base">
+            <DividedValue
+              items={[
+                <span key="timer" className="inline-flex items-center gap-1">
+                  <Timer className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                  {achievedTime(m.timer) || "-"}
+                </span>,
+                <span key="merit" className="inline-flex items-center gap-1">
+                  <Award className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                  {m.merit || "-"}
+                </span>,
+              ]}
+            />
+          </span>
         </InfoCard>
       ))}
       {hiddenCount > 0 && (
