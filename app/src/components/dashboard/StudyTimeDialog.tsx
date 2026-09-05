@@ -127,10 +127,19 @@ export function StudyTimeDialog({
             return (
               <Collapsible key={d.day}>
                 <InfoCard className="flex flex-col gap-1.5">
+                  {/* 🔧 2026-09 정정: 이 요일 헤더를 위 "주간 학습시간" 요약과
+                      똑같은 ItemTitle로 바꿨던 게 실수였다(사용자 지적) —
+                      MeritBreakdownDialog처럼 고정된 개별 섹션들과 달리,
+                      여기는 "요약 1개 + 반복되는 요일 목록 7개" 구조라
+                      역할이 다르다. 7개 반복 항목을 요약과 같은 굵기·
+                      크기로 만들면 스크롤할 때 전부 똑같이 도드라져
+                      오히려 뭐가 우선인지 안 보인다 — 원래 크기
+                      (text-xs sm:text-sm)로 되돌려 "요약 > 요일 행 > 교시
+                      세부"라는 3단 구조를 유지한다. */}
                   <CollapsibleTrigger>
-                    <span className="flex items-center gap-1.5">
+                    <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
                       <CalendarDays className="size-3.5 shrink-0 text-primary sm:size-4" />
-                      <ItemTitle>{d.day}요일</ItemTitle>
+                      {d.day}요일
                       {achieved !== null && (
                         <span
                           className={cn(
