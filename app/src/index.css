@@ -172,6 +172,9 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* 자체 pull-to-refresh(usePullToRefresh)와 브라우저 기본 당김 동작이
+       겹쳐 이중으로 새로고침되는 것을 막는다(특히 안드로이드 크롬). */
+    overscroll-behavior-y: contain;
   }
   html {
     @apply font-sans;

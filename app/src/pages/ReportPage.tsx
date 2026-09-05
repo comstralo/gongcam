@@ -9,6 +9,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { SectionHeader, SectionCard } from "@/components/admin/shared";
 import { useRosterPolling } from "@/hooks/useRosterPolling";
+import { usePullRefreshListener } from "@/hooks/usePullToRefresh";
 import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
 import { Bell, Flag, MessageSquareWarning, TriangleAlert, User } from "lucide-react";
@@ -36,6 +37,7 @@ function normalizeView(raw: string | null): ReportView {
 export function ReportPage() {
   const { call } = useApi();
   const { members, stale, hint, refresh } = useRosterPolling();
+  usePullRefreshListener(true, refresh);
   const [nickname, setNickname] = useState("");
   const [reason, setReason] = useState("");
   const [submittingMode, setSubmittingMode] = useState<ReportMode | null>(null);

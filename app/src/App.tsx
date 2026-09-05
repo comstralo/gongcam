@@ -7,6 +7,7 @@ import { MyStatusProvider } from "@/lib/status/MyStatusContext";
 import { PeriodAlarmProvider } from "@/lib/periodAlarm/PeriodAlarmContext";
 import { AdminDeniedCard } from "@/lib/auth/AdminDeniedCard";
 import { AppShell } from "@/components/layout/AppShell";
+import { PullToRefreshIndicator } from "@/components/layout/PullToRefreshIndicator";
 import { LoginPage } from "@/pages/LoginPage";
 import { CheckerPage } from "@/pages/CheckerPage";
 import { ReportPage } from "@/pages/ReportPage";
@@ -46,6 +47,7 @@ function MainViews() {
 
   return (
     <>
+      <PullToRefreshIndicator />
       <div hidden={path !== "/"}>
         {everVisited.current["/"] && (
           <AppShell title="대시보드" titleIcon={LayoutDashboard}>

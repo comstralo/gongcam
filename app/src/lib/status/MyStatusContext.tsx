@@ -1,6 +1,7 @@
 import { createContext, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/lib/auth/useAuth";
+import { PULL_REFRESH_EVENT } from "@/hooks/usePullToRefresh";
 import type { StatusResponse } from "@/lib/api/types";
 
 export type MyStatusContextValue = {
@@ -61,6 +62,13 @@ export function MyStatusProvider({ children }: { children: ReactNode }) {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
+
+  // 대시보드/설정 페이지에서 아래로 당겨 새로고침하면(usePullToRefresh) 이
+  // 전역 캐시가 갱신되고, 이를 구독하는 두 페이지 모두 자동으로 최신화된다.
+  useEffect(() => {
+    window.addEventListener(PULL_REFRESH_EVENT, refresh);
+    return () => window.removeEventListener(PULL_REFRESH_EVENT, refresh);
+  }, [refresh]);
 
   function setStatus(updater: StatusResponse | ((prev: StatusResponse | null) => StatusResponse | null)) {
     // 낙관적 업데이트(예: 반휴 신청 성공 직후 잔여량 즉시 감소)도 하나의
