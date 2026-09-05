@@ -188,6 +188,15 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    /* PC 브라우저에서 스크롤바가 레이아웃을 잡아먹지 않으면서도(모바일
+       웹앱처럼) 스크롤 자체는 그대로 되도록 숨긴다. scrollbar-width는
+       상속되지 않는 속성이라 body/html 한 곳이 아니라 전체 선택자에
+       걸어야 관리자 탭 등 내부 overflow-x:auto 컨테이너에도 적용된다. */
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* 구형 Edge/IE */
+  }
+  *::-webkit-scrollbar {
+    display: none; /* Chrome/Safari/신형 Edge */
   }
   body {
     @apply bg-background text-foreground;
