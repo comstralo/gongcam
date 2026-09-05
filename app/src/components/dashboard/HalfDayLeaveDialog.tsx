@@ -276,7 +276,7 @@ export function HalfDayLeaveDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger className="w-full rounded-xl text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
-        <Button variant="outline" className="w-full sm:h-11">
+        <Button variant="outline" className="w-full sm:h-11 sm:text-base">
           반일 휴무 신청
         </Button>
       </DialogTrigger>
