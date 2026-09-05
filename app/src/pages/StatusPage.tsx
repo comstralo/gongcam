@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusView } from "@/components/dashboard/StatusView";
@@ -95,84 +94,87 @@ export function StatusPage({
   useRefreshOnVisible(visible, reload);
 
   return (
-    <Card className="w-full">
-      <CardContent className="flex flex-col gap-5">
-        {isAdmin && (
-          // 🔧 [로딩 중 빈 목록 오해 방지] members가 아직 null(회원 목록
-          // 응답 전)일 때 드롭다운을 열면 "내 대시보드" 옵션만 있고 다른
-          // 회원은 하나도 안 보여, 순간적으로 "다른 회원이 없다"로 오해할
-          // 수 있었다. 이 짧은 로딩 구간엔 트리거 자체를 비활성화한다 —
-          // 이 앱의 다른 Select들(NewMemberForm, SimpleNoticeSection 등)과
-          // 동일한 컨벤션.
-          <Select value={selected} onValueChange={(v) => setSelected(v ?? SELF_VALUE)} disabled={!members}>
-            <SelectTrigger className="w-fit data-[size=default]:h-9 sm:data-[size=default]:h-11 sm:text-base">
-              <SelectValue>
-                {selected === SELF_VALUE ? "내 대시보드" : members?.find((m) => m.number === selected)?.name}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={SELF_VALUE} className="sm:text-base">
-                내 대시보드
+    // 🔧 2026-09: 이 화면을 감싸던 바깥 Card/CardContent를 제거했다(사용자
+    // 지시) — 안쪽 StatusView가 이미 SummaryTile(각자 자체 카드)과 요일별
+    // 카드로 구성돼 있어, 바깥 Card는 "내 대시보드" 선택/CycleSwitcher까지
+    // 한 박스에 가두면서 이중 테두리만 만들 뿐이었다. RosterPage(ALL 탭)에서
+    // 같은 이유로 이미 제거한 것과 동일한 처리.
+    <div className="flex w-full flex-col gap-5">
+      {isAdmin && (
+        // 🔧 [로딩 중 빈 목록 오해 방지] members가 아직 null(회원 목록
+        // 응답 전)일 때 드롭다운을 열면 "내 대시보드" 옵션만 있고 다른
+        // 회원은 하나도 안 보여, 순간적으로 "다른 회원이 없다"로 오해할
+        // 수 있었다. 이 짧은 로딩 구간엔 트리거 자체를 비활성화한다 —
+        // 이 앱의 다른 Select들(NewMemberForm, SimpleNoticeSection 등)과
+        // 동일한 컨벤션.
+        <Select value={selected} onValueChange={(v) => setSelected(v ?? SELF_VALUE)} disabled={!members}>
+          <SelectTrigger className="w-fit data-[size=default]:h-9 sm:data-[size=default]:h-11 sm:text-base">
+            <SelectValue>
+              {selected === SELF_VALUE ? "내 대시보드" : members?.find((m) => m.number === selected)?.name}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={SELF_VALUE} className="sm:text-base">
+              내 대시보드
+            </SelectItem>
+            {members?.map((m) => (
+              <SelectItem key={m.number} value={m.number} className="sm:text-base">
+                {m.name}
               </SelectItem>
-              {members?.map((m) => (
-                <SelectItem key={m.number} value={m.number} className="sm:text-base">
-                  {m.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
+            ))}
+          </SelectContent>
+        </Select>
+      )}
 
-        {onSelectCycle && (
-          <CycleSwitcher
-            selectedFileId={cycleFileId ?? null}
-            onSelect={onSelectCycle}
-            memberNumber={selected === SELF_VALUE ? "self" : selected}
-          />
-        )}
-        {membersError && (
-          <Alert variant="destructive">
-            <AlertDescription>{membersError}</AlertDescription>
-          </Alert>
-        )}
-
-        <StatusView
-          status={status}
-          allowGoalSchedule={!isViewingCycle && selected === SELF_VALUE}
-          isViewingCycle={isViewingCycle}
-          onLeaveApplied={(day, type, delta) => {
-            const applyLeaveDelta = (prev: StatusResponse | null) => {
-              if (!prev) return prev;
-              const usedField = type === "normal" ? "normalLeaveUsed" : "reasonLeaveUsed";
-              const leftField = type === "normal" ? "normalLeaveLeft" : "reasonLeaveLeft";
-              // 신청(delta > 0)은 잔여량을 그만큼 줄이고, 취소(delta < 0)는
-              // 그만큼 되돌린다 — 새로고침 없이 "반휴권 잔여량" 카드가 즉시
-              // 맞아떨어지게 한다. left는 문자열(시트 표시값)이라 숫자로
-              // 변환해 계산한 뒤 다시 문자열로 되돌린다.
-              const nextLeft = Math.max(0, Number(prev[leftField] || 0) - delta);
-              return {
-                ...prev,
-                [leftField]: String(nextLeft),
-                days: prev.days.map((d) =>
-                  d.day === day ? { ...d, [usedField]: Math.max(0, d[usedField] + delta) } : d
-                ),
-              };
-            };
-            if (usingMyStatus) {
-              myStatus.setStatus(applyLeaveDelta);
-            } else {
-              setOtherStatus(applyLeaveDelta);
-            }
-          }}
-          onReasonLeaveSubmitted={reload}
+      {onSelectCycle && (
+        <CycleSwitcher
+          selectedFileId={cycleFileId ?? null}
+          onSelect={onSelectCycle}
+          memberNumber={selected === SELF_VALUE ? "self" : selected}
         />
-        {loading && <p className="text-center font-mono text-xs text-muted-foreground sm:text-sm">불러오는 중...</p>}
-        {error && (
-          <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-      </CardContent>
-    </Card>
+      )}
+      {membersError && (
+        <Alert variant="destructive">
+          <AlertDescription>{membersError}</AlertDescription>
+        </Alert>
+      )}
+
+      <StatusView
+        status={status}
+        allowGoalSchedule={!isViewingCycle && selected === SELF_VALUE}
+        isViewingCycle={isViewingCycle}
+        onLeaveApplied={(day, type, delta) => {
+          const applyLeaveDelta = (prev: StatusResponse | null) => {
+            if (!prev) return prev;
+            const usedField = type === "normal" ? "normalLeaveUsed" : "reasonLeaveUsed";
+            const leftField = type === "normal" ? "normalLeaveLeft" : "reasonLeaveLeft";
+            // 신청(delta > 0)은 잔여량을 그만큼 줄이고, 취소(delta < 0)는
+            // 그만큼 되돌린다 — 새로고침 없이 "반휴권 잔여량" 카드가 즉시
+            // 맞아떨어지게 한다. left는 문자열(시트 표시값)이라 숫자로
+            // 변환해 계산한 뒤 다시 문자열로 되돌린다.
+            const nextLeft = Math.max(0, Number(prev[leftField] || 0) - delta);
+            return {
+              ...prev,
+              [leftField]: String(nextLeft),
+              days: prev.days.map((d) =>
+                d.day === day ? { ...d, [usedField]: Math.max(0, d[usedField] + delta) } : d
+              ),
+            };
+          };
+          if (usingMyStatus) {
+            myStatus.setStatus(applyLeaveDelta);
+          } else {
+            setOtherStatus(applyLeaveDelta);
+          }
+        }}
+        onReasonLeaveSubmitted={reload}
+      />
+      {loading && <p className="text-center font-mono text-xs text-muted-foreground sm:text-sm">불러오는 중...</p>}
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+    </div>
   );
 }
