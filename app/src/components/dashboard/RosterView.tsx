@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Timer, Award, ChevronDown } from "lucide-react";
+import { Timer, Award, ChevronDown, ChevronUp, User } from "lucide-react";
 import { ICON_STROKE } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { InfoCard, DividedValue } from "@/components/dashboard/shared";
@@ -109,9 +109,10 @@ export function RosterView({ members }: { members: RosterMember[] }) {
   return (
     <div className="flex flex-col gap-2 sm:gap-2.5">
       {visible.map((m, i) => (
-        <InfoCard key={`${m.name}-${i}`} className="flex items-center justify-between gap-3 sm:gap-4">
+        <InfoCard key={`${m.name}-${i}`} className="flex items-center justify-between gap-3 bg-card sm:gap-4">
           <span className="flex min-w-0 items-center gap-3 sm:gap-4">
             <RankBadge rank={m.rank} />
+            <User className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
             <span className="truncate text-sm sm:text-base">{m.name}</span>
           </span>
           <span className="shrink-0 text-sm tabular-nums sm:text-base">
@@ -130,16 +131,30 @@ export function RosterView({ members }: { members: RosterMember[] }) {
           </span>
         </InfoCard>
       ))}
-      {hiddenCount > 0 && (
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full gap-1.5 whitespace-nowrap sm:h-11 sm:text-base"
-          onClick={() => setExpanded(true)}
-        >
-          <ChevronDown className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
-          <span>더 보기 ({hiddenCount}명)</span>
-        </Button>
+      {expanded ? (
+        sorted.length > COLLAPSED_COUNT && (
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full gap-1.5 whitespace-nowrap sm:h-11 sm:text-base"
+            onClick={() => setExpanded(false)}
+          >
+            <ChevronUp className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
+            <span>접기</span>
+          </Button>
+        )
+      ) : (
+        hiddenCount > 0 && (
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full gap-1.5 whitespace-nowrap sm:h-11 sm:text-base"
+            onClick={() => setExpanded(true)}
+          >
+            <ChevronDown className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
+            <span>더 보기 ({hiddenCount}명)</span>
+          </Button>
+        )
       )}
     </div>
   );
