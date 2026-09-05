@@ -114,16 +114,16 @@ export function RosterView({ members }: { members: RosterMember[] }) {
             <RankBadge rank={m.rank} />
             <span className="truncate text-sm sm:text-base">{m.name}</span>
           </span>
-          <span className="shrink-0 text-sm tabular-nums text-muted-foreground sm:text-base">
+          <span className="shrink-0 text-sm tabular-nums sm:text-base">
             <DividedValue
               items={[
                 <span key="timer" className="inline-flex items-center gap-1">
-                  <Timer className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                  <Timer className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
                   {achievedTime(m.timer) || "-"}
                 </span>,
                 <span key="merit" className="inline-flex items-center gap-1">
-                  <Award className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
-                  {m.merit || "-"}
+                  <Award className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                  {m.merit ? `+${m.merit}점` : "-"}
                 </span>,
               ]}
             />
