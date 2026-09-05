@@ -752,7 +752,7 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
                                         disabled={decidingId === item.id || !canDecide(item)}
                                         onClick={() => decide(item, "approved")}
                                       >
-                                        {occurrenceLabel(item.nextOccurrence)} 적용
+                                        적용
                                       </Button>
                                       <Button
                                         variant="outline"
