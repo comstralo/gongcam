@@ -64,8 +64,8 @@ export function ActiveReportsSection({ refreshSignal }: { refreshSignal?: number
 
   return (
     <SectionCard className="flex flex-col gap-1.5">
-      <span className="flex items-center gap-1.25 text-xs font-semibold text-muted-foreground sm:text-sm">
-        <Clock className="size-3 shrink-0 sm:size-3.5" />
+      <span className="flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+        <Clock className="size-3 shrink-0 text-muted-foreground sm:size-3.5" />
         최근 진행된 제보
       </span>
       {error ? (
