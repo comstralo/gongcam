@@ -518,8 +518,8 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
                                 <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:gap-3.5 sm:p-5">
                                   <div className="flex flex-col gap-1.5">
                                     <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
-                                      <ImageIcon className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
-                                      스크린샷 · 영상
+                                      <ImageIcon className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
+                                      제보 내용
                                     </span>
                                     {session?.token ? (
                                       <CapturePreview id={item.id} token={session.token} />
@@ -589,8 +589,8 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
                                 <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:gap-3.5 sm:p-5">
                                   <div className="flex flex-col gap-1.5">
                                     <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
-                                      <ImageIcon className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
-                                      스크린샷 · 영상
+                                      <ImageIcon className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
+                                      제보 내용
                                     </span>
                                     {session?.token ? (
                                       <CapturePreview id={item.id} token={session.token} />
