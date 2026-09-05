@@ -75,7 +75,23 @@ export function CycleSwitcher({
     );
   }
 
-  if (weeks === null || maxWeeks === 0) return null;
+  // 🔧 2026-09: 응답 오기 전엔 아예 아무것도 안 그리다가(return null) 응답이
+  // 도착하는 순간 버튼 행 전체가 레이아웃에 갑자기 끼어들어 그 아래 콘텐츠가
+  // 훅 밀리는 "짠" 현상이 있었다(사용자 지적) — 실제 버튼과 같은 크기의
+  // 알약 모양 자리표시자를 먼저 그려 그 자리를 미리 차지해둔다. 실제 슬롯
+  // 개수(과거 주차 + "이번 주")를 아직 모르므로 대표적으로 3개만 보여준다.
+  if (weeks === null || maxWeeks === 0) {
+    return (
+      <div className="flex w-full flex-wrap gap-1.5 sm:gap-2" aria-hidden>
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div
+            key={i}
+            className="h-9 w-24 animate-pulse rounded-full bg-muted/50 sm:h-11 sm:w-28"
+          />
+        ))}
+      </div>
+    );
+  }
 
   // 🔧 [빈 슬롯 표시] 아직 3주가 다 안 지나 백업이 없는 과거 주차는 원래
   // 버튼 자체가 안 보였다 — 몇 주째인지, 앞으로 몇 자리가 더 채워질지
