@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Trophy, PiggyBank } from "lucide-react";
+import { Trophy, PiggyBank, Receipt } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { SectionHeader, SectionCard } from "@/components/admin/shared";
@@ -105,22 +105,17 @@ export function RosterPage({
                 <div className="flex flex-col gap-1.5">
                   <div className="flex items-center justify-between gap-2">
                     <span className="inline-flex items-center gap-1.25">
-                      <PiggyBank className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
+                      <PiggyBank className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                       <ItemTitle>총 모금액</ItemTitle>
                     </span>
-                    <span
-                      className={cn(
-                        "text-sm sm:text-base",
-                        money.collectMoney > 0 ? "text-ok" : "text-muted-foreground"
-                      )}
-                    >
+                    <span className={cn("text-sm sm:text-base", money.collectMoney > 0 && "text-ok")}>
                       {won(money.collectMoney)}
                     </span>
                   </div>
                   {/* 🔧 2026-09: SubRow 기본값(11/12px) 대신 MeritBreakdownDialog와
                       동일한 하위 항목 크기(text-xs sm:text-sm)로 통일. */}
                   <SubRow label="이월된 상금" value={won(money.fineCarry)} labelClassName="text-xs sm:text-sm" valueClassName="text-xs sm:text-sm" />
-                  <SubRow label="납부한 벌금" value={won(money.fineThisWeek)} labelClassName="text-xs sm:text-sm" valueClassName="text-xs sm:text-sm" />
+                  <SubRow label="정상 참여자 납부 벌금" value={won(money.fineThisWeek)} labelClassName="text-xs sm:text-sm" valueClassName="text-xs sm:text-sm" />
                   <SubRow label="퇴실 · 재납자 납부 벌금" value={won(money.fineOuter)} labelClassName="text-xs sm:text-sm" valueClassName="text-xs sm:text-sm" />
                   {money.depositOuter !== undefined && (
                     <SubRow label="퇴실 · 재납자 귀속 예치금" value={won(money.depositOuter)} labelClassName="text-xs sm:text-sm" valueClassName="text-xs sm:text-sm" />
@@ -131,7 +126,7 @@ export function RosterPage({
 
                 <div className="flex flex-col gap-1.5">
                   <span className="inline-flex items-center gap-1.25">
-                    <PiggyBank className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
+                    <Receipt className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                     <ItemTitle>정산 내역</ItemTitle>
                   </span>
                   {settlement === null ? (
