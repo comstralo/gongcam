@@ -9,9 +9,14 @@ import type { StatusDay, DepositRefundBreakdown } from "@/lib/api/types";
 export const MAX_LEAVES_PER_DAY = 2;
 
 // 카드 안에서 가장 두드러지는 1차 텍스트(예: "퇴실신청" 같은 카드 제목).
-// 섹션/탭 제목(font-bold)보다 한 단계 낮은 굵기(semibold)로 위계를 분리한다.
+// 🔧 2026-09: 원래 font-semibold였으나, MeritBreakdownDialog("주간 총
+// 상점")에서 사용자와 함께 검증을 마친 카드 제목 스타일(text-sm font-bold
+// sm:text-base)을 이 앱 전체의 기준값으로 삼기로 했다(사용자 지시 —
+// "제목과 하위 항목의 위계를 '주간 총 상점'에서 설정한 값처럼 보이도록").
+// font-semibold로 남아있으면 그 다이얼로그와 미묘하게 다른 굵기로 보여
+// 화면마다 위계가 일관되지 않다는 인상을 준다.
 export function ItemTitle({ children, className }: { children: ReactNode; className?: string }) {
-  return <span className={cn("text-sm font-semibold sm:text-base", className)}>{children}</span>;
+  return <span className={cn("text-sm font-bold sm:text-base", className)}>{children}</span>;
 }
 
 type PillTone = "ok" | "warn" | "muted" | "primary" | "amber";

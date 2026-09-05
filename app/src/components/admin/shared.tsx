@@ -271,10 +271,15 @@ export function PenaltyHistorySection({
           와 거의 같은 크기(12/14px)라 위계가 잘 안 읽혔다 — 위 4단 체계의
           ItemTitle(14/16px)로 올렸다. TotalPenaltyDialog(회원용)와
           PenaltyCandidateList(관리자용) 둘 다 이 컴포넌트를 공유하므로
-          한 번에 적용된다. */}
+          한 번에 적용된다. font-bold 오버라이드: 이 admin/shared.tsx의
+          ItemTitle은 4단 체계상 font-semibold가 맞지만, TotalPenaltyDialog
+          쪽에서는 이미 검증된 기준값인 MeritBreakdownDialog(text-sm
+          font-bold sm:text-base)와 굵기까지 정확히 맞춰야 한다(사용자
+          지시) — admin 쪽 다른 ItemTitle 용례(예: 회원 이름)는 semibold
+          그대로 두고 여기만 개별적으로 올린다. */}
       <span className="inline-flex items-center gap-1.25">
         <Icon className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
-        <ItemTitle>{title}</ItemTitle>
+        <ItemTitle className="font-bold">{title}</ItemTitle>
       </span>
       {/* 🔧 2026-09 재정정: "-" 가짜 값 문제를 고친 뒤에도 여전히 위계가
           안 맞아 보인다는 지적을 받았다 — 원인은 크기였다. SubRow
