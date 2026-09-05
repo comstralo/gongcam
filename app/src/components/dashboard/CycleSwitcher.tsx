@@ -130,7 +130,7 @@ export function CycleSwitcher({
             : "border-border bg-card text-foreground hover:border-primary/50 hover:bg-muted"
         )}
       >
-        현재
+        이번 주
       </button>
     </div>
   );
