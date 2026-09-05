@@ -7,6 +7,7 @@ import { InfoCard, SubRow, TintedPill } from "@/components/dashboard/shared";
 import { SectionHeader } from "@/components/admin/shared";
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
 import { useApi } from "@/hooks/useApi";
+import { usePullRefreshListener } from "@/hooks/usePullToRefresh";
 import { ICON_STROKE, cn } from "@/lib/utils";
 import type {
   AdminMembersRosterResponse,
@@ -73,6 +74,7 @@ export function MemberRosterList() {
   }
 
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  usePullRefreshListener(true, load);
 
   return (
     <Collapsible defaultOpen className="flex flex-col gap-4">

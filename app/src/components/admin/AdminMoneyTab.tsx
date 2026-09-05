@@ -12,6 +12,7 @@ import { ReasonLeaveReviewList } from "@/components/admin/ReasonLeaveReviewList"
 import { RankBadge, achievedTime } from "@/components/dashboard/RosterView";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
+import { usePullRefreshListener } from "@/hooks/usePullToRefresh";
 import { useTodayIndex } from "@/hooks/useTodayIndex";
 import { ApiError } from "@/lib/api/client";
 import { ICON_STROKE, cn } from "@/lib/utils";
@@ -137,6 +138,7 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
   // 이 탭(MEM·PEN)에서 퇴실/재납 처리를 하면 벌금 상태가 바뀔 수 있어,
   // Money 탭으로 돌아올 때마다 새로 불러온다.
   useRefreshOnVisible(isVisible, load);
+  usePullRefreshListener(isVisible, load);
 
   async function handleSetStatus(f: FineRecord, status: FineStatus) {
     const key = fineKey(f);
@@ -402,6 +404,7 @@ function PrizeRecipientList({ isVisible }: { isVisible: boolean }) {
 
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
   useRefreshOnVisible(isVisible, load);
+  usePullRefreshListener(isVisible, load);
 
   // "상금 정산 집행" — 관리자가 이번 주 1~5등에게 실제로 상금을 지급했음을
   // 집계!P6 셀에 "완료"로 기록한다(handleAdminPrizeSettle). 다른 상태

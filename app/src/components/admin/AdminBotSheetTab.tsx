@@ -9,6 +9,7 @@ import { InfoCard } from "@/components/dashboard/shared";
 import { SectionHeader, SectionCard, ItemTitle, FieldLabel, FieldValue } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
+import { usePullRefreshListener } from "@/hooks/usePullToRefresh";
 import { ApiError } from "@/lib/api/client";
 import { cn, ICON_STROKE } from "@/lib/utils";
 import type {
@@ -104,6 +105,7 @@ function UsageMonitorSection({ visible }: { visible: boolean }) {
   // 목적이라, 탭을 벗어났다가 돌아왔을 때 몇 분 전 값을 계속 보여주면
   // 한도 임박을 놓칠 수 있다 — 다시 보이게 될 때마다 새로 불러온다.
   useRefreshOnVisible(visible, load);
+  usePullRefreshListener(visible, load);
 
   return (
     <SectionCard>
@@ -238,6 +240,7 @@ function BotStatusSection({ visible }: { visible: boolean }) {
   // 봇 온라인/오프라인은 실제로 수시로 바뀌는 상태라, 탭을 벗어났다가
   // 돌아왔을 때 방금 끊긴 봇을 계속 "온라인"으로 보여주면 오해를 준다.
   useRefreshOnVisible(visible, load);
+  usePullRefreshListener(visible, load);
 
   async function sendRestart() {
     setRestarting(true);

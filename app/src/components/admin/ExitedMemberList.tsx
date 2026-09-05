@@ -8,6 +8,7 @@ import { InfoCard, SubRow, TintedPill, buildDepositCauseItems } from "@/componen
 import type { DepositCauseItem } from "@/components/dashboard/shared";
 import { SectionHeader, displayExitedName as displayName } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
+import { usePullRefreshListener } from "@/hooks/usePullToRefresh";
 import { ApiError } from "@/lib/api/client";
 import { ICON_STROKE, cn } from "@/lib/utils";
 import type { ExitedMemberEntry, ExitKind, SetExitBlacklistResponse } from "@/lib/api/types";
@@ -286,6 +287,7 @@ export function ExitedMemberList() {
   }
 
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  usePullRefreshListener(true, load);
 
   // 🔧 2026-09: 블랙리스트 등록/해제 토글(POST /admin/exit/blacklist) —
   // 실제 백엔드를 호출하는 진짜 액션이다(목록 자체는 위 load()처럼 아직

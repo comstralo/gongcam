@@ -10,6 +10,7 @@ import { InfoCard, SubRow, TintedPill } from "@/components/dashboard/shared";
 import { SectionHeader, CapturePreview } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
+import { usePullRefreshListener } from "@/hooks/usePullToRefresh";
 import { useAuth } from "@/lib/auth/useAuth";
 import { ICON_STROKE, cn } from "@/lib/utils";
 import type {
@@ -310,6 +311,7 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
   // 다른 학생이 이 탭을 벗어난 사이에 새 제보를 넣을 수 있어, 승인 대기열은
   // 관리자가 이 탭으로 돌아올 때마다 새로 불러와야 방금 들어온 제보를 놓치지 않는다.
   useRefreshOnVisible(visible, load);
+  usePullRefreshListener(visible, load);
 
   // 부스터디장(공동 검토자) 본인이 위반 수준 의견을 제출한다 — 성공하면
   // 서버에 실제 저장된 값을 다시 불러와 반영한다(다른 회원 임명 변경과
