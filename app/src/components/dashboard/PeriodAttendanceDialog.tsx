@@ -60,10 +60,27 @@ export function PeriodAttendanceDialog({
             </div>
             {breakdown.applicable ? (
               <div className="flex flex-col gap-1.5">
-                <SubRow label="① 85% 이상 달성 교시" value={`${breakdown.achievedCount}개`} valueClassName="font-sans" />
-                <SubRow label="② 오류(ERR) 발생 교시" value={`${breakdown.errorCount}개`} valueClassName="font-sans" />
+                {/* 🔧 2026-09: SubRow 기본값(11/12px) 대신 MeritBreakdownDialog와
+                    동일한 하위 항목 크기(text-xs sm:text-sm)로 통일. */}
+                <SubRow
+                  label="① 85% 이상 달성 교시"
+                  value={`${breakdown.achievedCount}개`}
+                  labelClassName="text-xs sm:text-sm"
+                  valueClassName="font-sans text-xs sm:text-sm"
+                />
+                <SubRow
+                  label="② 오류(ERR) 발생 교시"
+                  value={`${breakdown.errorCount}개`}
+                  labelClassName="text-xs sm:text-sm"
+                  valueClassName="font-sans text-xs sm:text-sm"
+                />
                 <div className="flex flex-col">
-                  <SubRow label="③ 목표 교시 수" value={`${breakdown.targetPeriods}개`} valueClassName="font-sans" />
+                  <SubRow
+                    label="③ 목표 교시 수"
+                    value={`${breakdown.targetPeriods}개`}
+                    labelClassName="text-xs sm:text-sm"
+                    valueClassName="font-sans text-xs sm:text-sm"
+                  />
                   <span className="pl-8.5 text-micro leading-tight text-amber-600 sm:pl-9.5 sm:text-micro-lg dark:text-amber-400">
                     * 사유 반휴 사용 시, 목표량 감소
                   </span>

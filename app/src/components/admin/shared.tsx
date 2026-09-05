@@ -276,13 +276,16 @@ export function PenaltyHistorySection({
         <Icon className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
         <ItemTitle>{title}</ItemTitle>
       </span>
-      {/* 🔧 2026-09 정정: "-"라는 가짜 값을 붙여 마치 실제 데이터 행인 것처럼
-          보이게 했던 게 문제였다(사용자 지적, 두 이미지 비교로 확인) — 이
-          앱의 다른 모든 "없음" 상태(RosterPage의 "정산 대상이 없습니다."
-          등)는 SubRow에 빈 값("")만 준다. 이 컴포넌트만 유일하게 "-"를
-          넣어서, 위계상 진짜 하위 항목처럼 도드라져 보였다. */}
+      {/* 🔧 2026-09 재정정: "-" 가짜 값 문제를 고친 뒤에도 여전히 위계가
+          안 맞아 보인다는 지적을 받았다 — 원인은 크기였다. SubRow
+          기본값(text-micro-lg sm:text-xs, 11/12px)을 그대로 뒀는데,
+          MeritBreakdownDialog의 동급 하위 항목("주간 학습시간 상점" 등)은
+          labelClassName/valueClassName으로 text-xs sm:text-sm(12/14px)로
+          이미 키워서 쓰고 있었다 — 같은 "카드 제목 밑 하위 항목" 역할인데
+          이 컴포넌트만 더 작은 기본값에 머물러 있었던 것(사용자 지적,
+          두 화면 직접 비교로 확인). 크기를 맞춘다. */}
       {entries.length === 0 ? (
-        <SubRow label="해당 없음" value="" />
+        <SubRow label="해당 없음" value="" labelClassName="text-xs sm:text-sm" />
       ) : (
         entries.map((entry, i) => {
           const label = slotLabels?.[i] ?? parenthesizeOccurrence(entry.label);
@@ -291,7 +294,8 @@ export function PenaltyHistorySection({
             <SubRow
               key={entry.label}
               label={label}
-              labelClassName={isPenalty ? "font-semibold text-destructive" : undefined}
+              labelClassName={cn("text-xs sm:text-sm", isPenalty && "font-semibold text-destructive")}
+              valueClassName="text-xs sm:text-sm"
               value={
                 <PenaltyHistoryDetailDialog label={label} entry={entry} token={token}>
                   {dateOnlyLabel(entry.when)}

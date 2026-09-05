@@ -208,12 +208,17 @@ export function DepositRefundDialog({
                 <TrendingDown className="size-3.5 shrink-0 text-primary sm:size-4" />
                 <ItemTitle>차감 원인</ItemTitle>
               </span>
+              {/* 🔧 2026-09: SubRow 기본값(11/12px)이 아니라 MeritBreakdownDialog
+                  에서 이미 검증된 하위 항목 크기(text-xs sm:text-sm, 12/14px)로
+                  맞춘다 — 같은 "카드 제목 밑 하위 항목" 역할인데 화면마다
+                  크기가 다르면 위계가 화면 간에 어긋나 보인다(사용자 지적). */}
               {causeItems.map((item) => (
                 <SubRow
                   key={item.key}
                   label={item.label}
                   value={`${item.rate}%`}
-                  valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
+                  labelClassName="text-xs sm:text-sm"
+                  valueClassName={cn("font-sans text-xs sm:text-sm", item.rate > 0 && "text-destructive")}
                 />
               ))}
             </InfoCard>

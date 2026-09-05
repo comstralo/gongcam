@@ -114,11 +114,13 @@ export function RosterPage({
                       {won(money.collectMoney)}
                     </span>
                   </div>
-                  <SubRow label="지난 주 이월된 상금" value={won(money.fineCarry)} />
-                  <SubRow label="이번 주 납부한 벌금" value={won(money.fineThisWeek)} />
-                  <SubRow label="이번 주 퇴실 · 재납자가 납부한 벌금" value={won(money.fineOuter)} />
+                  {/* 🔧 2026-09: SubRow 기본값(11/12px) 대신 MeritBreakdownDialog와
+                      동일한 하위 항목 크기(text-xs sm:text-sm)로 통일. */}
+                  <SubRow label="지난 주 이월된 상금" value={won(money.fineCarry)} labelClassName="text-xs sm:text-sm" valueClassName="text-xs sm:text-sm" />
+                  <SubRow label="이번 주 납부한 벌금" value={won(money.fineThisWeek)} labelClassName="text-xs sm:text-sm" valueClassName="text-xs sm:text-sm" />
+                  <SubRow label="이번 주 퇴실 · 재납자가 납부한 벌금" value={won(money.fineOuter)} labelClassName="text-xs sm:text-sm" valueClassName="text-xs sm:text-sm" />
                   {money.depositOuter !== undefined && (
-                    <SubRow label="이번 주 퇴실 · 재납자가 납부한 예치금" value={won(money.depositOuter)} />
+                    <SubRow label="이번 주 퇴실 · 재납자가 납부한 예치금" value={won(money.depositOuter)} labelClassName="text-xs sm:text-sm" valueClassName="text-xs sm:text-sm" />
                   )}
                 </div>
 
@@ -130,17 +132,19 @@ export function RosterPage({
                     <ItemTitle>이번 주 정산</ItemTitle>
                   </span>
                   {settlement === null ? (
-                    <SubRow label="일요일 14교시 종료 후 확인할 수 있습니다." value="" />
+                    <SubRow label="일요일 14교시 종료 후 확인할 수 있습니다." value="" labelClassName="text-xs sm:text-sm" />
                   ) : settlement && settlement.length > 0 ? (
                     settlement.map((s) => (
                       <SubRow
                         key={s.number}
                         label={`${RANK_EMOJI[s.rank] || s.rank} ${s.name}`}
                         value={won(s.amount)}
+                        labelClassName="text-xs sm:text-sm"
+                        valueClassName="text-xs sm:text-sm"
                       />
                     ))
                   ) : (
-                    <SubRow label="정산 대상이 없습니다." value="" />
+                    <SubRow label="정산 대상이 없습니다." value="" labelClassName="text-xs sm:text-sm" />
                   )}
                 </div>
               </div>
