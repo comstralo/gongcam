@@ -16,6 +16,7 @@ import { Bell, Flag, MessageSquareWarning, TriangleAlert, User } from "lucide-re
 import { InfoCard } from "@/components/dashboard/shared";
 import { SimpleNoticeSection } from "@/components/report/SimpleNoticeSection";
 import { ActiveReportsSection } from "@/components/report/ActiveReportsSection";
+import { MyOutputPenSection } from "@/components/report/MyOutputPenSection";
 
 // 제보 페이지에서 참여자들이 놓치기 쉬운 규칙을 모아 보여준다 — 배열이라
 // 앞으로 문구가 늘어나도 이 목록에 항목만 추가하면 된다.
@@ -109,123 +110,127 @@ export function ReportPage() {
         </TabsList>
       </Tabs>
 
-      <div className="w-full" hidden={view !== "capture"}>
+      <div className="flex w-full flex-col gap-4" hidden={view !== "capture"}>
         {everOpened.current.capture && (
-          <Card className="w-full">
-            <CardContent>
-              <Collapsible defaultOpen className="flex flex-col gap-4">
-                <SectionHeader icon={Flag} title="송출 P 제보" onRefresh={refresh} />
-                <CollapsiblePanel className="flex flex-col gap-4">
-                  <div className="h-px w-full bg-border" />
-                  <SectionCard className="flex flex-col gap-3">
-                    <div className="flex flex-col gap-1.5">
-                      <Label className="flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
-                        <User className="size-3 shrink-0 text-muted-foreground sm:size-3.5" />
-                        제보 대상자
-                      </Label>
-                      <Select
-                        value={nickname}
-                        onValueChange={(v) => setNickname(v ?? "")}
-                        disabled={stale || noMembers}
-                        onOpenChange={(open) => {
-                          if (open) refresh();
-                        }}
-                      >
-                        <SelectTrigger className="w-full data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base">
-                          <SelectValue
-                            placeholder={
-                              stale
-                                ? "도움봇이 가동중이지 않습니다."
-                                : noMembers
-                                  ? // 🔧 [로딩 실패가 "0명"으로 오인되던 문제 수정] hint는
-                                    // useRosterPolling이 로딩 중/실패 시 채워두는 값이다 —
-                                    // 원래 이걸 안 써서 /participants 조회가 실패해도 항상
-                                    // "접속 중인 참여자가 없습니다"로만 보였다.
-                                    hint || "현재 접속 중인 참여자가 없습니다"
-                                  : "참여자를 선택하세요"
-                            }
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {members.map((name) => (
-                            <SelectItem key={name} value={name} className="sm:text-base">
-                              {name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="flex flex-col gap-1.5">
-                      <Label htmlFor="reason" className="flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
-                        <MessageSquareWarning className="size-3 shrink-0 text-muted-foreground sm:size-3.5" />
-                        제보 원인
-                      </Label>
-                      <Select value={reason} onValueChange={(v) => setReason(v ?? "")} disabled={stale}>
-                        <SelectTrigger
-                          id="reason"
-                          className="w-full data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base"
+          <>
+            <Card className="w-full">
+              <CardContent>
+                <Collapsible defaultOpen className="flex flex-col gap-4">
+                  <SectionHeader icon={Flag} title="송출 P 제보" onRefresh={refresh} />
+                  <CollapsiblePanel className="flex flex-col gap-4">
+                    <div className="h-px w-full bg-border" />
+                    <SectionCard className="flex flex-col gap-3">
+                      <div className="flex flex-col gap-1.5">
+                        <Label className="flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                          <User className="size-3 shrink-0 text-muted-foreground sm:size-3.5" />
+                          제보 대상자
+                        </Label>
+                        <Select
+                          value={nickname}
+                          onValueChange={(v) => setNickname(v ?? "")}
+                          disabled={stale || noMembers}
+                          onOpenChange={(open) => {
+                            if (open) refresh();
+                          }}
                         >
-                          <SelectValue placeholder="원인을 선택해 주세요." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {REASON_OPTIONS.map((opt) => (
-                            <SelectItem key={opt.value} value={opt.value} className="sm:text-base">
-                              {opt.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                          <SelectTrigger className="w-full data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base">
+                            <SelectValue
+                              placeholder={
+                                stale
+                                  ? "도움봇이 가동중이지 않습니다."
+                                  : noMembers
+                                    ? // 🔧 [로딩 실패가 "0명"으로 오인되던 문제 수정] hint는
+                                      // useRosterPolling이 로딩 중/실패 시 채워두는 값이다 —
+                                      // 원래 이걸 안 써서 /participants 조회가 실패해도 항상
+                                      // "접속 중인 참여자가 없습니다"로만 보였다.
+                                      hint || "현재 접속 중인 참여자가 없습니다"
+                                    : "참여자를 선택하세요"
+                              }
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {members.map((name) => (
+                              <SelectItem key={name} value={name} className="sm:text-base">
+                                {name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button
-                        className="w-full sm:h-12 sm:text-base"
-                        variant="outline"
-                        disabled={submitting || stale}
-                        onClick={() => handleSubmit("screenshot")}
-                      >
-                        스크린샷 제보
-                      </Button>
-                      <Button
-                        className="w-full sm:h-12 sm:text-base"
-                        variant="outline"
-                        disabled={submitting || stale}
-                        onClick={() => handleSubmit("video")}
-                      >
-                        영상 제보
-                      </Button>
-                    </div>
-                  </SectionCard>
+                      <div className="flex flex-col gap-1.5">
+                        <Label htmlFor="reason" className="flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                          <MessageSquareWarning className="size-3 shrink-0 text-muted-foreground sm:size-3.5" />
+                          제보 원인
+                        </Label>
+                        <Select value={reason} onValueChange={(v) => setReason(v ?? "")} disabled={stale}>
+                          <SelectTrigger
+                            id="reason"
+                            className="w-full data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base"
+                          >
+                            <SelectValue placeholder="원인을 선택해 주세요." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {REASON_OPTIONS.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value} className="sm:text-base">
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-                  <ActiveReportsSection refreshSignal={cooldownRefreshSignal} />
-
-                  <InfoCard className="flex flex-col gap-1 border-amber-600/30 bg-amber-600/5 dark:border-amber-400/30 dark:bg-amber-400/5">
-                    <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
-                      <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
-                      <span className="text-xs font-semibold sm:text-sm">주의사항</span>
-                    </div>
-                    <ul className="flex flex-col gap-0.5">
-                      {REPORT_CAUTIONS.map((text) => (
-                        <li
-                          key={text}
-                          className="text-micro-lg leading-relaxed text-muted-foreground before:mr-1 before:content-['·'] sm:text-xs"
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          className="w-full sm:h-12 sm:text-base"
+                          variant="outline"
+                          disabled={submitting || stale}
+                          onClick={() => handleSubmit("screenshot")}
                         >
-                          {text}
-                        </li>
-                      ))}
-                    </ul>
-                  </InfoCard>
+                          스크린샷 제보
+                        </Button>
+                        <Button
+                          className="w-full sm:h-12 sm:text-base"
+                          variant="outline"
+                          disabled={submitting || stale}
+                          onClick={() => handleSubmit("video")}
+                        >
+                          영상 제보
+                        </Button>
+                      </div>
+                    </SectionCard>
 
-                  {message && (
-                    <Alert variant={message.type === "error" ? "destructive" : "success"}>
-                      <AlertDescription>{message.text}</AlertDescription>
-                    </Alert>
-                  )}
-                </CollapsiblePanel>
-              </Collapsible>
-            </CardContent>
-          </Card>
+                    <ActiveReportsSection refreshSignal={cooldownRefreshSignal} />
+
+                    <InfoCard className="flex flex-col gap-1 border-amber-600/30 bg-amber-600/5 dark:border-amber-400/30 dark:bg-amber-400/5">
+                      <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                        <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
+                        <span className="text-xs font-semibold sm:text-sm">주의사항</span>
+                      </div>
+                      <ul className="flex flex-col gap-0.5">
+                        {REPORT_CAUTIONS.map((text) => (
+                          <li
+                            key={text}
+                            className="text-micro-lg leading-relaxed text-muted-foreground before:mr-1 before:content-['·'] sm:text-xs"
+                          >
+                            {text}
+                          </li>
+                        ))}
+                      </ul>
+                    </InfoCard>
+
+                    {message && (
+                      <Alert variant={message.type === "error" ? "destructive" : "success"}>
+                        <AlertDescription>{message.text}</AlertDescription>
+                      </Alert>
+                    )}
+                  </CollapsiblePanel>
+                </Collapsible>
+              </CardContent>
+            </Card>
+
+            <MyOutputPenSection />
+          </>
         )}
       </div>
 
