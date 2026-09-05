@@ -100,38 +100,48 @@ export function StatusPage({
     // 한 박스에 가두면서 이중 테두리만 만들 뿐이었다. RosterPage(ALL 탭)에서
     // 같은 이유로 이미 제거한 것과 동일한 처리.
     <div className="flex w-full flex-col gap-5">
-      {isAdmin && (
-        // 🔧 [로딩 중 빈 목록 오해 방지] members가 아직 null(회원 목록
-        // 응답 전)일 때 드롭다운을 열면 "내 대시보드" 옵션만 있고 다른
-        // 회원은 하나도 안 보여, 순간적으로 "다른 회원이 없다"로 오해할
-        // 수 있었다. 이 짧은 로딩 구간엔 트리거 자체를 비활성화한다 —
-        // 이 앱의 다른 Select들(NewMemberForm, SimpleNoticeSection 등)과
-        // 동일한 컨벤션.
-        <Select value={selected} onValueChange={(v) => setSelected(v ?? SELF_VALUE)} disabled={!members}>
-          <SelectTrigger className="w-fit data-[size=default]:h-9 sm:data-[size=default]:h-11 sm:text-base">
-            <SelectValue>
-              {selected === SELF_VALUE ? "내 대시보드" : members?.find((m) => m.number === selected)?.name}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={SELF_VALUE} className="sm:text-base">
-              내 대시보드
-            </SelectItem>
-            {members?.map((m) => (
-              <SelectItem key={m.number} value={m.number} className="sm:text-base">
-                {m.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
-
-      {onSelectCycle && (
-        <CycleSwitcher
-          selectedFileId={cycleFileId ?? null}
-          onSelect={onSelectCycle}
-          memberNumber={selected === SELF_VALUE ? "self" : selected}
-        />
+      {/* 🔧 2026-09: "내 대시보드" 드롭다운이 CycleSwitcher와 별도 줄을
+          차지해, "이번 주" 버튼 옆에 남는 공간을 그대로 낭비하고 있었다
+          (사용자 지시) — 같은 flex 줄에 넣고 드롭다운을 ml-auto로 우측에
+          붙여 CycleSwitcher가 flex-wrap으로 감싸는 마지막 줄의 "이번 주"
+          버튼 오른쪽 빈 공간에 자리 잡도록 했다. */}
+      {(isAdmin || onSelectCycle) && (
+        <div className="flex w-full flex-wrap items-center gap-1.5 sm:gap-2">
+          {onSelectCycle && (
+            <div className="min-w-0 flex-1">
+              <CycleSwitcher
+                selectedFileId={cycleFileId ?? null}
+                onSelect={onSelectCycle}
+                memberNumber={selected === SELF_VALUE ? "self" : selected}
+              />
+            </div>
+          )}
+          {isAdmin && (
+            // 🔧 [로딩 중 빈 목록 오해 방지] members가 아직 null(회원 목록
+            // 응답 전)일 때 드롭다운을 열면 "내 대시보드" 옵션만 있고 다른
+            // 회원은 하나도 안 보여, 순간적으로 "다른 회원이 없다"로 오해할
+            // 수 있었다. 이 짧은 로딩 구간엔 트리거 자체를 비활성화한다 —
+            // 이 앱의 다른 Select들(NewMemberForm, SimpleNoticeSection 등)과
+            // 동일한 컨벤션.
+            <Select value={selected} onValueChange={(v) => setSelected(v ?? SELF_VALUE)} disabled={!members}>
+              <SelectTrigger className="ml-auto w-fit shrink-0 data-[size=default]:h-9 sm:data-[size=default]:h-11 sm:text-base">
+                <SelectValue>
+                  {selected === SELF_VALUE ? "내 대시보드" : members?.find((m) => m.number === selected)?.name}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={SELF_VALUE} className="sm:text-base">
+                  내 대시보드
+                </SelectItem>
+                {members?.map((m) => (
+                  <SelectItem key={m.number} value={m.number} className="sm:text-base">
+                    {m.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
       )}
       {membersError && (
         <Alert variant="destructive">

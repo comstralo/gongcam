@@ -154,7 +154,10 @@ export function StatusView({
             >
               +{summarySource.weeklyMerit || "0"}점
             </span>,
-            <span key="rank" className="text-foreground">
+            <span
+              key="rank"
+              className={!viewingBeforeSplit && status.weeklyMeritBreakdown?.isZero ? "text-destructive" : "text-foreground"}
+            >
               {viewingBeforeSplit
                 ? "-"
                 : status.weeklyMeritBreakdown?.isZero
