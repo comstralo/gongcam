@@ -12,6 +12,18 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="캠스터디" />
     <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css" />
+    <script>
+      // React가 마운트되기 전에 저장된 테마를 먼저 적용해, 다크모드
+      // 사용자가 페이지를 열 때 라이트 화면이 잠깐 번쩍이는(FOUC) 현상을
+      // 막는다. useTheme 훅과 반드시 같은 localStorage 키/값, 같은
+      // theme-color를 써야 한다.
+      try {
+        if (localStorage.getItem("theme") === "dark") {
+          document.documentElement.classList.add("dark");
+          document.querySelector('meta[name="theme-color"]').setAttribute("content", "#1c1917");
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

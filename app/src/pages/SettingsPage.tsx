@@ -1,4 +1,4 @@
-import { BellRing, DoorOpen, UserCog } from "lucide-react";
+import { BellRing, DoorOpen, Palette, UserCog } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { SectionHeader, SectionCard } from "@/components/admin/shared";
@@ -7,6 +7,7 @@ import { DividedValue, InfoCard } from "@/components/dashboard/shared";
 import { PeriodAlarmCard } from "@/components/dashboard/PeriodAlarmCard";
 import { NotifyPrefsCard } from "@/components/dashboard/NotifyPrefsCard";
 import { InstallAppCard } from "@/components/dashboard/InstallAppCard";
+import { ThemeToggleCard } from "@/components/dashboard/ThemeToggleCard";
 import { DepositRefundDialog } from "@/components/dashboard/DepositRefundDialog";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { useMyStatus } from "@/lib/status/useMyStatus";
@@ -82,6 +83,16 @@ export function SettingsPage({ visible = true }: { visible?: boolean }) {
                 </span>
               </InfoCard>
             )}
+          </CollapsiblePanel>
+        </Collapsible>
+      </SectionCard>
+
+      <SectionCard>
+        <Collapsible defaultOpen className="flex flex-col gap-4">
+          <SectionHeader icon={Palette} title="화면 설정" />
+          <CollapsiblePanel className="flex flex-col gap-4">
+            <div className="h-px w-full bg-border" />
+            <ThemeToggleCard />
           </CollapsiblePanel>
         </Collapsible>
       </SectionCard>
