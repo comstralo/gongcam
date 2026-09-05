@@ -96,7 +96,7 @@ export function MeritBreakdownDialog({
               상점 적립 원인
             </span>
             <SubRow
-              label={`학습시간 상점 (${breakdown.studyTimeHours ?? 0}H)`}
+              label={`학습시간 상점 ${breakdown.studyTimeHours ?? 0}H`}
               value={(breakdown.studyTimeMerit ?? 0) > 0 ? `+${pt(breakdown.studyTimeMerit)}` : `+${pt(0)}`}
               labelClassName="text-xs sm:text-sm"
               valueClassName={cn(
@@ -106,7 +106,7 @@ export function MeritBreakdownDialog({
             />
             <div className="flex flex-col">
               <SubRow
-                label={`제보상점 (인정 ${breakdown.reportApprovedCount ?? 0}건)`}
+                label={`제보상점 인정 ${breakdown.reportApprovedCount ?? 0}건`}
                 value={
                   breakdown.reportMeritIncluded && (breakdown.reportMerit ?? 0) > 0
                     ? `+${pt(breakdown.reportMerit)}`
@@ -141,7 +141,7 @@ export function MeritBreakdownDialog({
               )}
             />
             <SubRow
-              label="벌금 (500원 당)"
+              label="벌금 500원 당"
               value={(breakdown.fineDeduction ?? 0) > 0 ? `-${pt(breakdown.fineDeduction)}` : `-${pt(0)}`}
               labelClassName="text-xs sm:text-sm"
               valueClassName={cn(
