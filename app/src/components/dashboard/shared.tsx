@@ -93,11 +93,11 @@ export function SummaryTile({
       )}
       <div className="flex items-center gap-1.25 text-muted-foreground">
         <Icon className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
-        <span className="truncate text-micro font-semibold tracking-wide uppercase sm:text-micro-lg">{label}</span>
+        <span className="truncate text-xs font-semibold tracking-wide uppercase sm:text-sm">{label}</span>
       </div>
       <span
         className={cn(
-          "text-xs font-semibold sm:text-sm",
+          "text-sm font-bold sm:text-base",
           wrap ? "break-keep" : "truncate",
           valueClassName
         )}
