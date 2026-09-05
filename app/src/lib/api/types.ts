@@ -711,6 +711,14 @@ export type ReportCooldownsResponse = {
   items: ActiveCooldownItem[];
 };
 
+// 🔧 2026-09: "다른 관리자 의견 반영" 실제 구현 — 부스터디장(공동 검토자,
+// 최대 2명)이 제출한 의견. 키는 회원번호, 없으면 아직 제출 안 한 것.
+export type CaptureVote = {
+  name: string;
+  severity: "high" | "mid" | "low" | "none";
+  votedAt: number;
+};
+
 export type CaptureReviewItem = {
   id: string;
   nickname: string;
@@ -724,10 +732,24 @@ export type CaptureReviewItem = {
   nextOccurrence: number | null;
   // 제보자 이메일로 매칭한 이름. 등록 회원이 아니면 null.
   reporterName: string | null;
+  votes: Record<string, CaptureVote>;
 };
 
 export type CapturesListResponse = {
   items: CaptureReviewItem[];
+  // 현재 임명된 부스터디장(공동 검토자) 명단 — 0~2명.
+  coReviewers: { number: string; name: string }[];
+  // 이 세션이 부스터디장으로서 호출한 경우 자신의 회원번호(item.votes에서
+  // "내 제출값"을 찾는 키). 주 관리자로 호출했으면 null.
+  myMemberNumber: string | null;
+};
+
+export type CaptureVoteResponse = {
+  ok: boolean;
+};
+
+export type MyRoleResponse = {
+  isCoReviewer: boolean;
 };
 
 export type OutputPenaltyResult = {

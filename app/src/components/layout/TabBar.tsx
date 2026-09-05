@@ -21,10 +21,12 @@ const TABS: Tab[] = [
 // shadcn Tabs는 "한 화면 안 콘텐츠 전환"용이라 페이지 이동에는 의미상 맞지 않는다.
 // NavLink 기반으로 직접 만든다.
 export function TabBar() {
-  const { session, isAdmin } = useAuth();
+  const { session, isAdmin, isCoReviewer } = useAuth();
   if (!session) return null;
 
-  const tabs = TABS.filter((t) => !t.adminOnly || isAdmin);
+  // 🔧 2026-09: 부스터디장(공동 검토자)도 "관리자" 탭을 볼 수 있다 —
+  // 실제로 들어가면 AdminPage가 "송출 P 대상 처리"만 제한적으로 보여준다.
+  const tabs = TABS.filter((t) => !t.adminOnly || isAdmin || isCoReviewer);
 
   return (
     <nav

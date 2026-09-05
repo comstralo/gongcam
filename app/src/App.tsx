@@ -30,7 +30,7 @@ const MAIN_VIEWS: MainView[] = ["/", "/report", "/links", "/settings", "/admin"]
 // 메인 페이지는 hidden으로만 감추고 계속 마운트 상태로 남긴다.
 function MainViews() {
   const location = useLocation();
-  const { session, isAdmin } = useAuth();
+  const { session, isAdmin, isCoReviewer } = useAuth();
   const path = location.pathname as MainView;
   const everVisited = useRef<Record<MainView, boolean>>({
     "/": false,
@@ -76,7 +76,10 @@ function MainViews() {
       </div>
       <div hidden={path !== "/admin"}>
         {everVisited.current["/admin"] &&
-          (isAdmin ? (
+          // 🔧 2026-09: 부스터디장(공동 검토자)도 "관리자" 경로에 들어올 수
+          // 있다 — AdminPage 내부가 isAdmin/isCoReviewer를 보고 전체 탭
+          // 구조를 보여줄지, "송출 P 대상 처리"만 보여줄지 스스로 정한다.
+          (isAdmin || isCoReviewer ? (
             <AppShell title="관리자" titleIcon={ShieldCheck}>
               <AdminPage visible={path === "/admin"} />
             </AppShell>

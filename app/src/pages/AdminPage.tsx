@@ -2,9 +2,12 @@ import { useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SectionCard } from "@/components/admin/shared";
+import { ReportReviewList } from "@/components/admin/ReportReviewList";
 import { AdminMemberPenaltyTab } from "@/components/admin/AdminMemberPenaltyTab";
 import { AdminMoneyTab } from "@/components/admin/AdminMoneyTab";
 import { AdminBotSheetTab } from "@/components/admin/AdminBotSheetTab";
+import { useAuth } from "@/lib/auth/useAuth";
 
 type AdminView = "account" | "money" | "botsheet";
 
@@ -15,6 +18,7 @@ function normalizeView(raw: string | null): AdminView {
 }
 
 export function AdminPage({ visible = true }: { visible?: boolean }) {
+  const { isAdmin, isCoReviewer } = useAuth();
   const [params, setParams] = useSearchParams();
   // 🔧 [탭 리셋 버그 수정] AdminPage는 이제 최상위 라우팅에서도 언마운트되지
   // 않고 hidden으로만 유지된다(App.tsx) — 그런데 view를 매 렌더 URL 쿼리에서
@@ -35,6 +39,21 @@ export function AdminPage({ visible = true }: { visible?: boolean }) {
     const next = normalizeView(v);
     setView(next);
     setParams(next === "account" ? {} : { tab: next }, { replace: true });
+  }
+
+  // 🔧 2026-09: 부스터디장(공동 검토자)은 주 관리자가 아니므로(isAdmin===false)
+  // Account/PEN·Money 나머지 섹션/Bot·Sheet에는 접근시키지 않는다 — 탭
+  // 구조 자체를 건너뛰고 "송출 P 대상 처리"만 보여준다(사용자 지시). 훅
+  // 순서를 지키기 위해 이 분기는 위 useState/useRef 다음, JSX 반환
+  // 직전에 둔다.
+  if (!isAdmin && isCoReviewer) {
+    return (
+      <div className="flex w-full page-content flex-col items-center gap-4">
+        <SectionCard>
+          <ReportReviewList visible={visible} />
+        </SectionCard>
+      </div>
+    );
   }
 
   return (
