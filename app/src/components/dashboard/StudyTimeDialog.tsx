@@ -114,7 +114,7 @@ export function StudyTimeDialog({
               <Timer className="size-3.5 shrink-0 text-primary sm:size-4" />
               <ItemTitle>주간 학습시간</ItemTitle>
             </span>
-            <span className="text-xs sm:text-sm">{weeklyStudyTime}</span>
+            <span className="text-sm sm:text-base">{weeklyStudyTime}</span>
           </InfoCard>
 
           {periodGrid.map((d) => {
