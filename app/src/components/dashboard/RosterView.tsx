@@ -115,7 +115,7 @@ export function RosterView({ members }: { members: RosterMember[] }) {
             <User className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
             <span className="truncate text-sm sm:text-base">{m.name}</span>
           </span>
-          <span className="shrink-0 text-sm tabular-nums sm:text-base">
+          <span className="shrink-0 text-sm tabular-nums text-muted-foreground sm:text-base">
             <DividedValue
               items={[
                 <span key="timer" className="inline-flex items-center gap-1">
