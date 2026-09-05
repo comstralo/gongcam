@@ -124,7 +124,7 @@ export function DividedValue({ items }: { items: ReactNode[] }) {
   );
 }
 
-// 총합(outputPen + timePen)은 0~2까지만 나올 수 있는 값이다. 0이면 "-",
+// 총합(outputPen + timePen)은 0~2까지만 나올 수 있는 값이다. 0이면 "없음",
 // 1이면 "1회 │ 송출 P"처럼 0이 아닌 쪽 유형만, 2면 "2회 │ 예치금 재납 대상"
 // 으로 표시한다(2는 항상 예치금 재납 대상이므로 유형 대신 그 결과를
 // 보여준다). 다른 타일(주간 학습시간 등)과 동일하게 DividedValue의 세로선
@@ -132,7 +132,7 @@ export function DividedValue({ items }: { items: ReactNode[] }) {
 // 공용 헬퍼로 둔다.
 export function formatTotalPenalty(outputPen: number, timePen: number): ReactNode {
   const total = outputPen + timePen;
-  if (total <= 0) return "-";
+  if (total <= 0) return "없음";
   const kind = total >= 2 ? "예치금 재납 대상" : outputPen > 0 ? "송출 P" : "주간 P";
   return <DividedValue items={[`${total}회`, kind]} />;
 }
