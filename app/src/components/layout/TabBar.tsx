@@ -2,6 +2,7 @@ import { NavLink } from "react-router-dom";
 import { LayoutDashboard, Flag, Bell, Link2, Settings, ShieldCheck, type LucideIcon } from "lucide-react";
 import { cn, ICON_STROKE } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/useAuth";
+import { useUnreadNotificationCount } from "@/lib/notifications/notifications";
 
 type Tab = {
   to: string;
@@ -23,6 +24,7 @@ const TABS: Tab[] = [
 // NavLink 기반으로 직접 만든다.
 export function TabBar() {
   const { session, isAdmin, isCoReviewer } = useAuth();
+  const unreadCount = useUnreadNotificationCount();
   if (!session) return null;
 
   // 🔧 2026-09: 부스터디장(공동 검토자)도 "관리자" 탭을 볼 수 있다 —
@@ -45,6 +47,7 @@ export function TabBar() {
     >
       {tabs.map((tab) => {
         const Icon = tab.icon;
+        const showUnreadHint = tab.to === "/notifications" && unreadCount > 0;
         return (
           <NavLink
             key={tab.to}
@@ -57,8 +60,30 @@ export function TabBar() {
               )
             }
           >
-            <Icon className="size-5.5 shrink-0 sm:size-5" strokeWidth={ICON_STROKE.default} />
-            <span className="max-w-full truncate text-micro font-semibold sm:text-sm">{tab.label}</span>
+            {({ isActive }) => (
+              <>
+                <span className="relative flex">
+                  <Icon
+                    className={cn(
+                      "size-5.5 shrink-0 sm:size-5",
+                      // 🔧 2026-09: 안 읽은 알림이 있을 때 탭바를 훑다가도
+                      // 눈에 띄도록 아이콘 자체에 은은한 펄스 + 글로우를
+                      // 건다. 이미 그 화면을 보고 있는 동안(isActive)까지
+                      // 계속 흔들리면 오히려 거슬리므로 그때는 끈다.
+                      showUnreadHint && !isActive && "animate-notif-pulse text-primary"
+                    )}
+                    strokeWidth={ICON_STROKE.default}
+                  />
+                  {showUnreadHint && (
+                    <span className="absolute -top-0.5 -right-1 flex size-2.25">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive opacity-75" />
+                      <span className="relative inline-flex size-2.25 rounded-full bg-destructive ring-2 ring-card" />
+                    </span>
+                  )}
+                </span>
+                <span className="max-w-full truncate text-micro font-semibold sm:text-sm">{tab.label}</span>
+              </>
+            )}
           </NavLink>
         );
       })}

@@ -68,6 +68,25 @@
   }
 }
 
+/* 하단 탭바 "알림" 아이콘용 — 안 읽은 알림이 있을 때 지나치다 눈에 띄도록
+   아이콘 주위로 은은한 글로우가 부풀었다 줄었다 한다(위 unpaid-glow와 같은
+   원리, primary 색상 버전). */
+@keyframes notif-pulse {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 0 color-mix(in oklab, var(--primary) 60%, transparent));
+  }
+  50% {
+    filter: drop-shadow(0 0 6px color-mix(in oklab, var(--primary) 60%, transparent));
+  }
+}
+@utility animate-notif-pulse {
+  animation: notif-pulse 1.6s ease-in-out infinite;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
 @theme inline {
     --font-sans: "Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;

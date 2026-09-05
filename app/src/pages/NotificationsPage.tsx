@@ -1,46 +1,8 @@
-import { Bell, CircleDollarSign, Megaphone, ShieldAlert } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { Bell } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { InfoCard, ItemTitle } from "@/components/dashboard/shared";
+import { DUMMY_NOTIFICATIONS } from "@/lib/notifications/notifications";
 import { cn, ICON_STROKE } from "@/lib/utils";
-
-type NotificationItem = {
-  id: string;
-  icon: LucideIcon;
-  title: string;
-  body: string;
-  time: string;
-  read: boolean;
-};
-
-// TODO(dev-preview): 실제 알림 API가 아직 없어 렌더링 확인용 더미 데이터를 쓴다.
-// 연동 시 이 배열과 "읽음" 처리 로직을 서버 상태로 교체할 것.
-const DUMMY_NOTIFICATIONS: NotificationItem[] = [
-  {
-    id: "1",
-    icon: ShieldAlert,
-    title: "송출 P 제보 반영",
-    body: "화각 이탈 제보가 승인되어 송출 P가 1 추가되었습니다.",
-    time: "10분 전",
-    read: false,
-  },
-  {
-    id: "2",
-    icon: CircleDollarSign,
-    title: "벌금 미납 안내",
-    body: "화요일 벌금이 아직 납부되지 않았습니다. 확인해주세요.",
-    time: "2시간 전",
-    read: false,
-  },
-  {
-    id: "3",
-    icon: Megaphone,
-    title: "공지사항",
-    body: "이번 주 일요일은 정기 점검으로 14교시가 30분 앞당겨집니다.",
-    time: "어제",
-    read: true,
-  },
-];
 
 // 🔧 2026-09: 기존에는 대시보드 상단 종 아이콘을 눌러야 뜨는 모달
 // (NotificationDialog)이었으나, 하단 탭바에 "알림" 탭이 새로 생기며 그
