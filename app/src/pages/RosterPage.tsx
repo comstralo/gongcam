@@ -36,6 +36,9 @@ export function RosterPage({
   const [settlement, setSettlement] = useState<SettlementItem[] | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // 이 조회가 보여주는 주(월~일)의 시작/종료일("YYMMDD") — 섹션 타이틀에
+  // "YYMMDD-YYMMDD 주간 랭킹/정산"으로 병기한다.
+  const [weekRange, setWeekRange] = useState<{ weekStart: string; weekEnd: string } | null>(null);
 
   function load() {
     setLoading(true);
@@ -56,10 +59,13 @@ export function RosterPage({
           depositOuter: data.depositOuter,
         });
         setSettlement(data.settlement ?? null);
+        setWeekRange(data.weekStart && data.weekEnd ? { weekStart: data.weekStart, weekEnd: data.weekEnd } : null);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "전체 대시보드를 불러오지 못했습니다."))
       .finally(() => setLoading(false));
   }
+
+  const weekPrefix = weekRange ? `${weekRange.weekStart} - ${weekRange.weekEnd} ` : "";
 
   useEffect(load, [cycleFileId]); // eslint-disable-line react-hooks/exhaustive-deps
   // 다른 회원들의 타이머·순위·정산은 이 화면을 벗어난 사이에도 계속
@@ -76,7 +82,7 @@ export function RosterPage({
 
       <SectionCard>
         <Collapsible defaultOpen className="flex flex-col gap-4">
-          <SectionHeader icon={Trophy} title="랭킹" loading={loading} onRefresh={load} />
+          <SectionHeader icon={Trophy} title={`${weekPrefix}주간 랭킹`} loading={loading} onRefresh={load} />
           <CollapsiblePanel className="flex flex-col gap-2 sm:gap-2.5">
             <div className="h-px w-full bg-border" />
             {members ? <RosterView members={members} /> : !error && <RosterViewSkeleton />}
@@ -91,7 +97,7 @@ export function RosterPage({
 
       <SectionCard>
         <Collapsible defaultOpen className="flex flex-col gap-4">
-          <SectionHeader icon={PiggyBank} title="상금 정산" loading={loading} onRefresh={load} />
+          <SectionHeader icon={PiggyBank} title={`${weekPrefix}주간 정산`} loading={loading} onRefresh={load} />
           <CollapsiblePanel className="flex flex-col gap-4">
             <div className="h-px w-full bg-border" />
             {money ? (

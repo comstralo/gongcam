@@ -259,6 +259,10 @@ export type RosterStatusResponse = {
   // 이번 주 1~5등에게 분배될 금액. 스터디장 본인이거나 일요일 14교시
   // 종료(23:30 KST) 이후가 아니면 백엔드가 이 필드 자체를 제외한다.
   settlement?: SettlementItem[];
+  // 이 조회가 보여주는 주(월~일)의 시작/종료일, "YYMMDD" — RosterPage
+  // 타이틀에 "YYMMDD-YYMMDD 주간 랭킹/정산"으로 병기한다.
+  weekStart?: string;
+  weekEnd?: string;
 };
 
 export type CycleWeek = {
