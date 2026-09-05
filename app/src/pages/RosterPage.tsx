@@ -34,6 +34,9 @@ export function RosterPage({
   // undefined: 아직 못 받아옴(로딩 중). null: 백엔드가 필드를 안 보냄(비공개 —
   // 스터디원이 일요일 14교시 종료 전에 조회한 경우).
   const [settlement, setSettlement] = useState<SettlementItem[] | null | undefined>(undefined);
+  // 집계!P6 === "완료"(관리자가 "상금 정산 집행"을 눌렀는지) — 정산 대상은
+  // 계산돼 있어도 아직 집행 전이면 이 값이 false다.
+  const [settlementSettled, setSettlementSettled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   // 이 조회가 보여주는 주(월~일)의 시작/종료일("YYMMDD") — 섹션 타이틀에
@@ -59,6 +62,7 @@ export function RosterPage({
           depositOuter: data.depositOuter,
         });
         setSettlement(data.settlement ?? null);
+        setSettlementSettled(!!data.settlementSettled);
         setWeekRange(data.weekStart && data.weekEnd ? { weekStart: data.weekStart, weekEnd: data.weekEnd } : null);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "전체 대시보드를 불러오지 못했습니다."))
@@ -132,15 +136,19 @@ export function RosterPage({
                   {settlement === null ? (
                     <SubRow label="일요일 14교시 종료 후 확인할 수 있습니다." value="" labelClassName="text-xs sm:text-sm" />
                   ) : settlement && settlement.length > 0 ? (
-                    settlement.map((s) => (
-                      <SubRow
-                        key={s.number}
-                        label={`${RANK_EMOJI[s.rank] || s.rank} ${s.name}`}
-                        value={won(s.amount)}
-                        labelClassName="text-xs sm:text-sm"
-                        valueClassName="text-xs sm:text-sm"
-                      />
-                    ))
+                    settlementSettled ? (
+                      settlement.map((s) => (
+                        <SubRow
+                          key={s.number}
+                          label={`${RANK_EMOJI[s.rank] || s.rank} ${s.name}`}
+                          value={won(s.amount)}
+                          labelClassName="text-xs sm:text-sm"
+                          valueClassName="text-xs sm:text-sm"
+                        />
+                      ))
+                    ) : (
+                      <SubRow label="아직 집행되지 않았습니다." value="" labelClassName="text-xs sm:text-sm" />
+                    )
                   ) : (
                     <SubRow label="정산 대상이 없습니다." value="" labelClassName="text-xs sm:text-sm" />
                   )}

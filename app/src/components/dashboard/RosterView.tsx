@@ -152,7 +152,7 @@ export function RosterView({ members }: { members: RosterMember[] }) {
             onClick={() => setExpanded(true)}
           >
             <ChevronDown className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
-            <span>더 보기 ({hiddenCount}명)</span>
+            <span>더 보기</span>
           </Button>
         )
       )}

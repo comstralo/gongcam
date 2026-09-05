@@ -259,6 +259,10 @@ export type RosterStatusResponse = {
   // 이번 주 1~5등에게 분배될 금액. 스터디장 본인이거나 일요일 14교시
   // 종료(23:30 KST) 이후가 아니면 백엔드가 이 필드 자체를 제외한다.
   settlement?: SettlementItem[];
+  // 집계!P6 === "완료"(관리자가 "상금 정산 집행" 버튼을 눌렀는지) 여부.
+  // settlement 계산 자체와는 무관하게 별도로 내려온다 — "대상은 계산됐지만
+  // 아직 집행 전"과 "이미 집행 완료"를 구분해 표시하는 데 쓴다.
+  settlementSettled: boolean;
   // 이 조회가 보여주는 주(월~일)의 시작/종료일, "YYMMDD" — RosterPage
   // 타이틀에 "YYMMDD-YYMMDD 주간 랭킹/정산"으로 병기한다.
   weekStart?: string;

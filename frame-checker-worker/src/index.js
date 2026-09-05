@@ -3969,9 +3969,11 @@ const ROSTER_ROW_START = 3; // 시트 4행(0-indexed 3)부터 15명
 const ROSTER_ROW_END = 17; // 시트 18행(0-indexed 17)까지
 
 async function buildRosterStatus(env, accessToken, fileId) {
-  const [rows, moneyRows, studyLeadSlotRows, cycleRows] = await Promise.all([
+  const [rows, [moneyRows, prizeSettleRows], studyLeadSlotRows, cycleRows] = await Promise.all([
     getSheetValues(env, accessToken, fileId, "집계!A4:L18"),
-    getSheetValues(env, accessToken, fileId, "집계!D20:D24").catch(() => []),
+    // D20:D24(총 모금액~퇴실예치)와 P6("상금 정산 집행" 마킹, handleAdminPrizeSettle
+    // 참고)를 한 번의 batchGet으로 묶어 API 호출 횟수를 아낀다.
+    batchGetSheetValues(env, accessToken, fileId, ["집계!D20:D24", "집계!P6"]).catch(() => [[], []]),
     // 스터디장(1번 회원, 데이터 시트 4행)의 송출P/주간P 슬롯 — 값이 현재
     // 페널티 사이클(D25)과 같으면 "이번 주간 발생"으로 친다(집계!D20 수식과
     // 동일한 판정 기준).
@@ -4033,6 +4035,11 @@ async function buildRosterStatus(env, accessToken, fileId) {
     .sort((a, b) => a.rankValue - b.rankValue);
   const settlementShare = settlementMembers.length > 0 ? Math.floor(collectMoney / settlementMembers.length) : 0;
   const settlement = settlementMembers.map((m) => ({ number: m.number, name: m.name, rank: m.rankValue, amount: settlementShare }));
+  // 🔧 2026-09: "정산 내역"을 관리자가 실제로 집행(핸드폰으로 송금 등)했는지는
+  // handleAdminPrizeSettle이 쓰는 집계!P6("완료" 문자열) 하나로만 판정한다
+  // (사용자 지시) — 이 값을 응답에 그대로 반영해, 프론트가 "정산 대상은
+  // 계산됐지만 아직 집행 전"과 "이미 집행 완료"를 구분해 표시할 수 있게 한다.
+  const settlementSettled = ((prizeSettleRows[0] && prizeSettleRows[0][0]) || "").toString().trim() === "완료";
 
   return {
     members,
@@ -4043,6 +4050,7 @@ async function buildRosterStatus(env, accessToken, fileId) {
     depositOuter,
     depositOuterIncluded,
     settlement,
+    settlementSettled,
   };
 }
 
