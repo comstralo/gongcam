@@ -51,7 +51,7 @@ export function DashboardPage({ visible = true }: { visible?: boolean }) {
             My
           </TabsTrigger>
           <TabsTrigger value="all" className="flex-1 font-mono text-xs tracking-wide uppercase">
-            All
+            RANK
           </TabsTrigger>
         </TabsList>
       </Tabs>

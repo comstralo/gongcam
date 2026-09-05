@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { InfoCard, ItemTitle, DividedValue } from "@/components/dashboard/shared";
 import type { RosterMember } from "@/lib/api/types";
 
-const COLLAPSED_COUNT = 8;
+const COLLAPSED_COUNT = 7;
 
 // 시트가 이미 이모지로 주는 1~4위(🥇🥈🥉🏅)에 더해, 숫자로만 오는 5위도
 // 4위와 같은 배지(🏅)로 보여준다 — 4/5위는 동일한 등급으로 취급.
