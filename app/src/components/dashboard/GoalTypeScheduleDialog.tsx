@@ -108,7 +108,7 @@ export function GoalTypeScheduleDialog({
             <>
               <InfoCard className="flex flex-col gap-1.5">
                 <span className="flex items-center gap-1.5">
-                  <CalendarClock className="size-3.5 shrink-0 text-primary sm:size-4" />
+                  <CalendarClock className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                   <ItemTitle>다음 주 목표시간</ItemTitle>
                 </span>
                 {scheduled && (

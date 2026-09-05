@@ -38,7 +38,7 @@ export function PeriodAttendanceDialog({
           <InfoCard className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between gap-2">
               <span className="flex items-center gap-1.5">
-                <ListChecks className="size-3.5 shrink-0 text-primary sm:size-4" />
+                <ListChecks className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                 <ItemTitle>주간 교시 참여율</ItemTitle>
               </span>
               <span className="text-sm sm:text-base">

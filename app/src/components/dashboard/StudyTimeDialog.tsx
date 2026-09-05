@@ -111,7 +111,7 @@ export function StudyTimeDialog({
         <div className="flex flex-col gap-3">
           <InfoCard className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-1.5">
-              <Timer className="size-3.5 shrink-0 text-primary sm:size-4" />
+              <Timer className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
               <ItemTitle>주간 학습시간</ItemTitle>
             </span>
             <span className="text-sm sm:text-base">{weeklyStudyTime}</span>
@@ -144,7 +144,7 @@ export function StudyTimeDialog({
                   <CollapsibleTrigger>
                     <span className="flex min-w-0 flex-1 items-center justify-between gap-1.5">
                       <span className="flex items-center gap-1.5">
-                        <CalendarDays className="size-3.5 shrink-0 text-primary sm:size-4" />
+                        <CalendarDays className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                         <ItemTitle>{d.day}요일</ItemTitle>
                       </span>
                       <span className="flex shrink-0 items-center gap-1.5">

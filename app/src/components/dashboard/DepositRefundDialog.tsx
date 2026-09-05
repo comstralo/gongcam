@@ -154,7 +154,7 @@ export function DepositRefundDialog({
           {exitRequested ? (
             <InfoCard className="flex items-center justify-between gap-2">
               <span className="flex items-center gap-1.5">
-                <CalendarDays className="size-3.5 shrink-0 text-primary sm:size-4" />
+                <CalendarDays className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                 <ItemTitle>마지막 참여일</ItemTitle>
               </span>
               <span className="text-xs sm:text-sm">{exitRequestDate || "-"}</span>
@@ -165,7 +165,7 @@ export function DepositRefundDialog({
                 htmlFor="exit-request-date"
                 className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base"
               >
-                <CalendarDays className="size-3.5 shrink-0 text-primary sm:size-4" />
+                <CalendarDays className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                 마지막 참여일
               </Label>
               <Input
@@ -182,7 +182,7 @@ export function DepositRefundDialog({
           <InfoCard className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between gap-2">
               <span className="flex items-center gap-1.5">
-                <PiggyBank className="size-3.5 shrink-0 text-primary sm:size-4" />
+                <PiggyBank className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                 <ItemTitle>예치금 반환 예상액</ItemTitle>
               </span>
               <span
@@ -205,7 +205,7 @@ export function DepositRefundDialog({
           {isAdmin && (
             <InfoCard className="flex flex-col gap-1.5">
               <span className="flex items-center gap-1.5">
-                <TrendingDown className="size-3.5 shrink-0 text-primary sm:size-4" />
+                <TrendingDown className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                 <ItemTitle>차감 원인</ItemTitle>
               </span>
               {/* 🔧 2026-09: SubRow 기본값(11/12px)이 아니라 MeritBreakdownDialog

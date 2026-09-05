@@ -72,7 +72,7 @@ export function MeritBreakdownDialog({
               으로 크기를 조정한다. */}
           <InfoCard className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
-              <Award className="size-3.5 shrink-0 text-primary sm:size-4" />
+              <Award className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
               주간 총 상점
             </span>
             <span
@@ -92,7 +92,7 @@ export function MeritBreakdownDialog({
 
           <InfoCard className="flex flex-col gap-1.5">
             <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
-              <TrendingUp className="size-3.5 shrink-0 text-primary sm:size-4" />
+              <TrendingUp className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
               상점 적립 원인
             </span>
             <SubRow
@@ -128,7 +128,7 @@ export function MeritBreakdownDialog({
 
           <InfoCard className="flex flex-col gap-1.5">
             <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
-              <TrendingDown className="size-3.5 shrink-0 text-primary sm:size-4" />
+              <TrendingDown className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
               상점 차감 원인
             </span>
             <SubRow
@@ -154,7 +154,7 @@ export function MeritBreakdownDialog({
           {breakdown.isZero && breakdown.zeroConditions?.length > 0 && (
             <InfoCard className="flex flex-col gap-1.5">
               <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
-                <TrendingDown className="size-3.5 shrink-0 text-destructive sm:size-4" />
+                <TrendingDown className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                 상점 제외 원인
               </span>
               <ul className="flex flex-col gap-1 pl-5 sm:pl-5.5">
@@ -180,7 +180,7 @@ export function MeritBreakdownDialog({
 
           <InfoCard className="flex flex-col gap-1.5">
             <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
-              <Gauge className="size-3.5 shrink-0 text-primary sm:size-4" />
+              <Gauge className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
               상점 배율
             </span>
             <div className="flex flex-col">
