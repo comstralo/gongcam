@@ -119,11 +119,11 @@ export function RosterPage({
                   </div>
                   {/* 🔧 2026-09: SubRow 기본값(11/12px) 대신 MeritBreakdownDialog와
                       동일한 하위 항목 크기(text-xs sm:text-sm)로 통일. */}
-                  <SubRow label="지난 주 이월된 상금" value={won(money.fineCarry)} labelClassName="text-xs sm:text-sm" valueClassName="text-xs sm:text-sm" />
-                  <SubRow label="이번 주 납부한 벌금" value={won(money.fineThisWeek)} labelClassName="text-xs sm:text-sm" valueClassName="text-xs sm:text-sm" />
-                  <SubRow label="이번 주 퇴실 · 재납자가 납부한 벌금" value={won(money.fineOuter)} labelClassName="text-xs sm:text-sm" valueClassName="text-xs sm:text-sm" />
+                  <SubRow label="이월된 상금" value={won(money.fineCarry)} labelClassName="text-xs sm:text-sm" valueClassName="text-xs sm:text-sm" />
+                  <SubRow label="납부한 벌금" value={won(money.fineThisWeek)} labelClassName="text-xs sm:text-sm" valueClassName="text-xs sm:text-sm" />
+                  <SubRow label="퇴실 · 재납자 납부 벌금" value={won(money.fineOuter)} labelClassName="text-xs sm:text-sm" valueClassName="text-xs sm:text-sm" />
                   {money.depositOuter !== undefined && (
-                    <SubRow label="이번 주 퇴실 · 재납자가 납부한 예치금" value={won(money.depositOuter)} labelClassName="text-xs sm:text-sm" valueClassName="text-xs sm:text-sm" />
+                    <SubRow label="퇴실 · 재납자 귀속 예치금" value={won(money.depositOuter)} labelClassName="text-xs sm:text-sm" valueClassName="text-xs sm:text-sm" />
                   )}
                 </div>
 
