@@ -127,42 +127,39 @@ export function StudyTimeDialog({
             return (
               <Collapsible key={d.day}>
                 <InfoCard className="flex flex-col gap-1.5">
-                  {/* 🔧 2026-09 정정: 이 요일 헤더를 위 "주간 학습시간" 요약과
-                      똑같은 ItemTitle로 바꿨던 게 실수였다(사용자 지적) —
-                      MeritBreakdownDialog처럼 고정된 개별 섹션들과 달리,
-                      여기는 "요약 1개 + 반복되는 요일 목록 7개" 구조라
-                      역할이 다르다. 7개 반복 항목을 요약과 같은 굵기·
-                      크기로 만들면 스크롤할 때 전부 똑같이 도드라져
-                      오히려 뭐가 우선인지 안 보인다 — 원래 크기
-                      (text-xs sm:text-sm)로 되돌려 "요약 > 요일 행 > 교시
-                      세부"라는 3단 구조를 유지한다. */}
-                  {/* 🔧 2026-09: 요일 라벨과 뱃지가 한 span에 gap-1.5로만
-                      묶여 있어서, CollapsibleTrigger의 justify-between이
-                      "그 span 전체"와 "쉐브런 아이콘" 사이에만 여백을
-                      줬다 — 다이얼로그 폭이 넓을수록 뱃지와 쉐브런 사이
-                      여백만 늘어나 보이던 것(사용자 지적: 넓을 때/좁힐 때
-                      다르게 보임). 요일 라벨과 뱃지 그룹을 분리해 그 사이에
-                      justify-between을 걸어, 요일은 항상 왼쪽에, 뱃지는
-                      항상 쉐브런 바로 앞(오른쪽)에 붙도록 고쳤다. */}
+                  {/* 🔧 2026-09 재정정(2차): "월요일"을 요약보다 작게 되돌린
+                      이전 판단이 틀렸다(사용자 지적) — 구조를 다시 보면
+                      "주간 학습시간"(요약 카드) + 요일 7개(형제 카드)는
+                      MeritBreakdownDialog의 "주간 총 상점"(요약 카드) +
+                      "상점 적립 원인" 등(형제 카드)과 완전히 동일한 모양
+                      이다. 형제 카드는 전부 같은 위계라는 원칙을 여기도
+                      그대로 적용해 ItemTitle로 되돌린다.
+                      그리고 뱃지("0H 0M" 등)가 요일 라벨과 폰트 크기는
+                      같은데도 훨씬 도드라져 보인 진짜 원인은 크기가 아니라
+                      "꽉 찬 색 배경 + font-semibold" 조합이 필(pill) 형태로
+                      시각적 무게를 만든 것이었다(사용자 지적 — "크기"가
+                      아니라 "혼자 튀어 보임"의 문제). 배경을 더 옅게
+                      (/15→/10), 굵기를 font-medium으로 낮춰 색으로 정보는
+                      여전히 구분되지만 요일 제목을 압도하지 않게 했다. */}
                   <CollapsibleTrigger>
                     <span className="flex min-w-0 flex-1 items-center justify-between gap-1.5">
-                      <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+                      <span className="flex items-center gap-1.5">
                         <CalendarDays className="size-3.5 shrink-0 text-primary sm:size-4" />
-                        {d.day}요일
+                        <ItemTitle>{d.day}요일</ItemTitle>
                       </span>
                       <span className="flex shrink-0 items-center gap-1.5">
                         {achieved !== null && (
                           <span
                             className={cn(
-                              "rounded-full px-1.5 py-0.5 text-micro font-semibold sm:text-micro-lg",
-                              achieved ? "bg-ok/15 text-ok" : "bg-destructive/15 text-destructive"
+                              "rounded-full px-1.5 py-0.5 text-micro font-medium sm:text-micro-lg",
+                              achieved ? "bg-ok/10 text-ok" : "bg-destructive/10 text-destructive"
                             )}
                           >
                             {formatHM(dayInfo?.studyTime || "")}
                           </span>
                         )}
                         {isPeriodType && (
-                          <span className="rounded-full bg-ok/15 px-1.5 py-0.5 text-micro font-semibold text-ok sm:text-micro-lg">
+                          <span className="rounded-full bg-ok/10 px-1.5 py-0.5 text-micro font-medium text-ok sm:text-micro-lg">
                             {passed}개 교시
                           </span>
                         )}
