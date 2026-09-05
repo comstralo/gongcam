@@ -7,6 +7,7 @@ import { SessionCard } from "@/components/session/SessionCard";
 import { DividedValue, InfoCard } from "@/components/dashboard/shared";
 import { PeriodAlarmCard } from "@/components/dashboard/PeriodAlarmCard";
 import { NotifyPrefsCard } from "@/components/dashboard/NotifyPrefsCard";
+import { InstallAppCard } from "@/components/dashboard/InstallAppCard";
 import { DepositRefundDialog } from "@/components/dashboard/DepositRefundDialog";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { useMyStatus } from "@/lib/status/useMyStatus";
@@ -30,6 +31,7 @@ export function SettingsPage({ visible = true }: { visible?: boolean }) {
             <CollapsiblePanel className="flex flex-col gap-4">
               <div className="h-px w-full bg-border" />
               <SessionCard name={status?.name} />
+              <InstallAppCard />
 
               {status?.depositRefundBreakdown ? (
                 <DepositRefundDialog
