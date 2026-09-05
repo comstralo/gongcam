@@ -77,7 +77,7 @@ export function MeritBreakdownDialog({
             </span>
             <span
               className={cn(
-                "text-sm font-bold tabular-nums sm:text-base",
+                "text-sm tabular-nums sm:text-base",
                 breakdown.isZero ? "text-muted-foreground" : "text-ok"
               )}
             >
