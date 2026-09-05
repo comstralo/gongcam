@@ -136,25 +136,37 @@ export function StudyTimeDialog({
                       오히려 뭐가 우선인지 안 보인다 — 원래 크기
                       (text-xs sm:text-sm)로 되돌려 "요약 > 요일 행 > 교시
                       세부"라는 3단 구조를 유지한다. */}
+                  {/* 🔧 2026-09: 요일 라벨과 뱃지가 한 span에 gap-1.5로만
+                      묶여 있어서, CollapsibleTrigger의 justify-between이
+                      "그 span 전체"와 "쉐브런 아이콘" 사이에만 여백을
+                      줬다 — 다이얼로그 폭이 넓을수록 뱃지와 쉐브런 사이
+                      여백만 늘어나 보이던 것(사용자 지적: 넓을 때/좁힐 때
+                      다르게 보임). 요일 라벨과 뱃지 그룹을 분리해 그 사이에
+                      justify-between을 걸어, 요일은 항상 왼쪽에, 뱃지는
+                      항상 쉐브런 바로 앞(오른쪽)에 붙도록 고쳤다. */}
                   <CollapsibleTrigger>
-                    <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
-                      <CalendarDays className="size-3.5 shrink-0 text-primary sm:size-4" />
-                      {d.day}요일
-                      {achieved !== null && (
-                        <span
-                          className={cn(
-                            "rounded-full px-1.5 py-0.5 text-micro font-semibold sm:text-micro-lg",
-                            achieved ? "bg-ok/15 text-ok" : "bg-destructive/15 text-destructive"
-                          )}
-                        >
-                          {formatHM(dayInfo?.studyTime || "")}
-                        </span>
-                      )}
-                      {isPeriodType && (
-                        <span className="rounded-full bg-ok/15 px-1.5 py-0.5 text-micro font-semibold text-ok sm:text-micro-lg">
-                          {passed}개 교시
-                        </span>
-                      )}
+                    <span className="flex min-w-0 flex-1 items-center justify-between gap-1.5">
+                      <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+                        <CalendarDays className="size-3.5 shrink-0 text-primary sm:size-4" />
+                        {d.day}요일
+                      </span>
+                      <span className="flex shrink-0 items-center gap-1.5">
+                        {achieved !== null && (
+                          <span
+                            className={cn(
+                              "rounded-full px-1.5 py-0.5 text-micro font-semibold sm:text-micro-lg",
+                              achieved ? "bg-ok/15 text-ok" : "bg-destructive/15 text-destructive"
+                            )}
+                          >
+                            {formatHM(dayInfo?.studyTime || "")}
+                          </span>
+                        )}
+                        {isPeriodType && (
+                          <span className="rounded-full bg-ok/15 px-1.5 py-0.5 text-micro font-semibold text-ok sm:text-micro-lg">
+                            {passed}개 교시
+                          </span>
+                        )}
+                      </span>
                     </span>
                   </CollapsibleTrigger>
                   <CollapsiblePanel>
