@@ -173,7 +173,7 @@ function ConsensusSection({
       <Label className={cn("justify-start", noCoReviewers && "opacity-50")}>
         <Checkbox checked={isConsensus && !noCoReviewers} disabled={noCoReviewers} onCheckedChange={onToggleConsensus} />
         <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
-          <Users className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
+          <Users className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
           다른 관리자 의견 반영
         </span>
       </Label>
@@ -450,8 +450,8 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
                     className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded"
                   >
                     <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                      <span className="inline-flex shrink-0 items-center gap-1.25 text-xs font-semibold text-muted-foreground sm:text-sm">
-                        <CalendarDays className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                      <span className="inline-flex shrink-0 items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                        <CalendarDays className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
                         {thisWeekDateLabel(group.day)} {group.day}요일
                       </span>
                       <span className="ml-auto flex flex-wrap items-center justify-end gap-1">
@@ -536,7 +536,7 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
 
                                   <div className="flex flex-col gap-1.5">
                                     <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
-                                      <FileText className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
+                                      <FileText className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                       제보 정보
                                     </span>
                                     <SubRow label="사유" value={item.reason || "-"} />
@@ -548,7 +548,7 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
                                 {!isApplied && !isRejected && (
                                   <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:gap-3.5 sm:p-5">
                                     <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
-                                      <Users className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
+                                      <Users className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                       내 의견
                                     </span>
                                     {(() => {
@@ -607,7 +607,7 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
 
                                   <div className="flex flex-col gap-1.5">
                                     <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
-                                      <FileText className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
+                                      <FileText className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                       제보 정보
                                     </span>
                                     <SubRow label="사유" value={item.reason || "-"} />
@@ -619,7 +619,7 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
 
                                   <div className="flex flex-col gap-1.5">
                                     <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
-                                      <Clock className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
+                                      <Clock className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                       시간 차감
                                     </span>
                                     <div className="grid grid-cols-2 gap-2 pl-5 sm:pl-5.5">
@@ -677,7 +677,7 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
 
                                   <div className="flex flex-col gap-1.5">
                                     <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
-                                      <Gavel className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
+                                      <Gavel className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                       벌점 · 페널티 변동
                                     </span>
                                     <SubRow
