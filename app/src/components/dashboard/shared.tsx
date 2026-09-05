@@ -371,13 +371,13 @@ export function DayDetailCard({
           </span>
         </div>
         <SubRow
-          label="로그 학습시간"
+          label="구루미 학습시간"
           value={day.logStudyTime ? `+${padHM(day.logStudyTime)}` : "-"}
           labelClassName="text-xs sm:text-sm"
           valueClassName="text-xs sm:text-sm"
         />
         <SubRow
-          label="보정 학습시간"
+          label="가산 · 감산 학습시간"
           value={signedTime(day.bonusStudyTime)}
           labelClassName="text-xs sm:text-sm"
           valueClassName={cn(
@@ -437,13 +437,13 @@ export function DayDetailCard({
               </span>
             </div>
             <SubRow
-              label={`일간 목표시간 벌금${day.dailyShortfallTime ? ` (-${day.dailyShortfallTime} 미달)` : ""}`}
+              label={`일간 목표시간 미달${day.dailyShortfallTime ? ` (-${day.dailyShortfallTime} 미달)` : ""}`}
               value={won(day.goal)}
               labelClassName="text-xs sm:text-sm"
               valueClassName="text-xs sm:text-sm"
             />
             <SubRow
-              label={`오전 목표시간 벌금${day.morningShortfallTime ? ` (-${day.morningShortfallTime} 미달)` : ""}`}
+              label={`오전 목표시간 미달${day.morningShortfallTime ? ` (-${day.morningShortfallTime} 미달)` : ""}`}
               value={won(day.morning)}
               labelClassName="text-xs sm:text-sm"
               valueClassName="text-xs sm:text-sm"
@@ -452,8 +452,8 @@ export function DayDetailCard({
               <SubRow
                 label={
                   showDepositAgain
-                    ? `재납 예치금 (송출 P ${depositRefundBreakdown.outputPen}회 + 주간 P ${depositRefundBreakdown.timePen}회)`
-                    : "재납 예치금"
+                    ? `예치금 재납 발생 (송출 P ${depositRefundBreakdown.outputPen}회 + 주간 P ${depositRefundBreakdown.timePen}회)`
+                    : "예치금 재납 발생"
                 }
                 value={won(depositAgainAmount)}
                 labelClassName="text-xs sm:text-sm"
