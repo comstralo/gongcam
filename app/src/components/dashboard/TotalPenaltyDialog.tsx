@@ -55,7 +55,7 @@ export function TotalPenaltyDialog({
         <div className="flex flex-col gap-3">
           <InfoCard className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-1.5">
-              <ShieldAlert className="size-3.5 shrink-0 text-primary sm:size-4" />
+              <ShieldAlert className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
               <ItemTitle>총 페널티</ItemTitle>
             </span>
             <span
