@@ -41,7 +41,7 @@ export function PeriodAttendanceDialog({
                 <ListChecks className="size-3.5 shrink-0 text-primary sm:size-4" />
                 <ItemTitle>주간 교시 참여율</ItemTitle>
               </span>
-              <span className="text-xs sm:text-sm">
+              <span className="text-sm sm:text-base">
                 {breakdown.applicable ? (
                   <DividedValue
                     items={[
