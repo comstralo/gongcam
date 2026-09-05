@@ -66,7 +66,7 @@ AdminPage (app/src/pages/AdminPage.tsx)
 │   ├─ ReasonLeaveReviewList   — "사유 반휴 신청 대상 처리" (§3.3)
 │   ├─ PaidFineList            — "벌금 납부 대상 처리" (§4.1, paid/unpaid/exempt 통합 목록)
 │   ├─ PenaltyCandidateList    — "예치금 재납 대상 처리" (§3.2)
-│   └─ PrizeRecipientList      — "상금 수령 대상 처리" (§4 안내 참고, 상세 미기술)
+│   └─ PrizeRecipientList      — "상금 수령 대상 처리" (§4.2)
 │       └─ (PenaltyCandidateList/PaidFineList 공용) ExitProcessDialog (§3.6)
 └─ [botsheet] AdminBotSheetTab (components/admin/AdminBotSheetTab.tsx) — 🔧 2026-09 순서/이름 변경
     ├─ BotStatusSection          — "도움봇 오퍼레이터" (§5.2)
@@ -620,12 +620,36 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
 > 참고할 것. **탭 안 실제 표시 순서는 송출P대상처리 → 사유반휴신청대상처리
 > → 벌금납부대상처리 → 예치금재납대상처리 → 상금수령대상처리다**(§2
 > 트리 순서 그대로) — 이 문서의 절 번호(§3.1→3.2→3.3→4.1) 순서와 다르니
-> 혼동하지 말 것. **`PrizeRecipientList`("상금 수령 대상 처리")는 아직
-> 이 문서에 상세 기술되지 않았다** — 현재 더미 데이터로 랭킹 화면
-> (`RosterView`) 레이아웃을 재사용해 UI만 먼저 완성하는 단계이며
-> (`/admin/prize/settle` 백엔드는 배포됨, `handleAdminPrizeSettle`),
-> 프론트가 실제 `/roster-status` 호출로 전환되면 이 섹션도 별도로
-> 채워야 한다.
+> 혼동하지 말 것.
+
+### 4.2 상금 수령 대상 처리 (`PrizeRecipientList`)
+
+> 🔧 2026-09: **더미 데이터를 걷어내고 실제 `GET /roster-status` 호출로
+> 전환했다** — "랭킹"(`RosterPage`/`RosterView`)이 이미 쓰는 것과 같은
+> 엔드포인트다. 도입 직후 조사(§7 "미구현 기능 분석")에서 이 화면은
+> "상금 정산 집행" 버튼(`POST /admin/prize/settle`)만 실제 API였고,
+> 회원 순위·타이머·상점·분배 금액·"총 모금액"까지 화면에 보이는 조회
+> 데이터 전부가 하드코딩된 더미(`setTimeout` 안에 고정 배열)였다는
+> 심각한 문제가 발견됐다 — **관리자가 가짜 화면을 보고 진짜 집행
+> 버튼을 누르는 상태**였다.
+>
+> 백엔드 추가 작업은 필요 없었다 — `buildRosterStatus`(index.js)가 이미
+> `settlement` 필드(순위 1~5등, `집계!D20` "총 모금액"을 인원수로 나눈
+> `SettlementItem[]`)를 완전히 계산해 내려주고 있었고,
+> `handleRosterStatus`가 관리자에게는 "이번 주 정산" 노출 시각 제한
+> (일요일 23:30 KST 전 비공개, 스터디장 예외)을 이미 우회시켜주고
+> 있었다(주석: "관리자는 Money 탭 '상금 수령 대상자 처리'에서 상시
+> 확인해야 하므로 2026-09에 추가") — 즉 백엔드는 이 화면을 위한 준비가
+> 이미 되어 있었는데 프론트가 그 값을 쓰지 않고 있었을 뿐이다.
+>
+> **라벨 오류도 함께 고쳤다**: 상단 요약 카드가 "납부된 총 벌금액"이라는
+> 라벨(§4.1 `PaidFineList`가 쓰는 `집계!D22`, 이번 주 납부 벌금만 뜻함)을
+> 달고 실제로는 `collectMoney`(`집계!D20` "총 모금액" — 이월 상금+이번 주
+> 벌금+퇴실·재납자 납부액을 모두 합친, 실제 `settlement` 분배의 원본
+> 풀)를 표시하고 있었다 — 값은 우연히 그럴듯해 보였지만 가리키는 셀
+> 자체가 달라 관리자가 "이번 주 벌금이 얼마 걷혔나"로 오독할 수 있었다.
+> "총 모금액"으로 라벨을 바로잡았다(`RosterPage`가 이미 같은 필드에 같은
+> 라벨을 쓴다).
 
 ### 4.1 벌금 납부 대상 처리 (`PaidFineList`)
 

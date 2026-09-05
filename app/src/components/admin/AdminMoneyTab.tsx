@@ -372,29 +372,24 @@ function PrizeRecipientList({ isVisible }: { isVisible: boolean }) {
   const [settling, setSettling] = useState(false);
   const [settled, setSettled] = useState(false);
 
-  // 🧪 [임시 더미 미리보기] 실제 서비스 화면에서 렌더링을 확인하기 위한
-  // 임시 조치 — 확인 끝나면 반드시 원래 /roster-status 호출로 되돌릴 것.
+  // 🔧 2026-09: 더미 데이터를 걷어내고 실제 /roster-status를 호출한다 —
+  // "랭킹"(RosterPage)이 이미 쓰는 것과 같은 엔드포인트다. settlement(1~5등
+  // 분배금)는 buildRosterStatus가 이미 완전히 계산해 내려주므로(집계!D20
+  // "총 모금액"을 순위 인원수로 나눈 값) 백엔드 추가 작업 없이 그대로 쓸 수
+  // 있다 — 일반 회원은 일요일 23:30 KST 전까지 이 필드를 못 보지만, 관리자는
+  // "상금 수령 대상 처리"에서 미리 확인해야 하므로 서버가 관리자에게는 이
+  // 제한을 걸지 않는다(index.js, handleRosterStatus).
   function load() {
     setLoading(true);
     setError(null);
-    setTimeout(() => {
-      setCollectMoney(142000);
-      setMembers([
-        { number: "3", name: "김재희", timer: "48:20 / 50:00", merit: "12.500", rank: "🥇", status: "" },
-        { number: "7", name: "이서준", timer: "45:10 / 50:00", merit: "10.200", rank: "🥈", status: "" },
-        { number: "1", name: "박도윤", timer: "43:55 / 50:00", merit: "9.800", rank: "🥉", status: "" },
-        { number: "9", name: "최하은", timer: "41:30 / 50:00", merit: "8.100", rank: "🏅", status: "" },
-        { number: "5", name: "정유나", timer: "40:05 / 50:00", merit: "7.600", rank: "5", status: "" },
-      ]);
-      setSettlement([
-        { number: "3", name: "김재희", rank: 1, amount: 28400 },
-        { number: "7", name: "이서준", rank: 2, amount: 28400 },
-        { number: "1", name: "박도윤", rank: 3, amount: 28400 },
-        { number: "9", name: "최하은", rank: 4, amount: 28400 },
-        { number: "5", name: "정유나", rank: 5, amount: 28400 },
-      ]);
-      setLoading(false);
-    }, 300);
+    call<RosterStatusResponse>("/roster-status")
+      .then((data) => {
+        setCollectMoney(data.collectMoney ?? 0);
+        setMembers(data.members ?? []);
+        setSettlement(data.settlement ?? []);
+      })
+      .catch((err) => setError(err instanceof ApiError ? err.message : "상금 수령 대상 목록을 불러오지 못했습니다."))
+      .finally(() => setLoading(false));
   }
 
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -430,7 +425,7 @@ function PrizeRecipientList({ isVisible }: { isVisible: boolean }) {
         )}
 
         <InfoCard className="flex items-center justify-between gap-2">
-          <FieldLabel>납부된 총 벌금액</FieldLabel>
+          <FieldLabel>총 모금액</FieldLabel>
           <span className="font-mono text-base font-bold tabular-nums text-ok sm:text-lg">{won(collectMoney)}</span>
         </InfoCard>
 
