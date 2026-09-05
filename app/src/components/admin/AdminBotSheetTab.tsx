@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { ArrowRightLeft, Bot, Database, Gauge, RotateCw } from "lucide-react";
+import { ArrowRightLeft, Bell, Bot, Database, Gauge, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard } from "@/components/dashboard/shared";
 import { SectionHeader, SectionCard, ItemTitle, FieldLabel, FieldValue } from "@/components/admin/shared";
@@ -10,12 +12,16 @@ import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { ApiError } from "@/lib/api/client";
 import { cn, ICON_STROKE } from "@/lib/utils";
 import type {
+  AdminMembersRosterResponse,
+  AdminPushSendCategoryResponse,
   AdminUsageResponse,
   BotStatusResponse,
   BotCommandResponse,
   MemberReorderPlanItem,
   MemberReorderPreviewResponse,
   MemberReorderResponse,
+  NotifyCategory,
+  NotifyPrefsResponse,
 } from "@/lib/api/types";
 
 // 도움봇(study_manager_260418.py)은 로컬 PC에서 상시 실행되는 Selenium
@@ -413,6 +419,124 @@ function MemberReorderSection() {
   );
 }
 
+// 🔧 2026-09: 원래 components/admin/PushNotificationSection.tsx라는 파일에
+// 있었으나 어디서도 import되지 않는 완전한 고아 컴포넌트였다(재조사로 확인).
+// 그 파일은 두 기능을 담고 있었는데, "본인 브라우저 구독 상태 표시 +
+// 켜기/테스트" 부분은 관리자도 로그인 회원이라 설정 탭 NotifyPrefsCard의
+// 자기 자신 대상 "전송" 버튼과 완전히 중복이라 버렸다. 하지만 이 아래
+// "다른 회원을 골라 카테고리별 테스트 발송" 기능은 중복이 아니었다 —
+// NotifyPrefsCard의 "전송"은 `nickname: name`(로그인한 관리자 자신)으로
+// 고정돼 있어 본인 계정 말고는 테스트할 수 없다. "이 회원한테 왜 알림이
+// 안 갔지" 같은 문의를 디버깅하려면 임의 회원을 골라 보낼 방법이 필요한데,
+// 그게 이 죽은 파일에만 있었다 — 그래서 이 부분만 살려 실제 운영 도구로
+// 옮긴다(파일은 삭제).
+function NotifyTestSendSection() {
+  const { call } = useApi();
+  const [members, setMembers] = useState<string[] | null>(null);
+  const [categories, setCategories] = useState<Record<NotifyCategory, string> | null>(null);
+  const [nickname, setNickname] = useState("");
+  const [category, setCategory] = useState<NotifyCategory | "">("");
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<{ text: string; type: "error" | "ok" } | null>(null);
+
+  useEffect(() => {
+    call<AdminMembersRosterResponse>("/admin/members/roster")
+      .then((data) => setMembers((data.members || []).map((m) => m.name)))
+      .catch(() => setMembers([]));
+    // 카테고리 목록은 회원 개인용 API를 그대로 재사용 — 관리자도 로그인 회원이므로
+    // 자신의 prefs가 함께 오지만 여기서는 categories만 사용한다.
+    call<NotifyPrefsResponse>("/notify-prefs")
+      .then((data) => setCategories(data.categories))
+      .catch(() => setCategories(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function handleSend() {
+    if (!nickname) {
+      setResult({ text: "수신 대상자를 선택해주세요.", type: "error" });
+      return;
+    }
+    if (!category) {
+      setResult({ text: "알림 종류를 선택해주세요.", type: "error" });
+      return;
+    }
+    setSending(true);
+    setResult(null);
+    try {
+      const data = await call<AdminPushSendCategoryResponse>("/admin/push/send-category", {
+        method: "POST",
+        body: { nickname, category },
+      });
+      if (data.blocked) {
+        setResult({ text: data.message || "회원이 해당 종류를 꺼두어 발송하지 않았습니다.", type: "error" });
+      } else {
+        setResult({ text: `${nickname}님에게 테스트 알림을 보냈습니다.`, type: "ok" });
+      }
+    } catch (err) {
+      setResult({ text: err instanceof ApiError ? err.message : "네트워크 오류입니다.", type: "error" });
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <SectionCard>
+      <Collapsible defaultOpen className="flex flex-col gap-4">
+        <SectionHeader icon={Bell} title="알림 발송 테스트" />
+        <div className="h-px w-full bg-border" />
+        <CollapsiblePanel className="flex flex-col gap-3">
+          <p className="text-xs text-muted-foreground sm:text-sm">
+            특정 회원이 카테고리별 알림을 실제로 받는지(꺼둔 종류는 차단되는지) 확인합니다.
+          </p>
+
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs font-semibold text-muted-foreground sm:text-sm">수신 대상자</Label>
+            <Select value={nickname} onValueChange={(v) => setNickname(v ?? "")} disabled={!members || members.length === 0}>
+              <SelectTrigger className="w-full data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base">
+                <SelectValue placeholder={!members || members.length === 0 ? "등록된 회원이 없습니다" : "회원을 선택하세요"} />
+              </SelectTrigger>
+              <SelectContent>
+                {(members || []).map((name) => (
+                  <SelectItem key={name} value={name} className="sm:text-base">
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs font-semibold text-muted-foreground sm:text-sm">알림 종류</Label>
+            <Select value={category} onValueChange={(v) => setCategory((v as NotifyCategory) ?? "")} disabled={!categories}>
+              <SelectTrigger className="w-full data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base">
+                <SelectValue placeholder="종류를 선택하세요" />
+              </SelectTrigger>
+              <SelectContent>
+                {categories &&
+                  (Object.keys(categories) as NotifyCategory[]).map((key) => (
+                    <SelectItem key={key} value={key} className="sm:text-base">
+                      {categories[key]}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Button variant="outline" disabled={sending} onClick={handleSend} className="w-full sm:h-12 sm:text-base">
+            {sending ? "보내는 중..." : "테스트 발송"}
+          </Button>
+
+          {result && (
+            <Alert variant={result.type === "error" ? "destructive" : "default"}>
+              <AlertDescription>{result.text}</AlertDescription>
+            </Alert>
+          )}
+        </CollapsiblePanel>
+      </Collapsible>
+    </SectionCard>
+  );
+}
+
 // "스프레드시트 오퍼레이터" — 공유 스프레드시트 자체를 직접 조작하는 관리
 // 기능들을 모으는 상위 섹션. 지금은 "번호 정렬" 하나만 하위 항목으로
 // 담지만, 향후 시트 관련 기능이 늘어나면 같은 카드 안에 나란히 추가한다.
@@ -440,6 +564,7 @@ export function AdminBotSheetTab({ visible }: { visible: boolean }) {
     <div className="flex flex-col gap-4">
       <BotStatusSection visible={visible} />
       <SpreadsheetOperatorSection />
+      <NotifyTestSendSection />
       <UsageMonitorSection visible={visible} />
     </div>
   );
