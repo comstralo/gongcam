@@ -7,7 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, SubRow, TintedPill } from "@/components/dashboard/shared";
-import { SectionHeader, CapturePreview } from "@/components/admin/shared";
+import { SectionHeader, CapturePreview, AdminListSkeleton } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { usePullRefreshListener } from "@/hooks/usePullToRefresh";
@@ -429,9 +429,7 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
           </Alert>
         )}
 
-        {loading && !items && (
-          <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">불러오는 중...</p>
-        )}
+        {loading && !items && <AdminListSkeleton />}
 
         {!loading && items && items.length === 0 && (
           <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">검토 대기 중인 제보가 없습니다.</p>

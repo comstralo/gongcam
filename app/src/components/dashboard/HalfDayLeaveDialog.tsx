@@ -316,7 +316,14 @@ export function HalfDayLeaveDialog({
             </span>
 
             {status === "loading" && (
-              <p className="text-center font-mono text-xs text-muted-foreground sm:text-sm">불러오는 중...</p>
+              // 🔧 2026-09: 다이얼로그가 열리자마자 fetch를 시작해, 텍스트
+              // 한 줄 → 신청 폼(텍스트에어리어+파일첨부+버튼) 전체로 이
+              // 카드 높이가 갑자기 늘어났다(사용자 지적) — 최종 폼과 비슷한
+              // 크기의 펄스 스켈레톤으로 미리 그 자리를 잡는다.
+              <div className="flex animate-pulse flex-col gap-2" aria-hidden>
+                <span className="h-16 w-full rounded-md bg-muted sm:h-20" />
+                <span className="h-8 w-full rounded-md bg-muted sm:h-11" />
+              </div>
             )}
             {status === "error" && (
               <Alert variant="destructive">

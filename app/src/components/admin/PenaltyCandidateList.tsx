@@ -4,7 +4,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, TintedPill } from "@/components/dashboard/shared";
-import { SectionHeader, PenaltyHistorySection } from "@/components/admin/shared";
+import { SectionHeader, PenaltyHistorySection, AdminListSkeleton } from "@/components/admin/shared";
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
@@ -101,9 +101,7 @@ export function PenaltyCandidateList({ visible }: { visible: boolean }) {
           </Alert>
         )}
 
-        {loading && !candidates && (
-          <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">불러오는 중...</p>
-        )}
+        {loading && !candidates && <AdminListSkeleton />}
 
         {!loading && candidates && candidates.length === 0 && (
           <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">처리 대상이 없습니다.</p>

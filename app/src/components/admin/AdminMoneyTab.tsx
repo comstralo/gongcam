@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, DayDetailCard, TintedPill, ItemTitle, DividedValue } from "@/components/dashboard/shared";
-import { SectionHeader, FieldLabel, SectionCard } from "@/components/admin/shared";
+import { SectionHeader, FieldLabel, SectionCard, AdminListSkeleton } from "@/components/admin/shared";
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
 import { ReportReviewList } from "@/components/admin/ReportReviewList";
 import { PenaltyCandidateList } from "@/components/admin/PenaltyCandidateList";
@@ -195,9 +195,7 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
         <span className="font-mono text-base font-bold tabular-nums text-ok sm:text-lg">{won(totalAmount)}</span>
       </InfoCard>
 
-      {loading && !records && (
-        <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">불러오는 중...</p>
-      )}
+      {loading && !records && <AdminListSkeleton />}
 
       {!loading && records && groups.length === 0 && (
         <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">처리 대상이 없습니다.</p>
@@ -440,9 +438,7 @@ function PrizeRecipientList({ isVisible }: { isVisible: boolean }) {
           <span className="font-mono text-base font-bold tabular-nums text-ok sm:text-lg">{won(collectMoney)}</span>
         </InfoCard>
 
-        {loading && !settlement && (
-          <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">불러오는 중...</p>
-        )}
+        {loading && !settlement && <AdminListSkeleton />}
 
         {!loading && settlement && settlement.length === 0 && (
           <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">이번 주 정산 대상이 없습니다.</p>

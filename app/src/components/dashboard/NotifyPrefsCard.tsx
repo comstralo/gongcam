@@ -215,6 +215,20 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
           )}
         </div>
 
+        {state === "on" && (!categories || !prefs) && (
+          // 🔧 2026-09: 알림이 켜진 직후 categories/prefs가 도착하기 전까지
+          // 카테고리 토글 목록 자리가 완전히 비어 있다가 한꺼번에 나타났다
+          // — 실제 토글 줄과 비슷한 크기의 펄스 스켈레톤을 먼저 그려둔다.
+          <div className="flex flex-col gap-1.5" aria-hidden>
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="flex animate-pulse items-center justify-between gap-2 pl-5 sm:pl-5.5">
+                <span className="h-3 w-28 rounded bg-muted sm:h-3.5 sm:w-36" />
+                <span className="h-4.5 w-8 shrink-0 rounded-full bg-muted" />
+              </div>
+            ))}
+          </div>
+        )}
+
         {state === "on" && categories && prefs && (
           <div className="flex flex-col gap-1.5">
             {(Object.keys(categories) as NotifyCategory[]).map((key) => (

@@ -37,6 +37,28 @@ export function FieldValue({ children, className }: { children: ReactNode; class
   return <span className={cn("text-xs font-semibold sm:text-sm", className)}>{children}</span>;
 }
 
+// 🔧 2026-09: 관리자 탭의 목록 섹션들(제보 확인/참여·퇴실 스터디원/예치금
+// 재납 대상/사유 반휴 신청 등)이 전부 "loading && !items && <p>불러오는
+// 중...</p>" 패턴이라, 응답이 오면 카드 여러 개가 한꺼번에 나타나 레이아웃이
+// 크게 밀렸다(사용자 지적) — 실제 InfoCard 행과 비슷한 크기의 펄스
+// 스켈레톤을 공통으로 만들어 재사용한다. rows는 목록이 평소 몇 줄 정도
+// 보이는지에 맞춰 호출부가 조정한다.
+export function AdminListSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="flex flex-col gap-2 sm:gap-2.5" aria-hidden>
+      {Array.from({ length: rows }).map((_, i) => (
+        <InfoCard key={i} className="flex animate-pulse items-center gap-3">
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <span className="h-3.5 w-28 rounded bg-muted sm:h-4 sm:w-36" />
+            <span className="h-3 w-40 rounded bg-muted sm:h-3.5 sm:w-52" />
+          </div>
+          <span className="h-7 w-16 shrink-0 rounded-md bg-muted sm:h-8 sm:w-20" />
+        </InfoCard>
+      ))}
+    </div>
+  );
+}
+
 // 관리자 탭에서 접이식 섹션 하나를 감싸는 카드. 회색 배경(bg-muted)을 쓰면
 // 내용물이 흐리게 보여 비활성화된 것처럼 착시가 생기므로, 배경은 부모
 // Card와 같은 흰 바탕(bg-card)을 유지하고 테두리로만 섹션 경계를 드러낸다.

@@ -73,6 +73,26 @@ function sortMembers(members: RosterMember[]): RosterMember[] {
   return [...members].sort((a, b) => (parseInt(a.number, 10) || 0) - (parseInt(b.number, 10) || 0));
 }
 
+// 🔧 2026-09: RosterPage가 로딩 중엔 "불러오는 중..." 텍스트 한 줄만
+// 보여주다가 응답이 오면 카드 여러 개가 한꺼번에 나타나 레이아웃이 크게
+// 밀렸다(사용자 지적) — 실제 카드(RankBadge+이름+타이머/상점)와 같은
+// 크기의 펄스 스켈레톤을 미리 그려둔다.
+export function RosterViewSkeleton() {
+  return (
+    <div className="flex flex-col gap-2 sm:gap-2.5" aria-hidden>
+      {Array.from({ length: COLLAPSED_COUNT }).map((_, i) => (
+        <InfoCard key={i} className="flex animate-pulse items-center gap-3 sm:gap-4">
+          <span className="size-7 shrink-0 rounded-full bg-muted" />
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <span className="h-3.5 w-24 rounded bg-muted sm:h-4 sm:w-32" />
+            <span className="h-3 w-36 rounded bg-muted sm:h-3.5 sm:w-44" />
+          </div>
+        </InfoCard>
+      ))}
+    </div>
+  );
+}
+
 // 실시간 조회(RosterPage)와 지난 주 스냅샷(SnapshotPage) 모두 같은 형태로
 // 데이터를 보여줘야 해서, fetch 로직과 표시 로직을 분리해 이 컴포넌트를 공유한다.
 export function RosterView({ members }: { members: RosterMember[] }) {

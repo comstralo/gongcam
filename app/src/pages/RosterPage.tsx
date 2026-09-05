@@ -4,7 +4,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { SectionHeader, SectionCard } from "@/components/admin/shared";
 import { SubRow, ItemTitle, won } from "@/components/dashboard/shared";
-import { RosterView, RANK_EMOJI } from "@/components/dashboard/RosterView";
+import { RosterView, RosterViewSkeleton, RANK_EMOJI } from "@/components/dashboard/RosterView";
 import { CycleSwitcher } from "@/components/dashboard/CycleSwitcher";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
@@ -79,10 +79,7 @@ export function RosterPage({
           <SectionHeader icon={Trophy} title="랭킹" loading={loading} onRefresh={load} />
           <CollapsiblePanel className="flex flex-col gap-2 sm:gap-2.5">
             <div className="h-px w-full bg-border" />
-            {members && <RosterView members={members} />}
-            {loading && (
-              <p className="text-center font-mono text-xs text-muted-foreground sm:text-sm">불러오는 중...</p>
-            )}
+            {members ? <RosterView members={members} /> : !error && <RosterViewSkeleton />}
             {error && (
               <Alert variant="destructive">
                 <AlertDescription>{error}</AlertDescription>
@@ -149,10 +146,32 @@ export function RosterPage({
                 </div>
               </div>
             ) : (
+              // 🔧 2026-09: "불러오는 중..." 텍스트 한 줄 → 카드 전체가
+              // 한꺼번에 나타나던 것을, 실제 카드와 같은 구조(총 모금액 줄 +
+              // SubRow 4개 + 구분선 + 정산 줄)의 펄스 스켈레톤으로 교체.
               !error && (
-                <p className="py-4 text-center font-mono text-xs text-muted-foreground sm:text-sm">
-                  불러오는 중...
-                </p>
+                <div className="flex animate-pulse flex-col gap-3 rounded-lg border bg-card p-3.5 shadow-xs sm:p-4.5" aria-hidden>
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="h-3.5 w-20 rounded bg-muted sm:h-4 sm:w-24" />
+                      <span className="h-4 w-16 rounded bg-muted sm:h-5 sm:w-20" />
+                    </div>
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <div key={i} className="flex items-center justify-between gap-2">
+                        <span className="h-3 w-32 rounded bg-muted sm:h-3.5 sm:w-40" />
+                        <span className="h-3 w-12 rounded bg-muted sm:h-3.5 sm:w-14" />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="h-px w-full bg-border" />
+                  <div className="flex flex-col gap-1.5">
+                    <span className="h-3.5 w-20 rounded bg-muted sm:h-4 sm:w-24" />
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="h-3 w-28 rounded bg-muted sm:h-3.5 sm:w-36" />
+                      <span className="h-3 w-12 rounded bg-muted sm:h-3.5 sm:w-14" />
+                    </div>
+                  </div>
+                </div>
               )
             )}
           </CollapsiblePanel>

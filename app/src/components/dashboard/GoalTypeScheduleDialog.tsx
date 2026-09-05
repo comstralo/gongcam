@@ -87,7 +87,17 @@ export function GoalTypeScheduleDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
-          {loading && <p className="text-center font-mono text-xs text-muted-foreground sm:text-sm">불러오는 중...</p>}
+          {loading && (
+            // 🔧 2026-09: 다이얼로그가 열리자마자 fetch를 시작해, 텍스트 한
+            // 줄 → InfoCard 전체(제목+예약 안내+select+주의문구)로 다이얼로그
+            // 높이가 갑자기 늘어났다(사용자 지적) — 실제 카드와 비슷한 크기의
+            // 펄스 스켈레톤으로 미리 그 자리를 잡는다.
+            <InfoCard className="flex animate-pulse flex-col gap-1.5" aria-hidden>
+              <span className="h-3.5 w-32 rounded bg-muted sm:h-4 sm:w-40" />
+              <span className="h-3 w-44 rounded bg-muted sm:h-3.5 sm:w-52" />
+              <span className="h-8 w-full rounded-md bg-muted sm:h-12" />
+            </InfoCard>
+          )}
           {loadError && (
             <Alert variant="destructive">
               <AlertDescription>{loadError}</AlertDescription>

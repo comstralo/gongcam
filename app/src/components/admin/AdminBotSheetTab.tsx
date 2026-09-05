@@ -121,6 +121,29 @@ function UsageMonitorSection({ visible }: { visible: boolean }) {
             </Alert>
           )}
 
+          {!usage && !error && (
+            // 🔧 2026-09: usage 도착 전엔 이 섹션 안이 완전히 비어 있다가
+            // 응답이 오면 카드 두 개(Sheets/Cloudflare, 각각 프로그레스 바
+            // 포함)가 한꺼번에 나타나 레이아웃이 훅 밀렸다(사용자 지적) —
+            // 실제 UsageBar와 같은 구조의 펄스 스켈레톤을 먼저 그려둔다.
+            <div className="flex flex-col gap-3" aria-hidden>
+              {Array.from({ length: 2 }).map((_, i) => (
+                <InfoCard key={i} className="flex animate-pulse flex-col gap-3">
+                  <span className="h-3.5 w-40 rounded bg-muted sm:h-4 sm:w-48" />
+                  {Array.from({ length: 2 }).map((_, j) => (
+                    <div key={j} className="flex flex-col gap-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="h-3 w-20 rounded bg-muted sm:h-3.5 sm:w-24" />
+                        <span className="h-3 w-16 rounded bg-muted sm:h-3.5 sm:w-20" />
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-muted" />
+                    </div>
+                  ))}
+                </InfoCard>
+              ))}
+            </div>
+          )}
+
           {usage && (
             <>
               <InfoCard className="flex flex-col gap-3">
