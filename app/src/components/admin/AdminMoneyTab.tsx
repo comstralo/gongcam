@@ -19,6 +19,7 @@ import type {
   AdminFinesPaidResponse,
   AdminFinesUnpaidResponse,
   AdminFinesExemptResponse,
+  AdminFinesAdminForcedCountResponse,
   FineStatus,
   SetFineStatusResponse,
   StatusResponse,
@@ -92,6 +93,11 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
 
   const [records, setRecords] = useState<FineRecord[] | null>(null);
   const [totalAmount, setTotalAmount] = useState(0);
+  // 🔧 2026-09: "직권 P : N건" 배지 실제 구현 — 요일별 카운트(§GET
+  // /admin/fines/admin-forced-count). 모든 요일 0으로 초기화해두면 응답
+  // 오기 전에도 배지가 "0건"으로 자연스럽게 보인다(자리표시자와 동일한
+  // 표시지만 이제 실제로 다시 계산된 값으로 갱신됨).
+  const [adminForcedCounts, setAdminForcedCounts] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
@@ -110,8 +116,9 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
       call<AdminFinesUnpaidResponse>("/admin/fines/unpaid"),
       call<AdminFinesPaidResponse>("/admin/fines/paid"),
       call<AdminFinesExemptResponse>("/admin/fines/exempt"),
+      call<AdminFinesAdminForcedCountResponse>("/admin/fines/admin-forced-count"),
     ])
-      .then(([unpaidData, paidData, exemptData]) => {
+      .then(([unpaidData, paidData, exemptData, adminForcedData]) => {
         const merged: FineRecord[] = [
           ...(unpaidData.unpaid || []).map((f) => ({ ...f, baseStatus: "미납" as const })),
           ...(paidData.paid || []).map((f) => ({ ...f, baseStatus: "납부" as const })),
@@ -119,6 +126,7 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
         ];
         setRecords(merged);
         setTotalAmount(paidData.totalAmount || 0);
+        setAdminForcedCounts(adminForcedData.counts || {});
         setStatusOverride({});
       })
       .catch((err) => setError(err instanceof Error ? err.message : "벌금 납부 대상자 목록을 불러오지 못했습니다."))
@@ -224,11 +232,12 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
                       <span className="rounded-full bg-amber-600/15 px-2 py-1 text-micro-lg leading-none font-semibold text-amber-600 sm:text-xs dark:bg-amber-400/15 dark:text-amber-400">
                         면제 : {exemptCount}건
                       </span>
-                      {/* 🧪 [자리표시자] "직권 P" 인원을 어떤 기준으로 셀지는
-                          아직 정해지지 않았다 — 배지 자리와 스타일만 먼저
-                          만들어두고 집계 로직은 추후 반영 예정. */}
+                      {/* 🔧 2026-09: "벌금을 납부하지 않아서 '퇴실 처리
+                          (직권 P)'가 눌려서 퇴실 처리된 사용자"(사용자 정의)를
+                          센다 — GET /admin/fines/admin-forced-count가 요일별로
+                          이미 집계해 내려준다(handleAdminFinesAdminForcedCount). */}
                       <span className="rounded-full bg-primary/15 px-2 py-1 text-micro-lg leading-none font-semibold text-primary sm:text-xs">
-                        직권 P : 0건
+                        직권 P : {adminForcedCounts[group.day] || 0}건
                       </span>
                     </span>
                   </span>

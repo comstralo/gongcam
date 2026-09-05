@@ -754,10 +754,24 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
   "forced"`일 때만 노출, `suggestedKind`는 `lockKind`가 없을 때의
   fallback일 뿐)는 걸 `ExitProcessDialog.tsx` 소스로 확인한 뒤, 타입만
   맞추는 더미 값(`suggestedKind: "settle"`, `allChecks: []`)을 넘긴다.
-  **단, 요일 헤더의 "직권 P : 0건" 카운트는 여전히 자리표시자다** — 이
-  목록(paid/unpaid/exempt 병합)에는 애초에 admin_forced로 처리된 인원을
-  구분할 필드가 없어, 몇 명이 그 상태인지 셀 기준 자체가 아직 정해지지
-  않았다.
+  🔧 2026-09: **요일 헤더의 "직권 P : N건" 카운트도 실제로 구현됐다**
+  (사용자 정의: "벌금을 납부하지 않아서 '퇴실 처리 (직권 P)'가 눌려서
+  퇴실 처리 된 사용자를 카운트"). paid/unpaid/exempt 병합 목록 자체엔
+  admin_forced로 처리된 인원을 구분할 필드가 없어(퇴실 확정 시 그 회원
+  시트가 초기화되며 이 세 목록에서 완전히 사라지므로), 새 엔드포인트
+  `GET /admin/fines/admin-forced-count`(`handleAdminFinesAdminForcedCount`)
+  가 §3.5.1과 같은 방식(`listExitedMemberEntries` + `EXIT_RESULT_KV_PREFIX`
+  join)으로 퇴실자 결과를 스캔해 별도로 집계한다. 판정 기준은 `kind ===
+  "admin_forced"`이면서 저장된 `reasons`가 정확히 `{code:"admin_reason",
+  label:"직권 사유: 벌금 시한 내 미납자"}`인 것 — 같은 admin_forced라도
+  `MemberRosterList`(§3.5)에서 관리자가 자유 입력한 사유로 처리된 경우는
+  세지 않는다(`FINE_UNPAID_ADMIN_FORCED_REASON_LABEL` 상수, `lockForcedReason`
+  문자열과 반드시 동기화해야 함 — 하나를 바꾸면 다른 쪽도 바꿀 것). 그
+  회원이 확정 시점에 실제로 미납이었던 요일들(`breakdown.fineUnpaidDays`
+  스냅샷)에 각각 1건씩 credit한다 — 한 사람이 여러 요일에 미납이었으면
+  그 요일 그룹 각각에 1건씩 더해진다(그 요일의 "미납" 목록에 실제로
+  그 사람이 있었으므로). 이 기능 도입(2026-09) 이전에 처리된 퇴실자는
+  저장된 결과가 없어 집계에서 빠진다(§3.5.1과 동일한 한계).
 - **버튼 배치**: 상세를 펼치면 `DayDetailCard`(아래 항목) 바로 다음,
   "일간 총 벌금 · 재납 예치금" 카드 아래에 나머지 상태 버튼들이 한 줄
   (`flex` + `flex-1`)로 나열된다. 앱 전반의 표준 액션 버튼 높이
@@ -909,8 +923,11 @@ Cloudflare Tunnel로 노출한 로컬 상태 서버를 그때그때 프록시한
   Account 탭 `MemberRosterList`의 "퇴실 처리 (직권 P)" 버튼(§3.5)은 서로
   다른 탭에서 같은 `ExitProcessDialog(lockKind="admin_forced")`를 각자
   다른 회원 데이터로 호출하는 서로 다른 진입점이다** — 둘 다 실제로
-  확정하면 그 회원을 admin_forced로 즉시 퇴실 처리한다. 요일 헤더의
-  "직권 P : 0건" 카운트만 아직 자리표시자로 남아있다(§4.1).
+  확정하면 그 회원을 admin_forced로 즉시 퇴실 처리한다. **요일 헤더의
+  "직권 P : N건" 카운트(2026-09부로 실제 구현, §4.1)는 오직 PaidFineList의
+  "직권 P" 버튼(고정 사유 "벌금 시한 내 미납자")으로 처리된 건만 센다** —
+  MemberRosterList에서 자유 입력 사유로 처리된 admin_forced는 같은
+  강제퇴실이라도 이 카운트에 잡히지 않는다(사유 문자열 정확 일치 판정).
 - **`ExitProcessDialog`의 "유형 선택 드롭다운" 분기는 현재 코드베이스에서 실제로
   렌더링될 수 없다**(§3.6). 세 호출부 모두 항상 `lockKind`를 넘기기 때문 — 다만
   `lockKind`가 있어도 "미리보기 계산 버튼 → `<pre>` 결과 → 확정"이라는 그 분기의

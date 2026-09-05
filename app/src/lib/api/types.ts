@@ -417,6 +417,14 @@ export type AdminFinesExemptResponse = {
   exempt: ExemptFine[];
 };
 
+// 🔧 2026-09: "벌금 납부 대상 처리"(PaidFineList) 요일 헤더의 "직권 P : N건"
+// 배지 — 벌금 미납으로 "퇴실 처리 (직권 P)"가 눌려 실제 admin_forced
+// 퇴실된 인원을, 그 사람이 미납이었던 요일별로 센 값. 월~일 7개 키 모두
+// 항상 포함(0이어도).
+export type AdminFinesAdminForcedCountResponse = {
+  counts: Record<string, number>;
+};
+
 export type SetFineStatusRequest = {
   number: string;
   day: string;
