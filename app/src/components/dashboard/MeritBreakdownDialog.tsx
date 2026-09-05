@@ -51,23 +51,24 @@ export function MeritBreakdownDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
-          {/* 🔧 2026-09: 이 총점 요약 행이 아래 4개 섹션 헤더("상점 적립
-              원인" 등)와 똑같은 text-xs sm:text-sm 크기를 써서, 정작 이
-              화면에서 가장 중요한 숫자인데도 하위 섹션 제목과 구분이
-              안 됐다(사용자 지적: 모바일에서 위계가 안 맞아 보임 — 실제로는
-              모바일/데스크톱 둘 다 구분이 없던 것). ItemTitle 크기 체계
-              (text-sm sm:text-base, admin/shared.tsx의 SectionHeader>
-              ItemTitle>FieldLabel 3단 체계와 같은 발상)로 한 단계 올려
-              총점 > 섹션 헤더 > 세부 항목 위계가 두 화면 크기 모두에서
-              일관되게 보이도록 했다. */}
+          {/* 🔧 2026-09 정정: "주간 총 상점"을 다른 4개 카드 제목("상점
+              적립 원인" 등)보다 한 단계 키웠던 이전 시도는 사용자 의도와
+              반대였다 — 이 5개는 전부 같은 레벨의 카드 제목이라 크기가
+              같아야 한다(사용자 지적). text-xs sm:text-sm으로 되돌려 다른
+              카드 제목들과 동일하게 맞췄다. 실제 위계 문제는 "제목 vs
+              하위 항목"에 있었다 — 이 파일의 SubRow들만 labelClassName/
+              valueClassName으로 한 단계 더 작게(text-micro sm:text-micro-lg)
+              눌러, 제목(12px/14px)과 하위 항목(10px/11px) 간 차이를 확실히
+              벌렸다(공용 SubRow 컴포넌트 기본값은 다른 화면에 영향 없도록
+              그대로 둠). */}
           <InfoCard className="flex items-center justify-between gap-2">
-            <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
+            <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
               <Award className="size-3.5 shrink-0 text-primary sm:size-4" />
               주간 총 상점
             </span>
             <span
               className={cn(
-                "text-sm tabular-nums sm:text-base",
+                "text-xs tabular-nums sm:text-sm",
                 breakdown.isZero ? "text-muted-foreground" : "text-ok"
               )}
             >
@@ -88,7 +89,11 @@ export function MeritBreakdownDialog({
             <SubRow
               label={`주간 학습시간 상점 (${breakdown.studyTimeHours ?? 0}H)`}
               value={(breakdown.studyTimeMerit ?? 0) > 0 ? `+${pt(breakdown.studyTimeMerit)}` : `+${pt(0)}`}
-              valueClassName={cn("font-sans", (breakdown.studyTimeMerit ?? 0) > 0 ? "text-ok" : "text-muted-foreground")}
+              labelClassName="text-micro sm:text-micro-lg"
+              valueClassName={cn(
+                "font-sans text-micro sm:text-micro-lg",
+                (breakdown.studyTimeMerit ?? 0) > 0 ? "text-ok" : "text-muted-foreground"
+              )}
             />
             <div className="flex flex-col">
               <SubRow
@@ -98,8 +103,9 @@ export function MeritBreakdownDialog({
                     ? `+${pt(breakdown.reportMerit)}`
                     : `+${pt(0)}`
                 }
+                labelClassName="text-micro sm:text-micro-lg"
                 valueClassName={cn(
-                  "font-sans",
+                  "font-sans text-micro sm:text-micro-lg",
                   breakdown.reportMeritIncluded && (breakdown.reportMerit ?? 0) > 0
                     ? "text-ok"
                     : "text-muted-foreground"
@@ -119,12 +125,20 @@ export function MeritBreakdownDialog({
             <SubRow
               label="주간 송출 벌점"
               value={(breakdown.penaltyDeduction ?? 0) > 0 ? `-${pt(breakdown.penaltyDeduction)}` : `-${pt(0)}`}
-              valueClassName={cn("font-sans", (breakdown.penaltyDeduction ?? 0) > 0 ? "text-destructive" : "text-muted-foreground")}
+              labelClassName="text-micro sm:text-micro-lg"
+              valueClassName={cn(
+                "font-sans text-micro sm:text-micro-lg",
+                (breakdown.penaltyDeduction ?? 0) > 0 ? "text-destructive" : "text-muted-foreground"
+              )}
             />
             <SubRow
               label="주간 벌금 (500원 당)"
               value={(breakdown.fineDeduction ?? 0) > 0 ? `-${pt(breakdown.fineDeduction)}` : `-${pt(0)}`}
-              valueClassName={cn("font-sans", (breakdown.fineDeduction ?? 0) > 0 ? "text-destructive" : "text-muted-foreground")}
+              labelClassName="text-micro sm:text-micro-lg"
+              valueClassName={cn(
+                "font-sans text-micro sm:text-micro-lg",
+                (breakdown.fineDeduction ?? 0) > 0 ? "text-destructive" : "text-muted-foreground"
+              )}
             />
           </InfoCard>
 
@@ -139,7 +153,7 @@ export function MeritBreakdownDialog({
                   <li
                     key={cond.key}
                     className={cn(
-                      "flex items-center gap-1.5 text-micro-lg sm:text-xs",
+                      "flex items-center gap-1.5 text-micro sm:text-micro-lg",
                       cond.met ? "text-destructive" : "text-muted-foreground"
                     )}
                   >
@@ -164,7 +178,11 @@ export function MeritBreakdownDialog({
               <SubRow
                 label={formatGoalType(goalType)}
                 value={`× ${breakdown.multiplier ?? 1}`}
-                valueClassName={cn("font-sans", breakdown.multiplierDowngraded && "text-destructive")}
+                labelClassName="text-micro sm:text-micro-lg"
+                valueClassName={cn(
+                  "font-sans text-micro sm:text-micro-lg",
+                  breakdown.multiplierDowngraded && "text-destructive"
+                )}
               />
               <span className="pl-8.5 text-micro leading-tight text-amber-600 sm:pl-9.5 sm:text-micro-lg dark:text-amber-400">
                 * 사유반휴 2장 사용 시, 8H 기준으로 강등
