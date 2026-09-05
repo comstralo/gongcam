@@ -366,7 +366,7 @@ export function ExitedMemberList() {
               const isExpanded = expandedNumber === m.number;
               const result = m.result;
               return (
-                <InfoCard key={m.number} className="flex flex-col gap-2.5">
+                <InfoCard key={m.number} className="flex flex-col gap-2.5 bg-card">
                   <button
                     type="button"
                     onClick={() => setExpandedNumber(isExpanded ? null : m.number)}
