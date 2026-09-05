@@ -60,7 +60,8 @@ export function TotalPenaltyDialog({
             </span>
             <span
               className={cn(
-                "text-right text-sm font-semibold sm:text-base",
+                "text-right text-sm sm:text-base",
+                total > 0 && "font-semibold",
                 total >= 2 ? "text-destructive" : total === 1 ? "text-amber-600 dark:text-amber-400" : undefined
               )}
             >
