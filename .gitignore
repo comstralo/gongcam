@@ -1,3 +1,13 @@
-study_sw/
-frame-checker-worker/
+# frame-checker-worker: Wrangler 로컬 상태/캐시만 제외한다 — 시크릿은
+# 전부 env.*(wrangler secret) 바인딩으로 관리되어 소스에 없음을 확인했다.
+frame-checker-worker/.wrangler/
+
+# study_sw: 로컬 자동화 봇. 브라우저 프로필/캡처 산출물(대용량, 재생성
+# 가능)과 실제 시크릿 파일만 제외하고, 나머지 파이썬 소스는 추적한다.
+study_sw/.env
+study_sw/assets/sheetAccessKey.json
+study_sw/chrome_profile/
+study_sw/runtime/
+study_sw/**/__pycache__/
+
 .DS_Store

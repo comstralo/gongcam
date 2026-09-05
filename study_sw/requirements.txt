@@ -1,0 +1,15 @@
+gspread
+pandas
+psutil
+requests
+schedule
+oauth2client
+Pillow
+python-dotenv
+selenium
+pyvirtualcam
+numpy
+opencv-python
+
+# Windows 전용 (콘솔 X 버튼 닫힘 감지). macOS/Linux에서는 설치되지 않음.
+pywin32; sys_platform == "win32"

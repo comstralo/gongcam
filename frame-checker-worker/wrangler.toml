@@ -1,0 +1,25 @@
+name = "frame-checker-worker"
+main = "src/index.js"
+compatibility_date = "2024-11-01"
+
+[[kv_namespaces]]
+binding = "REPORTS_KV"
+id = "4c09599c0cf34fb493137a337b0cf1db"
+
+[[kv_namespaces]]
+binding = "PUSH_SUBS_KV"
+id = "2154564b9fb44d15ae0d682a7ce86232"
+
+[[durable_objects.bindings]]
+name = "PARTICIPANTS_DO"
+class_name = "ParticipantsRoster"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ParticipantsRoster"]
+
+[vars]
+ALLOWED_ORIGIN = "https://comstralo.github.io"
+# 앱스크립트(sheet_reset)가 매주 초기화 직전 시트 전체를 복사해 저장하는 Drive 폴더.
+# 이 폴더는 일반 사용자와 공유되어 있지 않고 서비스 계정에게만 뷰어 권한이 부여됨.
+BACKUP_FOLDER_ID = "15-_j0UmDC3Ox6l1ujZmAeGuuLU3gHhH7"
