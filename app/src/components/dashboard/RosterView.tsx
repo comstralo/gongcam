@@ -134,7 +134,7 @@ export function RosterView({ members }: { members: RosterMember[] }) {
         <Button
           type="button"
           variant="outline"
-          className="w-full gap-1.5 whitespace-nowrap sm:h-11"
+          className="w-full gap-1.5 whitespace-nowrap sm:h-11 sm:text-base"
           onClick={() => setExpanded(true)}
         >
           <ChevronDown className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
