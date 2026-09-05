@@ -132,7 +132,7 @@ export function RosterPage({
                 <div className="flex flex-col gap-1.5">
                   <span className="inline-flex items-center gap-1.25">
                     <PiggyBank className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
-                    <ItemTitle>이번 주 정산</ItemTitle>
+                    <ItemTitle>정산 내역</ItemTitle>
                   </span>
                   {settlement === null ? (
                     <SubRow label="일요일 14교시 종료 후 확인할 수 있습니다." value="" labelClassName="text-xs sm:text-sm" />
