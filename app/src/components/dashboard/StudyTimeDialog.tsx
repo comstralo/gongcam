@@ -175,7 +175,7 @@ export function StudyTimeDialog({
                             const { text, className, recorded } = formatPeriod(p, isPeriodType);
                             return (
                               <div key={i} className="flex items-center justify-between gap-2">
-                                <span className="flex shrink-0 items-center gap-1 text-micro-lg tabular-nums text-muted-foreground sm:text-xs">
+                                <span className="flex shrink-0 items-center gap-1 text-xs tabular-nums text-muted-foreground sm:text-sm">
                                   <Clock className="size-2.5 shrink-0 sm:size-3" />
                                   <span className={cn("inline-block", !isPeriodType && "min-w-[6.5em]")}>
                                     {periodLabels[i]}
@@ -183,7 +183,7 @@ export function StudyTimeDialog({
                                 </span>
                                 <span
                                   className={cn(
-                                    "text-micro-lg tabular-nums sm:text-xs",
+                                    "text-xs tabular-nums sm:text-sm",
                                     recorded ? className : "text-muted-foreground/60"
                                   )}
                                 >
