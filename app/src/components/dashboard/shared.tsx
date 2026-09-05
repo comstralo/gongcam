@@ -397,12 +397,7 @@ export function DayDetailCard({
             <BedDouble className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
             <ItemTitle>반휴권</ItemTitle>
           </span>
-          <span
-            className={cn(
-              "text-sm sm:text-base",
-              day.normalLeaveUsed + day.reasonLeaveUsed === 0 && "text-muted-foreground"
-            )}
-          >
+          <span className="text-sm sm:text-base">
             {day.normalLeaveUsed + day.reasonLeaveUsed}장
           </span>
         </div>
@@ -437,12 +432,7 @@ export function DayDetailCard({
                 <Wallet className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                 <ItemTitle>일간 총 벌금 · 재납 예치금</ItemTitle>
               </span>
-              <span
-                className={cn(
-                  "text-sm sm:text-base",
-                  combinedTotal > 0 ? "text-destructive" : "text-muted-foreground"
-                )}
-              >
+              <span className={cn("text-sm sm:text-base", combinedTotal > 0 && "text-destructive")}>
                 {won(combinedTotal)}
               </span>
             </div>
