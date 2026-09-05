@@ -323,8 +323,8 @@ export function ExitedMemberList() {
   return (
     <Collapsible defaultOpen className="flex flex-col gap-4">
       <SectionHeader icon={UserX} title="퇴실 스터디원 목록" loading={loading} onRefresh={load} />
-      <div className="h-px w-full bg-border" />
       <CollapsiblePanel className="flex flex-col gap-4">
+        <div className="h-px w-full bg-border" />
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>

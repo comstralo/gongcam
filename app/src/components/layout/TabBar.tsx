@@ -30,7 +30,16 @@ export function TabBar() {
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-20 flex justify-center gap-0.5 border-t bg-card px-2.5 pb-[calc(6px+env(safe-area-inset-bottom,0px))] pt-1.5 shadow-lift sm:gap-1"
+      // 🔧 2026-09: index.html의 viewport meta에 viewport-fit=cover가 없어
+      // env(safe-area-inset-bottom)이 항상 0으로 평가된다(홈 인디케이터
+      // 영역 아래로 콘텐츠를 확장하는 옵트인이 없으면 이 값 자체가 없음) —
+      // 그래서 실제 여백은 항상 6px뿐이었고, 화면 맨 아래에 거의 붙어
+      // 보였다(사용자 지적). viewport-fit=cover를 추가하는 건 상단
+      // 세이프에어리어(노치/상태바) 대응까지 함께 손봐야 하는 더 큰
+      // 변경이라, 우선 이 하단 여백 자체를 16px로 늘려 눈에 띄는 공백을
+      // 확보했다 — env() 항은 나중에 viewport-fit=cover가 추가돼도 자연히
+      // 더해지도록 그대로 남겨둔다.
+      className="fixed inset-x-0 bottom-0 z-20 flex justify-center gap-0.5 border-t bg-card px-2.5 pb-[calc(16px+env(safe-area-inset-bottom,0px))] pt-1.5 shadow-lift sm:gap-1"
       aria-label="하단 탭 메뉴"
     >
       {tabs.map((tab) => {

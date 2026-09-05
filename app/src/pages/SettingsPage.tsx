@@ -27,8 +27,8 @@ export function SettingsPage({ visible = true }: { visible?: boolean }) {
         <SectionCard>
           <Collapsible defaultOpen className="flex flex-col gap-4">
             <SectionHeader icon={UserCog} title="계정 관리" />
-            <div className="h-px w-full bg-border" />
             <CollapsiblePanel className="flex flex-col gap-4">
+              <div className="h-px w-full bg-border" />
               <SessionCard name={status?.name} />
 
               {status?.depositRefundBreakdown ? (
@@ -84,8 +84,8 @@ export function SettingsPage({ visible = true }: { visible?: boolean }) {
         <SectionCard>
           <Collapsible defaultOpen className="flex flex-col gap-4">
             <SectionHeader icon={BellRing} title="알림 설정" />
-            <div className="h-px w-full bg-border" />
             <CollapsiblePanel className="flex flex-col gap-4">
+              <div className="h-px w-full bg-border" />
               <PeriodAlarmCard />
               <NotifyPrefsCard name={status?.name} />
             </CollapsiblePanel>

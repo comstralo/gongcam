@@ -180,8 +180,8 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
   return (
     <Collapsible defaultOpen className="flex flex-col gap-4">
       <SectionHeader icon={CircleDollarSign} title="벌금 납부 대상 처리" loading={loading} onRefresh={load} />
-      <div className="h-px w-full bg-border" />
       <CollapsiblePanel className="flex flex-col gap-4">
+      <div className="h-px w-full bg-border" />
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
@@ -424,8 +424,8 @@ function PrizeRecipientList({ isVisible }: { isVisible: boolean }) {
   return (
     <Collapsible defaultOpen className="flex flex-col gap-4">
       <SectionHeader icon={Trophy} title="상금 수령 대상 처리" loading={loading} onRefresh={load} />
-      <div className="h-px w-full bg-border" />
       <CollapsiblePanel className="flex flex-col gap-4">
+        <div className="h-px w-full bg-border" />
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>

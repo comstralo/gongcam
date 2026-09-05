@@ -51,14 +51,23 @@ export function MeritBreakdownDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
+          {/* 🔧 2026-09: 이 총점 요약 행이 아래 4개 섹션 헤더("상점 적립
+              원인" 등)와 똑같은 text-xs sm:text-sm 크기를 써서, 정작 이
+              화면에서 가장 중요한 숫자인데도 하위 섹션 제목과 구분이
+              안 됐다(사용자 지적: 모바일에서 위계가 안 맞아 보임 — 실제로는
+              모바일/데스크톱 둘 다 구분이 없던 것). ItemTitle 크기 체계
+              (text-sm sm:text-base, admin/shared.tsx의 SectionHeader>
+              ItemTitle>FieldLabel 3단 체계와 같은 발상)로 한 단계 올려
+              총점 > 섹션 헤더 > 세부 항목 위계가 두 화면 크기 모두에서
+              일관되게 보이도록 했다. */}
           <InfoCard className="flex items-center justify-between gap-2">
-            <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+            <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
               <Award className="size-3.5 shrink-0 text-primary sm:size-4" />
               주간 총 상점
             </span>
             <span
               className={cn(
-                "text-xs tabular-nums sm:text-sm",
+                "text-sm tabular-nums sm:text-base",
                 breakdown.isZero ? "text-muted-foreground" : "text-ok"
               )}
             >

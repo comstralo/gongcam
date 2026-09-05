@@ -113,8 +113,8 @@ export function ReportPage() {
             <CardContent>
               <Collapsible defaultOpen className="flex flex-col gap-4">
                 <SectionHeader icon={Flag} title="송출 P 제보" onRefresh={refresh} />
-                <div className="h-px w-full bg-border" />
                 <CollapsiblePanel className="flex flex-col gap-4">
+                  <div className="h-px w-full bg-border" />
                   <SectionCard className="flex flex-col gap-3">
                     <div className="flex flex-col gap-1.5">
                       <Label className="flex items-center gap-1.25 text-xs font-semibold text-muted-foreground sm:text-sm">
@@ -233,8 +233,8 @@ export function ReportPage() {
             <CardContent>
               <Collapsible defaultOpen className="flex flex-col gap-4">
                 <SectionHeader icon={Bell} title="PUSH 알림" onRefresh={refresh} />
-                <div className="h-px w-full bg-border" />
                 <CollapsiblePanel className="flex flex-col gap-4">
+                  <div className="h-px w-full bg-border" />
                   <SimpleNoticeSection members={members} noMembers={noMembers} stale={stale} />
                 </CollapsiblePanel>
               </Collapsible>

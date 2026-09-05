@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Trophy, PiggyBank } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { SectionHeader, SectionCard } from "@/components/admin/shared";
@@ -68,91 +67,93 @@ export function RosterPage({
   useRefreshOnVisible(visible, load);
 
   return (
-    <Card className="w-full">
-      <CardContent className="flex flex-col gap-4">
-        {onSelectCycle && <CycleSwitcher selectedFileId={cycleFileId ?? null} onSelect={onSelectCycle} />}
+    // 🔧 2026-09: 이 화면(전체 대시보드 "ALL" 탭)을 감싸던 바깥 Card/
+    // CardContent를 제거했다(사용자 지시) — 안쪽 랭킹/상금 정산이 이미
+    // 각자 SectionCard(자체 테두리+배경)로 감싸여 있어, 바깥 Card는
+    // 이중 테두리·이중 배경만 만들 뿐 시각적으로 불필요했다.
+    <div className="flex w-full flex-col gap-4">
+      {onSelectCycle && <CycleSwitcher selectedFileId={cycleFileId ?? null} onSelect={onSelectCycle} />}
 
-        <SectionCard>
-          <Collapsible defaultOpen className="flex flex-col gap-4">
-            <SectionHeader icon={Trophy} title="랭킹" loading={loading} onRefresh={load} />
+      <SectionCard>
+        <Collapsible defaultOpen className="flex flex-col gap-4">
+          <SectionHeader icon={Trophy} title="랭킹" loading={loading} onRefresh={load} />
+          <CollapsiblePanel className="flex flex-col gap-2 sm:gap-2.5">
             <div className="h-px w-full bg-border" />
-            <CollapsiblePanel className="flex flex-col gap-2 sm:gap-2.5">
-              {members && <RosterView members={members} />}
-              {loading && (
-                <p className="text-center font-mono text-xs text-muted-foreground sm:text-sm">불러오는 중...</p>
-              )}
-              {error && (
-                <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-            </CollapsiblePanel>
-          </Collapsible>
-        </SectionCard>
+            {members && <RosterView members={members} />}
+            {loading && (
+              <p className="text-center font-mono text-xs text-muted-foreground sm:text-sm">불러오는 중...</p>
+            )}
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+          </CollapsiblePanel>
+        </Collapsible>
+      </SectionCard>
 
-        <SectionCard>
-          <Collapsible defaultOpen className="flex flex-col gap-4">
-            <SectionHeader icon={PiggyBank} title="상금 정산" loading={loading} onRefresh={load} />
+      <SectionCard>
+        <Collapsible defaultOpen className="flex flex-col gap-4">
+          <SectionHeader icon={PiggyBank} title="상금 정산" loading={loading} onRefresh={load} />
+          <CollapsiblePanel className="flex flex-col gap-4">
             <div className="h-px w-full bg-border" />
-            <CollapsiblePanel>
-              {money ? (
-                <div className="flex flex-col gap-3 rounded-lg border bg-card p-3.5 shadow-xs sm:p-4.5">
-                  <div className="flex flex-col gap-1.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
-                        <PiggyBank className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
-                        총 모금액
-                      </span>
-                      <span
-                        className={cn(
-                          "text-sm font-semibold sm:text-base",
-                          money.collectMoney > 0 ? "text-ok" : "text-muted-foreground"
-                        )}
-                      >
-                        {won(money.collectMoney)}
-                      </span>
-                    </div>
-                    <SubRow label="지난 주 이월된 상금" value={won(money.fineCarry)} />
-                    <SubRow label="이번 주 납부한 벌금" value={won(money.fineThisWeek)} />
-                    <SubRow label="이번 주 퇴실 · 재납자가 납부한 벌금" value={won(money.fineOuter)} />
-                    {money.depositOuter !== undefined && (
-                      <SubRow label="이번 주 퇴실 · 재납자가 납부한 예치금" value={won(money.depositOuter)} />
-                    )}
-                  </div>
-
-                  <div className="h-px w-full bg-border" />
-
-                  <div className="flex flex-col gap-1.5">
+            {money ? (
+              <div className="flex flex-col gap-3 rounded-lg border bg-card p-3.5 shadow-xs sm:p-4.5">
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between gap-2">
                     <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
                       <PiggyBank className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
-                      이번 주 정산
+                      총 모금액
                     </span>
-                    {settlement === null ? (
-                      <SubRow label="일요일 14교시 종료 후 확인할 수 있습니다." value="" />
-                    ) : settlement && settlement.length > 0 ? (
-                      settlement.map((s) => (
-                        <SubRow
-                          key={s.number}
-                          label={`${RANK_EMOJI[s.rank] || s.rank} ${s.name}`}
-                          value={won(s.amount)}
-                        />
-                      ))
-                    ) : (
-                      <SubRow label="정산 대상이 없습니다." value="" />
-                    )}
+                    <span
+                      className={cn(
+                        "text-sm font-semibold sm:text-base",
+                        money.collectMoney > 0 ? "text-ok" : "text-muted-foreground"
+                      )}
+                    >
+                      {won(money.collectMoney)}
+                    </span>
                   </div>
+                  <SubRow label="지난 주 이월된 상금" value={won(money.fineCarry)} />
+                  <SubRow label="이번 주 납부한 벌금" value={won(money.fineThisWeek)} />
+                  <SubRow label="이번 주 퇴실 · 재납자가 납부한 벌금" value={won(money.fineOuter)} />
+                  {money.depositOuter !== undefined && (
+                    <SubRow label="이번 주 퇴실 · 재납자가 납부한 예치금" value={won(money.depositOuter)} />
+                  )}
                 </div>
-              ) : (
-                !error && (
-                  <p className="py-4 text-center font-mono text-xs text-muted-foreground sm:text-sm">
-                    불러오는 중...
-                  </p>
-                )
-              )}
-            </CollapsiblePanel>
-          </Collapsible>
-        </SectionCard>
-      </CardContent>
-    </Card>
+
+                <div className="h-px w-full bg-border" />
+
+                <div className="flex flex-col gap-1.5">
+                  <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                    <PiggyBank className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
+                    이번 주 정산
+                  </span>
+                  {settlement === null ? (
+                    <SubRow label="일요일 14교시 종료 후 확인할 수 있습니다." value="" />
+                  ) : settlement && settlement.length > 0 ? (
+                    settlement.map((s) => (
+                      <SubRow
+                        key={s.number}
+                        label={`${RANK_EMOJI[s.rank] || s.rank} ${s.name}`}
+                        value={won(s.amount)}
+                      />
+                    ))
+                  ) : (
+                    <SubRow label="정산 대상이 없습니다." value="" />
+                  )}
+                </div>
+              </div>
+            ) : (
+              !error && (
+                <p className="py-4 text-center font-mono text-xs text-muted-foreground sm:text-sm">
+                  불러오는 중...
+                </p>
+              )
+            )}
+          </CollapsiblePanel>
+        </Collapsible>
+      </SectionCard>
+    </div>
   );
 }

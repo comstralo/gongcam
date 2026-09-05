@@ -109,8 +109,10 @@ function UsageMonitorSection({ visible }: { visible: boolean }) {
     <SectionCard>
       <Collapsible defaultOpen className="flex flex-col gap-4">
         <SectionHeader icon={Gauge} title="사용량 모니터링" loading={loading} onRefresh={load} />
-        <div className="h-px w-full bg-border" />
+        {/* 🔧 2026-09: 구분선을 패널 안으로 옮겨 접혔을 때는 함께 숨겨지도록
+            했다(사용자 지적, 같은 패턴을 쓰는 모든 접이식 섹션에 일괄 적용). */}
         <CollapsiblePanel className="flex flex-col gap-4">
+          <div className="h-px w-full bg-border" />
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
@@ -258,8 +260,8 @@ function BotStatusSection({ visible }: { visible: boolean }) {
     <SectionCard>
       <Collapsible defaultOpen className="flex flex-col gap-4">
         <SectionHeader icon={Bot} title="도움봇 오퍼레이터" loading={loading} onRefresh={load} />
-        <div className="h-px w-full bg-border" />
         <CollapsiblePanel className="flex flex-col gap-4">
+          <div className="h-px w-full bg-border" />
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
@@ -372,8 +374,8 @@ function MemberReorderSection() {
   return (
     <Collapsible defaultOpen className="flex flex-col gap-4">
       <SectionHeader icon={ArrowRightLeft} title="번호 정렬" />
-      <div className="h-px w-full bg-border" />
       <CollapsiblePanel className="flex flex-col gap-4">
+        <div className="h-px w-full bg-border" />
         <p className="text-xs text-muted-foreground sm:text-sm">
           퇴실 등으로 비워진 번호를 앞으로 당겨 채웁니다. 진행 중인 교시가 없을 때 실행하는 것을 권장합니다.
         </p>
@@ -483,8 +485,8 @@ function NotifyTestSendSection() {
     <SectionCard>
       <Collapsible defaultOpen className="flex flex-col gap-4">
         <SectionHeader icon={Bell} title="알림 발송 테스트" />
-        <div className="h-px w-full bg-border" />
         <CollapsiblePanel className="flex flex-col gap-3">
+          <div className="h-px w-full bg-border" />
           <p className="text-xs text-muted-foreground sm:text-sm">
             특정 회원이 카테고리별 알림을 실제로 받는지(꺼둔 종류는 차단되는지) 확인합니다.
           </p>
