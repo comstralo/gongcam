@@ -146,7 +146,7 @@ function UsageMonitorSection({ visible }: { visible: boolean }) {
 
           {usage && (
             <>
-              <InfoCard className="flex flex-col gap-3">
+              <InfoCard className="flex flex-col gap-3 bg-card">
                 <ItemTitle>Google Sheets (분당 한도)</ItemTitle>
                 <UsageBar
                   label="이번 분 읽기"
@@ -168,7 +168,7 @@ function UsageMonitorSection({ visible }: { visible: boolean }) {
                 </p>
               </InfoCard>
 
-              <InfoCard className="flex flex-col gap-3">
+              <InfoCard className="flex flex-col gap-3 bg-card">
                 <ItemTitle>Cloudflare (오늘 하루 한도)</ItemTitle>
                 {usage.cloudflareConfigured && usage.cloudflare ? (
                   <>
@@ -308,7 +308,7 @@ function BotStatusSection({ visible }: { visible: boolean }) {
             />
           )}
 
-          <InfoCard className="flex flex-col gap-2.5">
+          <InfoCard className="flex flex-col gap-2.5 bg-card">
             <div className="flex items-center justify-between gap-2">
               <FieldLabel>연결 상태</FieldLabel>
               <span className="inline-flex items-center gap-1.5">
@@ -429,7 +429,7 @@ function MemberReorderSection() {
           <>
             <div className="flex flex-col gap-2">
               {plan.map((item) => (
-                <InfoCard key={item.from} className="flex items-center justify-between gap-2">
+                <InfoCard key={item.from} className="flex items-center justify-between gap-2 bg-card">
                   <ItemTitle>{item.name}</ItemTitle>
                   <FieldValue>
                     {item.from}번 → {item.to}번

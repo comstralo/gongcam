@@ -443,7 +443,7 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
               const rejectedCount = group.items.filter((item) => isItemRejected(item, rejected)).length;
               const pendingCount = group.items.length - appliedCount - rejectedCount;
               return (
-                <InfoCard key={group.day} className="flex flex-col gap-2.5">
+                <InfoCard key={group.day} className="flex flex-col gap-2.5 bg-card">
                   <button
                     type="button"
                     onClick={() => setExpandedDay(isDayExpanded ? null : group.day)}

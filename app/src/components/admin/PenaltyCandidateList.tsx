@@ -116,7 +116,7 @@ export function PenaltyCandidateList({ visible }: { visible: boolean }) {
               const depositCount = group.items.filter((c) => processed[c.number] === "deposit_again").length;
               const waitingCount = group.items.length - forcedCount - depositCount;
               return (
-                <InfoCard key={group.day} className="flex flex-col gap-2.5">
+                <InfoCard key={group.day} className="flex flex-col gap-2.5 bg-card">
                   <button
                     type="button"
                     onClick={() => setExpandedDay(isDayExpanded ? null : group.day)}

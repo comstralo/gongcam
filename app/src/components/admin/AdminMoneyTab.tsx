@@ -190,7 +190,7 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
         </Alert>
       )}
 
-      <InfoCard className="flex items-center justify-between gap-2">
+      <InfoCard className="flex items-center justify-between gap-2 bg-card">
         <FieldLabel>납부된 총 벌금액</FieldLabel>
         <span className="font-mono text-base font-bold tabular-nums text-ok sm:text-lg">{won(totalAmount)}</span>
       </InfoCard>
@@ -211,7 +211,7 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
             const unpaidCount = group.members.filter((f) => effectiveStatus(f) === "미납").length;
             const exemptCount = group.members.filter((f) => effectiveStatus(f) === "면제").length;
             return (
-              <InfoCard key={group.day} className="flex flex-col gap-2.5">
+              <InfoCard key={group.day} className="flex flex-col gap-2.5 bg-card">
                 <button
                   type="button"
                   onClick={() => setExpandedDay(isDayExpanded ? null : group.day)}
@@ -433,7 +433,7 @@ function PrizeRecipientList({ isVisible }: { isVisible: boolean }) {
           </Alert>
         )}
 
-        <InfoCard className="flex items-center justify-between gap-2">
+        <InfoCard className="flex items-center justify-between gap-2 bg-card">
           <FieldLabel>총 모금액</FieldLabel>
           <span className="font-mono text-base font-bold tabular-nums text-ok sm:text-lg">{won(collectMoney)}</span>
         </InfoCard>
@@ -455,7 +455,7 @@ function PrizeRecipientList({ isVisible }: { isVisible: boolean }) {
             {settlement.map((s) => {
               const m = members.find((mm) => mm.number === s.number);
               return (
-                <InfoCard key={s.number} className="flex items-center gap-3 sm:gap-4">
+                <InfoCard key={s.number} className="flex items-center gap-3 bg-card sm:gap-4">
                   <RankBadge rank={String(s.rank)} />
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <ItemTitle className="truncate">{s.name}</ItemTitle>

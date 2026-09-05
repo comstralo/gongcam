@@ -46,7 +46,7 @@ export function SettingsPage({ visible = true }: { visible?: boolean }) {
                 exitAgreedAt={status.exitAgreedAt}
                 onExitRequestChange={refresh}
               >
-                <InfoCard className="flex items-center justify-between gap-2.5">
+                <InfoCard className="flex items-center justify-between gap-2.5 bg-card">
                   <span className="inline-flex min-w-0 flex-1 items-center gap-1.25 truncate text-xs font-semibold sm:text-sm">
                     <DoorOpen className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                     <DividedValue
@@ -69,7 +69,7 @@ export function SettingsPage({ visible = true }: { visible?: boolean }) {
                 </InfoCard>
               </DepositRefundDialog>
             ) : (
-              <InfoCard className="flex items-center justify-between gap-2.5">
+              <InfoCard className="flex items-center justify-between gap-2.5 bg-card">
                 <span className="inline-flex min-w-0 flex-1 items-center gap-1.25 truncate text-xs font-semibold sm:text-sm">
                   <DoorOpen className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                   <DividedValue

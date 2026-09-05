@@ -15,7 +15,7 @@ export function NotificationsPage() {
     <Card className="w-full page-content">
       <CardContent className="flex flex-col gap-2">
         {DUMMY_NOTIFICATIONS.length === 0 ? (
-          <InfoCard className="flex flex-col items-center gap-1.5 py-6 text-center text-muted-foreground">
+          <InfoCard className="flex flex-col items-center gap-1.5 bg-card py-6 text-center text-muted-foreground">
             <Bell className="size-5" strokeWidth={ICON_STROKE.default} />
             <span className="text-xs sm:text-sm">받은 알림이 없습니다.</span>
           </InfoCard>
@@ -23,7 +23,7 @@ export function NotificationsPage() {
           DUMMY_NOTIFICATIONS.map((n) => (
             <InfoCard
               key={n.id}
-              className={cn("flex items-start gap-2.5", !n.read && "border-primary/40 bg-primary/5")}
+              className={cn("flex items-start gap-2.5", n.read ? "bg-card" : "border-primary/40 bg-primary/5")}
             >
               <n.icon
                 className={cn("mt-0.5 size-4 shrink-0", n.read ? "text-muted-foreground" : "text-primary")}
