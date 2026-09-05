@@ -10,7 +10,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { InfoCard } from "@/components/dashboard/shared";
+import { InfoCard, ItemTitle } from "@/components/dashboard/shared";
 import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
 import type { ReactNode } from "react";
@@ -97,9 +97,9 @@ export function GoalTypeScheduleDialog({
           {!loading && !loadError && (
             <>
               <InfoCard className="flex flex-col gap-1.5">
-                <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+                <span className="flex items-center gap-1.5">
                   <CalendarClock className="size-3.5 shrink-0 text-primary sm:size-4" />
-                  다음 주 목표시간
+                  <ItemTitle>다음 주 목표시간</ItemTitle>
                 </span>
                 {scheduled && (
                   <span className="text-xs text-muted-foreground sm:text-sm">
@@ -131,7 +131,7 @@ export function GoalTypeScheduleDialog({
               <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
                 <div className="flex items-center gap-1.5 text-destructive">
                   <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
-                  <span className="text-xs font-semibold sm:text-sm">주의사항</span>
+                  <ItemTitle className="text-destructive">주의사항</ItemTitle>
                 </div>
                 <ul className="flex flex-col gap-1 text-micro-lg leading-relaxed text-muted-foreground sm:text-xs">
                   <li className="flex gap-1.5">

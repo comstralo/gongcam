@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { InfoCard, DividedValue, MAX_LEAVES_PER_DAY } from "@/components/dashboard/shared";
+import { InfoCard, ItemTitle, DividedValue, MAX_LEAVES_PER_DAY } from "@/components/dashboard/shared";
 import { LeaveApplyButton } from "@/components/dashboard/LeaveApplyButton";
 import { ImageEditDialog } from "@/components/dashboard/ImageEditDialog";
 import { useApi } from "@/hooks/useApi";
@@ -290,11 +290,11 @@ export function HalfDayLeaveDialog({
 
         <div className="flex flex-col gap-3">
           <InfoCard className="flex items-center justify-between gap-2">
-            <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+            <span className="flex items-center gap-1.5">
               <BedDouble className="size-3.5 shrink-0 text-primary sm:size-4" />
-              반휴권 잔여량
+              <ItemTitle>반휴권 잔여량</ItemTitle>
             </span>
-            <span className="text-xs font-semibold sm:text-sm">
+            <span className="text-sm font-semibold sm:text-base">
               <DividedValue
                 items={[`일반 ${normalLeaveLeft || "0"}회`, `사유 ${reasonLeaveLeft || "0"}회`]}
               />
@@ -302,17 +302,17 @@ export function HalfDayLeaveDialog({
           </InfoCard>
 
           <InfoCard className="flex flex-col gap-1.5">
-            <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+            <span className="flex items-center gap-1.5">
               <CalendarCheck className="size-3.5 shrink-0 text-primary sm:size-4" />
-              일반 반휴
+              <ItemTitle>일반 반휴</ItemTitle>
             </span>
             <LeaveApplyButton day={day} dayFull={dayFull} onApplied={onNormalApplied} />
           </InfoCard>
 
           <InfoCard className="flex flex-col gap-2">
-            <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+            <span className="flex items-center gap-1.5">
               <FileText className="size-3.5 shrink-0 text-primary sm:size-4" />
-              사유 반휴
+              <ItemTitle>사유 반휴</ItemTitle>
             </span>
 
             {status === "loading" && (
@@ -496,7 +496,7 @@ export function HalfDayLeaveDialog({
           <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
             <div className="flex items-center gap-1.5 text-destructive">
               <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
-              <span className="text-xs font-semibold sm:text-sm">안내</span>
+              <ItemTitle className="text-destructive">안내</ItemTitle>
             </div>
             <ul className="flex flex-col gap-1 text-micro-lg leading-relaxed text-muted-foreground sm:text-xs">
               <li className="flex gap-1.5">

@@ -6,7 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { SubRow, InfoCard, DividedValue } from "@/components/dashboard/shared";
+import { SubRow, InfoCard, ItemTitle, DividedValue } from "@/components/dashboard/shared";
 import type { ReactNode } from "react";
 import type { PeriodAttendanceBreakdown } from "@/lib/api/types";
 
@@ -37,9 +37,9 @@ export function PeriodAttendanceDialog({
         <div className="flex flex-col gap-3">
           <InfoCard className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+              <span className="flex items-center gap-1.5">
                 <ListChecks className="size-3.5 shrink-0 text-primary sm:size-4" />
-                주간 교시 참여율
+                <ItemTitle>주간 교시 참여율</ItemTitle>
               </span>
               <span className="text-xs sm:text-sm">
                 {breakdown.applicable ? (
@@ -82,7 +82,7 @@ export function PeriodAttendanceDialog({
           <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
             <div className="flex items-center gap-1.5 text-destructive">
               <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
-              <span className="text-xs font-semibold sm:text-sm">주의사항</span>
+              <ItemTitle className="text-destructive">주의사항</ItemTitle>
             </div>
             <ul className="flex flex-col gap-1 text-micro-lg leading-relaxed text-muted-foreground sm:text-xs">
               <li className="flex gap-1.5">

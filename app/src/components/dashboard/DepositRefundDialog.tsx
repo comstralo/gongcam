@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { SubRow, InfoCard, buildDepositCauseItems } from "@/components/dashboard/shared";
+import { SubRow, InfoCard, ItemTitle, buildDepositCauseItems } from "@/components/dashboard/shared";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/lib/auth/useAuth";
 import { cn } from "@/lib/utils";
@@ -142,11 +142,20 @@ export function DepositRefundDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
+          {/* 🔧 2026-09: 이 다이얼로그의 카드 제목들이 text-xs font-semibold
+              sm:text-sm(12/14px)로, dashboard/shared.tsx가 이미 정의해둔
+              "카드 1차 텍스트" 컴포넌트 ItemTitle(text-sm font-semibold
+              sm:text-base, 14/16px)보다 작았다 — 정작 그 밑의 SubRow는
+              기본값이 이미 한 단계 작고(11/12px) 옅은 색(muted-foreground)
+              인데, 제목이 SubRow와 비슷한 크기라 위계가 잘 안 읽혔다
+              (MeritBreakdownDialog에서 같은 문제를 겪고 사용자 확인 후
+              고친 것과 동일한 원인). 새 스타일을 발명하지 않고 이미 있는
+              ItemTitle로 통일했다. */}
           {exitRequested ? (
             <InfoCard className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+              <span className="flex items-center gap-1.5">
                 <CalendarDays className="size-3.5 shrink-0 text-primary sm:size-4" />
-                마지막 참여일
+                <ItemTitle>마지막 참여일</ItemTitle>
               </span>
               <span className="text-xs sm:text-sm">{exitRequestDate || "-"}</span>
             </InfoCard>
@@ -154,7 +163,7 @@ export function DepositRefundDialog({
             <InfoCard className="flex flex-col gap-1.5">
               <Label
                 htmlFor="exit-request-date"
-                className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm"
+                className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base"
               >
                 <CalendarDays className="size-3.5 shrink-0 text-primary sm:size-4" />
                 마지막 참여일
@@ -172,9 +181,9 @@ export function DepositRefundDialog({
 
           <InfoCard className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+              <span className="flex items-center gap-1.5">
                 <PiggyBank className="size-3.5 shrink-0 text-primary sm:size-4" />
-                예치금 반환 예상액
+                <ItemTitle>예치금 반환 예상액</ItemTitle>
               </span>
               <span
                 className={cn(
@@ -195,9 +204,9 @@ export function DepositRefundDialog({
 
           {isAdmin && (
             <InfoCard className="flex flex-col gap-1.5">
-              <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+              <span className="flex items-center gap-1.5">
                 <TrendingDown className="size-3.5 shrink-0 text-primary sm:size-4" />
-                차감 원인
+                <ItemTitle>차감 원인</ItemTitle>
               </span>
               {causeItems.map((item) => (
                 <SubRow
@@ -213,7 +222,7 @@ export function DepositRefundDialog({
           <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
             <div className="flex items-center gap-1.5 text-destructive">
               <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
-              <span className="text-xs font-semibold sm:text-sm">주의사항</span>
+              <ItemTitle className="text-destructive">주의사항</ItemTitle>
             </div>
             <ul className="flex flex-col gap-1 text-micro-lg leading-relaxed text-muted-foreground sm:text-xs">
               <li className="flex gap-1.5">

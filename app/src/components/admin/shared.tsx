@@ -267,9 +267,14 @@ export function PenaltyHistorySection({
   const entries = history || [];
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+      {/* 🔧 2026-09: 이 제목이 SubRow(§FieldLabel 크기 미만, 11/12px 기본값)
+          와 거의 같은 크기(12/14px)라 위계가 잘 안 읽혔다 — 위 4단 체계의
+          ItemTitle(14/16px)로 올렸다. TotalPenaltyDialog(회원용)와
+          PenaltyCandidateList(관리자용) 둘 다 이 컴포넌트를 공유하므로
+          한 번에 적용된다. */}
+      <span className="inline-flex items-center gap-1.25">
         <Icon className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
-        {title}
+        <ItemTitle>{title}</ItemTitle>
       </span>
       {entries.length === 0 ? (
         <SubRow label="해당 없음" value="-" />

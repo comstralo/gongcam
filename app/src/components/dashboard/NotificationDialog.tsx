@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { InfoCard } from "@/components/dashboard/shared";
+import { InfoCard, ItemTitle } from "@/components/dashboard/shared";
 import { cn, ICON_STROKE } from "@/lib/utils";
 
 type NotificationItem = {
@@ -98,7 +98,7 @@ export function NotificationDialog() {
                 />
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-xs font-semibold sm:text-sm">{n.title}</span>
+                    <ItemTitle className="truncate">{n.title}</ItemTitle>
                     <span className="shrink-0 text-micro-lg text-muted-foreground sm:text-xs">{n.time}</span>
                   </div>
                   <span className="text-micro-lg text-muted-foreground sm:text-xs">{n.body}</span>

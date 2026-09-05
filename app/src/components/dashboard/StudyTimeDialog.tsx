@@ -6,7 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { InfoCard } from "@/components/dashboard/shared";
+import { InfoCard, ItemTitle } from "@/components/dashboard/shared";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
@@ -110,9 +110,9 @@ export function StudyTimeDialog({
 
         <div className="flex flex-col gap-3">
           <InfoCard className="flex items-center justify-between gap-2">
-            <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+            <span className="flex items-center gap-1.5">
               <Timer className="size-3.5 shrink-0 text-primary sm:size-4" />
-              주간 학습시간
+              <ItemTitle>주간 학습시간</ItemTitle>
             </span>
             <span className="text-xs sm:text-sm">{weeklyStudyTime}</span>
           </InfoCard>
@@ -128,9 +128,9 @@ export function StudyTimeDialog({
               <Collapsible key={d.day}>
                 <InfoCard className="flex flex-col gap-1.5">
                   <CollapsibleTrigger>
-                    <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+                    <span className="flex items-center gap-1.5">
                       <CalendarDays className="size-3.5 shrink-0 text-primary sm:size-4" />
-                      {d.day}요일
+                      <ItemTitle>{d.day}요일</ItemTitle>
                       {achieved !== null && (
                         <span
                           className={cn(

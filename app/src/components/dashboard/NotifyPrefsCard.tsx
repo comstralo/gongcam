@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { DividedValue, InfoCard } from "@/components/dashboard/shared";
+import { DividedValue, InfoCard, ItemTitle } from "@/components/dashboard/shared";
 import { usePushSubscription } from "@/hooks/usePushSubscription";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/lib/auth/useAuth";
@@ -197,7 +197,7 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
     <div className="flex flex-col gap-2.5">
       <InfoCard className="flex flex-col gap-2.5">
         <div className="flex items-center justify-between gap-2.5">
-          <span className="inline-flex min-w-0 flex-1 items-center gap-1.25 truncate text-xs font-semibold sm:text-sm">
+          <span className="inline-flex min-w-0 flex-1 items-center gap-1.25 truncate text-sm font-semibold sm:text-base">
             <Bell className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
             <DividedValue
               items={[
@@ -248,9 +248,9 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
 
         {state === "on" && devices && devices.length > 0 && (
           <div className="flex flex-col gap-1.5 border-t pt-2.5">
-            <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+            <span className="inline-flex items-center gap-1.25">
               <Smartphone className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-              알림 받는 기기
+              <ItemTitle>알림 받는 기기</ItemTitle>
             </span>
             {devices.map((d) =>
               editingDeviceId === d.id ? (
@@ -332,7 +332,7 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
       <InfoCard className="flex flex-col gap-1 border-amber-600/30 bg-amber-600/5 dark:border-amber-400/30 dark:bg-amber-400/5">
         <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
           <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
-          <span className="text-xs font-semibold sm:text-sm">주의사항</span>
+          <ItemTitle>주의사항</ItemTitle>
         </div>
         <ul className="flex flex-col gap-1">
           {PUSH_NOTICE_CAUTIONS.map(({ group, items }) => (

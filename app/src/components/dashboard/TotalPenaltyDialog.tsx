@@ -6,7 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { InfoCard, formatTotalPenalty } from "@/components/dashboard/shared";
+import { InfoCard, ItemTitle, formatTotalPenalty } from "@/components/dashboard/shared";
 import { PenaltyHistorySection } from "@/components/admin/shared";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
@@ -54,13 +54,13 @@ export function TotalPenaltyDialog({
 
         <div className="flex flex-col gap-3">
           <InfoCard className="flex items-center justify-between gap-2">
-            <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+            <span className="flex items-center gap-1.5">
               <ShieldAlert className="size-3.5 shrink-0 text-primary sm:size-4" />
-              총 페널티
+              <ItemTitle>총 페널티</ItemTitle>
             </span>
             <span
               className={cn(
-                "text-right text-xs font-semibold sm:text-sm",
+                "text-right text-sm font-semibold sm:text-base",
                 total >= 2 ? "text-destructive" : total === 1 ? "text-amber-600 dark:text-amber-400" : undefined
               )}
             >
@@ -88,7 +88,7 @@ export function TotalPenaltyDialog({
           <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
             <div className="flex items-center gap-1.5 text-destructive">
               <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
-              <span className="text-xs font-semibold sm:text-sm">주의사항</span>
+              <ItemTitle className="text-destructive">주의사항</ItemTitle>
             </div>
             <ul className="flex flex-col gap-1 text-micro-lg leading-relaxed text-muted-foreground sm:text-xs">
               <li className="flex gap-1.5">

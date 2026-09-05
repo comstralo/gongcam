@@ -3,7 +3,7 @@ import { Trophy, PiggyBank } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { SectionHeader, SectionCard } from "@/components/admin/shared";
-import { SubRow, won } from "@/components/dashboard/shared";
+import { SubRow, ItemTitle, won } from "@/components/dashboard/shared";
 import { RosterView, RANK_EMOJI } from "@/components/dashboard/RosterView";
 import { CycleSwitcher } from "@/components/dashboard/CycleSwitcher";
 import { useApi } from "@/hooks/useApi";
@@ -101,9 +101,9 @@ export function RosterPage({
               <div className="flex flex-col gap-3 rounded-lg border bg-card p-3.5 shadow-xs sm:p-4.5">
                 <div className="flex flex-col gap-1.5">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                    <span className="inline-flex items-center gap-1.25">
                       <PiggyBank className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
-                      총 모금액
+                      <ItemTitle>총 모금액</ItemTitle>
                     </span>
                     <span
                       className={cn(
@@ -125,9 +125,9 @@ export function RosterPage({
                 <div className="h-px w-full bg-border" />
 
                 <div className="flex flex-col gap-1.5">
-                  <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                  <span className="inline-flex items-center gap-1.25">
                     <PiggyBank className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
-                    이번 주 정산
+                    <ItemTitle>이번 주 정산</ItemTitle>
                   </span>
                   {settlement === null ? (
                     <SubRow label="일요일 14교시 종료 후 확인할 수 있습니다." value="" />
