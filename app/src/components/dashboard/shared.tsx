@@ -343,13 +343,13 @@ export function DayDetailCard({
 
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between gap-2">
-          <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
-            <Timer className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
-            일간 학습시간
+          <span className="inline-flex items-center gap-1.25">
+            <Timer className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
+            <ItemTitle>일간 학습시간</ItemTitle>
           </span>
           <span
             className={cn(
-              "text-xs font-semibold sm:text-sm",
+              "text-sm sm:text-base",
               goalStatus(day.studyTime, day.dailyGoalTime) === "met" && "text-ok",
               goalStatus(day.studyTime, day.dailyGoalTime) === "failed" && "text-destructive"
             )}
@@ -370,15 +370,22 @@ export function DayDetailCard({
             )}
           </span>
         </div>
-        <SubRow label="로그 학습시간" value={day.logStudyTime ? `+${padHM(day.logStudyTime)}` : "-"} />
+        <SubRow
+          label="로그 학습시간"
+          value={day.logStudyTime ? `+${padHM(day.logStudyTime)}` : "-"}
+          labelClassName="text-xs sm:text-sm"
+          valueClassName="text-xs sm:text-sm"
+        />
         <SubRow
           label="보정 학습시간"
           value={signedTime(day.bonusStudyTime)}
-          valueClassName={
+          labelClassName="text-xs sm:text-sm"
+          valueClassName={cn(
+            "text-xs sm:text-sm",
             (day.bonusStudyTime || "").trim() && timeToMinutes(day.bonusStudyTime) !== 0
               ? "text-destructive"
               : undefined
-          }
+          )}
         />
       </div>
 
@@ -386,23 +393,25 @@ export function DayDetailCard({
 
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between gap-2">
-          <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
-            <BedDouble className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
-            반휴권
+          <span className="inline-flex items-center gap-1.25">
+            <BedDouble className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
+            <ItemTitle>반휴권</ItemTitle>
           </span>
           <span
             className={cn(
-              "text-xs font-semibold sm:text-sm",
+              "text-sm sm:text-base",
               day.normalLeaveUsed + day.reasonLeaveUsed === 0 && "text-muted-foreground"
             )}
           >
             {day.normalLeaveUsed + day.reasonLeaveUsed}장
           </span>
         </div>
-        <SubRow label="일반반휴" value={`${day.normalLeaveUsed}장`} />
+        <SubRow label="일반반휴" value={`${day.normalLeaveUsed}장`} labelClassName="text-xs sm:text-sm" valueClassName="text-xs sm:text-sm" />
         <SubRow
           label="사유반휴"
           value={`${day.reasonLeaveUsed}장${day.reasonLeavePending ? " (관리자 확인 중)" : ""}`}
+          labelClassName="text-xs sm:text-sm"
+          valueClassName="text-xs sm:text-sm"
         />
         {footer}
       </div>
@@ -424,13 +433,13 @@ export function DayDetailCard({
         return (
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between gap-2">
-              <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
-                <Wallet className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
-                일간 총 벌금 · 재납 예치금
+              <span className="inline-flex items-center gap-1.25">
+                <Wallet className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
+                <ItemTitle>일간 총 벌금 · 재납 예치금</ItemTitle>
               </span>
               <span
                 className={cn(
-                  "text-xs font-semibold sm:text-sm",
+                  "text-sm sm:text-base",
                   combinedTotal > 0 ? "text-destructive" : "text-muted-foreground"
                 )}
               >
@@ -440,10 +449,14 @@ export function DayDetailCard({
             <SubRow
               label={`일간 목표시간 벌금${day.dailyShortfallTime ? ` (-${day.dailyShortfallTime} 미달)` : ""}`}
               value={won(day.goal)}
+              labelClassName="text-xs sm:text-sm"
+              valueClassName="text-xs sm:text-sm"
             />
             <SubRow
               label={`오전 목표시간 벌금${day.morningShortfallTime ? ` (-${day.morningShortfallTime} 미달)` : ""}`}
               value={won(day.morning)}
+              labelClassName="text-xs sm:text-sm"
+              valueClassName="text-xs sm:text-sm"
             />
             {depositRefundBreakdown && (
               <SubRow
@@ -453,18 +466,21 @@ export function DayDetailCard({
                     : "재납 예치금"
                 }
                 value={won(depositAgainAmount)}
-                valueClassName={
+                labelClassName="text-xs sm:text-sm"
+                valueClassName={cn(
+                  "text-xs sm:text-sm",
                   showDepositAgain && depositRefundBreakdown.depositAgainStatus === "미납"
                     ? "text-destructive"
                     : undefined
-                }
+                )}
               />
             )}
             <SubRow
               label="납부확인"
               value={combinedPaymentStatus || "-"}
+              labelClassName="text-xs sm:text-sm"
               valueClassName={cn(
-                "font-sans normal-case",
+                "font-sans text-xs normal-case sm:text-sm",
                 combinedPaymentStatus === "미납" && "text-destructive",
                 combinedPaymentStatus === "납부" && "text-ok"
               )}
