@@ -85,7 +85,7 @@ export function PeriodAttendanceDialog({
                     * 사유 반휴 사용 시, 목표량 감소
                   </span>
                 </div>
-                <span className="pl-5 text-micro text-muted-foreground before:mr-1 before:content-['└'] sm:pl-5.5 sm:text-micro-lg">
+                <span className="pl-5 text-xs text-muted-foreground before:mr-1 before:content-['└'] sm:pl-5.5 sm:text-sm">
                   참여율 = (① + ②) ÷ ③ × 100
                 </span>
               </div>
