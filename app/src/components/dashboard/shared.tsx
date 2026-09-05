@@ -81,8 +81,10 @@ export function SummaryTile({
   clickable?: "edit" | "view";
 }) {
   const ClickIcon = clickable === "edit" ? SquarePen : Search;
+  // 🔧 2026-09: 요약 타일(목표시간/가입일자/총 페널티 등) 배경을
+  // bg-muted(회색)에서 bg-card(흰색)로 변경(사용자 지시).
   return (
-    <div className="relative flex flex-col gap-1 rounded-xl border bg-muted px-3.5 py-2.5 shadow-xs sm:px-4 sm:py-3">
+    <div className="relative flex flex-col gap-1 rounded-xl border bg-card px-3.5 py-2.5 shadow-xs sm:px-4 sm:py-3">
       {clickable && (
         <ClickIcon
           className="absolute top-2 right-2 size-2.5 text-muted-foreground/50 sm:size-3"
