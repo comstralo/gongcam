@@ -6660,6 +6660,88 @@ async function handleSetNotifyPrefs(req, env, origin) {
   }
 }
 
+// "상태 메시지" — 참여자가 [설정]에서 자유 텍스트(예: "태블릿: AI 질의용도")를
+// 등록해두면, 다른 참여자가 [제보] 대상자를 선택했을 때 그 메시지를 보여줘
+// 오해로 인한 제보를 줄인다(사용자 요청). notifyPref와 동일하게 시트를
+// 건드리지 않고 KV에 회원번호를 키로 저장한다 — 15개 개인 탭 + template에
+// 새 셀을 추가하는 것보다 리스크가 훨씬 낮다.
+const STATUS_MESSAGE_KV_PREFIX = "statusMessage:";
+const STATUS_MESSAGE_MAX_LENGTH = 60;
+
+async function loadStatusMessage(env, memberNumber) {
+  const raw = await env.REPORTS_KV.get(`${STATUS_MESSAGE_KV_PREFIX}${memberNumber}`).catch(() => null);
+  return raw || "";
+}
+
+// 본인 상태 메시지 조회 — [설정] 페이지가 현재 값을 입력창에 미리 채우는 데 쓴다.
+async function handleGetStatusMessage(req, env, origin) {
+  const authHeader = req.headers.get("Authorization") || "";
+  const token = authHeader.replace(/^Bearer\s+/i, "");
+  const session = await verifySession(token, env.SESSION_SECRET);
+  if (!session) return json({ error: "로그인이 만료되었습니다. 다시 로그인해주세요." }, 401, origin);
+
+  try {
+    const accessToken = await getServiceAccountAccessToken(env);
+    const memberNumber = await resolveMemberNumber(env, accessToken, session);
+    const message = await loadStatusMessage(env, memberNumber);
+    return json({ message }, 200, origin);
+  } catch (err) {
+    return json({ error: "상태 메시지 조회 실패: " + err.message }, 500, origin);
+  }
+}
+
+// 본인 상태 메시지 저장. 빈 문자열이면 삭제(KV에서 키 제거)한다.
+async function handleSetStatusMessage(req, env, origin) {
+  const authHeader = req.headers.get("Authorization") || "";
+  const token = authHeader.replace(/^Bearer\s+/i, "");
+  const session = await verifySession(token, env.SESSION_SECRET);
+  if (!session) return json({ error: "로그인이 만료되었습니다. 다시 로그인해주세요." }, 401, origin);
+
+  const { message } = await req.json().catch(() => ({}));
+  if (typeof message !== "string") {
+    return json({ error: "message가 필요합니다." }, 400, origin);
+  }
+  const trimmed = message.trim().slice(0, STATUS_MESSAGE_MAX_LENGTH);
+
+  try {
+    const accessToken = await getServiceAccountAccessToken(env);
+    const memberNumber = await resolveMemberNumber(env, accessToken, session);
+    if (trimmed) {
+      await env.REPORTS_KV.put(`${STATUS_MESSAGE_KV_PREFIX}${memberNumber}`, trimmed);
+    } else {
+      await env.REPORTS_KV.delete(`${STATUS_MESSAGE_KV_PREFIX}${memberNumber}`);
+    }
+    return json({ ok: true, message: trimmed }, 200, origin);
+  } catch (err) {
+    return json({ error: "상태 메시지 저장 실패: " + err.message }, 500, origin);
+  }
+}
+
+// [제보] 페이지가 대상자를 고른 직후 그 사람의 상태 메시지를 조회한다.
+// 로그인만 하면 누구나 조회 가능(handleReportStatus와 동일한 인증 수준) —
+// 상태 메시지 자체가 제보 오해를 줄이려고 공개하는 정보라 회원 본인 여부를
+// 가릴 필요가 없다.
+async function handleGetMemberStatusMessage(req, env, origin, url) {
+  const authHeader = req.headers.get("Authorization") || "";
+  const token = authHeader.replace(/^Bearer\s+/i, "");
+  const session = await verifySession(token, env.SESSION_SECRET);
+  if (!session) return json({ error: "로그인이 만료되었습니다. 다시 로그인해주세요." }, 401, origin);
+
+  const nickname = url.searchParams.get("nickname") || "";
+  if (!nickname) return json({ error: "nickname이 필요합니다." }, 400, origin);
+
+  try {
+    const accessToken = await getServiceAccountAccessToken(env);
+    const members = await listAllMembers(env, accessToken, env.GOOGLE_SHEET_FILE_ID);
+    const member = members.find((m) => m.name === nickname);
+    if (!member) return json({ message: "" }, 200, origin);
+    const message = await loadStatusMessage(env, member.number);
+    return json({ message }, 200, origin);
+  } catch (err) {
+    return json({ error: "상태 메시지 조회 실패: " + err.message }, 500, origin);
+  }
+}
+
 // 관리자가 특정 회원 + 특정 알림 종류를 골라 수동으로 테스트 발송해본다.
 // 실제 이벤트에 연결되기 전, 종류별 on/off 차단이 의도대로 동작하는지
 // 확인하는 용도. 회원이 해당 종류를 꺼뒀으면 실제로 발송을 막고 그 사실을
@@ -7299,6 +7381,15 @@ export default {
       }
       if (url.pathname === "/notify-prefs" && req.method === "POST") {
         return await handleSetNotifyPrefs(req, env, origin);
+      }
+      if (url.pathname === "/status-message" && req.method === "GET") {
+        return await handleGetStatusMessage(req, env, origin);
+      }
+      if (url.pathname === "/status-message" && req.method === "POST") {
+        return await handleSetStatusMessage(req, env, origin);
+      }
+      if (url.pathname === "/member-status-message" && req.method === "GET") {
+        return await handleGetMemberStatusMessage(req, env, origin, url);
       }
       if (url.pathname === "/admin/push/send-category" && req.method === "POST") {
         return await handleAdminPushSendCategory(req, env, origin);

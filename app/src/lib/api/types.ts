@@ -845,6 +845,17 @@ export type SetNotifyPrefsResponse = {
   prefs: Record<NotifyCategory, boolean>;
 };
 
+// 참여자가 [설정]에 등록해두는 자유 텍스트 — [제보] 대상자 선택 시 노출돼
+// 오해로 인한 제보를 줄이는 용도(사용자 요청).
+export type StatusMessageResponse = {
+  message: string;
+};
+
+export type SetStatusMessageResponse = {
+  ok: boolean;
+  message: string;
+};
+
 export type AdminPushSendCategoryResponse = {
   ok: boolean;
   blocked?: boolean;

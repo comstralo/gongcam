@@ -7,6 +7,7 @@ import { DividedValue, InfoCard } from "@/components/dashboard/shared";
 import { PeriodAlarmCard } from "@/components/dashboard/PeriodAlarmCard";
 import { NotifyPrefsCard } from "@/components/dashboard/NotifyPrefsCard";
 import { InstallAppCard } from "@/components/dashboard/InstallAppCard";
+import { StatusMessageCard } from "@/components/dashboard/StatusMessageCard";
 import { ThemeToggleCard } from "@/components/dashboard/ThemeToggleCard";
 import { DepositRefundDialog } from "@/components/dashboard/DepositRefundDialog";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
@@ -36,6 +37,7 @@ export function SettingsPage({ visible = true }: { visible?: boolean }) {
             <div className="h-px w-full bg-border" />
             <SessionCard name={status?.name} />
             <InstallAppCard />
+            <StatusMessageCard />
 
             {status?.depositRefundBreakdown ? (
               <DepositRefundDialog

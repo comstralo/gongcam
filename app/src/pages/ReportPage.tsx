@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,11 +12,13 @@ import { useRosterPolling } from "@/hooks/useRosterPolling";
 import { usePullRefreshListener } from "@/hooks/usePullToRefresh";
 import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
-import { Bell, Flag, MessageSquareWarning, TriangleAlert, User } from "lucide-react";
+import { Bell, Flag, MessageSquareText, MessageSquareWarning, TriangleAlert, User } from "lucide-react";
 import { InfoCard } from "@/components/dashboard/shared";
 import { SimpleNoticeSection } from "@/components/report/SimpleNoticeSection";
 import { ActiveReportsSection } from "@/components/report/ActiveReportsSection";
 import { MyOutputPenSection } from "@/components/report/MyOutputPenSection";
+import { ICON_STROKE } from "@/lib/utils";
+import type { StatusMessageResponse } from "@/lib/api/types";
 
 // 제보 페이지에서 참여자들이 놓치기 쉬운 규칙을 모아 보여준다 — 배열이라
 // 앞으로 문구가 늘어나도 이 목록에 항목만 추가하면 된다.
@@ -41,6 +43,10 @@ export function ReportPage() {
   usePullRefreshListener(true, refresh);
   const [nickname, setNickname] = useState("");
   const [reason, setReason] = useState("");
+  // 🔧 [상태 메시지] 대상자를 고르면 그 사람이 [설정]에 등록해둔 상태
+  // 메시지(예: "태블릿 : AI 질의용도")를 보여줘 오해로 인한 제보를 줄인다
+  // (사용자 요청). null=아직 조회 전, ""=조회했지만 등록된 메시지 없음.
+  const [targetStatusMessage, setTargetStatusMessage] = useState<string | null>(null);
   const [submittingMode, setSubmittingMode] = useState<ReportMode | null>(null);
   const [message, setMessage] = useState<{ text: string; type: "error" | "ok" } | null>(null);
   const [cooldownRefreshSignal, setCooldownRefreshSignal] = useState(0);
@@ -61,6 +67,26 @@ export function ReportPage() {
 
   const noMembers = members.length === 0;
   const submitting = submittingMode !== null;
+
+  useEffect(() => {
+    if (!nickname) {
+      setTargetStatusMessage(null);
+      return;
+    }
+    let cancelled = false;
+    setTargetStatusMessage(null);
+    call<StatusMessageResponse>("/member-status-message?nickname=" + encodeURIComponent(nickname))
+      .then((data) => {
+        if (!cancelled) setTargetStatusMessage(data.message || "");
+      })
+      .catch(() => {
+        if (!cancelled) setTargetStatusMessage("");
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nickname]);
 
   async function handleSubmit(mode: ReportMode) {
     if (!nickname) {
@@ -156,6 +182,17 @@ export function ReportPage() {
                             ))}
                           </SelectContent>
                         </Select>
+                        {nickname && targetStatusMessage && (
+                          <InfoCard className="flex items-start gap-1.5 bg-card">
+                            <MessageSquareText
+                              className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
+                              strokeWidth={ICON_STROKE.default}
+                            />
+                            <span className="min-w-0 flex-1 text-xs text-muted-foreground sm:text-sm">
+                              {nickname}님의 상태 메시지: <span className="text-foreground">{targetStatusMessage}</span>
+                            </span>
+                          </InfoCard>
+                        )}
                       </div>
 
                       <div className="flex flex-col gap-1.5">
