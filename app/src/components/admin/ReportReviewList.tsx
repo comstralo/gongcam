@@ -18,9 +18,19 @@ import type {
   CapturesListResponse,
   CaptureDecideResponse,
   CaptureDeleteResponse,
+  CaptureRevertResponse,
   CaptureVoteResponse,
   OutputPenaltyResult,
+  ReportMeritResult,
 } from "@/lib/api/types";
+
+// "적용"/"페널티 적용 (불가)" 결정 한 건의 화면 상태 — 대상자 페널티(있을 수도,
+// 없을 수도 있음)와 제보자 제보상점(둘 다 실패할 수 있어 error만 남을 수 있음)을
+// 함께 들고 있어야 "취소"/"폐기" 시 무엇을 되돌려야 하는지 알 수 있다.
+type AppliedResult = {
+  penalty: OutputPenaltyResult | null;
+  merit: ReportMeritResult | { error: string } | null;
+};
 
 const STATUS_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
 
@@ -82,6 +92,19 @@ function occurrenceLabel(occurrence: number | null): string {
   return occurrence ? `${occurrence}차 (${action})` : action;
 }
 
+// 🔧 [3버튼 재설계] 사용자 확정: "반려 (인정)" 버튼을 따로 만들지 않고,
+// "적용" 버튼 하나가 상황에 따라 라벨과 동작을 바꾼다 — 벌점 상황이면
+// "벌점 적용"(decision: approved), 페널티 상황이면 "페널티 적용"(decision:
+// approved), 잔여 슬롯이 없어 등록 자체가 불가능하면 "페널티 적용 (불가)"
+// 로 보여주고 클릭 시 반려(인정)과 동일하게 decision: "rejected_recognized"를
+// 보낸다(대상자 처리 없이 제보자 상점만 부여).
+function applyButtonLabel(occurrence: number | null): string {
+  if (occurrence === null) return "페널티 적용 (불가)";
+  if (occurrence === 2 || occurrence === 3 || occurrence === 5) return "벌점 적용";
+  if (occurrence === 4 || occurrence === 6) return "페널티 적용";
+  return "구두경고 적용"; // occurrence === 1
+}
+
 // "적용 시" 아래에 보여줄 이번 건의 실질적 영향 — 개인 탭 C35(주간 총 상점)
 // 수식 기준: 1차는 점수 변동 없음, 2/3/5차는 0.1점 차감, 4/6차는 그 주 상점이
 // 전액(0점) 제외 처리된다(제외 조건에 걸림). 실제 상점을 조회하지 않고
@@ -129,18 +152,27 @@ function groupByDay(items: CaptureReviewItem[]) {
 // rejected — 승인 상세 정보를 함께 들고 있어야 해서 우선한다)뿐 아니라,
 // 서버가 내려준 item.reviewStatus도 함께 본다 — 그러지 않으면 페이지를
 // 완전히 새로고침(F5)했을 때 방금 처리한 항목이 로컬 상태를 잃고 다시
-// "처리 대기"로 보이는 문제가 있다.
-function isItemApplied(item: CaptureReviewItem, applied: Record<string, unknown>): boolean {
-  return !!applied[item.id] || item.reviewStatus === "approved";
+// "처리 대기"로 보이는 문제가 있다. "rejected_recognized"(반려·인정 — 대상자
+// 슬롯이 없어 제보자 상점만 부여됨)는 대상자 관점에서는 아무 조치가 없었으므로
+// "적용"이 아니라 "반려" 뱃지로 묶는다 — applied 맵에는 취소를 위해 여전히
+// 들어 있지만(제보상점을 되돌려야 하므로), penalty 필드가 없으면(=대상자
+// 처리가 없었으면) "적용"으로 치지 않는다.
+function isItemApplied(item: CaptureReviewItem, applied: Record<string, AppliedResult>): boolean {
+  return !!applied[item.id]?.penalty || item.reviewStatus === "approved";
 }
-function isItemRejected(item: CaptureReviewItem, rejected: Record<string, unknown>): boolean {
-  return !!rejected[item.id] || item.reviewStatus === "rejected";
+function isItemRejected(item: CaptureReviewItem, applied: Record<string, AppliedResult>, rejected: Record<string, unknown>): boolean {
+  return (
+    !!rejected[item.id] ||
+    (!!applied[item.id] && !applied[item.id].penalty) ||
+    item.reviewStatus === "rejected" ||
+    item.reviewStatus === "rejected_recognized"
+  );
 }
 
 // 요일 그룹 내부 표시 순서 — "처리 대기" → "처리 완료" → "처리 반려".
-function statusRank(item: CaptureReviewItem, applied: Record<string, unknown>, rejected: Record<string, unknown>) {
+function statusRank(item: CaptureReviewItem, applied: Record<string, AppliedResult>, rejected: Record<string, unknown>) {
   if (isItemApplied(item, applied)) return 1;
-  if (isItemRejected(item, rejected)) return 2;
+  if (isItemRejected(item, applied, rejected)) return 2;
   return 0;
 }
 
@@ -270,14 +302,16 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
   const [votingId, setVotingId] = useState<string | null>(null);
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  // 승인 완료된 항목을 목록에서 지우지 않고 그 자리에 남겨 "{조치} 취소"
-  // 버튼으로 전환한다 — 관리자가 오적용을 바로 바로잡을 수 있게. 새로고침하면
-  // 초기화되는 화면 상태로만 관리한다(봇 연결 전까지는 서버가 이 상태를
-  // 별도로 기억하지 않음).
-  const [applied, setApplied] = useState<Record<string, OutputPenaltyResult>>({});
-  // 반려도 승인과 동일하게 목록에서 지우지 않고 화면 상태로만 표시한다
-  // ("처리 반려" 뱃지) — "반려 취소"를 누르면 이 항목만 지워 "처리 대기"로
-  // 되돌린다(반려 시점에는 시트에 아무것도 쓰지 않으므로 서버 되돌림은 불필요).
+  // "적용"(벌점/페널티 적용) 또는 "페널티 적용 (불가)"(반려·인정 — 대상자
+  // 처리 없이 제보자 상점만 부여)로 처리된 항목을 목록에서 지우지 않고
+  // 그 자리에 남겨 "취소" 버튼으로 전환한다 — 관리자가 오적용을 바로
+  // 바로잡을 수 있게. 새로고침하면 초기화되는 화면 상태로만 관리한다
+  // (봇 연결 전까지는 서버가 이 상태를 별도로 기억하지 않음).
+  const [applied, setApplied] = useState<Record<string, AppliedResult>>({});
+  // 순수 반려("rejected" — 미인정, 시트에 아무것도 쓰지 않음)도 승인과
+  // 동일하게 목록에서 지우지 않고 화면 상태로만 표시한다("처리 반려" 뱃지)
+  // — "반려 취소"를 누르면 이 항목만 지워 "처리 대기"로 되돌린다(서버
+  // 되돌림 불필요).
   const [rejected, setRejected] = useState<Record<string, true>>({});
   // 화각 요청 발신·회신 시각(HH:MM) — 항목별로 관리자가 입력. 20분 초과분이
   // 개인 탭 27행(보정 학습시간)에서 차감된다.
@@ -325,7 +359,7 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
       .finally(() => setVotingId(null));
   }
 
-  function decide(item: CaptureReviewItem, decision: "approved" | "rejected") {
+  function decide(item: CaptureReviewItem, decision: "approved" | "rejected" | "rejected_recognized") {
     setDecidingId(item.id);
     setError(null);
     call<CaptureDecideResponse>("/admin/captures/decide", {
@@ -334,6 +368,7 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
         id: item.id,
         decision,
         nickname: item.nickname,
+        reporterEmail: item.reporterEmail,
         reason: item.reason,
         ts: item.ts,
         sendTime: sendTimes[item.id] || "",
@@ -341,23 +376,56 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
       },
     })
       .then((data) => {
-        if (data.penalty) {
-          setApplied((prev) => ({ ...prev, [item.id]: data.penalty! }));
-        } else {
+        if (decision === "rejected") {
           setRejected((prev) => ({ ...prev, [item.id]: true }));
+        } else {
+          setApplied((prev) => ({
+            ...prev,
+            [item.id]: { penalty: data.penalty ?? null, merit: data.merit ?? null },
+          }));
         }
       })
       .catch((err) => setError(err instanceof Error ? err.message : "처리에 실패했습니다."))
       .finally(() => setDecidingId(null));
   }
 
-  // 반려는 시트에 아무것도 쓰지 않으므로, 취소도 서버 호출 없이 화면 상태만 되돌린다.
+  // "반려 취소" — 사용자 지시: 다시 벌점/페널티 여부를 판단할 수 있도록
+  // "처리 대기"로 되돌리는 것이 목표. 순수 반려("rejected")는 시트에 아무것도
+  // 쓰지 않았으므로 봇 manifest만 pending으로 되돌리면 되지만, "반려 (인정)"
+  // (rejected_recognized)은 이미 제보자에게 제보상점이 부여됐을 수 있어
+  // 그 슬롯도 함께 회수해야 한다 — 그러지 않으면 다시 판단하는 동안 상점만
+  // 남는 불일치가 생긴다. 새로고침 후에도 동작해야 하므로(서버가 내려준
+  // item.reviewStatus 기준으로도 눌릴 수 있어야 함) 로컬 상태만으로는 부족해
+  // 서버에 /admin/captures/revert를 호출한다.
   function revertReject(item: CaptureReviewItem) {
-    setRejected((prev) => {
-      const next = { ...prev };
-      delete next[item.id];
-      return next;
-    });
+    const result = applied[item.id];
+    const meritToCancel = result?.merit && !("error" in result.merit) ? result.merit : null;
+    setDecidingId(item.id);
+    setError(null);
+    call<CaptureRevertResponse>("/admin/captures/revert", {
+      method: "POST",
+      body: { id: item.id, merit: meritToCancel },
+    })
+      .then(() => {
+        setRejected((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+        setApplied((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+        // item.reviewStatus는 서버 응답 스냅샷이라 이 세션의 items 배열도
+        // 함께 "pending"으로 바꿔야, 새로고침 없이도 즉시 "처리 대기"로
+        // 보이고 승인/반려 버튼이 다시 나타난다.
+        setItems((prev) =>
+          prev ? prev.map((i) => (i.id === item.id ? { ...i, reviewStatus: "pending" } : i)) : prev
+        );
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : "반려 취소에 실패했습니다."))
+      .finally(() => setDecidingId(null));
   }
 
   // 합의 모드가 꺼져 있으면 항상 처리 가능, 켜져 있으면 전원 제출이 끝나야 처리 가능.
@@ -366,20 +434,37 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
     return computeConsensus(severityLevel[item.id], coReviewers, item.votes || {}).allSubmitted;
   }
 
+  // "적용"/"페널티 적용 (불가)"를 되돌린다. 대상자 페널티(penalty)가 있으면
+  // 기존 cancel-penalty로, 제보자 제보상점(merit — error가 아닌 실제 기록)이
+  // 있으면 새 cancel-merit으로 각각 되돌린다. 두 시트 반영이 서로 다른
+  // 실패 지점이라(예: 페널티는 있는데 제보상점 부여가 실패했을 수 있음)
+  // 독립적으로 처리한다.
   function cancel(item: CaptureReviewItem) {
-    const penalty = applied[item.id];
-    if (!penalty) return;
+    const result = applied[item.id];
+    if (!result) return;
+    const meritToCancel = result.merit && !("error" in result.merit) ? result.merit : null;
+    if (!result.penalty && !meritToCancel) return;
     setDecidingId(item.id);
     setError(null);
-    call<{ ok: boolean }>("/admin/captures/cancel-penalty", {
-      method: "POST",
-      body: {
-        number: penalty.number,
-        col: penalty.col,
-        deductedMinutes: penalty.deductedMinutes,
-        dayCol: penalty.dayCol,
-      },
-    })
+    Promise.all([
+      result.penalty
+        ? call<{ ok: boolean }>("/admin/captures/cancel-penalty", {
+            method: "POST",
+            body: {
+              number: result.penalty.number,
+              col: result.penalty.col,
+              deductedMinutes: result.penalty.deductedMinutes,
+              dayCol: result.penalty.dayCol,
+            },
+          })
+        : Promise.resolve(),
+      meritToCancel
+        ? call<{ ok: boolean }>("/admin/captures/cancel-merit", {
+            method: "POST",
+            body: { number: meritToCancel.number, col: meritToCancel.col },
+          })
+        : Promise.resolve(),
+    ])
       .then(() => {
         setApplied((prev) => {
           const next = { ...prev };
@@ -391,15 +476,19 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
       .finally(() => setDecidingId(null));
   }
 
-  // 기록 자체를 완전히 말소한다(되돌릴 수 없음). "적용"된 항목이면 시트에
-  // 반영된 페널티도 함께 취소되도록 penalty 정보를 같이 보낸다.
+  // 기록 자체를 완전히 말소한다("폐기" — 되돌릴 수 없고 웹에서도 더 이상
+  // 보이지 않게 됨, 사용자 확정대로 기존 삭제 경로를 그대로 재사용). "적용"/
+  // "페널티 적용 (불가)"로 처리된 항목이면 시트에 반영된 페널티·제보상점을
+  // 함께 취소되도록 정보를 같이 보낸다.
   function deleteCapture(item: CaptureReviewItem) {
     if (!window.confirm("이 제보 기록을 완전히 삭제할까요? 되돌릴 수 없습니다.")) return;
     setDeletingId(item.id);
     setError(null);
+    const result = applied[item.id];
+    const meritToCancel = result?.merit && !("error" in result.merit) ? result.merit : null;
     call<CaptureDeleteResponse>("/admin/captures/delete", {
       method: "POST",
-      body: { id: item.id, penalty: applied[item.id] || null },
+      body: { id: item.id, penalty: result?.penalty || null, merit: meritToCancel },
     })
       .then(() => {
         setItems((prev) => (prev ? prev.filter((i) => i.id !== item.id) : prev));
@@ -440,7 +529,7 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
             {groupByDay(items).map((group) => {
               const isDayExpanded = expandedDay === group.day;
               const appliedCount = group.items.filter((item) => isItemApplied(item, applied)).length;
-              const rejectedCount = group.items.filter((item) => isItemRejected(item, rejected)).length;
+              const rejectedCount = group.items.filter((item) => isItemRejected(item, applied, rejected)).length;
               const pendingCount = group.items.length - appliedCount - rejectedCount;
               return (
                 <InfoCard key={group.day} className="flex flex-col gap-2.5 bg-card">
@@ -479,7 +568,7 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
                         .map((item) => {
                         const isMemberExpanded = expandedId === item.id;
                         const isApplied = isItemApplied(item, applied);
-                        const isRejected = isItemRejected(item, rejected);
+                        const isRejected = isItemRejected(item, applied, rejected);
                         return (
                           <div key={item.id} className="flex flex-col gap-2.5 rounded-lg border bg-card p-3">
                             <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
@@ -491,7 +580,11 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
                                 {isApplied ? (
                                   <TintedPill tone="ok">적용</TintedPill>
                                 ) : isRejected ? (
-                                  <TintedPill tone="amber">반려</TintedPill>
+                                  <TintedPill tone="amber">
+                                    {(applied[item.id] && !applied[item.id].penalty) || item.reviewStatus === "rejected_recognized"
+                                      ? "반려 (인정)"
+                                      : "반려"}
+                                  </TintedPill>
                                 ) : (
                                   <TintedPill tone="warn">대기</TintedPill>
                                 )}
@@ -633,7 +726,7 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
                                           placeholder="HH:MM"
                                           maxLength={5}
                                           value={sendTimes[item.id] || ""}
-                                          disabled={!!applied[item.id]}
+                                          disabled={isApplied}
                                           onChange={(e) =>
                                             setSendTimes((prev) => ({
                                               ...prev,
@@ -653,7 +746,7 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
                                           placeholder="HH:MM"
                                           maxLength={5}
                                           value={replyTimes[item.id] || ""}
-                                          disabled={!!applied[item.id]}
+                                          disabled={isApplied}
                                           onChange={(e) =>
                                             setReplyTimes((prev) => ({
                                               ...prev,
@@ -664,10 +757,10 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
                                         />
                                       </label>
                                     </div>
-                                    {applied[item.id] && applied[item.id].deductedMinutes > 0 && (
+                                    {applied[item.id]?.penalty && applied[item.id]!.penalty!.deductedMinutes > 0 && (
                                       <SubRow
                                         label="학습시간 차감"
-                                        value={`-${applied[item.id].deductedMinutes}분`}
+                                        value={`-${applied[item.id]!.penalty!.deductedMinutes}분`}
                                         valueClassName="text-destructive"
                                       />
                                     )}
@@ -683,16 +776,32 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
                                     <SubRow
                                       label="적용 시"
                                       value={
-                                        applied[item.id]
-                                          ? occurrenceLabel(applied[item.id].occurrence)
+                                        applied[item.id]?.penalty
+                                          ? occurrenceLabel(applied[item.id]!.penalty!.occurrence)
                                           : occurrenceLabel(item.nextOccurrence)
                                       }
                                       valueClassName="font-semibold text-foreground"
                                     />
                                     <SubRow
                                       label="이번 주 영향"
-                                      value={weeklyImpactLabel(applied[item.id] ? applied[item.id].occurrence : item.nextOccurrence)}
+                                      value={weeklyImpactLabel(
+                                        applied[item.id]?.penalty ? applied[item.id]!.penalty!.occurrence : item.nextOccurrence
+                                      )}
                                     />
+                                    {applied[item.id] && !applied[item.id]!.penalty && (
+                                      <SubRow label="대상자 처리" value="없음 (잔여 슬롯 없어 미등록)" />
+                                    )}
+                                    {applied[item.id]?.merit && (
+                                      <SubRow
+                                        label="제보자 상점"
+                                        value={
+                                          "error" in applied[item.id]!.merit!
+                                            ? "부여 실패"
+                                            : `${(applied[item.id]!.merit as ReportMeritResult).occurrence}차 슬롯 부여`
+                                        }
+                                        valueClassName={"error" in applied[item.id]!.merit! ? "text-destructive" : undefined}
+                                      />
+                                    )}
                                   </div>
                                 </div>
 
@@ -719,23 +828,30 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
                                 )}
 
                                 <div className="grid grid-cols-[1fr_auto] gap-2">
-                                  {isApplied && applied[item.id] ? (
-                                    <Button
-                                      variant="outline"
-                                      className="sm:h-12 sm:text-base"
-                                      disabled={decidingId === item.id}
-                                      onClick={() => cancel(item)}
-                                    >
-                                      {occurrenceLabel(applied[item.id].occurrence)} 취소
-                                    </Button>
-                                  ) : isApplied ? (
-                                    // 새로고침 등으로 이 세션이 승인 상세 정보(occurrence 등)를
-                                    // 들고 있지 않은 경우 — 취소에 필요한 정보가 없어 버튼
-                                    // 자체를 숨긴다(잘못 눌러도 동작하지 않는 것보다 안전).
-                                    <p className="flex items-center justify-center text-center text-xs text-muted-foreground sm:text-sm">
-                                      이미 처리된 제보입니다.
-                                    </p>
+                                  {isApplied ? (
+                                    applied[item.id]?.penalty ? (
+                                      <Button
+                                        variant="outline"
+                                        className="sm:h-12 sm:text-base"
+                                        disabled={decidingId === item.id}
+                                        onClick={() => cancel(item)}
+                                      >
+                                        {occurrenceLabel(applied[item.id]!.penalty!.occurrence)} 취소
+                                      </Button>
+                                    ) : (
+                                      // 새로고침 등으로 이 세션이 승인 상세 정보(penalty col 등)를
+                                      // 들고 있지 않은 경우 — 취소에 필요한 정보가 없어 버튼 자체를
+                                      // 숨긴다(잘못 눌러도 동작하지 않는 것보다 안전).
+                                      <p className="flex items-center justify-center text-center text-xs text-muted-foreground sm:text-sm">
+                                        이미 처리된 제보입니다.
+                                      </p>
+                                    )
                                   ) : isRejected ? (
+                                    // "반려 취소" — 순수 반려("rejected")든 반려 (인정)
+                                    // ("rejected_recognized", 제보상점만 부여된 경우)든 항상
+                                    // 다시 "처리 대기"로 되돌릴 수 있다(사용자 지시: 다시
+                                    // 벌점/페널티 여부를 판단할 수 있어야 함). 부여된 제보상점은
+                                    // revertReject 내부에서 함께 회수된다.
                                     <Button
                                       variant="outline"
                                       className="sm:h-12 sm:text-base"
@@ -750,9 +866,11 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
                                         variant="destructive"
                                         className="sm:h-12 sm:text-base"
                                         disabled={decidingId === item.id || !canDecide(item)}
-                                        onClick={() => decide(item, "approved")}
+                                        onClick={() =>
+                                          decide(item, item.nextOccurrence === null ? "rejected_recognized" : "approved")
+                                        }
                                       >
-                                        적용
+                                        {applyButtonLabel(item.nextOccurrence)}
                                       </Button>
                                       <Button
                                         variant="outline"

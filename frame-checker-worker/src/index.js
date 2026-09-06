@@ -2859,6 +2859,10 @@ const OUTPUT_PEN_SHEET_NAME = "데이터";
 // 동일한 기준(4차=I, 6차=K).
 const OUTPUT_PEN_SLOT_COLUMNS = ["F", "G", "H", "I", "J", "K"]; // 1차..6차
 const OUTPUT_PEN_P_SLOTS = new Set(["I", "K"]); // 4차, 6차
+// 제보상점 1~5차 슬롯(R~V) — getReportScore가 읽기 전용으로만 쓰던 범위를
+// applyReportMerit(쓰기)에서도 그대로 재사용한다. 값=발생 시점의 페널티
+// 사이클 번호(D25)로, OUTPUT_PEN_SLOT_COLUMNS와 동일한 기록 방식이다.
+const REPORT_MERIT_SLOT_COLUMNS = ["R", "S", "T", "U", "V"]; // 1차..5차
 // "D"~"I" 열 문자를 0-idx 컬럼 인덱스로 변환한다(batchUpdate의 grid 좌표는
 // 이름이 아니라 숫자 인덱스를 요구한다). A=0.
 function columnLetterToIndex(letter) {
@@ -3143,6 +3147,58 @@ async function applyOutputPenalty(env, accessToken, fileId, nickname, reason, ts
   };
 }
 
+// 제보 승인("적용"/"반려 (인정)") 시 제보자에게 제보상점을 부여한다 —
+// applyOutputPenalty와 완전히 동일한 패턴(값 0인 첫 칸을 찾아 현재 페널티
+// 사이클 번호를 쓰고, 같은 칸에 발생일시·사유를 주석으로 남김)을 "데이터"
+// 시트 R~V(제보상점 1~5차)에 그대로 적용한다. 5칸이 모두 차 있으면(정상
+// 운영에서는 도달하지 않아야 함) applyOutputPenalty와 동일하게 조용히
+// 넘기지 않고 명시적 에러를 던진다.
+async function applyReportMerit(env, accessToken, fileId, reporterEmail, reason, ts, captureId) {
+  const [members, sheetId] = await Promise.all([
+    listAllMembers(env, accessToken, fileId),
+    getSheetIdByName(env, accessToken, fileId, OUTPUT_PEN_SHEET_NAME),
+  ]);
+  const reporter = members.find((m) => m.email.toLowerCase() === (reporterEmail || "").toLowerCase());
+  if (!reporter) {
+    throw new Error(`제보자(${reporterEmail || "이메일 없음"})와 일치하는 등록 회원을 찾을 수 없습니다.`);
+  }
+  const row = parseInt(reporter.number, 10) + 3;
+
+  const [slotRows, currentD25] = await Promise.all([
+    getSheetValues(env, accessToken, fileId, `'${OUTPUT_PEN_SHEET_NAME}'!R${row}:V${row}`),
+    getCurrentPenCycle(env, accessToken, fileId),
+  ]);
+  const slotValues = (slotRows[0] || []).map((v) => parseInt(v, 10) || 0);
+
+  let slotIndex = -1;
+  for (let i = 0; i < REPORT_MERIT_SLOT_COLUMNS.length; i++) {
+    if (slotValues[i] === 0) {
+      slotIndex = i;
+      break;
+    }
+  }
+  if (slotIndex === -1) {
+    throw new Error(`${reporter.name}님은 제보상점 1차~5차 칸이 모두 채워져 있습니다.`);
+  }
+
+  const col = REPORT_MERIT_SLOT_COLUMNS[slotIndex];
+  const occurrence = slotIndex + 1; // 1차~5차
+
+  const writes = [writeSheetValues(env, accessToken, fileId, [
+    { range: `'${OUTPUT_PEN_SHEET_NAME}'!${col}${row}`, values: [[currentD25]] },
+  ])];
+  if (sheetId !== null) {
+    const whenDate = ts ? new Date(ts) : new Date();
+    const when = whenDate.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+    let note = reason ? `${when} · ${reason}` : when;
+    if (captureId) note += ` [cap:${captureId}]`;
+    writes.push(writeCellNote(env, accessToken, fileId, sheetId, row - 1, col, note));
+  }
+  await Promise.all(writes);
+
+  return { number: reporter.number, name: reporter.name, occurrence, col };
+}
+
 // applyOutputPenalty()가 방금 기록한 슬롯을 되돌린다 — 관리자가 오적용을
 // 바로잡을 수 있게 하는 상시 기능. 값(사이클 번호)과 주석을 모두 지운다.
 // col은 승인 응답에 포함된 실제 기록 열(F~K)을 그대로 넘겨받아 사용한다.
@@ -3177,6 +3233,26 @@ async function cancelOutputPenalty(env, accessToken, fileId, memberNumber, col, 
   await Promise.all(writes);
 }
 
+// applyReportMerit()가 방금 기록한 제보상점 슬롯을 되돌린다(cancelOutputPenalty와
+// 동일 패턴 — 값과 주석만 지우면 되므로 시간 차감 되돌림은 없다). "폐기"가
+// handleAdminCaptureDelete 경로를 재사용할 때, 이미 "적용"/"반려 (인정)"으로
+// 제보상점이 기록된 항목이면 함께 원상복구하는 데 쓰인다.
+async function cancelReportMerit(env, accessToken, fileId, memberNumber, col) {
+  if (!REPORT_MERIT_SLOT_COLUMNS.includes(col)) {
+    throw new Error(`유효하지 않은 열입니다: ${col}`);
+  }
+  const row = parseInt(memberNumber, 10) + 3;
+  const sheetId = await getSheetIdByName(env, accessToken, fileId, OUTPUT_PEN_SHEET_NAME);
+
+  const writes = [writeSheetValues(env, accessToken, fileId, [
+    { range: `'${OUTPUT_PEN_SHEET_NAME}'!${col}${row}`, values: [[0]] },
+  ])];
+  if (sheetId !== null) {
+    writes.push(writeCellNote(env, accessToken, fileId, sheetId, row - 1, col, null));
+  }
+  await Promise.all(writes);
+}
+
 async function handleAdminCaptureCancel(req, env, origin) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
@@ -3196,79 +3272,179 @@ async function handleAdminCaptureCancel(req, env, origin) {
   }
 }
 
+// applyReportMerit()로 부여한 제보상점을 되돌린다(handleAdminCaptureCancel과
+// 동일 패턴, cancelReportMerit 재사용) — "적용"/"페널티 적용 (불가)"로
+// 처리된 항목의 "취소" 버튼이 대상자 페널티와 별개로 호출한다.
+async function handleAdminCaptureCancelMerit(req, env, origin) {
+  const admin = await requireAdmin(req, env);
+  if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
+
+  const { number, col } = await req.json().catch(() => ({}));
+  if (!number || !col) {
+    return json({ error: "number와 col이 필요합니다." }, 400, origin);
+  }
+
+  try {
+    const accessToken = await getServiceAccountAccessToken(env);
+    await cancelReportMerit(env, accessToken, env.GOOGLE_SHEET_FILE_ID, number, col);
+    await invalidateMemberCache(env); // 제보상점 슬롯이 바뀌었으므로 exitStatus 캐시 무효화.
+    return json({ ok: true }, 200, origin);
+  } catch (err) {
+    return json({ error: "취소 실패: " + err.message }, 500, origin);
+  }
+}
+
+// 🔧 [3버튼 재설계] 결정 종류가 "적용"/"반려"에서 3가지로 늘었다(사용자 확정):
+// - "approved" : 페널티로 인정되며 대상자 슬롯에 여유가 있음
+//     → 제보자에게 제보상점 추가(applyReportMerit) + 대상자에게 벌점/페널티 추가(applyOutputPenalty).
+// - "rejected_recognized" : 페널티로 인정되나 대상자 잔여 슬롯이 없어 등록 불가
+//     → 제보자에게 제보상점만 추가, 대상자에게는 아무 처리도 하지 않음.
+//     (프론트: "페널티 적용 (불가)" 버튼이 이 decision을 보낸다 — 사용자 지시로
+//     별도 "반려 (인정)" 버튼을 만들지 않고 "적용" 버튼의 동적 라벨/동작으로 흡수했다.)
+// - "rejected" : 페널티로 인정되지 않음 → 아무 처리도 하지 않음(웹에는 계속 표시).
+// "폐기"는 새 decision이 아니라 기존 handleAdminCaptureDelete(완전 삭제) 경로를
+// 그대로 재사용한다(사용자 확정) — 여기서는 다루지 않는다.
+const CAPTURE_DECISIONS = ["approved", "rejected_recognized", "rejected"];
+
 async function handleAdminCaptureDecide(req, env, origin) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
 
-  const { id, decision, nickname, reason, ts, sendTime, replyTime } = await req.json().catch(() => ({}));
-  if (!id || (decision !== "approved" && decision !== "rejected")) {
+  const { id, decision, nickname, reporterEmail, reason, ts, sendTime, replyTime } = await req.json().catch(() => ({}));
+  if (!id || !CAPTURE_DECISIONS.includes(decision)) {
     return json({ error: "잘못된 요청입니다." }, 400, origin);
   }
 
   let penaltyResult = null;
-  if (decision === "approved") {
-    if (!nickname) return json({ error: "nickname이 필요합니다." }, 400, origin);
+  let meritResult = null;
+  if (decision === "approved" || decision === "rejected_recognized") {
     try {
       const accessToken = await getServiceAccountAccessToken(env);
-      penaltyResult = await applyOutputPenalty(
-        env,
-        accessToken,
-        env.GOOGLE_SHEET_FILE_ID,
-        nickname,
-        reason,
-        ts,
-        sendTime,
-        replyTime,
-        id
-      );
-      await invalidateMemberCache(env); // 페널티 슬롯이 바뀌었으므로 exitStatus 캐시 무효화.
+      const fileId = env.GOOGLE_SHEET_FILE_ID;
+
+      if (decision === "approved") {
+        if (!nickname) return json({ error: "nickname이 필요합니다." }, 400, origin);
+        penaltyResult = await applyOutputPenalty(env, accessToken, fileId, nickname, reason, ts, sendTime, replyTime, id);
+      }
+      try {
+        meritResult = await applyReportMerit(env, accessToken, fileId, reporterEmail, reason, ts, id);
+      } catch (meritErr) {
+        // 제보자 상점 부여는 대상자 페널티와 별개 실패 지점이다(예: 제보자가
+        // 회원 명단에 없거나 5칸이 이미 다 찼을 때) — 이미 시트에 반영된
+        // 대상자 페널티까지 되돌리지 않고, 그 사실을 응답에 담아 관리자가
+        // 알 수 있게만 한다(자동 롤백은 하지 않음 — applyOutputPenalty와
+        // 동일하게 "조용히 넘기지 않는다" 원칙).
+        meritResult = { error: meritErr.message };
+      }
+      await invalidateMemberCache(env); // 페널티/제보상점 슬롯이 바뀌었으므로 exitStatus 캐시 무효화.
     } catch (err) {
       return json({ error: "시트 반영 실패: " + err.message }, 500, origin);
     }
   }
 
+  // penalty/merit을 봇 manifest에도 함께 저장해 둔다 — 관리자가 새로고침한
+  // 뒤에도 "반려 취소"/"폐기"가 무엇을 되돌려야 하는지 프론트 로컬 state
+  // 없이 이 기록만으로 알 수 있게 하기 위함(GET /admin/captures가 그대로
+  // 다시 내려준다).
   const data = await proxyToBotDashboard(env, "/captures/decide", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id, decision }),
+    body: JSON.stringify({ id, decision, penalty: penaltyResult, merit: meritResult }),
   });
   if (!data) {
     return json({ error: "봇에 연결할 수 없습니다." }, 502, origin);
   }
-  return json({ ...data, penalty: penaltyResult }, 200, origin);
+  return json({ ...data, penalty: penaltyResult, merit: meritResult }, 200, origin);
 }
 
-// 제보 기록 자체를 완전히 말소한다(반려 취소와 달리 되돌릴 수 없음). 이미
-// "적용"되어 시트에 페널티가 반영된 항목이면, 봇 쪽 기록을 지우기 전에
-// 프론트가 함께 보낸 penalty 정보(applied[item.id])로 먼저 cancelOutputPenalty를
-// 호출해 시트도 원상복구한다 — 그러지 않으면 봇 기록은 사라졌는데 시트에는
-// 페널티가 남는 불일치가 생긴다.
+// GET /captures(봇 manifest 전체)에서 특정 캡처 id에 저장된 penalty/merit을
+// 찾는다 — 관리자가 새로고침해 프론트 로컬 state(applied[item.id])를 잃은
+// 뒤에도 handleAdminCaptureDelete/handleAdminCaptureRevert가 무엇을
+// 되돌려야 하는지 알 수 있게 하는 폴백 조회다(handleAdminCaptureDecide가
+// 결정 시점에 봇 manifest에도 함께 저장해 둔다).
+async function findStoredPenaltyMerit(env, id) {
+  const data = await proxyToBotDashboard(env, "/captures");
+  const item = data && (data.items || []).find((i) => i.id === id);
+  return { penalty: item?.penalty || null, merit: item?.merit || null };
+}
+
+// 제보 기록 자체를 완전히 말소한다(반려 취소와 달리 되돌릴 수 없음, 웹
+// 서비스에서도 보이지 않게 됨 — "폐기" 기능이 그대로 재사용하는 경로,
+// 사용자 확정). 이미 "적용"/"반려 (인정)"으로 시트에 반영된 값이 있으면,
+// 봇 쪽 기록을 지우기 전에 원상복구한다 — 그러지 않으면 봇 기록은
+// 사라졌는데 시트에는 페널티/제보상점이 남는 불일치가 생긴다. 프론트가
+// 함께 보낸 penalty/merit(로컬 state)이 있으면 그대로 쓰고, 새로고침 등으로
+// 없으면 봇 manifest에 저장된 값으로 폴백한다.
 async function handleAdminCaptureDelete(req, env, origin) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
 
-  const { id, penalty } = await req.json().catch(() => ({}));
+  const body = await req.json().catch(() => ({}));
+  const { id } = body;
   if (!id) return json({ error: "id가 필요합니다." }, 400, origin);
+  let { penalty, merit } = body;
+  if (!penalty && !merit) {
+    ({ penalty, merit } = await findStoredPenaltyMerit(env, id));
+  }
 
-  if (penalty && penalty.number && penalty.col) {
+  if ((penalty && penalty.number && penalty.col) || (merit && merit.number && merit.col)) {
     try {
       const accessToken = await getServiceAccountAccessToken(env);
-      await cancelOutputPenalty(
-        env,
-        accessToken,
-        env.GOOGLE_SHEET_FILE_ID,
-        penalty.number,
-        penalty.col,
-        penalty.deductedMinutes || 0,
-        penalty.dayCol || null
-      );
-      await invalidateMemberCache(env); // 페널티 슬롯이 바뀌었으므로 exitStatus 캐시 무효화.
+      const fileId = env.GOOGLE_SHEET_FILE_ID;
+      if (penalty && penalty.number && penalty.col) {
+        await cancelOutputPenalty(env, accessToken, fileId, penalty.number, penalty.col, penalty.deductedMinutes || 0, penalty.dayCol || null);
+      }
+      if (merit && merit.number && merit.col) {
+        await cancelReportMerit(env, accessToken, fileId, merit.number, merit.col);
+      }
+      await invalidateMemberCache(env); // 페널티/제보상점 슬롯이 바뀌었으므로 exitStatus 캐시 무효화.
     } catch (err) {
-      return json({ error: "시트 페널티 취소 실패: " + err.message }, 500, origin);
+      return json({ error: "시트 반영 취소 실패: " + err.message }, 500, origin);
     }
   }
 
   const data = await proxyToBotDashboard(env, "/captures/delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
+  if (!data) {
+    return json({ error: "봇에 연결할 수 없습니다." }, 502, origin);
+  }
+  return json(data, 200, origin);
+}
+
+// "반려 취소" — 이미 내린 결정(반려/반려 (인정))을 되돌려 다시 관리자가
+// 판단할 수 있는 "처리 대기" 상태로 되돌린다(사용자 지시: "다시 벌점 및
+// 페널티인지 판단할 수 있도록 되돌리려는" 것이 목표). "적용"(대상자 페널티가
+// 실제로 기록된 경우)은 이 경로로 취소하지 않는다 — 대상자 페널티는
+// cancel-penalty로 명시적으로 되돌려야 하므로, "취소"가 아니라 "반려 취소"
+// 버튼에서만 쓰인다. 반려 (인정)으로 제보자에게 이미 부여된 제보상점이
+// 있으면(merit) 되돌리기 전에 먼저 회수한다 — 그러지 않으면 판정을
+// 다시 하는 동안 이미 부여된 상점이 남아있는 불일치가 생긴다.
+async function handleAdminCaptureRevert(req, env, origin) {
+  const admin = await requireAdmin(req, env);
+  if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
+
+  const body = await req.json().catch(() => ({}));
+  const { id } = body;
+  if (!id) return json({ error: "id가 필요합니다." }, 400, origin);
+  let { merit } = body;
+  if (!merit) {
+    ({ merit } = await findStoredPenaltyMerit(env, id));
+  }
+
+  if (merit && merit.number && merit.col) {
+    try {
+      const accessToken = await getServiceAccountAccessToken(env);
+      await cancelReportMerit(env, accessToken, env.GOOGLE_SHEET_FILE_ID, merit.number, merit.col);
+      await invalidateMemberCache(env); // 제보상점 슬롯이 바뀌었으므로 exitStatus 캐시 무효화.
+    } catch (err) {
+      return json({ error: "제보상점 회수 실패: " + err.message }, 500, origin);
+    }
+  }
+
+  const data = await proxyToBotDashboard(env, "/captures/revert", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ id }),
@@ -6944,8 +7120,14 @@ export default {
       if (url.pathname === "/admin/captures/cancel-penalty" && req.method === "POST") {
         return await handleAdminCaptureCancel(req, env, origin);
       }
+      if (url.pathname === "/admin/captures/cancel-merit" && req.method === "POST") {
+        return await handleAdminCaptureCancelMerit(req, env, origin);
+      }
       if (url.pathname === "/admin/captures/delete" && req.method === "POST") {
         return await handleAdminCaptureDelete(req, env, origin);
+      }
+      if (url.pathname === "/admin/captures/revert" && req.method === "POST") {
+        return await handleAdminCaptureRevert(req, env, origin);
       }
       if (url.pathname === "/admin/captures/vote" && req.method === "POST") {
         return await handleAdminCaptureVote(req, env, origin);

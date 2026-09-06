@@ -742,7 +742,9 @@ export type CaptureReviewItem = {
   mode: "screenshot" | "video";
   reporterEmail: string;
   ts: number;
-  reviewStatus: "pending" | "approved" | "rejected";
+  // 🔧 [3버튼 재설계] "rejected_recognized" — 페널티로는 인정되나 대상자
+  // 잔여 슬롯이 없어 등록만 못 하는 경우(제보자 상점은 부여됨).
+  reviewStatus: "pending" | "approved" | "rejected" | "rejected_recognized";
   // 승인 시 몇 차 슬롯(1~6)에 기록될지 미리 계산된 값. 회원을 찾지 못했거나
   // 슬롯이 모두 찼으면 null.
   nextOccurrence: number | null;
@@ -781,12 +783,28 @@ export type OutputPenaltyResult = {
   dayCol: string | null;
 };
 
+export type ReportMeritResult = {
+  number: string;
+  name: string;
+  // 제보상점 몇 차 슬롯(1~5)에 기록됐는지.
+  occurrence: number;
+  col: string;
+};
+
 export type CaptureDecideResponse = {
   ok: boolean;
   penalty?: OutputPenaltyResult | null;
+  // applyReportMerit 실패 시(예: 제보자가 회원이 아니거나 5칸이 이미 다 참)
+  // { error: string } 형태로 온다 — 대상자 페널티는 이미 반영됐을 수 있어
+  // 자동 롤백하지 않고 관리자에게 알리기만 한다.
+  merit?: ReportMeritResult | { error: string } | null;
 };
 
 export type CaptureDeleteResponse = {
+  ok: boolean;
+};
+
+export type CaptureRevertResponse = {
   ok: boolean;
 };
 
