@@ -280,7 +280,7 @@ export function ReportPage() {
                     <InfoCard className="flex flex-col gap-1 border-amber-600/30 bg-amber-600/5 dark:border-amber-400/30 dark:bg-amber-400/5">
                       <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
                         <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
-                        <span className="text-xs font-semibold sm:text-sm">주의사항</span>
+                        <span className="text-sm font-bold sm:text-base">주의사항</span>
                       </div>
                       <ul className="flex flex-col gap-0.5">
                         {REPORT_CAUTIONS.map((text) => (
