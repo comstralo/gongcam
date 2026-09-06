@@ -12,12 +12,11 @@ import { useRosterPolling } from "@/hooks/useRosterPolling";
 import { usePullRefreshListener } from "@/hooks/usePullToRefresh";
 import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
-import { Bell, Flag, MessageSquareText, MessageSquareWarning, TriangleAlert, User } from "lucide-react";
+import { Bell, Flag, Lightbulb, MessageSquareWarning, TriangleAlert, User } from "lucide-react";
 import { InfoCard } from "@/components/dashboard/shared";
 import { SimpleNoticeSection } from "@/components/report/SimpleNoticeSection";
 import { ActiveReportsSection } from "@/components/report/ActiveReportsSection";
 import { MyOutputPenSection } from "@/components/report/MyOutputPenSection";
-import { ICON_STROKE } from "@/lib/utils";
 import type { StatusMessageResponse } from "@/lib/api/types";
 
 // 제보 페이지에서 참여자들이 놓치기 쉬운 규칙을 모아 보여준다 — 배열이라
@@ -147,7 +146,7 @@ export function ReportPage() {
                     <div className="h-px w-full bg-border" />
                     <SectionCard className="flex flex-col gap-3">
                       <div className="flex flex-col gap-1.5">
-                        <Label className="flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                        <Label className="flex items-center gap-1.25 text-sm font-bold sm:text-base">
                           <User className="size-3 shrink-0 text-muted-foreground sm:size-3.5" />
                           제보 대상자
                         </Label>
@@ -182,21 +181,22 @@ export function ReportPage() {
                             ))}
                           </SelectContent>
                         </Select>
-                        {nickname && targetStatusMessage && (
-                          <InfoCard className="flex items-start gap-1.5 bg-card">
-                            <MessageSquareText
-                              className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
-                              strokeWidth={ICON_STROKE.default}
-                            />
-                            <span className="min-w-0 flex-1 text-xs text-muted-foreground sm:text-sm">
-                              {nickname}님의 상태 메시지: <span className="text-foreground">{targetStatusMessage}</span>
-                            </span>
-                          </InfoCard>
-                        )}
                       </div>
 
+                      {nickname && targetStatusMessage && (
+                        <div className="flex flex-col gap-1.5">
+                          <Label className="flex items-center gap-1.25 text-sm font-bold sm:text-base">
+                            <Lightbulb className="size-3 shrink-0 text-muted-foreground sm:size-3.5" />
+                            상태 메시지
+                          </Label>
+                          <InfoCard className="bg-card">
+                            <span className="text-xs text-foreground sm:text-sm">{targetStatusMessage}</span>
+                          </InfoCard>
+                        </div>
+                      )}
+
                       <div className="flex flex-col gap-1.5">
-                        <Label htmlFor="reason" className="flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                        <Label htmlFor="reason" className="flex items-center gap-1.25 text-sm font-bold sm:text-base">
                           <MessageSquareWarning className="size-3 shrink-0 text-muted-foreground sm:size-3.5" />
                           제보 원인
                         </Label>
