@@ -31,7 +31,7 @@ const REASON_OPTIONS = [
   { value: "전자기기 사용목적 확인 불가", label: "전자기기 사용목적 확인 불가" },
   { value: "얼굴, 정수리 등 노출", label: "얼굴, 정수리 등 노출" },
   { value: "과도한 스티커 사용", label: "과도한 스티커 사용" },
-  { value: "기타", label: "기타 (방해 사유 기재)" },
+  { value: "기타", label: "기타 (제보 원인 기재)" },
 ] as const;
 const REASON_OTHER_VALUE = "기타";
 const REASON_OTHER_MAX_LENGTH = 100;
@@ -50,7 +50,7 @@ export function ReportPage() {
   usePullRefreshListener(true, refresh);
   const [nickname, setNickname] = useState("");
   const [reason, setReason] = useState("");
-  // "기타" 선택 시 방해 사유를 직접 입력받는 값 — 제출 시 reason 자체를
+  // "기타" 선택 시 제보 원인을 직접 입력받는 값 — 제출 시 reason 자체를
   // 이 텍스트로 대체해서 보낸다(백엔드는 reason을 자유 문자열로만 다뤄
   // 별도 처리가 필요 없다).
   const [otherReason, setOtherReason] = useState("");
@@ -110,7 +110,7 @@ export function ReportPage() {
     }
     const isOther = reason === REASON_OTHER_VALUE;
     if (isOther && !otherReason.trim()) {
-      setMessage({ text: "방해 사유를 입력해주세요.", type: "error" });
+      setMessage({ text: "제보 원인을 입력해주세요.", type: "error" });
       return;
     }
     const finalReason = isOther ? otherReason.trim() : reason;
@@ -247,10 +247,10 @@ export function ReportPage() {
                           <Input
                             value={otherReason}
                             maxLength={REASON_OTHER_MAX_LENGTH}
-                            placeholder="방해 사유를 입력해 주세요."
+                            placeholder="제보 원인을 입력해 주세요."
                             disabled={stale}
                             onChange={(e) => setOtherReason(e.target.value)}
-                            className="w-full pl-3.5 sm:h-12 sm:pl-4.5 sm:text-base"
+                            className="w-full pl-3.5 text-sm sm:h-12 sm:pl-4.5 sm:text-base md:text-base"
                           />
                         )}
                       </div>
