@@ -159,7 +159,7 @@ export function ReportPage() {
                             if (open) refresh();
                           }}
                         >
-                          <SelectTrigger className="w-full data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base">
+                          <SelectTrigger className="w-full data-[size=default]:h-8 sm:data-[size=default]:h-12 pl-3.5 sm:pl-4.5 sm:text-base">
                             <SelectValue
                               placeholder={
                                 stale
@@ -184,26 +184,26 @@ export function ReportPage() {
                         </Select>
                       </div>
 
-                      {nickname && (
-                        <div className="flex flex-col gap-1.5">
-                          <Label className="flex items-center gap-1.25 text-sm font-bold sm:text-base">
-                            <Lightbulb className="size-3 shrink-0 text-muted-foreground sm:size-3.5" />
-                            상태 메시지
-                          </Label>
-                          <InfoCard className="bg-card">
-                            <span
-                              className={cn(
-                                "text-xs sm:text-sm",
-                                targetStatusMessage ? "text-foreground" : "text-muted-foreground"
-                              )}
-                            >
-                              {targetStatusMessage === null
+                      <div className="flex flex-col gap-1.5">
+                        <Label className="flex items-center gap-1.25 text-sm font-bold sm:text-base">
+                          <Lightbulb className="size-3 shrink-0 text-muted-foreground sm:size-3.5" />
+                          상태 메시지
+                        </Label>
+                        <InfoCard className="flex h-8 items-center bg-card py-0 sm:h-12">
+                          <span
+                            className={cn(
+                              "truncate text-sm sm:text-base",
+                              targetStatusMessage ? "text-foreground" : "text-muted-foreground"
+                            )}
+                          >
+                            {!nickname
+                              ? "제보 대상자를 먼저 선택해주세요."
+                              : targetStatusMessage === null
                                 ? "불러오는 중..."
                                 : targetStatusMessage || "작성된 내용이 없습니다."}
-                            </span>
-                          </InfoCard>
-                        </div>
-                      )}
+                          </span>
+                        </InfoCard>
+                      </div>
 
                       <div className="flex flex-col gap-1.5">
                         <Label htmlFor="reason" className="flex items-center gap-1.25 text-sm font-bold sm:text-base">
@@ -213,7 +213,7 @@ export function ReportPage() {
                         <Select value={reason} onValueChange={(v) => setReason(v ?? "")} disabled={stale}>
                           <SelectTrigger
                             id="reason"
-                            className="w-full data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base"
+                            className="w-full data-[size=default]:h-8 sm:data-[size=default]:h-12 pl-3.5 sm:pl-4.5 sm:text-base"
                           >
                             <SelectValue placeholder="원인을 선택해 주세요." />
                           </SelectTrigger>
