@@ -18,6 +18,7 @@ import { SimpleNoticeSection } from "@/components/report/SimpleNoticeSection";
 import { ActiveReportsSection } from "@/components/report/ActiveReportsSection";
 import { MyOutputPenSection } from "@/components/report/MyOutputPenSection";
 import type { StatusMessageResponse } from "@/lib/api/types";
+import { cn } from "@/lib/utils";
 
 // 제보 페이지에서 참여자들이 놓치기 쉬운 규칙을 모아 보여준다 — 배열이라
 // 앞으로 문구가 늘어나도 이 목록에 항목만 추가하면 된다.
@@ -183,14 +184,23 @@ export function ReportPage() {
                         </Select>
                       </div>
 
-                      {nickname && targetStatusMessage && (
+                      {nickname && (
                         <div className="flex flex-col gap-1.5">
                           <Label className="flex items-center gap-1.25 text-sm font-bold sm:text-base">
                             <Lightbulb className="size-3 shrink-0 text-muted-foreground sm:size-3.5" />
                             상태 메시지
                           </Label>
                           <InfoCard className="bg-card">
-                            <span className="text-xs text-foreground sm:text-sm">{targetStatusMessage}</span>
+                            <span
+                              className={cn(
+                                "text-xs sm:text-sm",
+                                targetStatusMessage ? "text-foreground" : "text-muted-foreground"
+                              )}
+                            >
+                              {targetStatusMessage === null
+                                ? "불러오는 중..."
+                                : targetStatusMessage || "작성된 내용이 없습니다."}
+                            </span>
                           </InfoCard>
                         </div>
                       )}
