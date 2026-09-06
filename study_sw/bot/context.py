@@ -20,6 +20,16 @@ class BotContext:
         self.lock_element = threading.Lock()
         self.file_lock = threading.Lock()
         self.is_browser_resetting = False
+        # 교시 "시작" 시각마다 schedule_process()가 스터디룸 페이지를 강제
+        # 새로고침한다(메모리 확보 목적, is_browser_resetting과는 별개 —
+        # 그건 브라우저 프로세스 자체를 재기동하는 07:15 정기 리셋/비상
+        # 복구 전용이다). 이 새로고침이 진행되는 동안 캡처(화각 제보 촬영)가
+        # 시작되면 끊기므로, 새로고침 시작~완료 구간에는 이 이벤트를 set()해
+        # 대기 중인 캡처 시작을 지연시킨다(report_intake.py 참고). 초기값은
+        # "새로고침 중이 아님"을 뜻하는 set() 상태 — 시작 직전에 clear(),
+        # 완료 직후 set()한다.
+        self.period_reload_done = threading.Event()
+        self.period_reload_done.set()
         self.last_layout = 0
         self.curr_layout = 0
         self.study_room_type = None

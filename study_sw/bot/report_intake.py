@@ -24,6 +24,25 @@ BOT_SECRET = os.getenv("BOT_SECRET")
 POLL_INTERVAL_SEC = 600
 
 
+# 교시 시작 새로고침(period_reload_done, scheduling.py 참고)이 진행 중이면
+# 실제 촬영을 시작하지 않고 완료될 때까지 기다린다 — 그러지 않으면 새로고침
+# 도중 촬영이 시작되어 화면이 끊긴다(사용자 지시). 대기는 이미 시작된 스레드
+# 내부에서만 하고(set_thread 호출 자체는 즉시 반환), 스레드가 ctx.current_threads에
+# 먼저 등록되어 있어야 같은 대상에 대한 중복 요청이 그 사이 들어와도
+# set_thread의 중복 방지가 정상 동작한다. 타임아웃(60초)은 새로고침이
+# 비정상적으로 오래 걸리거나 실패해도 캡처 자체가 영원히 묶이지 않게 하는
+# 안전장치 — 실제 새로고침은 보통 수 초~수십 초 내에 끝난다.
+RELOAD_WAIT_TIMEOUT_SEC = 60
+
+
+def _wait_then_capture(ctx, target_func, nickname, reason, reporter_email, thread_id, report_id, self_check):
+    if not ctx.period_reload_done.wait(timeout=RELOAD_WAIT_TIMEOUT_SEC):
+        ctx.logger.warning(
+            f"⚠️ [웹 제보 수신] [{nickname}] 교시 시작 새로고침 대기 시간 초과 — 그대로 촬영을 시작합니다."
+        )
+    target_func(ctx, nickname, reason, reporter_email, thread_id, report_id=report_id, self_check=self_check)
+
+
 def _start_capture_for_report(ctx, entry):
     nickname = entry.get("nickname")
     reason = entry.get("reason", "")
@@ -52,9 +71,8 @@ def _start_capture_for_report(ctx, entry):
     started = set_thread(
         ctx,
         thread_id,
-        target_func,
-        (nickname, reason, reporter_email, thread_id),
-        kwargs={"report_id": report_id, "self_check": self_check},
+        _wait_then_capture,
+        (target_func, nickname, reason, reporter_email, thread_id, report_id, self_check),
     )
     if started:
         ctx.logger.info(f"📩 [웹 제보 수신] [{nickname}] {mode} 캡처를 시작합니다. (사유: {reason})")

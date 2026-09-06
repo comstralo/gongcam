@@ -118,8 +118,19 @@ def schedule_process(ctx, period_str, period_time, period_minute, schedule_kind)
     # 🔥 [핵심 추가] 교시 시작 시점에만 메모리 확보를 위해 강제 새로고침(Refresh) 지시
     is_start_period = schedule_kind == "period_start"
 
-    # 스터디룸 접속이 완료된 경우에만 (강제 새로고침 플래그 전달)
-    if enter_studyroom(ctx, force_reload=is_start_period):
+    # 새로고침이 실제로 일어나는 구간(교시 시작)에만 period_reload_done을
+    # clear()해 대기 중인 캡처 시작을 지연시킨다 — 종료 시점은 새로고침이
+    # 없으므로 건드릴 필요가 없다.
+    if is_start_period:
+        ctx.period_reload_done.clear()
+    try:
+        # 스터디룸 접속이 완료된 경우에만 (강제 새로고침 플래그 전달)
+        entered = enter_studyroom(ctx, force_reload=is_start_period)
+    finally:
+        if is_start_period:
+            ctx.period_reload_done.set()
+
+    if entered:
         ctx.logger.info(
             f"schedule_process() : ✅   스터디룸 접속(또는 새로고침) 완료.  ✅ "
         )

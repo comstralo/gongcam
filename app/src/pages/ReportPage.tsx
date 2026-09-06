@@ -36,6 +36,52 @@ const REASON_OPTIONS = [
 const REASON_OTHER_VALUE = "기타";
 const REASON_OTHER_MAX_LENGTH = 100;
 
+// 봇이 매 교시 "시작" 시각마다 스터디룸 페이지를 강제 새로고침한다
+// (study_sw/bot/scheduling.py의 schedule_process — 메모리 확보 목적). 이
+// 새로고침이 진행되는 동안 촬영이 시작되면 끊기므로, 다음 교시 시작 직전
+// 구간에는 접수 자체를 막는다(사용자 지시). 종료 시점에는 새로고침이
+// 일어나지 않으므로 별도 제한이 필요 없다. study_sw/assets/timetable.csv와
+// 동일한 시작 시각 목록 — 그 파일이 바뀌면 이 배열도 함께 갱신해야 한다.
+const PERIOD_START_TIMES = [
+  "07:20",
+  "08:30",
+  "09:40",
+  "10:50",
+  "12:00",
+  "13:10",
+  "14:20",
+  "15:30",
+  "16:40",
+  "17:50",
+  "19:00",
+  "20:10",
+  "21:20",
+  "22:30",
+];
+// 스크린샷은 30초 간격 6장(3분), 영상은 90초 — 촬영 시간만큼 여유를 두고
+// "다음 교시 시작까지 촬영 시간 이내로 남았으면" 접수를 막아야 새로고침에
+// 걸리지 않고 끝까지 찍을 수 있다.
+const SCREENSHOT_LEAD_SEC = 3 * 60;
+const VIDEO_LEAD_SEC = 90;
+
+// 현재 시각(KST) 기준, 다음으로 다가올 교시 시작까지 남은 초를 계산한다.
+// 자정을 넘어가는 마지막 교시(14교시 22:30) 이후에는 다음 날 1교시(07:20)까지의
+// 간격을 본다.
+function secondsUntilNextPeriodStart(now: Date): number {
+  const nowMin = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+  const startMinutes = PERIOD_START_TIMES.map((t) => {
+    const [h, m] = t.split(":").map(Number);
+    return h * 60 + m;
+  });
+  const upcoming = startMinutes.find((m) => m > nowMin);
+  const targetMin = upcoming !== undefined ? upcoming : startMinutes[0] + 24 * 60;
+  return Math.round((targetMin - nowMin) * 60);
+}
+
+function isWithinReconnectWindow(leadSec: number): boolean {
+  return secondsUntilNextPeriodStart(new Date()) <= leadSec;
+}
+
 type ReportMode = "screenshot" | "video";
 type ReportView = "capture" | "notice";
 
@@ -65,6 +111,14 @@ export function ReportPage() {
   // "내 화각 점검"이 새 기록을 남기면 [내 송출 P 제보 확인]이 새로고침
   // 없이도 바로 보이도록 신호만 넘긴다(ActiveReportsSection의 refreshSignal과 동일 패턴).
   const [myCapturesRefreshSignal, setMyCapturesRefreshSignal] = useState(0);
+  // 다음 교시 시작까지 남은 시간이 흘러 접수 가능/불가 경계를 넘는 순간을
+  // 반영하려고 20초 간격으로만 다시 렌더링한다(초 단위 카운트다운을 보여줄
+  // 필요는 없어 너무 잦은 리렌더는 피한다).
+  const [, setReconnectTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setReconnectTick((n) => n + 1), 20_000);
+    return () => clearInterval(timer);
+  }, []);
 
   const [params, setParams] = useSearchParams();
   // AdminPage와 동일한 이유 — 최초 마운트 시 한 번만 URL에서 초기 탭을 읽고,
@@ -117,6 +171,14 @@ export function ReportPage() {
       setMessage({ text: "제보 원인을 입력해주세요.", type: "error" });
       return;
     }
+    // 다음 교시 시작 직전에는 봇이 스터디룸을 새로고침해 촬영이 끊기므로
+    // 접수를 막는다(사용자 지시) — 버튼도 비활성화되지만, 그 사이 시간이
+    // 흘러 조건을 넘겼을 수 있어 제출 시점에도 다시 확인한다.
+    const leadSec = mode === "video" ? VIDEO_LEAD_SEC : SCREENSHOT_LEAD_SEC;
+    if (isWithinReconnectWindow(leadSec)) {
+      setMessage({ text: "다음 교시 시작이 임박해 촬영이 끊길 수 있어 잠시 후 다시 시도해주세요.", type: "error" });
+      return;
+    }
     const finalReason = isOther ? otherReason.trim() : reason;
     setSubmittingMode(mode);
     setMessage(null);
@@ -149,6 +211,10 @@ export function ReportPage() {
   // 고르지 않는다(대상자는 항상 본인, 원인은 서버가 고정 문구로 채움). 결과는
   // [송출 P 대상 처리]에 노출되지 않고 [내 송출 P 제보 확인]에서만 확인 가능.
   async function handleSelfCheck() {
+    if (isWithinReconnectWindow(SCREENSHOT_LEAD_SEC)) {
+      setMessage({ text: "다음 교시 시작이 임박해 촬영이 끊길 수 있어 잠시 후 다시 시도해주세요.", type: "error" });
+      return;
+    }
     setSubmittingSelfCheck(true);
     setMessage(null);
     try {
@@ -285,7 +351,7 @@ export function ReportPage() {
                         <Button
                           className="w-full sm:h-12 sm:text-base"
                           variant="outline"
-                          disabled={submitting || stale}
+                          disabled={submitting || stale || isWithinReconnectWindow(SCREENSHOT_LEAD_SEC)}
                           onClick={() => handleSubmit("screenshot")}
                         >
                           스크린샷 제보
@@ -293,7 +359,7 @@ export function ReportPage() {
                         <Button
                           className="w-full sm:h-12 sm:text-base"
                           variant="outline"
-                          disabled={submitting || stale}
+                          disabled={submitting || stale || isWithinReconnectWindow(VIDEO_LEAD_SEC)}
                           onClick={() => handleSubmit("video")}
                         >
                           영상 제보
@@ -301,12 +367,17 @@ export function ReportPage() {
                         <Button
                           className="w-full sm:h-12 sm:text-base"
                           variant="outline"
-                          disabled={submittingSelfCheck || stale}
+                          disabled={submittingSelfCheck || stale || isWithinReconnectWindow(SCREENSHOT_LEAD_SEC)}
                           onClick={handleSelfCheck}
                         >
                           내 화각 점검
                         </Button>
                       </div>
+                      {isWithinReconnectWindow(SCREENSHOT_LEAD_SEC) && (
+                        <p className="text-center text-micro-lg text-muted-foreground sm:text-xs">
+                          다음 교시 시작이 임박해 잠시 후 다시 접수할 수 있습니다.
+                        </p>
+                      )}
                     </SectionCard>
 
                     <ActiveReportsSection refreshSignal={cooldownRefreshSignal} />
