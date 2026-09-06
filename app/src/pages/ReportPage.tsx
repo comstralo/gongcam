@@ -31,7 +31,7 @@ const REASON_OPTIONS = [
   { value: "전자기기 사용목적 확인 불가", label: "전자기기 사용목적 확인 불가" },
   { value: "얼굴, 정수리 등 노출", label: "얼굴, 정수리 등 노출" },
   { value: "과도한 스티커 사용", label: "과도한 스티커 사용" },
-  { value: "기타", label: "기타 (제보 원인 기재)" },
+  { value: "기타", label: "기타 (직접 기재)" },
 ] as const;
 const REASON_OTHER_VALUE = "기타";
 const REASON_OTHER_MAX_LENGTH = 100;
@@ -286,7 +286,7 @@ export function ReportPage() {
                         {REPORT_CAUTIONS.map((text) => (
                           <li
                             key={text}
-                            className="text-micro-lg leading-relaxed text-muted-foreground before:mr-1 before:content-['·'] sm:text-xs"
+                            className="pl-5 text-micro-lg leading-relaxed text-muted-foreground before:mr-1 before:content-['└'] sm:pl-5.5 sm:text-xs"
                           >
                             {text}
                           </li>
