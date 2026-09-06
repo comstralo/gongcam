@@ -2795,7 +2795,8 @@ async function handleAdminCapturesList(req, env, origin) {
   // 프론트는 이 경우 이름 없이 "스터디장"만 표시).
   const myName =
     auth.role === "admin"
-      ? (await findMemberNumberByEmail(env, accessToken, fileId, auth.email).catch(() => null))?.name || null
+      ? (await findMemberNumberByEmail(env, accessToken, fileId, (auth.email || "").toLowerCase()).catch(() => null))
+          ?.name || null
       : null;
   return json(
     {
