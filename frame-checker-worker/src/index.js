@@ -2749,7 +2749,10 @@ const RECENT_DECISION_WINDOW_MS = 24 * 60 * 60 * 1000;
 // 충분히 저렴하다.
 const REPORT_VOTE_KV_PREFIX = "reportVote:";
 const REPORT_VOTE_TTL_SECONDS = 7 * 24 * 60 * 60;
-const REPORT_SEVERITY_VALUES = ["high", "mid", "low", "none"];
+// 🔧 [위반 O/X 단순화] 상/중/하/위반 아님(4단계, 평균 가중치 판정)에서
+// "위반 O"/"위반 X"(2단계, 전체 관리자 중 O가 CONSENSUS_THRESHOLD명 이상이면
+// 확정) 방식으로 바뀌었다(사용자 지시) — 프론트 SEVERITY_LEVELS와 동일.
+const REPORT_SEVERITY_VALUES = ["yes", "no"];
 
 async function handleAdminCapturesList(req, env, origin) {
   const auth = await requireAdminOrCoReviewer(req, env);
@@ -2768,7 +2771,8 @@ async function handleAdminCapturesList(req, env, origin) {
   const withOccurrence = await attachNextOccurrence(env, visible);
 
   const accessToken = await getServiceAccountAccessToken(env);
-  const coReviewers = await getCurrentCoReviewers(env, accessToken, env.GOOGLE_SHEET_FILE_ID);
+  const fileId = env.GOOGLE_SHEET_FILE_ID;
+  const coReviewers = await getCurrentCoReviewers(env, accessToken, fileId);
   const items = await Promise.all(
     withOccurrence.map(async (item) => {
       const votes = {};
@@ -2784,8 +2788,23 @@ async function handleAdminCapturesList(req, env, origin) {
       return { ...item, votes };
     })
   );
+  // 🔧 [스터디장 (이름)] 프론트가 "다른 관리자 의견 반영" 섹션에서 주
+  // 관리자 본인의 행을 "스터디장 (이름)"으로 표시하려면 그 이름이 필요하다
+  // — 세션에는 이메일만 있으므로, 회원 명단에서 admin 이메일과 일치하는
+  // 회원을 찾아 이름을 내려준다(관리자 계정이 회원 명단에 없으면 null —
+  // 프론트는 이 경우 이름 없이 "스터디장"만 표시).
+  const myName =
+    auth.role === "admin"
+      ? (await findMemberNumberByEmail(env, accessToken, fileId, auth.email).catch(() => null))?.name || null
+      : null;
   return json(
-    { ...data, items, coReviewers, myMemberNumber: auth.role === "coReviewer" ? auth.memberNumber : null },
+    {
+      ...data,
+      items,
+      coReviewers,
+      myMemberNumber: auth.role === "coReviewer" ? auth.memberNumber : null,
+      myName,
+    },
     200,
     origin
   );

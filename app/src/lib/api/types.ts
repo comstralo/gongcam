@@ -760,6 +760,10 @@ export type CapturesListResponse = {
   // 이 세션이 부스터디장으로서 호출한 경우 자신의 회원번호(item.votes에서
   // "내 제출값"을 찾는 키). 주 관리자로 호출했으면 null.
   myMemberNumber: string | null;
+  // 주 관리자(스터디장)로 호출한 경우 회원 명단에서 찾은 본인 이름 —
+  // "스터디장 (이름)" 라벨에 쓰인다. 관리자 계정이 회원 명단에 없거나
+  // 부스터디장으로 호출한 경우 null.
+  myName: string | null;
 };
 
 export type CaptureVoteResponse = {

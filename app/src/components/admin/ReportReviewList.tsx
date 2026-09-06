@@ -45,14 +45,15 @@ function formatTimeInput(raw: string): string {
   return `${digits.slice(0, 2)}:${digits.slice(2)}`;
 }
 
-// 위반 수준별 가중치(합의 판정용) — 평균 2점(대략 "중" 수준) 이상이면
-// 페널티로 확정, 미만이면 반려로 본다.
+// 위반 수준 판정 — 상/중/하/위반 아님 4단계에서 "위반 O"/"위반 X" 2단계로
+// 단순화(사용자 지시).
 const SEVERITY_LEVELS = [
-  { value: "high", label: "상", weight: 3 },
-  { value: "mid", label: "중", weight: 2 },
-  { value: "low", label: "하", weight: 1 },
-  { value: "none", label: "위반 아님", weight: 0 },
+  { value: "yes", label: "위반 O" },
+  { value: "no", label: "위반 X" },
 ] as const;
+// 총 관리자(스터디장 본인 + 부스터디장 전원) 중 "위반 O" 판단이 이 수 이상이면
+// 확정한다(사용자 지시: "총 관리자의 2인 이상이 O로 판단하면 벌점이나
+// 페널티가 적용될 수 있도록").
 const CONSENSUS_THRESHOLD = 2;
 
 // 🔧 2026-09: "다른 관리자" = 현재 임명된 부스터디장 전원(최대 2명, 사용자
@@ -64,16 +65,16 @@ const CONSENSUS_THRESHOLD = 2;
 type CoReviewer = { number: string; name: string };
 type VoteMap = Record<string, { name: string; severity: string; votedAt: number }>;
 
-// 본인(주 관리자) + 실제 부스터디장들의 제출 현황으로 평균 가중치와 확정/
-// 반려 여부를 계산한다. 전원 제출 전에는 average가 null — "항상 전원 동의
-// 필수"(사용자 지시)라 한 명이라도 미제출이면 확정 버튼이 열리지 않는다.
+// 본인(스터디장) + 실제 부스터디장들의 제출 현황으로 확정/반려 여부를
+// 계산한다. 전원 제출 전에는 판정하지 않는다 — "항상 전원 동의 필수"(사용자
+// 지시)라 한 명이라도 미제출이면 확정 버튼이 열리지 않는다. 확정 기준은
+// "총 관리자 중 위반 O가 CONSENSUS_THRESHOLD명 이상"(사용자 지시).
 function computeConsensus(myVote: string | undefined, coReviewers: CoReviewer[], votes: VoteMap) {
   const allSubmitted = !!myVote && coReviewers.every((m) => votes[m.number]);
-  if (!allSubmitted) return { allSubmitted: false, average: null, willApprove: false };
+  if (!allSubmitted) return { allSubmitted: false, yesCount: null, willApprove: false };
   const values = [myVote, ...coReviewers.map((m) => votes[m.number].severity)];
-  const average =
-    values.reduce((sum, v) => sum + (SEVERITY_LEVELS.find((l) => l.value === v)?.weight ?? 0), 0) / values.length;
-  return { allSubmitted: true, average, willApprove: average >= CONSENSUS_THRESHOLD };
+  const yesCount = values.filter((v) => v === "yes").length;
+  return { allSubmitted: true, yesCount, willApprove: yesCount >= CONSENSUS_THRESHOLD };
 }
 
 // 송출 P 슬롯 차수(1~6차)별로 실제 적용되는 조치가 다르다 — 1차는 구두경고만,
@@ -178,15 +179,16 @@ function statusRank(item: CaptureReviewItem, applied: Record<string, AppliedResu
 
 // 다른 섹션(제보 정보/시간 차감/벌점·페널티 변동)과 같은 톤으로 맞춘 합의
 // 투표 섹션 — 아이콘+제목 헤더, SubRow 들여쓰기, 얇은 필셋 버튼만 사용하고
-// 별도 배경 박스는 두지 않는다. 주 관리자는 본인 판단과 실제 부스터디장들의
-// 제출 현황(읽기 전용 — 그들 본인의 화면에서만 값을 바꿀 수 있다)을 함께
-// 본다. 부스터디장이 한 명도 없으면 대조할 대상이 없으므로 체크박스 자체를
-// 막는다.
+// 별도 배경 박스는 두지 않는다. 스터디장(주 관리자)은 본인 판단과 실제
+// 부스터디장들의 제출 현황(읽기 전용 — 그들 본인의 화면에서만 값을 바꿀 수
+// 있다)을 함께 본다. 부스터디장이 한 명도 없으면 대조할 대상이 없으므로
+// 체크박스 자체를 막는다.
 function ConsensusSection({
   isConsensus,
   onToggleConsensus,
   myVote,
   onMyVoteChange,
+  myName,
   coReviewers,
   votes,
 }: {
@@ -194,11 +196,13 @@ function ConsensusSection({
   onToggleConsensus: (checked: boolean) => void;
   myVote: string | undefined;
   onMyVoteChange: (value: string | undefined) => void;
+  myName: string | null;
   coReviewers: CoReviewer[];
   votes: VoteMap;
 }) {
-  const { allSubmitted, average, willApprove } = computeConsensus(myVote, coReviewers, votes);
+  const { allSubmitted, yesCount, willApprove } = computeConsensus(myVote, coReviewers, votes);
   const noCoReviewers = coReviewers.length === 0;
+  const totalReviewers = 1 + coReviewers.length; // 스터디장 본인 + 부스터디장 전원
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -218,16 +222,21 @@ function ConsensusSection({
 
       {isConsensus && !noCoReviewers && (
         <>
-          <SeverityPicker label="내 판단" value={myVote} onChange={onMyVoteChange} />
+          <SeverityPicker label={myName ? `스터디장 (${myName})` : "스터디장"} value={myVote} onChange={onMyVoteChange} />
           {coReviewers.map((m) => (
-            <SeverityPicker key={m.number} label={m.name} value={votes[m.number]?.severity} readOnly />
+            <SeverityPicker
+              key={m.number}
+              label={`부 스터디장 (${m.name})`}
+              value={votes[m.number]?.severity}
+              readOnly
+            />
           ))}
           <SubRow
-            label="평균 가중치"
+            label="판정 현황"
             value={
               allSubmitted
-                ? `${average!.toFixed(1)}점 → ${willApprove ? "확정" : "반려"}`
-                : `전원 제출 대기 중 (기준 ${CONSENSUS_THRESHOLD}점)`
+                ? `위반 O ${yesCount}/${totalReviewers}명 → ${willApprove ? "확정" : "반려"}`
+                : `전원 제출 대기 중 (기준 위반 O ${CONSENSUS_THRESHOLD}명 이상)`
             }
             valueClassName={allSubmitted ? cn("font-semibold", willApprove ? "text-destructive" : "text-foreground") : undefined}
           />
@@ -237,7 +246,7 @@ function ConsensusSection({
   );
 }
 
-// 위반 수준 4단계를 고르는 컴팩트 필셋. 주 관리자가 다른 부스터디장의
+// 위반 O/X를 고르는 컴팩트 필셋. 스터디장(주 관리자)이 다른 부스터디장의
 // 제출값을 보는 행은 readOnly로 클릭을 막는다 — 그 값은 그 부스터디장
 // 본인의 화면(POST /admin/captures/vote)에서만 바꿀 수 있다. 값이 아직
 // 없으면(미제출) "대기 중"으로 보여준다.
@@ -295,6 +304,8 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
   // (isAdmin이 아닐 때만 값이 옴) — GET /admin/captures 응답에 함께 실려온다.
   const [coReviewers, setCoReviewers] = useState<CoReviewer[]>([]);
   const [myMemberNumber, setMyMemberNumber] = useState<string | null>(null);
+  // 스터디장(주 관리자)일 때만 값이 옴 — "스터디장 (이름)" 라벨에 쓰인다.
+  const [myName, setMyName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [decidingId, setDecidingId] = useState<string | null>(null);
@@ -336,6 +347,7 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
         setItems(data.items || []);
         setCoReviewers(data.coReviewers || []);
         setMyMemberNumber(data.myMemberNumber ?? null);
+        setMyName(data.myName ?? null);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "제보 목록을 불러오지 못했습니다."))
       .finally(() => setLoading(false));
@@ -813,6 +825,7 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
                                         setConsensusEnabled((prev) => ({ ...prev, [item.id]: checked }))
                                       }
                                       myVote={severityLevel[item.id]}
+                                      myName={myName}
                                       onMyVoteChange={(value) =>
                                         setSeverityLevel((prev) => {
                                           const next = { ...prev };
