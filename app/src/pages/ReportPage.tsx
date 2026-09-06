@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -25,9 +26,15 @@ import { cn } from "@/lib/utils";
 const REPORT_CAUTIONS = ["동일 대상자에 대해 20분내로 중복 제보는 불가합니다."];
 
 const REASON_OPTIONS = [
-  { value: "모호한 송출", label: "모호한 송출" },
-  { value: "근거리 송출", label: "근거리 송출" },
-];
+  { value: "격자 기준을 벗어난 근접 화각", label: "격자 기준을 벗어난 근접 화각" },
+  { value: "손 또는 학습자료 확인 불가", label: "손 또는 학습자료 확인 불가" },
+  { value: "전자기기 사용목적 확인 불가", label: "전자기기 사용목적 확인 불가" },
+  { value: "얼굴, 정수리 등 노출", label: "얼굴, 정수리 등 노출" },
+  { value: "과도한 스티커 사용", label: "과도한 스티커 사용" },
+  { value: "기타", label: "기타 (방해 사유 기재)" },
+] as const;
+const REASON_OTHER_VALUE = "기타";
+const REASON_OTHER_MAX_LENGTH = 100;
 
 type ReportMode = "screenshot" | "video";
 type ReportView = "capture" | "notice";
@@ -43,6 +50,10 @@ export function ReportPage() {
   usePullRefreshListener(true, refresh);
   const [nickname, setNickname] = useState("");
   const [reason, setReason] = useState("");
+  // "기타" 선택 시 방해 사유를 직접 입력받는 값 — 제출 시 reason 자체를
+  // 이 텍스트로 대체해서 보낸다(백엔드는 reason을 자유 문자열로만 다뤄
+  // 별도 처리가 필요 없다).
+  const [otherReason, setOtherReason] = useState("");
   // 🔧 [상태 메시지] 대상자를 고르면 그 사람이 [설정]에 등록해둔 상태
   // 메시지(예: "태블릿 : AI 질의용도")를 보여줘 오해로 인한 제보를 줄인다
   // (사용자 요청). null=아직 조회 전, ""=조회했지만 등록된 메시지 없음.
@@ -97,12 +108,18 @@ export function ReportPage() {
       setMessage({ text: "제보 원인을 선택해주세요.", type: "error" });
       return;
     }
+    const isOther = reason === REASON_OTHER_VALUE;
+    if (isOther && !otherReason.trim()) {
+      setMessage({ text: "방해 사유를 입력해주세요.", type: "error" });
+      return;
+    }
+    const finalReason = isOther ? otherReason.trim() : reason;
     setSubmittingMode(mode);
     setMessage(null);
     try {
       await call("/report", {
         method: "POST",
-        body: { nickname, reason, mode },
+        body: { nickname, reason: finalReason, mode },
         tokenInBody: true,
       });
       setMessage({
@@ -114,6 +131,7 @@ export function ReportPage() {
       });
       setNickname("");
       setReason("");
+      setOtherReason("");
       setCooldownRefreshSignal((n) => n + 1);
     } catch (err) {
       const text = err instanceof ApiError ? err.message : "네트워크 오류입니다.";
@@ -225,6 +243,16 @@ export function ReportPage() {
                             ))}
                           </SelectContent>
                         </Select>
+                        {reason === REASON_OTHER_VALUE && (
+                          <Input
+                            value={otherReason}
+                            maxLength={REASON_OTHER_MAX_LENGTH}
+                            placeholder="방해 사유를 입력해 주세요."
+                            disabled={stale}
+                            onChange={(e) => setOtherReason(e.target.value)}
+                            className="w-full pl-3.5 sm:h-12 sm:pl-4.5 sm:text-base"
+                          />
+                        )}
                       </div>
 
                       <div className="grid grid-cols-2 gap-2">
