@@ -286,7 +286,7 @@ export function ReportPage() {
                         {REPORT_CAUTIONS.map((text) => (
                           <li
                             key={text}
-                            className="pl-5 text-micro-lg leading-relaxed text-muted-foreground before:mr-1 before:content-['└'] sm:pl-5.5 sm:text-xs"
+                            className="text-xs leading-relaxed text-muted-foreground before:mr-1 before:content-['·'] sm:text-sm"
                           >
                             {text}
                           </li>

@@ -69,9 +69,13 @@ export function ActiveReportsSection({ refreshSignal }: { refreshSignal?: number
         최근 진행된 제보
       </span>
       {error ? (
-        <SubRow label="목록을 불러오지 못했습니다. 잠시 후 다시 확인해주세요." value="" />
+        <SubRow
+          label="목록을 불러오지 못했습니다. 잠시 후 다시 확인해주세요."
+          value=""
+          labelClassName="text-xs sm:text-sm"
+        />
       ) : active.length === 0 ? (
-        <SubRow label="최근 진행된 제보가 없습니다." value="" />
+        <SubRow label="최근 진행된 제보가 없습니다." value="" labelClassName="text-xs sm:text-sm" />
       ) : (
         <div className="flex flex-col gap-1">
           {active.map((item) => (
@@ -79,6 +83,8 @@ export function ActiveReportsSection({ refreshSignal }: { refreshSignal?: number
               key={item.nickname}
               label={item.nickname}
               value={`${formatRemaining(item.expiresAt - now)} 남음`}
+              labelClassName="text-xs sm:text-sm"
+              valueClassName="text-xs sm:text-sm"
             />
           ))}
         </div>
