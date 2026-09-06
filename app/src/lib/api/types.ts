@@ -753,6 +753,21 @@ export type CaptureReviewItem = {
   votes: Record<string, CaptureVote>;
 };
 
+// "내 화각 점검" 기록 — GET /my-captures가 내려주는 항목. 관리자 목록
+// (CaptureReviewItem)과 달리 벌점/페널티 판정 대상이 아니라 nextOccurrence·
+// votes 등 판정용 필드가 없다.
+export type MyCaptureItem = {
+  id: string;
+  nickname: string;
+  reason: string;
+  mode: "screenshot" | "video";
+  ts: number;
+};
+
+export type MyCapturesResponse = {
+  items: MyCaptureItem[];
+};
+
 export type CapturesListResponse = {
   items: CaptureReviewItem[];
   // 현재 임명된 부스터디장(공동 검토자) 명단 — 0~2명.

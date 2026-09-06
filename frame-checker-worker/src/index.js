@@ -2306,26 +2306,69 @@ async function handleVerify(req, env, origin) {
 
 const REPORT_COOLDOWN_SEC = 20 * 60;
 const COOLDOWN_INDEX_KEY = "cooldownIndex:current";
+// "내 화각 점검" — 제보와 동일한 캡처 메커니즘(스크린샷)을 쓰지만 대상자가
+// 항상 본인이고, 벌점/페널티 판정 대상이 아닌 셀프 확인용이다(사용자 요청).
+// 일반 제보와 쿨다운/노출 목록을 공유하면 서로 간섭하므로 완전히 분리한다.
+const SELF_CHECK_REASON = "본인 화각 점검";
+const SELF_CHECK_COOLDOWN_SEC = 20 * 60;
 
 async function handleReport(req, env, origin) {
-  const { token, nickname, reason, mode } = await req.json();
-  if (!token || !nickname) return json({ error: "필수 항목 누락" }, 400, origin);
-  if (!reason) return json({ error: "상황 설명을 선택해주세요." }, 400, origin);
+  const { token, nickname, reason, mode, selfCheck } = await req.json();
+  if (!token) return json({ error: "필수 항목 누락" }, 400, origin);
 
   const session = await verifySession(token, env.SESSION_SECRET);
   if (!session) return json({ error: "로그인이 만료되었습니다. 다시 로그인해주세요." }, 401, origin);
 
-  // 관리자는 20분 쿨다운을 우회한다 — 같은 대상을 반복 확인해야 하는 경우가 있어서다.
-  const isAdmin = (session.email || "").toLowerCase() === (env.ADMIN_EMAIL || "").toLowerCase();
+  const isSelfCheck = !!selfCheck;
 
-  const trimmedNickname = nickname.slice(0, 50);
-  // 쿨다운은 모드와 무관하게 닉네임 기준으로 공유한다 — 스크린샷 제보 직후
-  // 영상 제보로 우회해 쿨다운을 피하는 것을 막기 위함이다.
-  const cooldownKey = `cooldown:${trimmedNickname}`;
-  if (!isAdmin) {
+  let trimmedNickname;
+  let finalReason;
+  let finalMode;
+  let cooldownKey;
+  let cooldownSec;
+
+  if (isSelfCheck) {
+    // 대상자는 항상 본인 — 프론트가 보낸 nickname을 신뢰하지 않고 서버가
+    // 회원 명단에서 직접 조회해 강제한다(제3자를 지정할 수 없게).
+    try {
+      const accessToken = await getServiceAccountAccessToken(env);
+      const member = await findMemberNumberByEmail(env, accessToken, env.GOOGLE_SHEET_FILE_ID, session.email);
+      if (!member) return json({ error: "데이터 시트 명단에서 계정을 찾을 수 없습니다." }, 403, origin);
+      trimmedNickname = member.name;
+    } catch (err) {
+      return json({ error: "회원 조회 실패: " + err.message }, 500, origin);
+    }
+    finalReason = SELF_CHECK_REASON;
+    finalMode = "screenshot"; // 셀프 확인은 스크린샷만 지원(사용자 확정).
+    cooldownKey = `selfcheck-cooldown:${session.email}`;
+    cooldownSec = SELF_CHECK_COOLDOWN_SEC;
+  } else {
+    if (!nickname) return json({ error: "필수 항목 누락" }, 400, origin);
+    if (!reason) return json({ error: "상황 설명을 선택해주세요." }, 400, origin);
+    trimmedNickname = nickname.slice(0, 50);
+    finalReason = reason.slice(0, 200);
+    finalMode = mode === "video" ? "video" : "screenshot";
+    // 쿨다운은 모드와 무관하게 닉네임 기준으로 공유한다 — 스크린샷 제보 직후
+    // 영상 제보로 우회해 쿨다운을 피하는 것을 막기 위함이다.
+    cooldownKey = `cooldown:${trimmedNickname}`;
+    cooldownSec = REPORT_COOLDOWN_SEC;
+  }
+
+  // 관리자는 일반 제보 20분 쿨다운을 우회한다 — 같은 대상을 반복 확인해야
+  // 하는 경우가 있어서다. 셀프 체크는 관리자 여부와 무관하게 항상 쿨다운을 둔다.
+  const isAdmin = (session.email || "").toLowerCase() === (env.ADMIN_EMAIL || "").toLowerCase();
+  if (isSelfCheck || !isAdmin) {
     const onCooldown = await env.REPORTS_KV.get(cooldownKey);
     if (onCooldown) {
-      return json({ error: "같은 대상은 20분 내에 다시 제보할 수 없습니다." }, 429, origin);
+      return json(
+        {
+          error: isSelfCheck
+            ? "내 화각 점검은 20분 내에 다시 실행할 수 없습니다."
+            : "같은 대상은 20분 내에 다시 제보할 수 없습니다.",
+        },
+        429,
+        origin
+      );
     }
   }
 
@@ -2334,32 +2377,34 @@ async function handleReport(req, env, origin) {
   const entry = {
     id,
     nickname: trimmedNickname,
-    reason: (reason || "").slice(0, 200),
-    mode: mode === "video" ? "video" : "screenshot",
+    reason: finalReason,
+    mode: finalMode,
     reporterEmail: session.email,
     ts,
+    selfCheck: isSelfCheck,
   };
   await env.REPORTS_KV.put(`report:${id}`, JSON.stringify(entry), {
     expirationTtl: 60 * 60 * 6,
   });
-  // 관리자는 재제보 차단(위 429)만 우회할 뿐, "최근 진행된 제보" 목록에는
-  // 관리자 제보도 똑같이 보여야 한다 — 그러지 않으면 실제로는 봇에 정상
-  // 접수됐는데도 참여자들에게 "제보가 없다"고 잘못 보인다(사용자 지적).
-  // 목록 화면(handleListActiveCooldowns)이 "언제 끝나는지"를 계산할 수
-  // 있도록 ts도 함께 저장한다 — 값 자체(TTL 만료 여부)로 쿨다운 중인지는
-  // 이미 판별되므로, ts는 순수하게 표시용 부가 정보다.
-  const cooldownValue = { nickname: trimmedNickname, ts };
-  await env.REPORTS_KV.put(cooldownKey, JSON.stringify(cooldownValue), {
-    expirationTtl: REPORT_COOLDOWN_SEC,
+  await env.REPORTS_KV.put(cooldownKey, JSON.stringify({ nickname: trimmedNickname, ts }), {
+    expirationTtl: cooldownSec,
   });
-  // "진행 중인 제보" 목록(handleListActiveCooldowns)이 매 조회마다 KV를
-  // 다시 훑지 않도록, 이 등록 시점에 공유 인덱스에도 함께 추가해둔다.
-  await _appendToLiveIndex(
-    env,
-    COOLDOWN_INDEX_KEY,
-    { nickname: trimmedNickname, expiresAt: ts + REPORT_COOLDOWN_SEC * 1000 },
-    REPORT_COOLDOWN_SEC
-  );
+  // 셀프 체크는 "최근 진행된 제보"(전체 참여자에게 공개되는 목록)에 노출되면
+  // 안 되므로 공유 인덱스에 추가하지 않는다 — 일반 제보만 여기 들어간다.
+  if (!isSelfCheck) {
+    // 관리자는 재제보 차단(위 429)만 우회할 뿐, "최근 진행된 제보" 목록에는
+    // 관리자 제보도 똑같이 보여야 한다 — 그러지 않으면 실제로는 봇에 정상
+    // 접수됐는데도 참여자들에게 "제보가 없다"고 잘못 보인다(사용자 지적).
+    // 목록 화면(handleListActiveCooldowns)이 "언제 끝나는지"를 계산할 수
+    // 있도록 ts도 함께 저장한다 — 값 자체(TTL 만료 여부)로 쿨다운 중인지는
+    // 이미 판별되므로, ts는 순수하게 표시용 부가 정보다.
+    await _appendToLiveIndex(
+      env,
+      COOLDOWN_INDEX_KEY,
+      { nickname: trimmedNickname, expiresAt: ts + cooldownSec * 1000 },
+      cooldownSec
+    );
+  }
 
   // 봇에 즉시 푸시해서 폴링 지연 없이 바로 캡처를 시작시킨다. proxyToBotDashboard는
   // 실패(터널이 그 순간 끊겨 있는 등) 시 예외 없이 null만 반환하므로 여기서
@@ -2765,8 +2810,9 @@ async function handleAdminCapturesList(req, env, origin) {
   const now = Date.now();
   const visible = (data.items || []).filter(
     (item) =>
-      item.reviewStatus === "pending" ||
-      (item.decidedAt && now - item.decidedAt < RECENT_DECISION_WINDOW_MS)
+      !item.selfCheck && // "내 화각 점검"은 벌점/페널티 판정 대상이 아니므로 관리자 목록에서 제외(사용자 요청).
+      (item.reviewStatus === "pending" ||
+        (item.decidedAt && now - item.decidedAt < RECENT_DECISION_WINDOW_MS))
   );
   const withOccurrence = await attachNextOccurrence(env, visible);
 
@@ -2809,6 +2855,29 @@ async function handleAdminCapturesList(req, env, origin) {
     200,
     origin
   );
+}
+
+// "내 송출 P 제보 확인"(제보 페이지) — 본인이 실행한 "내 화각 점검" 기록만
+// 조회한다. 관리자 목록(handleAdminCapturesList)과 달리 벌점/페널티 판정
+// 대상이 아니라 공동검토자 투표·nextOccurrence 계산이 필요 없어 훨씬
+// 단순하다. reporterEmail이 본인이고 selfCheck인 항목만 남긴다 — nickname이
+// 아니라 reporterEmail로 거르는 이유는 닉네임 변경/동명이인 가능성과 무관하게
+// "누가 실행했는지"가 로그인 계정 기준으로 항상 정확하기 때문이다.
+async function handleMyCaptures(req, env, origin) {
+  const authHeader = req.headers.get("Authorization") || "";
+  const token = authHeader.replace(/^Bearer\s+/i, "");
+  const session = await verifySession(token, env.SESSION_SECRET);
+  if (!session) return json({ error: "로그인이 만료되었습니다. 다시 로그인해주세요." }, 401, origin);
+
+  const data = await proxyToBotDashboard(env, "/captures");
+  if (!data) {
+    return json({ items: [] }, 200, origin);
+  }
+  const myEmail = (session.email || "").toLowerCase();
+  const items = (data.items || []).filter(
+    (item) => item.selfCheck && (item.reporterEmail || "").toLowerCase() === myEmail
+  );
+  return json({ items }, 200, origin);
 }
 
 // 부스터디장(공동 검토자)이 대기 중인 제보 하나에 자신의 위반 수준 판단을
@@ -7212,6 +7281,9 @@ export default {
       }
       if (url.pathname === "/admin/captures" && req.method === "GET") {
         return await handleAdminCapturesList(req, env, origin);
+      }
+      if (url.pathname === "/my-captures" && req.method === "GET") {
+        return await handleMyCaptures(req, env, origin);
       }
       if (url.pathname === "/admin/captures/file" && req.method === "GET") {
         return await handleAdminCaptureFile(req, env, origin, url);

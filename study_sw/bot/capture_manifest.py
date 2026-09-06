@@ -25,7 +25,11 @@ def _save(data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-def record_capture(report_id, nickname, reason, mode, filename, reporter_email):
+# self_check: "내 화각 점검" 여부(사용자 요청) — 대상자가 항상 본인이고
+# 벌점/페널티 판정 대상이 아닌 셀프 확인용 캡처다. 웹(index.js)이 entry에
+# 실어 보낸 selfCheck 플래그를 그대로 저장해, GET /captures 응답에도
+# 실려 나가게 한다(관리자 목록 필터링·본인 조회 라우트 둘 다 이 필드로 구분).
+def record_capture(report_id, nickname, reason, mode, filename, reporter_email, self_check=False):
     entry_id = report_id or str(uuid.uuid4())
     with _manifest_lock:
         data = _load()
@@ -38,6 +42,7 @@ def record_capture(report_id, nickname, reason, mode, filename, reporter_email):
             "reporterEmail": reporter_email,
             "ts": int(time.time() * 1000),
             "reviewStatus": "pending",
+            "selfCheck": bool(self_check),
         }
         _save(data)
     return entry_id

@@ -30,6 +30,7 @@ def _start_capture_for_report(ctx, entry):
     reporter_email = entry.get("reporterEmail", "")
     mode = entry.get("mode", "screenshot")
     report_id = entry.get("id")
+    self_check = bool(entry.get("selfCheck"))
     if not nickname:
         return
 
@@ -53,7 +54,7 @@ def _start_capture_for_report(ctx, entry):
         thread_id,
         target_func,
         (nickname, reason, reporter_email, thread_id),
-        kwargs={"report_id": report_id},
+        kwargs={"report_id": report_id, "self_check": self_check},
     )
     if started:
         ctx.logger.info(f"📩 [웹 제보 수신] [{nickname}] {mode} 캡처를 시작합니다. (사유: {reason})")

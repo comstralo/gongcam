@@ -117,6 +117,7 @@ def tracking_capture(
     manual_interval=None,
     previous_temp_files=None,
     report_id=None,
+    self_check=False,
 ):
 
     grid_rows = GRID_ROWS
@@ -282,7 +283,7 @@ def tracking_capture(
 
                 send_chat_telegram(ctx, ["report", [f"./{filename}", caption_msg]])
                 capture_manifest.record_capture(
-                    report_id, target_name, reason_txt, "screenshot", filename, sender_name
+                    report_id, target_name, reason_txt, "screenshot", filename, sender_name, self_check=self_check
                 )
 
                 return True  # 성공 리턴
@@ -409,7 +410,7 @@ def tracking_capture(
 
 
 # [MAIN] 90초 영상 녹화 및 전송
-def tracking_capture_video(ctx, target_name, reason_txt, sender_name, thread_id, report_id=None):
+def tracking_capture_video(ctx, target_name, reason_txt, sender_name, thread_id, report_id=None, self_check=False):
     FPS = 2
     DURATION_SEC = 90
     TOTAL_FRAMES = FPS * DURATION_SEC
@@ -497,7 +498,7 @@ def tracking_capture_video(ctx, target_name, reason_txt, sender_name, thread_id,
 
         send_chat_telegram(ctx, ["report_video", [f"./{filename}", caption_msg]])
         capture_manifest.record_capture(
-            report_id, target_name, reason_txt, "video", filename, sender_name
+            report_id, target_name, reason_txt, "video", filename, sender_name, self_check=self_check
         )
 
     except Exception as e:

@@ -59,8 +59,12 @@ export function ReportPage() {
   // (사용자 요청). null=아직 조회 전, ""=조회했지만 등록된 메시지 없음.
   const [targetStatusMessage, setTargetStatusMessage] = useState<string | null>(null);
   const [submittingMode, setSubmittingMode] = useState<ReportMode | null>(null);
+  const [submittingSelfCheck, setSubmittingSelfCheck] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: "error" | "ok" } | null>(null);
   const [cooldownRefreshSignal, setCooldownRefreshSignal] = useState(0);
+  // "내 화각 점검"이 새 기록을 남기면 [내 송출 P 제보 확인]이 새로고침
+  // 없이도 바로 보이도록 신호만 넘긴다(ActiveReportsSection의 refreshSignal과 동일 패턴).
+  const [myCapturesRefreshSignal, setMyCapturesRefreshSignal] = useState(0);
 
   const [params, setParams] = useSearchParams();
   // AdminPage와 동일한 이유 — 최초 마운트 시 한 번만 URL에서 초기 탭을 읽고,
@@ -138,6 +142,28 @@ export function ReportPage() {
       setMessage({ text, type: "error" });
     } finally {
       setSubmittingMode(null);
+    }
+  }
+
+  // "내 화각 점검" — 스크린샷 제보와 동일한 캡처 메커니즘이지만 대상자·원인을
+  // 고르지 않는다(대상자는 항상 본인, 원인은 서버가 고정 문구로 채움). 결과는
+  // [송출 P 대상 처리]에 노출되지 않고 [내 송출 P 제보 확인]에서만 확인 가능.
+  async function handleSelfCheck() {
+    setSubmittingSelfCheck(true);
+    setMessage(null);
+    try {
+      await call("/report", {
+        method: "POST",
+        body: { selfCheck: true },
+        tokenInBody: true,
+      });
+      setMessage({ text: "내 화각 점검이 접수되었습니다. 잠시 후 확인됩니다.", type: "ok" });
+      setMyCapturesRefreshSignal((n) => n + 1);
+    } catch (err) {
+      const text = err instanceof ApiError ? err.message : "네트워크 오류입니다.";
+      setMessage({ text, type: "error" });
+    } finally {
+      setSubmittingSelfCheck(false);
     }
   }
 
@@ -255,7 +281,7 @@ export function ReportPage() {
                         )}
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-3 gap-2">
                         <Button
                           className="w-full sm:h-12 sm:text-base"
                           variant="outline"
@@ -271,6 +297,14 @@ export function ReportPage() {
                           onClick={() => handleSubmit("video")}
                         >
                           영상 제보
+                        </Button>
+                        <Button
+                          className="w-full sm:h-12 sm:text-base"
+                          variant="outline"
+                          disabled={submittingSelfCheck || stale}
+                          onClick={handleSelfCheck}
+                        >
+                          내 화각 점검
                         </Button>
                       </div>
                     </SectionCard>
@@ -304,7 +338,7 @@ export function ReportPage() {
               </CardContent>
             </Card>
 
-            <MyOutputPenSection />
+            <MyOutputPenSection refreshSignal={myCapturesRefreshSignal} />
           </>
         )}
       </div>
