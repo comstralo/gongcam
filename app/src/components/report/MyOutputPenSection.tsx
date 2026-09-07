@@ -229,7 +229,7 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
                                       <TintedPill tone="warn">응답 대기 중</TintedPill>
                                     )
                                   ) : (
-                                    <TintedPill tone="muted">내 화각 점검</TintedPill>
+                                    <TintedPill tone="ok">화각 점검</TintedPill>
                                   )}
                                   <Button
                                     variant="outline"
@@ -250,7 +250,7 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
                                   <div className="flex flex-col gap-1.5">
                                     <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
                                       <ImageIcon className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-                                      캡처 내용
+                                      스크린샷 · 영상
                                     </span>
                                     {session?.token ? (
                                       <CapturePreview id={item.id} token={session.token} />
