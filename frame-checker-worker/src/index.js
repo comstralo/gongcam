@@ -616,6 +616,16 @@ async function _appendToLiveIndex(env, indexKey, item, itemTtlSec) {
 // COOLDOWN_INDEX_KEY 안의 특정 항목(id로 식별)에 capturedAt을 채워
 // 갱신한다 — 봇이 실제 캡처를 끝낸 시점을 서버에 알릴 때 쓴다. 이미 TTL로
 // 만료됐거나 애초에 없는 id면 조용히 무시한다(쿨다운 자체는 그대로 유효).
+// 🔧 [촬영 완료 후 20분 재시작] 원래는 접수 시각(startedAt)부터 20분이
+// 지나면 재제보 쿨다운이 풀렸는데, 촬영 소요시간도 그 20분 안에 포함되어
+// 있었다(사용자 지적: 파일이 저장된 시점부터 20분을 새로 세야 함). 이제
+// 캡처 완료 시점(capturedAt)을 새 기준으로 삼아 expiresAt을 재계산하고,
+// 실제 429 차단에 쓰이는 cooldownKey(`cooldown:{nickname}`) KV의 TTL도
+// 그 시점부터 20분으로 다시 설정한다 — 이 인덱스 갱신만으로는 화면 표시
+// (handleListActiveCooldowns)만 늘어나고 실제 차단은 그대로 원래 20분에
+// 풀려버리기 때문이다. cooldownSec은 항목이 이미 알고 있는 만료 기준
+// (expiresAt - startedAt)을 그대로 재사용해, 셀프체크 등 다른 쿨다운
+// 길이가 생겨도 하드코딩 없이 맞물린다.
 async function _markCaptureDoneInLiveIndex(env, indexKey, id, capturedAt) {
   const raw = await env.REPORTS_KV.get(indexKey);
   if (!raw) return;
@@ -627,18 +637,33 @@ async function _markCaptureDoneInLiveIndex(env, indexKey, id, capturedAt) {
   }
   const now = Date.now();
   let changed = false;
-  const alive = items.filter((it) => it.expiresAt > now);
+  let cooldownRestart = null;
+  // 캡처가 예상보다 늦게 끝나 원래 expiresAt을 이미 넘겼을 수 있으므로,
+  // "완료 알림이 도착한" 이 항목만은 만료 필터로 미리 걸러내지 않는다 —
+  // 아래에서 새 expiresAt으로 갱신한 뒤에 함께 살아있는지 다시 판단한다.
+  const alive = items.filter((it) => it.expiresAt > now || it.id === id);
   for (const it of alive) {
     if (it.id === id && !it.capturedAt) {
       it.capturedAt = capturedAt;
+      const cooldownSec = Math.round((it.expiresAt - it.startedAt) / 1000);
+      it.expiresAt = capturedAt + cooldownSec * 1000;
+      cooldownRestart = { nickname: it.nickname, cooldownSec };
       changed = true;
     }
   }
   if (!changed) return;
-  if (alive.length === 0) return;
-  const maxExpiresAt = Math.max(...alive.map((it) => it.expiresAt));
+  const stillAlive = alive.filter((it) => it.expiresAt > now);
+  if (cooldownRestart) {
+    await env.REPORTS_KV
+      .put(`cooldown:${cooldownRestart.nickname}`, JSON.stringify({ nickname: cooldownRestart.nickname, ts: capturedAt }), {
+        expirationTtl: cooldownRestart.cooldownSec,
+      })
+      .catch(() => {});
+  }
+  if (stillAlive.length === 0) return;
+  const maxExpiresAt = Math.max(...stillAlive.map((it) => it.expiresAt));
   const ttlSec = Math.max(60, Math.ceil((maxExpiresAt - now) / 1000) + 300);
-  await env.REPORTS_KV.put(indexKey, JSON.stringify(alive), { expirationTtl: ttlSec }).catch(() => {});
+  await env.REPORTS_KV.put(indexKey, JSON.stringify(stillAlive), { expirationTtl: ttlSec }).catch(() => {});
 }
 
 async function _readLiveIndex(env, indexKey) {
