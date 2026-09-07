@@ -2500,6 +2500,25 @@ async function handleReport(req, env, origin) {
     if (!nickname) return json({ error: "필수 항목 누락" }, 400, origin);
     if (!reason) return json({ error: "상황 설명을 선택해주세요." }, 400, origin);
     trimmedNickname = nickname.slice(0, 50);
+    // 🔧 [버그 방어] 웹 UI는 실시간 참여자 명단에서 고르는 드롭다운이라
+    // 정상 사용 경로에서는 오타가 날 수 없지만, /report는 로그인 세션만
+    // 있으면 누구나 직접 호출 가능한 일반 HTTP 엔드포인트다 — UI를 거치지
+    // 않고 임의의 nickname으로 이 엔드포인트를 직접 두드리면 검증 없이
+    // 접수돼, 봇이 화면에서 존재하지도 않는 이름을 찾느라 캡처 사이클(특히
+    // 영상 모드는 더 오래 걸림)을 낭비하고 관리자 검토 목록에는 최종
+    // 승인 단계(applyOutputPenalty)에서나 발각되는 처리 불가 항목이
+    // 쌓였다. listAllMembers는 60초 캐시가 있어 매 제보마다 새로 시트를
+    // 읽지 않으므로, 접수 시점에 앞당겨 확인해도 API 호출 부담이 늘지
+    // 않는다.
+    try {
+      const accessToken = await getServiceAccountAccessToken(env);
+      const members = await listAllMembers(env, accessToken, env.GOOGLE_SHEET_FILE_ID);
+      if (!members.some((m) => m.name === trimmedNickname)) {
+        return json({ error: "회원 명단에서 해당 참여자를 찾을 수 없습니다." }, 400, origin);
+      }
+    } catch (err) {
+      return json({ error: "회원 조회 실패: " + err.message }, 500, origin);
+    }
     finalReason = reason.slice(0, 200);
     finalMode = mode === "video" ? "video" : "screenshot";
     // 쿨다운은 모드와 무관하게 닉네임 기준으로 공유한다 — 스크린샷 제보 직후
