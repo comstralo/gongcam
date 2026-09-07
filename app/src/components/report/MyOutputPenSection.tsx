@@ -77,13 +77,21 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [respondingId, setRespondingId] = useState<string | null>(null);
 
+  // 🔧 [버그 대응] 두 요청(/my-captures, /my-output-pen)을 동시에 보내다
+  // 보니, 순간적인 네트워크 요동(브라우저 fetch 자체가 거부되는 "Failed to
+  // fetch")으로 그중 하나만 실패해도 Promise.all이 전체를 reject해 목록이
+  // 아예 안 뜨는 경우가 가끔 있었다(사용자 확인: 가끔 뜨고 새로고침하면
+  // 정상). 서버/코드 로직 문제가 아니라 일시적 계층 실패라 짧은 지연 후
+  // 1회 자동 재시도로 대부분의 경우를 사용자가 체감하지 않게 흡수한다.
+  function loadOnce() {
+    return Promise.all([call<MyCapturesResponse>("/my-captures"), call<MyOutputPenResponse>("/my-output-pen")]);
+  }
+
   function load() {
     setLoading(true);
     setError(null);
-    Promise.all([
-      call<MyCapturesResponse>("/my-captures"),
-      call<MyOutputPenResponse>("/my-output-pen"),
-    ])
+    loadOnce()
+      .catch(() => new Promise((resolve) => setTimeout(resolve, 800)).then(loadOnce))
       .then(([captures, outputPen]) => {
         setSelfCheckItems(captures.items || []);
         setReceivedItems(outputPen.items || []);
