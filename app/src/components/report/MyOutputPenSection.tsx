@@ -388,7 +388,9 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
                                           value={
                                             received!.penalty && received!.penalty.deductedMinutes > 0
                                               ? `-${received!.penalty.deductedMinutes}분`
-                                              : "대상자 응답 대기 중"
+                                              : received!.targetResponseAuto
+                                                ? "최대 90분"
+                                                : "대상자 응답 대기 중"
                                           }
                                           valueClassName="text-destructive"
                                         />
