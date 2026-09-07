@@ -172,7 +172,13 @@ function groupByDay(items: MergedItem[]) {
     .map(([dateKey, groupItems]) => ({ dateKey, items: groupItems }));
 }
 
-export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }) {
+export function MyOutputPenSection({
+  refreshSignal,
+  visible = true,
+}: {
+  refreshSignal?: number;
+  visible?: boolean;
+}) {
   const { call } = useApi();
   const { session } = useAuth();
 
@@ -217,7 +223,16 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
   }
 
   useEffect(load, [cycleFileId]); // eslint-disable-line react-hooks/exhaustive-deps
-  useRefreshOnVisible(true, load);
+  // 🔧 [버그 수정] 원래는 visible 자리에 상수 true를 그대로 넘겼다 —
+  // useRefreshOnVisible은 false→true로 바뀌는 전환에만 반응하는데, 인자가
+  // 항상 true로 고정되어 있으면 최초 마운트 직후로 절대 다시 바뀌지 않아
+  // 이 훅이 두 번 다시 트리거될 수 없었다. ReportPage가 App.tsx로부터
+  // 실제 페이지 가시성(다른 탭으로 이동했다 돌아오는 것)을 받지 못해
+  // 생긴 문제 — App.tsx가 이제 실제 visible을 내려주므로 그대로 이어받는다.
+  // 참여자가 본인 위반 처리 현황 화면을 잠깐 벗어났다 돌아왔을 때, 그
+  // 사이 관리자가 처리한 최신 상태가 자동으로 반영되게 하는 게 원래 이
+  // 훅의 목적이었다.
+  useRefreshOnVisible(visible, load);
   useEffect(() => {
     if (refreshSignal) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps

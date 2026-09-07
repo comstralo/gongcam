@@ -91,7 +91,7 @@ function normalizeView(raw: string | null): ReportView {
   return "capture";
 }
 
-export function ReportPage() {
+export function ReportPage({ visible = true }: { visible?: boolean }) {
   const { call } = useApi();
   const { isAdmin, session } = useAuth();
   const { members: allMembers, stale, hint, refresh } = useRosterPolling();
@@ -432,7 +432,7 @@ export function ReportPage() {
               </CardContent>
             </Card>
 
-            <MyOutputPenSection refreshSignal={myCapturesRefreshSignal} />
+            <MyOutputPenSection refreshSignal={myCapturesRefreshSignal} visible={visible} />
           </>
         )}
       </div>
