@@ -1,22 +1,22 @@
 # 제보 기능 구조 지도 (WEB_REPORT.md)
 
 > 이 문서는 웹 서비스(`app/`, Cloudflare Worker `frame-checker-worker/`)의 **제보**
-> 기능(하단 내비게이션의 "/report" 경로, "송출 P 제보"/"PUSH 알림 전송" 두 탭)을
+> 기능(하단 내비게이션의 "/report" 경로, "화각 불량 제보"/"PUSH 알림 전송" 두 탭)을
 > 프론트~백엔드~KV까지 실제 코드를 읽어 조사한 결과입니다. `docs/WEB_DASHBOARD.md`와
 > 같은 목적·형식으로 작성했으며, 구현 명령을 내릴 때 이 문서를 참조점으로 삼습니다.
 > 코드가 바뀌면 이 문서도 함께 갱신해야 합니다.
 >
-> 조사 시점: 2026-09-01. 대상 커밋 기준 `app/src/pages/ReportPage.tsx`,
-> `app/src/components/report/*`, `app/src/hooks/useRosterPolling.ts`,
-> `frame-checker-worker/src/index.js`.
+> 조사 시점: 2026-09-08(당사자 응답 시스템·촬영 진행 카운트다운 반영). 대상 커밋 기준
+> `app/src/pages/ReportPage.tsx`, `app/src/components/report/*`,
+> `app/src/hooks/useRosterPolling.ts`, `frame-checker-worker/src/index.js`.
 
 ## 1. 범위 정의 — "제보" 탭이란
 
 `TabBar.tsx`가 `/report`에 매핑하는 라벨이 "제보"이며, 실제로는 `ReportPage` 하나가
 URL 쿼리 `?tab=`으로 관리하는 두 하위 탭을 담고 있다(기본값 "capture"):
 
-- **송출 P 제보**(`view=capture`, 기본) — 화각 이탈/근거리 송출 등을 스크린샷·영상으로
-  제보하는 화면. 실제 페널티(§6)로 이어지는 시작점.
+- **화각 불량 제보**(`view=capture`, 기본. 예전 이름 "송출 P 제보") — 화각 이탈/근거리
+  송출 등을 스크린샷·영상으로 제보하는 화면. 실제 페널티(§6)로 이어지는 시작점.
 - **PUSH 알림 전송**(`view=notice`) — 관리자 승인 절차 없이 로그인한 누구나 다른
   참여자에게 짧은 문구(현재는 "타이머 멈춤" 하나)를 웹 푸시로 즉시 보내는 화면.
   실제 시트를 건드리지 않는 순수 알림 기능으로, 제보와는 무관하지만 같은 메뉴에
@@ -25,9 +25,14 @@ URL 쿼리 `?tab=`으로 관리하는 두 하위 탭을 담고 있다(기본값 
 두 탭 모두 로그인만 되어 있으면(관리자 여부 무관) 누구나 쓸 수 있다 — 관리자는 각
 탭의 쿨다운(20분/10분)만 우회한다.
 
-**포함되지 않는 것(별도 문서 예정)**: 관리자가 제보 캡처를 승인/반려하는 화면
-(`AdminPage`의 "제보 심사" — `PenaltyCandidateList`, `ReportReviewList` 등), 로컬
-봇(`study_manager_260418.py`)의 캡처 로직 자체(`docs/HELPERBOT.md` 참고). 다만
+**"화각 불량 제보" 탭 안의 별도 섹션 — 내 송출 P 제보 확인**: `MyOutputPenSection`
+(§3.4)이 제보 폼 아래에 함께 렌더링된다. "내 화각 점검"(본인이 셀프로 찍은 기록)과
+"받은 제보"(자신이 대상으로 지목된 일반 제보)를 한 화면에서 보여주고, 대상자 본인이
+"위반인정"/"이의제기"를 제출할 수 있는 유일한 화면이다.
+
+**포함되지 않는 것(별도 문서 참고)**: 관리자가 제보 캡처를 승인/반려하는 화면
+(`AdminPage`의 "송출 P 대상 처리" — `ReportReviewList` 등, `docs/WEB_ADMIN.md` 참고),
+로컬 봇(`study_manager_260418.py`)의 캡처 로직 자체(`docs/HELPERBOT.md` 참고). 다만
 §6에서 제보 제출 이후 실제로 페널티가 시트에 반영되기까지의 백엔드 흐름은 "제보"
 기능을 이해하는 데 필수적이라 함께 다룬다.
 
@@ -39,12 +44,18 @@ URL 쿼리 `?tab=`으로 관리하는 두 하위 탭을 담고 있다(기본값 
 ReportPage (app/src/pages/ReportPage.tsx)
 ├─ useRosterPolling (hooks/useRosterPolling.ts) — 15초 폴링, 두 탭이 공유
 ├─ Tabs: "capture"(기본) | "notice"  — URL 쿼리(tab)와 동기화, 최초 마운트 이후 로컬 state
-├─ [capture] "송출 P 제보"
+├─ [capture] "화각 불량 제보"
 │   ├─ 대상자 Select (members, 실시간 접속 명단)
-│   ├─ 원인 Select (REASON_OPTIONS: "모호한 송출" | "근거리 송출" — 하드코딩)
+│   ├─ 원인 Select (REASON_OPTIONS: 고정 5개 + "기타(직접 기재)" — §3.2 참고)
 │   ├─ "스크린샷 제보" / "영상 제보" 버튼 → POST /report
+│   ├─ "내 화각 점검" 버튼 → POST /report ({selfCheck: true}, 본인 대상 셀프 캡처)
 │   ├─ ActiveReportsSection (components/report/ActiveReportsSection.tsx)
-│   │   └─ GET /report-cooldowns, 15초 폴링 + 1초 카운트다운
+│   │   └─ GET /report-cooldowns, 15초 폴링 + 1초 카운트다운 (§3.3)
+│   ├─ MyOutputPenSection (components/report/MyOutputPenSection.tsx) — §3.4
+│   │   ├─ CycleSwitcher — 3주 사이클 토글(현재 진행 중 + 지난 주차)
+│   │   ├─ GET /my-captures, GET /my-output-pen (?cycle= 선택)
+│   │   ├─ "위반인정"/"이의제기" 제출 → POST /captures/target-respond
+│   │   └─ "내 화각 점검" 삭제 → POST /my-captures/delete
 │   └─ 주의사항 InfoCard (REPORT_CAUTIONS 배열)
 └─ [notice] "PUSH 알림 전송"
     └─ SimpleNoticeSection (components/report/SimpleNoticeSection.tsx)
@@ -62,7 +73,7 @@ ReportPage (app/src/pages/ReportPage.tsx)
 
 ---
 
-## 3. "송출 P 제보" 탭 상세
+## 3. "화각 불량 제보" 탭 상세
 
 ### 3.1 실시간 접속 명단 (`useRosterPolling` + `ParticipantsRoster` Durable Object)
 
@@ -87,16 +98,31 @@ ReportPage (app/src/pages/ReportPage.tsx)
 
 ### 3.2 제보 제출 (`POST /report` → `handleReport`)
 
-1. `{token, nickname, reason, mode}` 필수(토큰은 body에 실어 보낸다 — `tokenInBody:
-   true`, 이 엔드포인트만 `Authorization` 헤더 대신 body 토큰을 쓰는 예외적
-   패턴이니 유의).
+1. `{token, nickname, reason, mode, selfCheck}` — 토큰은 body에 실어 보낸다
+   (`tokenInBody: true`, 이 엔드포인트만 `Authorization` 헤더 대신 body 토큰을 쓰는
+   예외적 패턴이니 유의). `selfCheck: true`면 "내 화각 점검"(§3.4) — 대상자를
+   항상 본인으로 서버가 강제하고, 모드도 스크린샷으로 고정한다.
+   **사유(`reason`)는 프론트 `REASON_OPTIONS`(5개 고정 문구 + "기타") 중 하나** —
+   "기타"를 고르면 그 라벨 자체는 서버로 전송되지 않고 참여자가 입력한 자유
+   텍스트로 완전히 대체된다(서버는 200자로만 자르고 그대로 저장, 별도 검증 없음).
+   즉 `reason` 문자열만으로는 "기타(자유기재)"였는지 구분할 표식이 없다 —
+   `MyOutputPenSection`(§3.4)이 고정 5개 목록에 없는 값을 "기타(자유기재)"로
+   간주해 "기타 (관리자 문의)"로 대신 표시하는 이유다.
 2. **20분 쿨다운**(`REPORT_COOLDOWN_SEC = 20*60`): 같은 닉네임(`cooldown:{nickname}`
    KV 키, TTL 20분)에 이미 진행 중인 제보가 있으면 429. **스크린샷/영상 모드와
    무관하게 닉네임 기준으로 공유** — 모드를 바꿔 우회하지 못하게 막는다. 관리자
-   (`session.email === ADMIN_EMAIL`)는 이 쿨다운을 우회한다.
+   (`session.email === ADMIN_EMAIL`)는 이 쿨다운(429 차단)을 우회하지만, **같은
+   대상에게 짧은 간격으로 연달아 제보하면 예전엔 첫 캡처가 아직 진행 중일 때
+   두 번째가 조용히 무시됐다**(봇의 `thread_id`가 닉네임 기준으로 공유돼 중복
+   실행을 막는 구조였기 때문) — 지금은 관리자 제보에 한해 `entry.isAdmin` 플래그를
+   봇에 함께 전달해, 봇이 `report_id`를 섞어 매 요청마다 다른 `thread_id`를
+   만들도록 고쳤다(`docs/HELPERBOT.md` §5 참고). 일반 제보는 20분 쿨다운으로
+   이미 중복이 걸러지므로 기존 방식 그대로다.
 3. `report:{uuid}` KV(6시간 TTL)에 제보 원본 저장, 쿨다운 키 기록, 그리고
    `_appendToLiveIndex(COOLDOWN_INDEX_KEY, ...)`로 "진행 중인 제보" 목록용 공유
-   인덱스에도 즉시 반영.
+   인덱스에도 즉시 반영. 이 인덱스 항목에는 `id`/`mode`/`startedAt`/
+   `capturedAt: null`도 함께 담긴다 — §3.3의 촬영 진행 카운트다운과 20분
+   쿨다운 재시작에 쓰인다.
 4. **봇에게 즉시 통지**: `proxyToBotDashboard(env, "/reports/new", POST)`로 로컬
    봇의 상태 서버(Cloudflare Tunnel 경유)에 바로 알린다. 이건 지연 없이 캡처를
    시작시키기 위한 최적 경로일 뿐 — 실패해도(봇이 그 순간 꺼져 있어도) 예외를
@@ -112,10 +138,78 @@ ReportPage (app/src/pages/ReportPage.tsx)
 `GET /report-cooldowns` → `handleListActiveCooldowns`가 `_readLiveIndex
 (COOLDOWN_INDEX_KEY)`(KV.list() 없이 인덱스 배열 하나만 읽는 최적화, §7 참고)를
 만료 임박순(`expiresAt` 오름차순)으로 반환. 15초 폴링 + 1초 카운트다운 타이머로
-"몇 분 몇 초 남음"을 실시간 표시한다 — 이미 서버가 429로 중복 제보를 막지만, 누르기
-전에 "이미 접수됐구나"를 보여줘 헛수고를 줄이는 목적. 관리자가 쿨다운을 우회해
-제보해도(§3.2) 이 목록에는 똑같이 뜬다 — 그러지 않으면 참여자 입장에서 "방금 분명
-제보됐는데 목록엔 없다"는 혼란이 생기기 때문(코드 주석에 명시된 의도적 설계).
+표시하되, **두 단계로 나뉜다**:
+
+1. **촬영 진행 중** — 봇이 아직 캡처를 끝내지 못했으면(`capturedAt: null`)
+   "진행 중 (MM:SS 남음)"으로, 모드별 예상 소요시간(`EXPECTED_CAPTURE_SEC`:
+   스크린샷 150초, 영상 180초 — 실측 기준, `docs/HELPERBOT.md` §7 참고) 기준
+   카운트다운을 보여준다. 실제로 봇이 얼마나 걸리는지와 무관하게 클라이언트가
+   `startedAt + 예상초`로 자체 계산하는 값이라, 캡처가 예상보다 늦어지면 0에서
+   멈춰 있다가 완료 알림이 오면 다음 단계로 넘어간다.
+2. **중복접수 방지** — 봇이 `POST /reports/capture-done`(§5, `handleReportCaptureDone`)
+   으로 캡처 완료를 알리면 그 시점부터 새로 20분을 세어 "중복접수 방지 (MM:SS
+   남음)"으로 전환된다. **20분 쿨다운은 이제 제보 접수 시각이 아니라 캡처가
+   실제로 끝난 시각부터 시작한다** — 촬영 소요시간이 20분 안에 포함되지 않게
+   바뀐 것이라, 총 재제보 대기시간은 예전보다 촬영 시간만큼 더 길어진다.
+   `_markCaptureDoneInLiveIndex`가 `expiresAt`(화면 표시용 인덱스)과
+   `cooldown:{nickname}` KV의 TTL(실제 429 차단 기준) 둘 다 이 시점 기준으로
+   재계산한다.
+
+이미 서버가 429로 중복 제보를 막지만, 누르기 전에 "이미 접수됐구나"를 보여줘
+헛수고를 줄이는 목적은 그대로다. 관리자가 쿨다운을 우회해 제보해도(§3.2) 이
+목록에는 똑같이 뜬다 — 그러지 않으면 참여자 입장에서 "방금 분명 제보됐는데
+목록엔 없다"는 혼란이 생기기 때문(코드 주석에 명시된 의도적 설계).
+
+> ⚠️ **동시 쓰기 레이스**: `_appendToLiveIndex`/`_markCaptureDoneInLiveIndex`는
+> 인덱스 배열 전체를 get→수정→put하는 구조라, 두 제보(또는 제보 접수와 다른 건의
+> 캡처 완료)가 몇 초 간격으로 겹치면 나중 put이 앞선 변경을 통째로 덮어써 항목이
+> 사라지는 사고가 실제로 있었다. 지금은 put 직전에 원본을 다시 읽어 그 사이
+> 값이 바뀌었으면 처음부터 재시도하는 CAS 유사 방식으로 고쳐져 있다(§7 참고).
+
+### 3.4 "내 송출 P 제보 확인" (`MyOutputPenSection`) — 당사자 응답 시스템
+
+제보 폼 하단에 함께 렌더링되는 별도 섹션. "내 화각 점검"(본인이 셀프로 찍은 기록,
+`GET /my-captures`)과 "받은 제보"(자신이 대상으로 지목된 일반 제보,
+`GET /my-output-pen`)를 요일별 아코디언으로 합쳐 보여준다. 두 API 모두 상단
+`CycleSwitcher`로 고른 사이클(`?cycle=` 쿼리, 없으면 현재 진행 중인 주)에 맞춰
+그 주(월~일, KST) 데이터를 조회한다 — `docs/WEB_DASHBOARD.md` §6의 사이클 토글
+패턴을 그대로 재사용한 것이다.
+
+- **당사자 응답**: "받은 제보" 항목마다 "위반인정"/"이의제기" 버튼이 있어, 대상자
+  본인이 직접 소명 방향을 정할 수 있다(`POST /captures/target-respond`). 제출
+  후에도 버튼은 사라지지 않고 비활성화된 채로 남는다(어떤 응답을 냈는지 계속
+  보이도록). 서버는 이미 응답했거나 관리자가 이미 처리를 끝낸 건에 재응답이
+  오면 409로 거부한다.
+- **90분 자동 위반인정**: 접수 후 90분 안에 응답이 없으면 시스템이 자동으로
+  "위반인정"으로 확정한다(`TARGET_RESPONSE_TIMEOUT_MS`, `applyAutoRecognitionForExpired`
+  — 별도 크론 없이 `GET /admin/captures`/`GET /my-output-pen` 조회 시점마다
+  지연 평가). 이때 `targetResponseAuto: true`가 함께 기록되어, 본인이 직접 누른
+  것과 구분해 "시한 (90분) 초과로 위반인정 자동 제출 (검토 중)"으로 다르게
+  표시한다.
+- **처리현황**: 대상자 응답과 관리자 최종 처리(승인/반려/유예)를 조합해 6가지
+  문구 중 하나를 보여준다 — "이의제기 제출 (검토 중)", "위반인정 제출 (검토 중)",
+  "시한 (90분) 초과로 위반인정 자동 제출 (검토 중)", "이의제기 승인 (반려)",
+  "이의제기 미승인 (확정)", "위반인정 승인 (확정)", "위반인정 미승인 (반려)".
+  "이의제기/위반인정 승인·미승인"이라는 값이 서버에 별도로 저장되지는 않고,
+  최종 `reviewStatus`(승인·유예=확정, 반려·반려_인정=반려)로부터 프론트가 매번
+  역산한다 — 관리자는 대상자 응답과 무관하게 4가지 결정 중 자유롭게 고를 수
+  있어(`docs/WEB_ADMIN.md` §3.1의 `CAPTURE_DECISIONS`), 위반인정을 눌러도
+  관리자가 검토 후 반려할 수 있다.
+- **학습시간 차감**(예전 이름 "시간 차감"): "응답일시"(대상자가 응답한 시각,
+  없으면 "대상자 응답 대기 중")와 "예상차감"을 함께 보여준다. "예상차감"은
+  관리자가 실제 "적용" 버튼을 눌러 확정하기 전에도 항상 `-HH:MM` 형식으로
+  표시된다 — 접수 시각(`ts`)부터 응답 시각(`targetRespondedAt`)까지의 경과에서
+  20분 유예(`TIME_DEDUCT_GRACE_MINUTES`)를 뺀 초과분을 프론트가 미리 계산한
+  값이며(응답 전이거나 20분 이하면 `-00:00`), 실제 시트 반영은 여전히 관리자가
+  "적용" 버튼을 눌렀을 때 `applyTimeDeduction`이 계산하는 확정값(발신·회신
+  시각 기준, §6.5)을 따른다 — 둘의 계산 기준(응답 시각 vs 관리자 입력 시각)이
+  달라 미세하게 다를 수 있다.
+- **제보정보**(예전 이름 "제보 정보"): "사유" 값이 빨간색으로 강조되고, 고정
+  5개 목록(§3.2)에 없는 값이면 원문 대신 "기타 (관리자 문의)"로 표시한다 —
+  다른 참여자가 자유 기재한 임의 문구를 그대로 노출하지 않기 위함.
+- **내 화각 점검 삭제**: 본인이 찍은 셀프 체크 기록은 `POST /my-captures/delete`로
+  직접 삭제할 수 있다(벌점/페널티 판정 대상이 아니므로 시트 되돌림 없이 봇
+  manifest 기록만 지움).
 
 ---
 
@@ -163,18 +257,23 @@ ReportPage (app/src/pages/ReportPage.tsx)
 | PUT | `/participants` | `handlePutParticipants` | 봇 전용(`X-Bot-Secret`) |
 | POST | `/report` | `handleReport` | 토큰을 body로 받음(`tokenInBody`) |
 | GET | `/report-cooldowns` | `handleListActiveCooldowns` | "최근 진행된 제보" |
+| POST | `/reports/capture-done` | `handleReportCaptureDone` | 봇 전용(`X-Bot-Secret`). 캡처 완료 시점부터 20분 쿨다운 재시작(§3.3) |
 | GET | `/reports` | `handleListReports` | 봇 전용, 읽으면서 즉시 삭제(소비 큐) |
+| GET | `/my-captures` | `handleMyCaptures` | 내 화각 점검 목록(`?cycle=` 지원) |
+| POST | `/my-captures/delete` | `handleMyCaptureDelete` | 본인 화각 점검 기록 삭제 |
+| GET | `/my-output-pen` | `handleMyOutputPen` | 받은 제보 목록(`?cycle=` 지원) |
+| POST | `/captures/target-respond` | `handleCaptureTargetRespond` | 당사자 "위반인정"/"이의제기" 제출 |
 | POST | `/push/send-to-member` | `handlePushSendToMember` | |
 | GET | `/push/subscription-status` | `handlePushSubscriptionStatus` | 전 회원 구독 여부 배치 조회 |
 | GET | `/push/recent-notices` | `handleListRecentNotices` | "최근 전송된 알림" |
 
-이 문서 범위 밖이지만 §6에서 함께 다루는 관리자 전용 라우트(참고용):
+이 문서 범위 밖이지만 §6에서 함께 다루는 관리자 전용 라우트(상세는 `docs/WEB_ADMIN.md`):
 
 | 메서드 | 경로 | 핸들러 | 비고 |
 |---|---|---|---|
-| GET | `/admin/captures` | `handleAdminCapturesList` | 봇의 `/captures`를 프록시 + 최근 24h 결정만 필터 |
+| GET | `/admin/captures` | `handleAdminCapturesList` | 봇의 `/captures`를 프록시(`?cycle=` 지원, 없으면 대기+최근 24h 결정만 필터) |
 | GET | `/admin/captures/file` | `handleAdminCaptureFile` | 스크린샷/영상 원본. 로그인만 되어 있으면 열람 가능(ID 추측 불가 전제) |
-| POST | `/admin/captures/decide` | `handleAdminCaptureDecide` | 승인 시 `applyOutputPenalty` 호출 |
+| POST | `/admin/captures/decide` | `handleAdminCaptureDecide` | 4가지 결정(승인/반려_인정/유예/반려) 중 승인·반려_인정·유예 시 `applyOutputPenalty`+`applyReportMerit` 호출 |
 | POST | `/admin/captures/cancel-penalty` | `handleAdminCaptureCancel` | 오적용된 슬롯 되돌림 |
 | POST | `/admin/captures/delete` | `handleAdminCaptureDelete` | 캡처 기록 완전 삭제(+적용된 페널티면 함께 취소) |
 
@@ -244,7 +343,10 @@ ReportPage (app/src/pages/ReportPage.tsx)
 | 타입 | 필드 | 비고 |
 |---|---|---|
 | `ParticipantsResponse` | `members: string[]`, `stale: boolean` | `/participants` |
-| `ActiveCooldownItem` / `ReportCooldownsResponse` | `nickname`, `expiresAt` / `items[]` | `/report-cooldowns` |
+| `ActiveCooldownItem` / `ReportCooldownsResponse` | `nickname`, `mode`, `startedAt`, `capturedAt`, `expiresAt` / `items[]` | `/report-cooldowns` |
+| `MyOutputPenItem` / `MyOutputPenResponse` | `id`, `reason`, `mode`, `ts`, `reviewStatus`, `targetResponse`, `targetRespondedAt`, `targetResponseAuto`, `nextOccurrence`, `weeklyMinorPenaltyCount`, `penalty`, `merit` / `items[]` | `/my-output-pen` |
+| `MyCaptureItem` / `MyCapturesResponse` | `id`, `ts`, ... / `items[]` | `/my-captures` |
+| `TargetRespondResponse` | `ok: true` | `/captures/target-respond` |
 | `PushSubscriptionStatusItem` / `...Response` | `name`, `subscribed` / `items[]` | `/push/subscription-status` |
 | `PushSendToMemberResponse` | `ok: true` | `/push/send-to-member` |
 | `RecentNoticeItem` / `RecentNoticesResponse` | `nickname`, `message`, `senderName`, `ts` / `items[]` | `/push/recent-notices` |
@@ -282,11 +384,16 @@ ReportPage (app/src/pages/ReportPage.tsx)
 
 ## 10. 관련 문서
 
+- `docs/WEB_ADMIN.md` §3.1 "송출 P 대상 처리" — 관리자가 이 문서의 §3.2/§3.4에서
+  다룬 제보를 승인/반려/유예하는 화면. `CAPTURE_DECISIONS`(4가지 결정), 당사자
+  응답과 연동된 90분 타임아웃·"다른 관리자 의견 반영" 게이팅, 3주 사이클 토글이
+  §3.4와 같은 백엔드 필드(`targetResponse` 등)를 공유한다.
 - `docs/WEB_DASHBOARD.md` — 총 페널티(§9.1)/상점 차감(§9.3) 계산이 여기서
-  기록한 F~K 슬롯을 그대로 읽어간다. 두 문서는 "데이터" 시트의 같은 열 구간을
-  서로 다른 방향(쓰기/읽기)에서 다룬다.
+  기록한 F~K 슬롯을 그대로 읽어간다. §6이 사이클 토글(`CycleSwitcher`)의 원본
+  구현 문서다. 두 문서는 "데이터" 시트의 같은 열 구간을 서로 다른 방향(쓰기/읽기)
+  에서 다룬다.
 - `docs/SHEET_STRUCTURE.md`, `docs/HELPERBOT.md` — 시트 셀 배치, 로컬 봇의
-  캡처·상태 서버 구조.
-- **향후 작성 예정**: 관리자 페이지(제보 심사 UI — `PenaltyCandidateList`,
-  `ReportReviewList`, 예치금 재납 대상자 목록), 설정 페이지(퇴실 프로세스), 푸시
-  구독 관리(기기별 on/off, `usePushSubscription`).
+  캡처·상태 서버 구조. 봇 쪽 캡처 소요시간(§3.3의 `EXPECTED_CAPTURE_SEC` 실측
+  근거), 텔레그램 캡션 포맷, 스터디룸 입장 로직은 `docs/HELPERBOT.md` 참고.
+- **향후 작성 예정**: 설정 페이지(퇴실 프로세스), 푸시 구독 관리(기기별 on/off,
+  `usePushSubscription`).

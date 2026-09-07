@@ -4,15 +4,17 @@
 > 설명 당시엔 2619줄 단일 스크립트였지만, 지금은 109줄짜리 진입점 + `study_sw/bot/`
 > 패키지(`context.py`, `lifecycle.py`, `dashboard_server.py`, `tunnel.py`,
 > `roster_sync.py`, `report_intake.py`, `scheduling.py`, `sheets.py`,
-> `gooroomee_room.py`, `tracking.py`, `usage_tracker.py`, `exit_sync.py` 등)로
-> 리팩터링되어 있다. 아래 2~8절의 **함수 줄 번호 표와 "외부 통신/상태 확인/원격
-> 제어 전혀 없음" 결론은 더 이상 정확하지 않다** — `dashboard_server.py`/
-> `tunnel.py`가 이미 `docs/WEB_ADMIN.md` §5.2("도움봇 상태")가 쓰는 상태
-> 조회·재시작 서버이고, `roster_sync.py`/`report_intake.py`가 `docs/WEB_REPORT.md`
-> §3.1이 쓰는 실시간 명단 PUT/제보 폴링이다. 아래 9절에 새로 확인된 `exit_sync.py`
-> 만 정확히 반영했고, 나머지는 재조사 전까지 옛 구조(단일 스크립트) 설명으로
-> 남아있다는 점을 감안해서 읽을 것 — `study_sw/bot/*.py`를 직접 열어 확인하는
-> 편이 안전하다.
+> `gooroomee_room.py`, `tracking.py`, `usage_tracker.py`, `exit_sync.py`,
+> `capture_manifest.py`, `leave_proof_manifest.py`, `retry.py`, `telegram.py`,
+> `threads.py` 등)로 리팩터링되어 있다. 아래 2~8절의 **함수 줄 번호 표와 "외부
+> 통신/상태 확인/원격 제어 전혀 없음" 결론은 더 이상 정확하지 않다** —
+> `dashboard_server.py`/`tunnel.py`가 이미 `docs/WEB_ADMIN.md` §5.2("도움봇
+> 상태")가 쓰는 상태 조회·재시작 서버이고, `roster_sync.py`/`report_intake.py`가
+> `docs/WEB_REPORT.md` §3.1이 쓰는 실시간 명단 PUT/제보 폴링이다. §9(퇴실
+> 동기화)와 §10(제보 캡처 파이프라인, 2026-09-08 추가)에 새로 확인된 리팩터링
+> 후 구조를 정확히 반영했고, 나머지(§2~8)는 재조사 전까지 옛 구조(단일 스크립트)
+> 설명으로 남아있다는 점을 감안해서 읽을 것 — `study_sw/bot/*.py`를 직접 열어
+> 확인하는 편이 안전하다.
 
 원본(옛 구조 기준, 위 경고 참고):
 - `study_sw/study_manager_260418.py` (2619줄) — 메인 스크립트, 봇 본체
@@ -208,3 +210,101 @@ if __name__ == "__main__":
 - 회원이 퇴실 신청을 취소하면 Worker의 `exitRequestIndex:current`에서 그
   항목이 즉시 삭제되므로, 다음 60초 폴링부터 이 회원은 다시 정상 기록된다 —
   캐시가 최대 60초 정도 낡을 수 있다는 것 외에는 실시간에 가깝다.
+
+## 10. 제보 캡처 파이프라인 (`bot/report_intake.py`, `bot/tracking.py`,
+`bot/dashboard_server.py`, `bot/gooroomee_room.py`, 2026-09-08 반영)
+
+`docs/WEB_REPORT.md` §3.2("제보 제출")·§3.4("당사자 응답 시스템")와 짝을 이루는
+봇 쪽 구현. Worker가 `POST /reports/new`로 봇에 캡처 요청을 즉시 푸시하면
+(`report_intake.py`의 `_start_capture_for_report`), 모드에 따라
+`tracking_capture`(스크린샷) 또는 `tracking_capture_video`(영상)를 새 스레드로
+띄운다.
+
+### 10.1 캡처 실측 소요시간
+
+- **스크린샷**: `track_total = 6`, `target_interval = 30`초 — 0/30/60/90/120/
+  150초 시점에 총 6장을 캡처하고 마지막 캡처 직후 `save_capture()`가 즉시
+  전송/저장한다. 실제 로그로 반복 실측한 결과 접수부터 저장 완료까지 항상
+  **정확히 150초(2분 30초)** 걸린다.
+- **영상**: 목표 `DURATION_SEC = 90`초, 대상 미탐지가 겹치면 최대
+  `MAX_WALL_CLOCK_SEC = DURATION_SEC * 2 = 180`초까지 연장될 수 있다.
+- `docs/WEB_REPORT.md` §3.3의 "촬영 진행 중" 카운트다운(`EXPECTED_CAPTURE_SEC`:
+  스크린샷 150초, 영상 180초)이 이 실측값을 그대로 쓴다 — Worker 쪽 상수와
+  반드시 같은 값을 유지해야 한다.
+
+### 10.2 텔레그램 캡션 포맷
+
+`tracking_capture`/`tracking_capture_video`가 조립하는 캡션이 개편됐다:
+
+- **"관리자 : {이메일}" → "제보자 : {이름}"**: Worker가 `handleReport`에서
+  세션의 `memberName`(로그인 시 이미 회원 시트에서 조회해둔 값, 명단에 없으면
+  이메일로 폴백)을 `entry.reporterName`으로 봇에 함께 전달한다.
+  `capture_manifest`에 영구 저장되는 `reporterEmail`(제보상점 지급 시 회원
+  매칭에 쓰임, `docs/WEB_ADMIN.md` §3.1c의 `applyReportMerit`)과는 **완전히
+  분리된 표시 전용 필드**다 — `_start_capture_for_report`가 `reporter_name`을
+  뽑아 `tracking_capture`/`tracking_capture_video`의 새 kwarg
+  `reporter_name`으로 전달하고, 캡션에서만 `reporter_name or sender_name`
+  (이메일 폴백)으로 쓴다.
+- **"횟수 : N회 (분할 전송)" → "유형 : 스크린샷"/"유형 : 영상"**: 분할 전송
+  횟수 대신 캡처 모드를 보여준다.
+
+### 10.3 당사자 응답 저장 (`/captures/respond`)
+
+`capture_manifest.set_target_response(capture_id, response, auto=False)`가
+`targetResponse`("disputed"|"recognized")/`targetRespondedAt`/
+`targetResponseAuto`(90분 시한 초과로 자동 확정됐는지, `docs/WEB_ADMIN.md`
+§3.1b 참고)를 기록한다. Worker가 신원 확인(본인이 실제 대상자인지)을 세션으로
+이미 검증한 뒤 이 엔드포인트를 대신 호출하므로, 봇은 `X-Dashboard-Secret`
+인증만 확인한다. 90분 자동 확정 시 Worker가 `auto: true`를 함께 보낸다.
+
+### 10.4 "내 화각 점검" 삭제
+
+`POST /my-captures/delete`(Worker) → 봇의 `/captures/delete`가
+`capture_manifest.delete_capture(capture_id)`를 그대로 재사용한다. 벌점/페널티
+판정 대상이 아닌 셀프 확인 기록이라 시트 되돌림 없이 manifest 기록만 지운다.
+
+### 10.5 캡처 완료 알림 → 20분 쿨다운 재시작
+
+캡처가 실제로 끝나면(`tracking_capture`/`tracking_capture_video`의 정상 종료
+경로, 중단·재개 경로는 제외) `_notify_capture_done(ctx, report_id)`가
+`POST {WORKER_BASE}/reports/capture-done`(`X-Bot-Secret` 인증)으로 Worker에
+알린다. Worker는 이 시점부터 20분 재제보 쿨다운을 새로 계산한다
+(`docs/WEB_REPORT.md` §3.3) — `report_id`나 `BOT_SECRET`이 없으면, 또는 전송
+자체가 실패해도 로그만 남기고 조용히 넘어간다(캡처 자체의 성공 여부와는
+무관한 부가 알림이므로).
+
+### 10.6 관리자 연달아 제보 시 중복 실행 방지 우회
+
+같은 대상(닉네임)에게 스크린샷/영상 제보가 동시에 두 개 진행되지 않도록,
+`thread_id`(`report_thread_id(nickname)`)를 닉네임 기준으로 공유해 `set_thread`
+가 중복 실행을 막아왔다. 이 때문에 **관리자가 같은 대상에게 짧은 간격(첫 캡처가
+아직 진행 중인 최대 150초 이내)으로 연달아 제보하면, 두 번째 요청이 로그
+`"이미 캡처가 진행 중이라 건너뜁니다"`와 함께 조용히 무시되어 실제로 접수한
+제보 하나가 사라지는 문제가 있었다**(사용자 보고, 실제 로그로 재현 확인).
+
+- Worker가 `handleReport`에서 계산해둔 `isAdmin`을 `entry.isAdmin`으로 함께
+  전달한다.
+- `_start_capture_for_report`가 `is_admin`이 참이고 `report_id`가 있으면
+  `thread_id`를 `f"{report_thread_id(nickname)} / [{report_id}]"`로 매 요청마다
+  고유하게 만든다 — 같은 대상이라도 관리자 제보끼리는 여러 건이 동시에 병행
+  진행될 수 있다. 일반 제보는 20분 쿨다운으로 이미 중복이 걸러지므로 기존
+  방식(닉네임만) 그대로 둔다.
+- `dashboard_server.py`의 `/report-status`(진행 상황 조회, "제보 진행 상황"
+  표시용)도 `thread_id`가 이렇게 확장될 수 있음을 반영해, 정확히 일치하는지가
+  아니라 `report_thread_id(nickname)`로 **시작하는** 스레드가 하나라도 있는지
+  (`startswith`)로 판정하도록 함께 고쳤다.
+
+### 10.7 스터디룸 입장 실패 감지 (`gooroomee_room.py`)
+
+`_setup_and_enter_room`이 "입장" 버튼을 클릭한 직후, 실제로 방 내부로 전환됐는지
+검증하지 않고 곧바로 성공(`return True`)으로 간주하던 설계 결함이 있었다 — 클릭이
+오버레이에 가로채이거나 서버 응답이 늦으면, 화면이 실제로는 입장 전 설정
+화면에 그대로 멈춰있어도 스케줄러 로그에는 `"스터디룸 접속(또는 새로고침)
+완료"`가 찍혔다(사용자 보고: 도움봇이 실제로 방에 없는데 로그는 정상이었음).
+
+지금은 클릭 직후 `dashboard_server.py`의 `_room_state_unlocked()`와 동일한
+판정 기준(URL에 `'#coordi;'`가 사라지고 `div.room-join-count`가 표시됨)을
+`ctx.wait.until()`로 재확인한다 — 10초 안에 조건을 만족하지 못하면
+`TimeoutException`을 던져, 이 함수를 감싸는 `@retry_action`이 최대 4번까지
+자동 재시도하고(각 시도 사이 5초 대기), 그래도 실패하면 텔레그램 긴급 알림을
+보낸다(`send_emergency=True`).

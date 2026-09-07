@@ -217,6 +217,22 @@ My/All 두 탭 모두 상단에 `CycleSwitcher`를 둘 수 있고(`DashboardPage
 URL 쿼리 `cycle`로 관리해 두 탭에 전달), 실시간(현재) 값과 "현재 진행 중인 사이클(최대
 3주) 안에서 이미 지난 주" 값을 토글로 전환한다.
 
+> 🔧 2026-09: **My/All 전용이 아니게 됐다.** `CycleSwitcher`가 관리자 화면
+> ("송출 P 대상 처리" — `docs/WEB_ADMIN.md` §3.1a, "PEN · Money 탭" 전체 —
+> §4 도입부)과 "내 송출 P 제보 확인"(`docs/WEB_REPORT.md` §3.4)에도 재사용되고
+> 있다 — 이 화면들은 시트가 아니라 **봇 manifest(캡처 기록)**를 사이클별로
+> 필터링하는 새 헬퍼(`filterItemsByCycle`, `frame-checker-worker/src/index.js`)를
+> 쓴다는 점이 아래 본문의 시트 백업 재사용 방식(`resolveTargetFileId`)과 다르니
+> 혼동하지 말 것 — 둘 다 같은 `CycleSwitcher` 컴포넌트와 같은 `GET /cycles`
+> 백업 목록을 공유하지만, "그 fileId로 무엇을 조회하느냐"는 화면마다 다르다.
+>
+> 컴포넌트 인터페이스도 확장됐다: `onSelect` 콜백이 `(fileId, week?)`로
+> 두 번째 인자를 받는다 — 선택된 주차의 `CycleWeek` 전체(`weekOf`/`weekTo` 등)
+> 를 함께 넘겨받아, 호출부가 그 주의 실제 날짜(요일별 라벨 등)를 직접 다시
+> 계산할 수 있다("이번 주"를 고르면 `week`는 `null`). 기존 호출부(`(fileId) =>
+> ...`만 받는 콜백)는 여전히 그대로 동작한다 — 두 번째 인자를 그냥 무시하면
+> 되므로 하위 호환이 깨지지 않는다.
+
 - **`GET /cycles?member=<번호|self>`** → `handleCycleList`: 앱스크립트 `sheet_reset()`이
   매주 월요일 새벽(5~6시 KST) 만드는 Drive 백업 파일(`공부합시당 캠스터디
   YYMMDD-YYMMDD`) 중 **현재 사이클에 속한 것만** 나열한다(`listCurrentCycleBackups` →

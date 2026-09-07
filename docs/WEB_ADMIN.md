@@ -8,7 +8,8 @@
 > 구현 명령을 내릴 때 이 문서를 참조점으로 삼습니다. 코드가 바뀌면 이 문서도 함께
 > 갱신해야 합니다.
 >
-> 조사 시점: 2026-09-01. 대상 커밋 기준 `app/src/pages/AdminPage.tsx`,
+> 조사 시점: 2026-09-08(당사자 응답 시스템·3주 사이클 토글·leaveHistory
+> 영구 이력 반영). 대상 커밋 기준 `app/src/pages/AdminPage.tsx`,
 > `app/src/components/admin/*`, `frame-checker-worker/src/index.js`.
 >
 > 이 문서는 지금까지 나온 문서 중 가장 넓은 표면적을 다룬다 — "관리자" 탭은 사실상
@@ -100,23 +101,105 @@ components/admin/shared.tsx — 공용 프리미티브(§6): SectionCard/Section
 > 실제 표시 문구는 이 헤더를 기준으로 삼을 것.
 
 `docs/WEB_REPORT.md` §6("제보 → 페널티 반영 전체 흐름")에서 데이터 흐름 관점으로
-이미 다룬 화면의 **실제 UI 구현**이다. `GET /admin/captures`로 대기 중(+최근 24시간
-내 결정된, `RECENT_DECISION_WINDOW_MS = 24h`) 제보를 요일별로 묶어 아코디언으로
-보여준다(§3.2/§3.3/§4의 다른 목록들과 동일한 "요일 그룹 → 인원 토글" 2단 구조).
+이미 다룬 화면의 **실제 UI 구현**이다.
+
+> 🔧 2026-09(당사자 응답 시스템): `GET /admin/captures`가 이제 `?cycle=` 쿼리
+> 파라미터를 지원한다(§3.1a). **사이클 미선택("이번 주" 탭)일 때는 그 주(월~일)
+> 발생건만** 보여준다 — 원래는 발생 주차와 무관하게 "대기 중이거나
+> `RECENT_DECISION_WINDOW_MS`(24h) 내 결정된 건"만 걸렀는데, 그 결과 지난 주
+> 접수된 미처리 건이 "이번 주" 탭에도 계속 섞여 나와 혼란을 줬다(사용자 지적).
+> 이 상수 자체는 코드에서 제거됐다 — 지금은 사이클 필터(`filterItemsByCycle`)로
+> 통일되어, 지난 주 미처리 건은 지난 주 사이클 토글에서 확인해야 한다(§3.1a).
+> 요일별로 묶어 아코디언으로 보여주는 구조(§3.2/§3.3/§4의 다른 목록들과 동일한
+> "요일 그룹 → 인원 토글" 2단 구조)는 그대로다.
+
+요일 헤더 뱃지는 6종류다 — **대기 : N건 / 이의 : N건 / 인정 : N건 / 확정 : N건**
+(예전엔 "적용"이라 불렸다) **/ 유예 : N건 / 반려 : N건**. "이의"/"인정"은 §3.1b의
+당사자 응답(`targetResponse`)을, "확정"/"유예"/"반려"는 관리자 최종 결정(§3.1c)을
+집계한 것이라 서로 다른 두 개념이 한 헤더에 나란히 뜬다.
+
+#### 3.1a 3주 사이클 토글
+
+🔧 2026-09 신설. 상단에 `CycleSwitcher`(`docs/WEB_DASHBOARD.md` §6 원본 구현)가
+있어 "이번 주"(현재 진행 중, `cycle` 쿼리 없음)와 지난 최대 2주(백업 파일
+`fileId`를 `?cycle=`로 전달)를 토글로 전환한다. **이 토글은 §4의 PEN · Money
+탭 전체 상단 공용 토글과 동일한 컴포넌트를 공유하되, 이 화면은 필요 시
+독립적으로도 동작한다** — `cycleFileId`/`onCycleChange`를 props로 받으면
+(PEN · Money 탭에서 쓰일 때) 그 값을 그대로 따르고, props가 없으면(부스터디장
+전용 단독 화면, §3.1 위 인용 "탭 구조 자체를 건너뛰고 하나만 보여준다") 자체
+`CycleSwitcher`를 그려 독립적으로 사이클을 고를 수 있다.
+
+지난 사이클을 선택하면 그 주(월~일, KST)에 발생한 항목 전체를 `reviewStatus`
+무관하게 노출한다(§3.1의 "이번 주" 필터 변경과 동일한 원칙). 과거 사이클
+데이터도 승인/반려/유예/취소 액션이 그대로 활성화되어 있다 — §3.2(예치금 재납)
+와 달리 이 화면은 지난 사이클을 봐도 읽기 전용으로 잠기지 않는다.
 
 각 항목을 펼치면:
 
 - **스크린샷·영상 미리보기** (`CapturePreview`, `shared.tsx` §6).
-- **제보 정보**: 사유·제보자·발생일시.
-- **시간 차감**: 관리자가 화각 요청 **발신·회신 시각**(HH:MM, 숫자만 입력하면
-  자동으로 콜론 삽입)을 입력하는 칸. 이 값이 `POST /admin/captures/decide`의
-  `sendTime`/`replyTime`으로 전달되고, `applyTimeDeduction`(§6 인용,
-  `docs/WEB_REPORT.md` §6-5단계)이 20분 초과분을 개인 탭 27행(보정 학습시간)에서
-  차감한다.
+- **제보정보**(🔧 2026-09: "제보 정보"에서 띄어쓰기 제거): 사유·제보자·발생일시.
+  **"사유" 값은 빨간색(`text-destructive`)으로 강조**된다.
+- **응답일시**(🔧 2026-09 신설): 대상자가 "위반인정"/"이의제기"를 제출한 시각
+  (`targetRespondedAt`). 아직 응답이 없으면 "대상자 응답 대기 중".
+- **학습시간 차감**(🔧 2026-09: "시간 차감"에서 개명): 관리자가 화각 요청
+  **발신·회신 시각**(HH:MM, 숫자만 입력하면 자동으로 콜론 삽입)을 입력하는 칸.
+  이 값이 `POST /admin/captures/decide`의 `sendTime`/`replyTime`으로 전달되고,
+  `applyTimeDeduction`(§6 인용, `docs/WEB_REPORT.md` §6-5단계)이 20분 초과분을
+  개인 탭 27행(보정 학습시간)에서 차감한다. **"예상차감"**(🔧 2026-09 신설,
+  "예상 차감"에서 띄어쓰기 제거)이 그 위에 항상 `-HH:MM` 형식으로 표시된다 —
+  관리자가 "적용" 버튼을 눌러 확정하기 전에도, 접수 시각(`ts`)부터 응답 시각
+  (`targetRespondedAt`)까지의 경과에서 20분 유예를 뺀 초과분을 프론트가 미리
+  계산해 보여준다(응답 전이거나 20분 이하면 `-00:00`). 확정된 값
+  (`penalty.deductedMinutes`)이 있으면 그 값을 그대로 같은 형식으로 보여준다.
 - **벌점·페널티 변동 미리보기**: `occurrenceLabel`/`weeklyImpactLabel`이 슬롯
   차수(1~6차)별 실제 영향을 규칙 기반으로 미리 안내한다(1차=구두경고, 2/3/5차=
   상점 0.1점 차감, 4/6차=주간 상점 전액 제외) — 실제 슬롯 값을 조회한 게 아니라
-  차수별 고정 규칙을 문구로 보여줄 뿐이다.
+  차수별 고정 규칙을 문구로 보여줄 뿐이다. **"적용 시" 값도 빨간색으로 강조**된다
+  (🔧 2026-09).
+
+#### 3.1b 당사자 응답 시스템
+
+🔧 2026-09 신설. 대상자 본인이
+`docs/WEB_REPORT.md` §3.4("내 송출 P 제보 확인")에서 "위반인정"/"이의제기"를
+제출할 수 있다(`POST /captures/target-respond`). 이 응답은 관리자의 최종
+결정(`reviewStatus`)과 **완전히 독립된 별도 필드**(`targetResponse:
+"disputed"|"recognized"|null`, `targetRespondedAt`)다 — 관리자는 대상자가
+무엇을 제출했든 승인/반려/유예 중 자유롭게 고를 수 있다(위반인정을 눌러도
+관리자가 검토 후 위반이 아니라고 판단해 반려할 수 있다).
+
+- **90분 자동 위반인정**: 접수 후 90분 안에 응답이 없으면
+  `applyAutoRecognitionForExpired`가 자동으로 `targetResponse: "recognized"`를
+  확정한다(`TARGET_RESPONSE_TIMEOUT_MS`). 별도 크론 없이 `GET /admin/captures`/
+  `GET /my-output-pen` 조회 시점마다 지연 평가하며, 이때 `targetResponseAuto:
+  true`가 함께 기록되어 본인이 직접 누른 응답과 구분된다.
+- **"다른 관리자 의견 반영" 활성화 조건**: 체크박스는 `targetResponse ===
+  "disputed"`(당사자가 이의제기를 제출)일 때만 활성화할 수 있다
+  (`hasDispute`) — 위반을 스스로 인정했거나(`recognized`) 아직 응답이 없는
+  건에는 합의 모드 자체가 의미가 없다고 보기 때문.
+
+#### 3.1c 4가지 결정과 유예
+
+🔧 2026-09 신설. 승인 버튼은 이제 4가지 결정
+(`CAPTURE_DECISIONS = ["approved", "rejected_recognized", "deferred",
+"rejected"]`) 중 하나로 이어진다.
+
+- **`approved`**: 대상자 페널티 슬롯에 실제로 반영(§6 인용). 제보자 상점도 함께
+  지급.
+- **`rejected_recognized`**("반려 (인정)"): 위반은 인정되지만 대상자 페널티
+  슬롯에 **이미 빈 칸이 없어**(1~6차 슬롯이 모두 찬 상태) 등록할 수 없을 때 —
+  대상자에게는 아무 처리도 하지 않고 제보자에게만 제보 상점을 지급한다.
+- **`deferred`**("유예"): `shouldDefer` 플래그가 켜진 pending 항목에만 노출되는
+  선택지 — 대상자가 **당일 이미 1회 `approved`(실제 페널티 반영)를 받았으면**
+  자동으로 이 옵션이 열린다(당일 KST 기준, `kstDateKey`로 판정). 이의/제보가
+  여러 번 겹쳐도 하루 안에 페널티가 무한정 쌓이는 걸 완충하기 위함(사용자
+  의도: "1회 적용 → 2회 유예 → 다음 1회 적용" 순환) — 유예 처리도 제보자
+  상점은 지급하지만 대상자 페널티는 반영하지 않는다.
+- **`rejected`**: 순수 반려. 대상자·제보자 어느 쪽에도 아무 처리를 하지 않는다.
+
+이 4가지 모두 `applyReportMerit`(제보자 제보 상점 지급, `approved`/
+`rejected_recognized`/`deferred`일 때 호출)와 연동된다 — 순수 반려(`rejected`)
+만 제보자에게도 아무 보상이 없다.
+
 - **"다른 관리자 의견 반영"(합의 투표)**: 🔧 2026-09 **실제로 구현됐다** —
   더 이상 더미가 아니다. "다른 관리자" = **현재 임명된 부스터디장 전원**
   (사용자 결정: 최대 2명, `partiStatus === "부스터디장"`) — 코드 어디에도
@@ -160,12 +243,17 @@ components/admin/shared.tsx — 공용 프리미티브(§6): SectionCard/Section
     /me/role`로 한 번만 조회한다 — 세션이 열려 있는 도중 부스터디장이
     임명/해제되면 다음 로그인·새로고침 전까지 반영되지 않는다(`isAdmin`도
     세션당 고정이라는 것과 같은 성격).
-- **승인/반려/취소/삭제**: 승인(`POST /admin/captures/decide`)은
-  `applyOutputPenalty`를 트리거해 실제 시트에 반영되고, 취소
+- **승인/반려/취소/삭제**: 승인(`POST /admin/captures/decide`, `decision:
+  "approved"`)은 `applyOutputPenalty`를 트리거해 실제 시트에 반영되고, 취소
   (`POST /admin/captures/cancel-penalty`)는 그 슬롯을 되돌린다(시간 차감분까지
-  복원). 반려는 시트에 아무것도 안 쓰므로 화면 상태만 되돌리면 그만("반려
-  취소"는 API 호출 없음). 삭제(`POST /admin/captures/delete`)는 기록 자체를
-  말소하며, 이미 적용된 항목이면 먼저 페널티를 취소한 뒤 지운다.
+  복원). 순수 반려(`"rejected"`)는 시트에 아무것도 안 쓰므로 화면 상태만
+  되돌리면 그만("반려 취소"는 API 호출 없음). 🔧 2026-09: `"rejected_recognized"`/
+  `"deferred"`(§3.1c)는 대상자 페널티는 반영하지 않지만 `applyReportMerit`으로
+  제보자 상점만 지급하므로, 취소 시에는 `POST /admin/captures/cancel-merit`이
+  그 제보상점 지급을 되돌린다(`cancel()` 함수가 결정 종류에 따라
+  `cancel-penalty`/`cancel-merit` 중 알맞은 걸 호출). 삭제
+  (`POST /admin/captures/delete`)는 기록 자체를 말소하며, 이미 적용된
+  항목이면 먼저 페널티(및 제보상점)를 취소한 뒤 지운다.
 - **처리 완료 표시의 이중 신뢰 소스**: `isItemApplied`/`isItemRejected`는 이 세션
   안에서 방금 처리한 로컬 state(`applied`/`rejected`)뿐 아니라 서버가 내려준
   `item.reviewStatus`도 함께 본다 — 새로고침(F5) 후에도 이미 처리된 항목이
@@ -182,6 +270,16 @@ components/admin/shared.tsx — 공용 프리미티브(§6): SectionCard/Section
 가 반환하는 **페널티 누적 2회 이상**(`calcForcedOutDeposit`이 `penalty_2_or_more`
 사유로 걸린) 회원만 다룬다. 페널티 2회 이상은 이미 강제퇴실 조건이라 반환율이
 항상 0%로 고정되며, 관리자는 유형을 고를 필요 없이 두 버튼 중 하나만 누른다:
+
+> 🔧 2026-09: **`?cycle=` 사이클 토글 지원 + 과거 조회 시 읽기 전용.**
+> `resolveTargetFileId`로 fileId만 바꿔 끼우는 기존 패턴(`docs/WEB_DASHBOARD.md`
+> §6)을 그대로 적용해 지난 사이클(백업 파일) 시점의 대상자 명단도 조회할 수
+> 있다. 다만 이 화면은 §3.1a와 달리 **"페널티 누적 2회 이상"이 항상 현재
+> 시점 판정이라는 전제**가 있어, 지난 사이클을 조회하면 서버 응답에
+> `readOnly: true`가 함께 내려오고 프론트가 이를 보고 "강제퇴실자 처리"/
+> "재납자 처리" 확정 버튼을 숨긴다("지난 사이클 기록은 조회만 가능합니다") —
+> 그 시점의 페널티 판정을 지금 와서 확정 처리하면 현재 명단과 어긋날 수
+> 있기 때문이다.
 
 - **"강제퇴실자 처리"** → `ExitProcessDialog(lockKind="forced")`.
 - **"재납자 처리"** → `ExitProcessDialog(lockKind="deposit_again")`.
@@ -222,6 +320,20 @@ components/admin/shared.tsx — 공용 프리미티브(§6): SectionCard/Section
 - **증빙 이미지**: `CapturePreview`(§6)를 `endpoint="/admin/leave-proof/file"`로
   재사용. 큐에만 있는 신청이면 KV에 저장된 base64를 그대로 서빙하고, 봇에 이미
   전달된 신청이면 봇에 프록시한다.
+
+> 🔧 2026-09: **승인/반려 시점마다 `leaveHistory:{weekOf}` 영구 이력을 남기고
+> 사이클 토글로 조회.** 원래는 승인/반려 즉시 큐(`leaveq:*`)와 봇 manifest에서
+> 항목이 삭제되어, 처리 이력이 어디에도 남지 않았다 — 지난 사이클(과거 주차)
+> 조회를 지원하려면 처리 시점에 별도 로그가 필요했다. 지금은
+> `handleAdminLeaveProofDecide`의 승인/반려 4개 경로(큐 반려/봇 반려/큐 승인/
+> 봇 승인) 모두에서 `_appendLeaveHistory`가 그 주(월요일 `weekOf`) 단위 KV
+> 키 하나에 처리 기록을 배열로 계속 누적한다(TTL 없이 영구). `GET
+> /admin/leave-proof`에 `?cycle=`이 있으면 대기 큐 대신 이 `leaveHistory`를
+> 읽어 **읽기 전용 스냅샷**(승인/반려 버튼 없이 결과만)으로 보여준다.
+> **이력 로그 자체의 실패가 처리 성공 여부에 영향을 주지 않도록**
+> `_appendLeaveHistory` 호출은 시트/큐 반영이 이미 성공한 뒤에만, 그리고
+> `.catch(() => null)`로 감싸 실행한다 — 로그 기록만 실패해도 관리자에게
+> "처리 실패"로 잘못 보여 재시도 시 중복 반영되는 사고를 막기 위함이다.
 
 ### 3.4 신규 스터디원 등록 (`NewMemberForm`) — Account 탭
 
@@ -666,6 +778,31 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
 > 트리 순서 그대로) — 이 문서의 절 번호(§3.1→3.2→3.3→4.1) 순서와 다르니
 > 혼동하지 말 것.
 
+> 🔧 2026-09 신설 — **탭 상단 공용 사이클 토글.** `AdminMoneyTab`이 최상위에서
+> `cycleFileId`/`cycleWeekOf` state를 갖고, 상단에 `CycleSwitcher` 하나만
+> 박스(카드) 없이 렌더링한다(사용자 지시: 토글을 카드로 감싸지 말 것). 사이클을
+> 선택하면 이 값이 5개 섹션(송출P대상처리/사유반휴신청대상처리/벌금납부대상처리/
+> 예치금재납대상처리/상금수령대상처리) **전부에 props로 broadcast**되어 동시에
+> 그 주(월~일) 기준으로 다시 로드된다 — 섹션마다 따로 사이클을 고를 필요가
+> 없다. `ReportReviewList`(§3.1)는 원래 자체 `CycleSwitcher`를 갖고 있었는데,
+> `cycleFileId`/`onCycleChange`를 선택적 props로 받도록 확장해 이 탭에서는
+> 공용 토글을 따르고(자체 토글은 숨김), 부스터디장 전용 단독 화면에서는
+> props가 없으므로 여전히 자체 토글을 쓰는 이중 모드로 동작한다(§3.1a).
+> `cycleWeekOf`(선택된 주차의 월요일 `weekOf`)는 `CycleSwitcher`의 `onSelect`
+> 콜백이 선택된 `CycleWeek` 전체를 함께 넘기도록 확장해서 얻는다 — 각 섹션의
+> 요일별 날짜 라벨(`thisWeekDateLabel`)이 "오늘 기준"이 아니라 "그 주 기준"으로
+> 정확히 계산되게 하기 위함이다(예전엔 여러 주 이력이 쌓이는 화면에서 요일
+> 이름만으로 그룹핑해 서로 다른 주의 같은 요일이 하나로 합쳐지는 버그가 있었다
+> — `docs/WEB_REPORT.md` §3.3 참고 문제와 동일 계열).
+>
+> "사유 반휴 신청 대상 처리"(§3.3)/"벌금 납부 대상 처리"(§4.1)/"예치금 재납
+> 대상 처리"(§3.2)/"상금 수령 대상 처리"(§4.2)는 시트 백업 fileId만 바꿔
+> 끼우면 되는 구조(또는 §3.3처럼 별도 이력 로그)라 `resolveTargetFileId` 패턴을
+> 그대로 지원하지만, **"벌금 납부 대상 처리"의 "직권 P" 카운트
+> (`/admin/fines/admin-forced-count`)만은 사이클과 무관하게 항상 현재 누적값을
+> 유지한다** — 이 값은 시트가 아니라 `EXIT_RESULT_KV_PREFIX`(§3.5 인용) 영구
+> 기록 기준이라 특정 사이클만의 값으로 분리할 수 없기 때문이다.
+
 ### 4.2 상금 수령 대상 처리 (`PrizeRecipientList`)
 
 > 🔧 2026-09: **더미 데이터를 걷어내고 실제 `GET /roster-status` 호출로
@@ -695,6 +832,13 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
 > "총 모금액"으로 라벨을 바로잡았다(`RosterPage`가 이미 같은 필드에 같은
 > 라벨을 쓴다).
 
+> 🔧 2026-09: `GET /roster-status`도 `?cycle=`을 지원한다(원래부터
+> `handleRosterStatus`가 `resolveTargetFileId`를 쓰고 있어 백엔드 추가 작업
+> 없이 그대로 됨). 지난 사이클을 조회 중이면(`cycleFileId`가 있으면) **"상금
+> 정산 집행" 버튼을 숨긴다** — `handleAdminPrizeSettle`이 항상
+> `env.GOOGLE_SHEET_FILE_ID`(현재 시트)에만 쓰는 구조라, 과거 사이클을 보는
+> 중에 눌러도 실제로는 지금 시트에 반영되는 사고를 막기 위함.
+
 ### 4.1 벌금 납부 대상 처리 (`PaidFineList`)
 
 > 🔧 2026-09: 화면 제목이 "벌금 납부 대상자 처리"에서 "벌금 납부 대상
@@ -709,6 +853,14 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
 상태) 레코드를 요일별로 그룹핑해 보여주는 §3.1(`ReportReviewList`)과 동일한
 디자인 패턴(아이콘+무채색 요일 라벨, 상태 필 배지, 요일별 아코디언 →
 인원별 토글)으로 맞춰져 있다.
+
+> 🔧 2026-09: `/admin/fines/unpaid`·`/paid`·`/exempt` 세 API 모두 `?cycle=`을
+> 지원한다(`resolveTargetFileId`로 fileId만 바꿔 끼움, 세 하위 함수
+> `listUnpaidFines`/`listPaidFines`/`listExemptFines`가 이미 `fileId`
+> 파라미터를 받는 구조라 백엔드 변경이 단순했다). 지난 사이클을 조회하면
+> 상태 변경 버튼(납부/미납/면제 전환)과 "퇴실 처리 (직권 P)" 버튼이 사라져
+> 읽기 전용이 된다 — 위 §4 도입부에서 언급한 "직권 P" 카운트만 예외적으로
+> 사이클과 무관하게 항상 현재 값을 보여준다.
 
 - **데이터 소스 = 세 API 통합.** `load()`는 `/admin/fines/paid` +
   `/admin/fines/unpaid` + `/admin/fines/exempt`를 `Promise.all`로 모두
