@@ -100,7 +100,7 @@ export function ActiveReportsSection({ refreshSignal }: { refreshSignal?: number
             const value =
               captureRemaining !== null
                 ? `진행 중 (${formatRemaining(captureRemaining)} 남음)`
-                : `중복방지 쿨타임 (${formatRemaining(item.expiresAt - now)} 남음)`;
+                : `중복접수 방지 (${formatRemaining(item.expiresAt - now)} 남음)`;
             return (
               <SubRow
                 key={item.nickname}
