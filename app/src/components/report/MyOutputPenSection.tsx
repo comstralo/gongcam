@@ -177,6 +177,17 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
             <div className="flex flex-col gap-2 sm:gap-2.5">
               {groupByDay(items).map((group) => {
                 const isDayExpanded = expandedDay === group.dateKey;
+                // "확정 전인지 후인지"로만 구분한다(사용자 지시) — 관리자
+                // 확정 개념이 없는 "내 화각 점검"은 어느 쪽에도 넣지 않고
+                // 집계에서 제외한다. "받은 제보"는 reviewStatus==="pending"
+                // 이면 검토(확정 전), 그 외(approved/rejected/유예 등 관리자가
+                // 어떤 형태로든 최종 처리한 상태)는 적용(확정 후)으로 본다.
+                const reviewingCount = group.items.filter(
+                  (item) => item.kind === "received" && (item.data as MyOutputPenItem).reviewStatus === "pending"
+                ).length;
+                const appliedCount = group.items.filter(
+                  (item) => item.kind === "received" && (item.data as MyOutputPenItem).reviewStatus !== "pending"
+                ).length;
                 return (
                   <InfoCard key={group.dateKey} className="flex flex-col gap-2.5 bg-card">
                     <button
@@ -184,11 +195,18 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
                       onClick={() => setExpandedDay(isDayExpanded ? null : group.dateKey)}
                       className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded"
                     >
-                      <span className="inline-flex shrink-0 items-center gap-1.25 text-xs font-semibold sm:text-sm">
-                        <CalendarDays className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
-                        {dateLabel(group.dateKey)}
-                        <span className="ml-1 rounded-full bg-foreground/8 px-2 py-1 text-micro-lg leading-none text-muted-foreground sm:text-xs">
-                          {group.items.length}건
+                      <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                        <span className="inline-flex shrink-0 items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                          <CalendarDays className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                          {dateLabel(group.dateKey)}
+                        </span>
+                        <span className="ml-auto flex flex-wrap items-center justify-end gap-1">
+                          <span className="rounded-full bg-destructive/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-destructive">
+                            검토 : {reviewingCount}건
+                          </span>
+                          <span className="rounded-full bg-ok/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-ok">
+                            적용 : {appliedCount}건
+                          </span>
                         </span>
                       </span>
                       <ChevronDown
