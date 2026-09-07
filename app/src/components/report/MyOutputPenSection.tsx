@@ -262,9 +262,13 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
                                       </div>
                                     )}
                                   </div>
-                                  <div className="h-px w-full bg-border" />
-                                  <SubRow label="발생일시" value={new Date(item.ts).toLocaleString("ko-KR")} />
-                                  {isReceived && <SubRow label="사유" value={received!.reason || "-"} />}
+                                  {isReceived && (
+                                    <>
+                                      <div className="h-px w-full bg-border" />
+                                      <SubRow label="발생일시" value={new Date(item.ts).toLocaleString("ko-KR")} />
+                                      <SubRow label="사유" value={received!.reason || "-"} />
+                                    </>
+                                  )}
 
                                   {canRespond && (
                                     <>
