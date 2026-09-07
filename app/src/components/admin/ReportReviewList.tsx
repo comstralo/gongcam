@@ -886,7 +886,7 @@ export function ReportReviewList({
                                       <FileText className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                       제보정보
                                     </span>
-                                    <SubRow label="사유" value={item.reason || "-"} />
+                                    <SubRow label="사유" value={item.reason || "-"} valueClassName="text-destructive" />
                                     <SubRow label="제보자" value={item.reporterName || item.reporterEmail || "-"} />
                                     <SubRow label="발생일시" value={new Date(item.ts).toLocaleString("ko-KR")} />
                                   </div>
@@ -957,7 +957,7 @@ export function ReportReviewList({
                                       <FileText className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                       제보정보
                                     </span>
-                                    <SubRow label="사유" value={item.reason || "-"} />
+                                    <SubRow label="사유" value={item.reason || "-"} valueClassName="text-destructive" />
                                     <SubRow label="제보자" value={item.reporterName || item.reporterEmail || "-"} />
                                     <SubRow label="발생일시" value={new Date(item.ts).toLocaleString("ko-KR")} />
                                   </div>
@@ -1010,7 +1010,7 @@ export function ReportReviewList({
                                           ? occurrenceLabel(applied[item.id]!.penalty!.occurrence)
                                           : occurrenceLabel(item.nextOccurrence)
                                       }
-                                      valueClassName="font-semibold text-foreground"
+                                      valueClassName="font-semibold text-destructive"
                                     />
                                     <SubRow
                                       label="이번 주 영향"
