@@ -3,7 +3,7 @@ import json
 import os
 import threading
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -70,14 +70,30 @@ def report_thread_id(nickname):
     return f"[송출 페널티 위반 감독] / [대상자 : {nickname}]"
 
 
-def _read_recent_logs():
-    log_path = os.path.join("runtime", "logs", datetime.now().strftime("%Y-%m-%d.log"))
+def _read_log_file_tail(path, max_lines):
     try:
-        with open(log_path, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             lines = f.readlines()
-        return [line.rstrip("\n") for line in lines[-LOG_TAIL_LINES:]]
+        return [line.rstrip("\n") for line in lines[-max_lines:]]
     except Exception:
         return []
+
+
+# 🔧 [로그 강화] 원래는 오늘 날짜 파일만 읽었다 — 자정 직후(예: 00:00:03)에
+# 조회하면 방금 막 새로 열린, 거의 비어 있는 오늘 파일만 보여줘서 자정
+# 직전에 실제로 있었던(예: 좀비 스레드 감지, 재진입 가드 발동 같은) 사건이
+# 여전히 어제 파일에 남아있는데도 화면에서 안 보였다. 오늘 파일의 줄 수가
+# LOG_TAIL_LINES에 못 미치면 어제 파일에서 나머지를 채운다.
+def _read_recent_logs():
+    now = datetime.now()
+    today_path = os.path.join("runtime", "logs", now.strftime("%Y-%m-%d.log"))
+    today_lines = _read_log_file_tail(today_path, LOG_TAIL_LINES)
+    if len(today_lines) >= LOG_TAIL_LINES:
+        return today_lines
+    yesterday_path = os.path.join("runtime", "logs", (now - timedelta(days=1)).strftime("%Y-%m-%d.log"))
+    remaining = LOG_TAIL_LINES - len(today_lines)
+    yesterday_lines = _read_log_file_tail(yesterday_path, remaining)
+    return yesterday_lines + today_lines
 
 
 def make_dashboard_handler(ctx):
@@ -304,7 +320,7 @@ def make_dashboard_handler(ctx):
                 threading.Thread(
                     target=daily_browser_reset,
                     args=(ctx,),
-                    kwargs={"is_emergency": False, "_already_acquired": True},
+                    kwargs={"is_emergency": False, "_already_acquired": True, "trigger": "admin_restart"},
                     daemon=True,
                 ).start()
                 self._send_json(202, {"ok": True, "command": "restart"})

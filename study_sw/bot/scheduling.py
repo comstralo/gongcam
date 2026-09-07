@@ -95,7 +95,10 @@ def schedule_reserve(ctx):
         )
 
     # 07:15 정기 리셋은 브라우저 자체를 껐다 켜는 핵심 작업이므로 기존처럼 동기식으로 둡니다.
-    schedule.every().day.at("07:15").do(daily_browser_reset, ctx)
+    # trigger="scheduled_0715" — daily_browser_reset의 재진입 가드 로그가
+    # 07:15 정기 리셋과 관리자 수동 재시작(둘 다 is_emergency=False)을
+    # 구분할 수 있도록 호출 경로를 명시한다.
+    schedule.every().day.at("07:15").do(daily_browser_reset, ctx, trigger="scheduled_0715")
     print(
         "schedule_reserve() :  ⏰  [정기 리셋] [07:15] 브라우저 초기화 스케줄링 등록.  ⏰"
     )

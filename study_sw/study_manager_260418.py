@@ -4,8 +4,26 @@ import functools
 import glob
 import os
 import signal
+import sys
 import threading
 from datetime import datetime
+
+# 🔧 [로그 강화] Python은 stdout이 터미널(tty)에 연결되어 있을 때만 줄 단위로
+# 즉시 내보내고, nohup 등으로 파일에 리다이렉션된 경우(이 봇의 실제 운영
+# 방식)에는 약 8KB 블록 단위로 버퍼링한다 — 즉 print()로 남긴 로그(특히
+# 좀비 스레드 감지, 재진입 가드 발동처럼 프로세스가 곧 죽거나 이미 불안정한
+# 상황에서 남기는 로그)가 버퍼에 쌓인 채로 kill -9/OOM killer에 의해
+# 프로세스가 죽으면, 정확히 그 순간을 설명해 줄 마지막 로그 몇 줄이 통째로
+# 사라질 수 있었다(사후 진단이 가장 필요한 바로 그 시점에 로그가 없어지는
+# 역설). stdout을 강제로 줄 단위 버퍼링으로 재설정해, 이런 print() 출력이
+# (이 프로세스가 이미 전부 ctx.logger로 옮겨간 곳들과 별개로, 서드파티
+# 라이브러리나 트레이스백처럼 여전히 raw stdout/stderr에 찍히는 것들까지
+# 포함해) 매 줄마다 즉시 디스크로 나가게 한다.
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except (AttributeError, ValueError):
+    pass
 
 # ✅ 2. 서드파티 라이브러리 (Third-party Libraries)
 from dotenv import load_dotenv

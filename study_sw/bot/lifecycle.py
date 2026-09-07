@@ -4,7 +4,7 @@ import subprocess
 import sys
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import psutil
 from selenium import webdriver
@@ -33,6 +33,14 @@ user_data_dir = os.path.join(current_dir, "chrome_profile")  # 폴더 경로 생
 # user_data_dir = r"C:\Users\oheeryeo\AppData\Local\Google\Chrome\User Data"
 
 
+# 🔧 [로그 강화] 원래는 날짜별 로그 파일이 무기한 쌓이기만 했다 —
+# 급한 문제는 아니지만(텍스트 로그라 용량 자체는 작음) 관리되지 않는
+# 상태였다. 롤오버(자정이 지나 새 파일을 여는 시점)마다 이보다 오래된
+# 파일을 정리한다 — 동시성 버그를 사후 진단할 때 몇 주 전 로그까지
+# 필요한 경우는 드물다고 보고 여유 있게 잡는다.
+LOG_RETENTION_DAYS = 60
+
+
 # --- ❗ 1. 커스텀 로그 핸들러 클래스 정의 (수정됨) ❗ ---
 class DailyLogHandler(logging.FileHandler):
     """
@@ -49,6 +57,25 @@ class DailyLogHandler(logging.FileHandler):
         )
         self.current_date = datetime.now().date()
 
+    def _cleanup_old_logs(self):
+        log_dir = os.path.dirname(self.baseFilename) or "."
+        cutoff = datetime.now().date() - timedelta(days=LOG_RETENTION_DAYS)
+        try:
+            for name in os.listdir(log_dir):
+                if not (name.endswith(".log") and len(name) == len("YYYY-MM-DD.log")):
+                    continue
+                try:
+                    file_date = datetime.strptime(name[:-4], "%Y-%m-%d").date()
+                except ValueError:
+                    continue
+                if file_date < cutoff:
+                    try:
+                        os.remove(os.path.join(log_dir, name))
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+
     def emit(self, record):
         today = datetime.now().date()
         if today != self.current_date:
@@ -56,6 +83,7 @@ class DailyLogHandler(logging.FileHandler):
             self.baseFilename = datetime.now().strftime(self.filename_pattern)
             self.stream = self._open()
             self.current_date = today
+            self._cleanup_old_logs()
         super().emit(record)
 
 
@@ -376,7 +404,7 @@ def browser_watchdog(ctx):
                 threading.Thread(
                     target=daily_browser_reset,
                     args=(ctx,),
-                    kwargs={"is_emergency": True, "_already_acquired": True},
+                    kwargs={"is_emergency": True, "_already_acquired": True, "trigger": "watchdog_oom"},
                     daemon=True,
                 ).start()
 

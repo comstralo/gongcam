@@ -100,14 +100,14 @@ def recover_inflight_snapshots(ctx):
                 preserved_paths.update(resume_info.get("previous_temp_files") or [])
                 recovered += 1
         except Exception as e:
-            print(f"recover_inflight_snapshots() : ⚠️ 스냅샷 복구 실패({path}) - {e}")
+            ctx.logger.warning(f"recover_inflight_snapshots() : ⚠️ 스냅샷 복구 실패({path}) - {e}")
         finally:
             try:
                 os.remove(path)
             except OSError:
                 pass
     if recovered:
-        print(f"recover_inflight_snapshots() : 💾 즉사로 중단됐던 캡처 {recovered}건을 재개 대기열에 합류시켰습니다.")
+        ctx.logger.warning(f"recover_inflight_snapshots() : 💾 즉사로 중단됐던 캡처 {recovered}건을 재개 대기열에 합류시켰습니다.")
     return preserved_paths
 
 
@@ -182,11 +182,11 @@ def set_thread(ctx, thread_id, target_func, args, kwargs=None):
             ctx.current_threads[thread_id] = new_thread
             new_thread.start()
 
-            print(f"set_thread() :  ⚙️  {thread_id} 생성 및 시작.  ⚙️")
+            ctx.logger.info(f"set_thread() :  ⚙️  {thread_id} 생성 및 시작.  ⚙️")
 
             return True
         else:
-            print(
+            ctx.logger.info(
                 f"set_thread() :  ⚙️ {thread_id} 생성 실패. (current_threads에 이미 존재)  ⚙️"
             )
             return False
@@ -213,36 +213,45 @@ def remove_thread_id(ctx, thread_id):
         registered = ctx.current_threads.get(thread_id)
         if registered is caller:
             del ctx.current_threads[thread_id]
-            print(f"remove_thread_id() :  ⚙️  {thread_id} 완료 및 종료.  ⚙️")
+            ctx.logger.info(f"remove_thread_id() :  ⚙️  {thread_id} 완료 및 종료.  ⚙️")
             return True
         elif registered is None:
-            print(
+            ctx.logger.info(
                 f"remove_thread_id() :  ⚙️ {thread_id} 삭제 실패. (current_threads에 없음)  ⚙️"
             )
             return False
         else:
-            # 이 키는 이미 다른(새로 등록된) 스레드 소유다 — 나(좀비)는
-            # 조용히 물러난다. 남의 등록 정보를 지우지 않는다.
-            print(
-                f"remove_thread_id() :  ⚙️ {thread_id} 삭제 건너뜀. (이미 다른 스레드로 교체됨 — 좀비의 뒤늦은 종료로 추정)  ⚙️"
+            # 🔧 [로그 강화] 원래는 print()라 runtime/logs/의 날짜별 로그
+            # 파일에도, 대시보드 /status의 recentLogs에도 전혀 남지 않았다
+            # (threads.py 전체가 로거를 안 쓰고 print만 썼던 문제 — "이번
+            # 세션 내내 쫓아온 동시성 버그를 실제로 진단하려면 이 로그들이
+            # 관리자에게 보여야 한다"는 지적에 따라 ctx.logger로 전환). 이
+            # 경로는 "재진입 가드가 방금 막 잡아낸 레이스"를 뜻하므로 평범한
+            # 완료/실패 로그와 달리 WARNING으로 구분해, 나중에 로그를 볼
+            # 사람이 "이건 그냥 정상 종료가 아니라 좀비 스레드가 뒤늦게
+            # 깨어난 사건이었다"를 한눈에 알 수 있게 한다. 이 키는 이미
+            # 다른(새로 등록된) 스레드 소유다 — 나(좀비)는 조용히 물러난다.
+            # 남의 등록 정보를 지우지 않는다.
+            ctx.logger.warning(
+                f"remove_thread_id() : ⚠️ {thread_id} 삭제 건너뜀. (이미 다른 스레드로 교체됨 — 좀비의 뒤늦은 종료로 추정)"
             )
             return False
 
 
 # [ETC] 모든 스레드 안전 종료
 def stop_all_thread(ctx):
-    print("stop_all_thread() :  ⚙️  모든 스레드 종료 시작.  ⚙️")
+    ctx.logger.info("stop_all_thread() :  ⚙️  모든 스레드 종료 시작.  ⚙️")
 
     # 1. 종료할 스레드 목록을 lock을 잡고 안전하게 복사
     with ctx.lock:
         threads_to_stop = list(ctx.current_threads.items())
         if not threads_to_stop:
-            print("stop_all_thread() :  ⚙️  종료할 실행 중인 스레드가 없습니다.  ⚙️")
+            ctx.logger.info("stop_all_thread() :  ⚙️  종료할 실행 중인 스레드가 없습니다.  ⚙️")
             return
 
     # 2. 모든 스레드에 종료 신호 전송 (단, set_sheet 내부에는 감지 로직이 없어 끝까지 실행됨)
     ctx.stop_event.set()
-    print(
+    ctx.logger.info(
         f"stop_all_thread() :  ⚙️  {len(threads_to_stop)}개의 스레드에 종료 신호를 보냈습니다.  ⚙️"
     )
 
@@ -250,7 +259,7 @@ def stop_all_thread(ctx):
     for thread_id, thread in threads_to_stop:
         # 💡 개선 포인트: 시트 기록 스레드는 작업 완료가 보장되어야 하므로 join()으로 대기하지 않고 넘김
         if "시트" in thread_id or "기록" in thread_id:
-            print(
+            ctx.logger.info(
                 f"stop_all_thread() : 🛡️ 시트 기록 스레드 [{thread_id}]는 백그라운드에서 작업 완료를 보장합니다."
             )
             continue
@@ -259,11 +268,15 @@ def stop_all_thread(ctx):
         # 🚨 [핵심 수정] 무한 대기 방지: 3초까지만 기다려보고 안 꺼지면 뻗은 것으로 간주하고 버림
         thread.join(timeout=11.0)
         if thread.is_alive():
-            print(
+            # 🔧 [로그 강화] WARNING으로 격상 — "응답 없음"은 단순 정보성
+            # 로그가 아니라 좀비 스레드가 처음 감지된, 나중에 진단할 때
+            # 반드시 찾아봐야 할 사건이다(원래는 print라 날짜별 로그
+            # 파일에도 대시보드 recentLogs에도 전혀 남지 않았다).
+            ctx.logger.warning(
                 f"stop_all_thread() : ⚠️ 스레드 [{thread_id}] 응답 없음! 강제로 스킵합니다."
             )
         else:
-            print(f"stop_all_thread() :  ⚙️  스레드 [{thread_id}] 종료 대기 완료.  ⚙️")
+            ctx.logger.info(f"stop_all_thread() :  ⚙️  스레드 [{thread_id}] 종료 대기 완료.  ⚙️")
 
     # 4. 종료가 완료된 스레드만 딕셔너리에서 정리하고 이벤트 초기화
     now = time.time()
@@ -306,16 +319,25 @@ def stop_all_thread(ctx):
                     first_seen = ctx.zombie_since.get(thread_id)
                     if first_seen is None:
                         ctx.zombie_since[thread_id] = now
+                        ctx.logger.warning(
+                            f"stop_all_thread() : ⚠️ 스레드 [{thread_id}]를 좀비로 처음 판정했습니다. 계속 응답이 없으면 {ZOMBIE_FORCE_CLEAR_SEC}초 뒤 강제로 정리됩니다."
+                        )
                     elif now - first_seen >= ZOMBIE_FORCE_CLEAR_SEC:
-                        print(
-                            f"stop_all_thread() : 🪓 스레드 [{thread_id}]가 {ZOMBIE_FORCE_CLEAR_SEC}초 넘게 응답이 없어 강제로 정리합니다."
+                        # 🔧 [로그 강화] ERROR로 격상 — 이 시점부터는 그
+                        # 스레드가 붙잡고 있던 대상자에 대한 처리가 어떻게
+                        # 됐는지(캡처 실패/유실 여부)를 capture_manifest나
+                        # 텔레그램 기록과 대조해 확인해야 하는, 단순 경고를
+                        # 넘어서는 사건이다. 원래는 print라 이 사건 자체가
+                        # 관리자 대시보드/날짜별 로그 어디에도 남지 않았다.
+                        ctx.logger.error(
+                            f"stop_all_thread() : 🪓 스레드 [{thread_id}]가 {ZOMBIE_FORCE_CLEAR_SEC}초 넘게 응답이 없어 강제로 정리합니다. (해당 대상자의 캡처 처리 결과를 별도로 확인 필요)"
                         )
                         if thread_id in ctx.current_threads:
                             del ctx.current_threads[thread_id]
                         ctx.zombie_since.pop(thread_id, None)
         # stop_event.clear()  # 다음 스케줄을 위해 이벤트 초기화
 
-    print("stop_all_thread() :  ⚙️  모든 스레드 종료 정리 완료.  ⚙️")
+    ctx.logger.info("stop_all_thread() :  ⚙️  모든 스레드 종료 정리 완료.  ⚙️")
 
 
 # 🔥 추가: 메인 스레드 블로킹을 막기 위해 스케줄 작업을 별도 스레드로 던져주는 도우미 함수

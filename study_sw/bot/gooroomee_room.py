@@ -380,7 +380,7 @@ def try_acquire_browser_reset(ctx):
 
 
 # 🚨 [핵심 수정] 매개변수 `is_emergency=False` 추가
-def daily_browser_reset(ctx, is_emergency=False, _already_acquired=False):
+def daily_browser_reset(ctx, is_emergency=False, _already_acquired=False, trigger="unknown"):
     msg_type = "비상 복구" if is_emergency else "안전 초기화"
 
     # 🔧 [버그 수정] 원래는 이 함수가 재진입 가드 없이 곧바로 시작됐다 —
@@ -401,13 +401,21 @@ def daily_browser_reset(ctx, is_emergency=False, _already_acquired=False):
     # 방지에도 그대로 활용한다. _already_acquired=True로 불리면(호출자가
     # try_acquire_browser_reset으로 이미 원자적으로 확보해 둔 경우) 여기서
     # 다시 체크하지 않는다 — /restart 핸들러가 정확히 이 경로를 쓴다.
+    # 🔧 [로그 강화] 원래는 msg_type(비상 복구/안전 초기화) 두 가지만으로
+    # 건너뜀 로그를 남겨, 세 호출 경로(07:15 정기 리셋과 관리자 수동
+    # 재시작이 둘 다 is_emergency=False라 "안전 초기화"로 동일하게 찍힘)
+    # 중 정확히 어느 두 개가 충돌했는지 이 로그 한 줄만으로는 구분할 수
+    # 없었다. 각 호출부(scheduling.py의 07:15 cron, lifecycle.py의
+    # browser_watchdog, dashboard_server.py의 /restart 핸들러)가 자신의
+    # 정체를 trigger로 명시하게 해, 로그 재구성 시 "이번엔 정기 리셋과
+    # 수동 재시작이 겹친 것"처럼 구체적으로 알 수 있게 한다.
     if not _already_acquired and not try_acquire_browser_reset(ctx):
         ctx.logger.warning(
-            f"⚠️ [시스템] 이미 브라우저 재시작이 진행 중이라 이번 {msg_type} 요청은 건너뜁니다."
+            f"⚠️ [시스템] 이미 브라우저 재시작이 진행 중이라 이번 {msg_type} 요청(트리거: {trigger})은 건너뜁니다."
         )
         return
 
-    ctx.logger.info(f"🌅 [시스템] 크롬 브라우저 {msg_type} 시작!")
+    ctx.logger.info(f"🌅 [시스템] 크롬 브라우저 {msg_type} 시작! (트리거: {trigger})")
 
     ctx.stop_event.set()
     time.sleep(2)
