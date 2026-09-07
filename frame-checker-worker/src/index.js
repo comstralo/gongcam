@@ -2819,6 +2819,45 @@ function kstDateKey(ts) {
   return new Date(ts).toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" }); // sv-SE 로케일이 YYYY-MM-DD를 그대로 출력.
 }
 
+// 🔧 [90분 자동 위반인정] 대상자가 접수 시점(ts)으로부터 90분 내에 "위반인정"/
+// "이의제기"를 제출하지 않으면 자동으로 "위반인정"으로 간주한다(사용자
+// 지시). 별도 크론 없이, 관리자 목록(handleAdminCapturesList)과 본인 목록
+// (handleMyOutputPen) 조회 시점마다 이 함수가 대상 항목을 찾아 그 자리에서
+// 봇에 확정 기록을 남긴다 — 다음 조회부터는 이미 targetResponse가 있으니
+// 재판정하지 않는다. pending 상태에서만 자동인정한다 — 관리자가 이미
+// approved/rejected 등으로 최종 처리했으면 당사자 응답 자체가 더는 의미가
+// 없으므로 건드리지 않는다(handleCaptureTargetRespond의 서버측 검증과
+// 동일한 기준).
+const TARGET_RESPONSE_TIMEOUT_MS = 90 * 60 * 1000;
+
+async function applyAutoRecognitionForExpired(env, items) {
+  const now = Date.now();
+  const targets = items.filter(
+    (item) =>
+      !item.selfCheck &&
+      item.reviewStatus === "pending" &&
+      !item.targetResponse &&
+      now - item.ts >= TARGET_RESPONSE_TIMEOUT_MS
+  );
+  if (targets.length === 0) return items;
+
+  const respondedAt = Date.now();
+  await Promise.all(
+    targets.map((item) =>
+      proxyToBotDashboard(env, "/captures/respond", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: item.id, response: "recognized" }),
+      }).catch(() => null)
+    )
+  );
+
+  const autoRecognized = new Set(targets.map((item) => item.id));
+  return items.map((item) =>
+    autoRecognized.has(item.id) ? { ...item, targetResponse: "recognized", targetRespondedAt: respondedAt } : item
+  );
+}
+
 async function handleAdminCapturesList(req, env, origin) {
   const auth = await requireAdminOrCoReviewer(req, env);
   if (!auth) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
@@ -2827,7 +2866,7 @@ async function handleAdminCapturesList(req, env, origin) {
   if (!data) {
     return json({ items: [], coReviewers: [] }, 200, origin);
   }
-  const allItems = data.items || [];
+  const allItems = await applyAutoRecognitionForExpired(env, data.items || []);
   const now = Date.now();
   const visible = allItems.filter(
     (item) =>
@@ -2943,8 +2982,9 @@ async function handleMyOutputPen(req, env, origin) {
     const data = await proxyToBotDashboard(env, "/captures");
     if (!data) return json({ items: [] }, 200, origin);
 
+    const allItems = await applyAutoRecognitionForExpired(env, data.items || []);
     const now = Date.now();
-    const items = (data.items || [])
+    const items = allItems
       .filter((item) => !item.selfCheck && item.nickname === member.name)
       .filter(
         (item) =>
