@@ -297,8 +297,9 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
                           const isItemExpanded = expandedId === item.id;
                           const isReceived = item.kind === "received";
                           const received = isReceived ? (item.data as MyOutputPenItem) : null;
-                          // 이미 관리자가 최종 처리(적용/유예/반려)했거나, 대상자가
-                          // 이미 응답을 제출한 건에는 위반인정/이의제기 버튼을 숨긴다.
+                          // 버튼 자체는 항상 보여주되(사용자 지시), 이미 관리자가 최종
+                          // 처리(적용/유예/반려)했거나 대상자가 이미 응답을 제출한
+                          // 건이면 눌러도 무효이므로 비활성화한다.
                           const canRespond =
                             isReceived && received!.reviewStatus === "pending" && !received!.targetResponse;
                           return (
@@ -415,14 +416,14 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
                                     </>
                                   )}
 
-                                  {canRespond && (
+                                  {isReceived && (
                                     <>
                                       <div className="h-px w-full bg-border" />
                                       <div className="grid grid-cols-2 gap-2">
                                         <Button
                                           variant="outline"
                                           className="sm:h-11 sm:text-base"
-                                          disabled={respondingId === item.id}
+                                          disabled={!canRespond || respondingId === item.id}
                                           onClick={() => respond(received!, "recognized")}
                                         >
                                           위반인정
@@ -430,7 +431,7 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
                                         <Button
                                           variant="destructive"
                                           className="sm:h-11 sm:text-base"
-                                          disabled={respondingId === item.id}
+                                          disabled={!canRespond || respondingId === item.id}
                                           onClick={() => respond(received!, "disputed")}
                                         >
                                           이의제기
