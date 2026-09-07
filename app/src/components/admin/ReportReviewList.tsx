@@ -331,7 +331,19 @@ function SeverityPicker({
   );
 }
 
-export function ReportReviewList({ visible }: { visible: boolean }) {
+export function ReportReviewList({
+  visible,
+  cycleFileId: cycleFileIdProp,
+  onCycleChange,
+}: {
+  visible: boolean;
+  // PEN·MONEY 탭 상단의 공용 사이클 토글이 있으면 부모가 넘겨준다 — 이
+  // 경우 이 컴포넌트는 자체 토글을 그리지 않고 그 값을 그대로 쓴다.
+  // 넘기지 않으면(부스터디장 전용 화면처럼 이 컴포넌트 단독 렌더링) 기존과
+  // 동일하게 자체 상태 + 자체 CycleSwitcher를 쓴다.
+  cycleFileId?: string | null;
+  onCycleChange?: (fileId: string | null) => void;
+}) {
   const { call } = useApi();
   const { session, isAdmin } = useAuth();
 
@@ -384,7 +396,11 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
   // 🔧 [3주 사이클 토글] "내 송출 P 제보 확인"과 동일한 CycleSwitcher를
   // 재사용한다 — null이면 현재 진행 중(대기 중이거나 24시간 이내 결정만),
   // 백업 fileId를 고르면 그 주(월~일, KST) 전체를 reviewStatus 무관하게 노출.
-  const [cycleFileId, setCycleFileId] = useState<string | null>(null);
+  // 부모(PEN·MONEY 탭)가 공용 토글을 제공하면 그 값을 그대로 쓰고(controlled),
+  // 아니면 이 컴포넌트가 자체 상태로 관리한다(uncontrolled — 부스터디장 화면).
+  const [cycleFileIdState, setCycleFileIdState] = useState<string | null>(null);
+  const cycleFileId = cycleFileIdProp !== undefined ? cycleFileIdProp : cycleFileIdState;
+  const setCycleFileId = onCycleChange || setCycleFileIdState;
 
   function load() {
     setLoading(true);
@@ -691,7 +707,7 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
       <SectionHeader icon={Flag} title="송출 P 대상 처리" loading={loading} onRefresh={load} />
       <CollapsiblePanel className="flex flex-col gap-4">
         <div className="h-px w-full bg-border" />
-        <CycleSwitcher selectedFileId={cycleFileId} onSelect={setCycleFileId} />
+        {cycleFileIdProp === undefined && <CycleSwitcher selectedFileId={cycleFileId} onSelect={setCycleFileId} />}
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>

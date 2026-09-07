@@ -27,7 +27,9 @@ export function CycleSwitcher({
   memberNumber,
 }: {
   selectedFileId: string | null;
-  onSelect: (fileId: string | null) => void;
+  // week: 선택된 주차의 전체 정보(weekOf/weekTo 등) — "현재"를 고르면 null.
+  // PEN·MONEY 탭처럼 실제 날짜 라벨을 다시 계산해야 하는 화면에서 쓴다.
+  onSelect: (fileId: string | null, week?: CycleWeek | null) => void;
   memberNumber?: string;
 }) {
   const { call } = useApi();
@@ -115,7 +117,7 @@ export function CycleSwitcher({
           <button
             key={w.fileId}
             type="button"
-            onClick={() => onSelect(w.fileId)}
+            onClick={() => onSelect(w.fileId, w)}
             className={cn(
               "rounded-full border px-3.5 py-2 text-sm font-semibold transition-colors sm:text-base",
               w.fileId === selectedFileId
@@ -138,7 +140,7 @@ export function CycleSwitcher({
       )}
       <button
         type="button"
-        onClick={() => onSelect(null)}
+        onClick={() => onSelect(null, null)}
         className={cn(
           "rounded-full border px-3.5 py-2 text-sm font-semibold transition-colors sm:text-base",
           selectedFileId === null

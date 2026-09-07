@@ -85,6 +85,9 @@ export type LeaveProofReviewItem = {
 
 export type LeaveProofListResponse = {
   items: LeaveProofReviewItem[];
+  // cycle 쿼리로 지난 사이클을 조회했을 때만 true — 처리 이력(leaveHistory)
+  // 스냅샷이라 승인/반려 액션이 없는 읽기 전용 목록임을 프론트에 알린다.
+  readOnly?: boolean;
 };
 
 export type LeaveProofDecideRequest = {
@@ -94,6 +97,10 @@ export type LeaveProofDecideRequest = {
   day: string;
   rejectReason?: string;
   count?: 1 | 2;
+  // 처리 이력 로그(leaveHistory)에 함께 남기기 위한 표시용 정보 — 목록
+  // 화면이 이미 갖고 있는 값을 그대로 넘긴다.
+  memberName?: string;
+  reason?: string;
 };
 
 export type LeaveProofDecideResponse = {
@@ -490,6 +497,9 @@ export type ExitCandidate = {
 
 export type AdminExitCandidatesResponse = {
   candidates: ExitCandidate[];
+  // cycle 쿼리로 지난 사이클을 조회했을 때만 true — 그 시점 스냅샷이라
+  // 강퇴/재납 확정 액션이 잠겨야 함을 프론트에 알린다.
+  readOnly?: boolean;
 };
 
 export type MemberRosterEntry = {

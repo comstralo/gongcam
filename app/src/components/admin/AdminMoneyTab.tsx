@@ -9,6 +9,7 @@ import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
 import { ReportReviewList } from "@/components/admin/ReportReviewList";
 import { PenaltyCandidateList } from "@/components/admin/PenaltyCandidateList";
 import { ReasonLeaveReviewList } from "@/components/admin/ReasonLeaveReviewList";
+import { CycleSwitcher } from "@/components/dashboard/CycleSwitcher";
 import { RankBadge, achievedTime } from "@/components/dashboard/RosterView";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
@@ -27,6 +28,7 @@ import type {
   RosterStatusResponse,
   RosterMember,
   PrizeSettleResponse,
+  CycleWeek,
 } from "@/lib/api/types";
 
 const STATUS_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
@@ -43,14 +45,26 @@ function won(n: number) {
   return "₩" + (n || 0).toLocaleString();
 }
 
-// 오늘 날짜 기준 이번 주(월~일)의 각 요일 실제 날짜를 "8월 19일" 형태로 계산한다.
-function thisWeekDateLabel(dayKr: string): string {
+// 기준 주(월~일)의 각 요일 실제 날짜를 "8월 19일" 형태로 계산한다.
+// weekOf("YYMMDD", 백업 파일명의 그 주 월요일)를 주면 그 주 기준, 없으면
+// 오늘이 속한 이번 주 기준 — 사이클 토글로 지난 주를 선택했을 때도 실제
+// 그 주의 날짜를 보여주기 위함(사용자 확인: 이전 세션에서 동일한 요일
+// 그룹핑 버그를 이미 두 차례 겪었다 — "요일 이름 + 오늘 기준 역산" 조합은
+// 여러 주가 섞이는 화면에 부적합).
+function thisWeekDateLabel(dayKr: string, weekOf?: string | null): string {
   const dayIndex = STATUS_DAYS.indexOf(dayKr); // 월=0 ... 일=6
   if (dayIndex === -1) return "";
-  const now = new Date();
-  const todayIndex = (now.getDay() + 6) % 7; // JS getDay()는 일=0 → 월=0으로 보정
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - todayIndex);
+  let monday: Date;
+  if (weekOf) {
+    const m = /^(\d{2})(\d{2})(\d{2})$/.exec(weekOf);
+    if (!m) return "";
+    monday = new Date(2000 + parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+  } else {
+    const now = new Date();
+    const todayIndex = (now.getDay() + 6) % 7; // JS getDay()는 일=0 → 월=0으로 보정
+    monday = new Date(now);
+    monday.setDate(now.getDate() - todayIndex);
+  }
   const target = new Date(monday);
   target.setDate(monday.getDate() + dayIndex);
   return `${target.getMonth() + 1}월 ${target.getDate()}일`;
@@ -88,9 +102,22 @@ const FINE_BADGE_TONE: Record<FineAction, "ok" | "warn" | "amber" | "primary"> =
 // 나머지 두 상태 + "직권 P"를 버튼으로 제공한다. 세 상태를 각각 다른
 // API(/admin/fines/paid·unpaid·exempt)로 나눠 조회한 뒤 하나의 목록으로
 // 합친다 — 백엔드가 이 세 목록을 합쳐주는 API가 따로 없기 때문.
-function PaidFineList({ isVisible }: { isVisible: boolean }) {
+function PaidFineList({
+  isVisible,
+  cycleFileId,
+  cycleWeekOf,
+}: {
+  isVisible: boolean;
+  cycleFileId: string | null;
+  // 선택된 사이클 주차의 월요일("YYMMDD") — thisWeekDateLabel이 "오늘" 대신
+  // 이 값을 기준으로 요일별 실제 날짜를 계산하게 한다. null이면 현재(오늘 기준).
+  cycleWeekOf: string | null;
+}) {
   const { call } = useApi();
   const TODAY_INDEX = useTodayIndex();
+  // 지난 사이클 조회 중이면 읽기 전용 — 납부 상태 변경·퇴실 처리는 그
+  // 시점 시트에 실제로 값을 쓰는 액션이라 현재 시트에서만 의미가 있다.
+  const readOnly = !!cycleFileId;
 
   const [records, setRecords] = useState<FineRecord[] | null>(null);
   const [totalAmount, setTotalAmount] = useState(0);
@@ -113,10 +140,14 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
   function load() {
     setLoading(true);
     setError(null);
+    const cycleParam = cycleFileId ? `?cycle=${encodeURIComponent(cycleFileId)}` : "";
+    // admin-forced-count는 사이클과 무관하게(시트가 아니라 KV 영구기록
+    // 기준) 항상 전체 누적을 세므로 cycle을 붙이지 않는다 — 과거 사이클
+    // 조회 중에도 이 뱃지만은 현재 값을 그대로 보여준다.
     Promise.all([
-      call<AdminFinesUnpaidResponse>("/admin/fines/unpaid"),
-      call<AdminFinesPaidResponse>("/admin/fines/paid"),
-      call<AdminFinesExemptResponse>("/admin/fines/exempt"),
+      call<AdminFinesUnpaidResponse>(`/admin/fines/unpaid${cycleParam}`),
+      call<AdminFinesPaidResponse>(`/admin/fines/paid${cycleParam}`),
+      call<AdminFinesExemptResponse>(`/admin/fines/exempt${cycleParam}`),
       call<AdminFinesAdminForcedCountResponse>("/admin/fines/admin-forced-count"),
     ])
       .then(([unpaidData, paidData, exemptData, adminForcedData]) => {
@@ -134,7 +165,7 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
       .finally(() => setLoading(false));
   }
 
-  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(load, [cycleFileId]); // eslint-disable-line react-hooks/exhaustive-deps
   // 이 탭(MEM·PEN)에서 퇴실/재납 처리를 하면 벌금 상태가 바뀔 수 있어,
   // Money 탭으로 돌아올 때마다 새로 불러온다.
   useRefreshOnVisible(isVisible, load);
@@ -220,7 +251,7 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
                   <span className="flex min-w-0 flex-1 items-center gap-1.5">
                     <span className="inline-flex shrink-0 items-center gap-1.25 text-xs font-semibold text-muted-foreground sm:text-sm">
                       <CalendarDays className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
-                      {thisWeekDateLabel(group.day)} {group.day}요일
+                      {thisWeekDateLabel(group.day, cycleWeekOf)} {group.day}요일
                     </span>
                     <span className="ml-auto flex flex-wrap items-center justify-end gap-1">
                       <span className="rounded-full bg-ok/15 px-2 py-1 text-micro-lg leading-none font-semibold text-ok sm:text-xs">
@@ -305,7 +336,9 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
                               )}
                               {/* "일간 총 벌금 · 재납 예치금" 바로 아래 —
                                   DayDetailCard의 마지막 섹션이라 그 카드
-                                  바깥(아래)에 놓으면 시각적으로 그 자리다. */}
+                                  바깥(아래)에 놓으면 시각적으로 그 자리다.
+                                  지난 사이클 조회 중엔 읽기 전용이라 숨긴다. */}
+                              {!readOnly && (
                               <div className="flex items-center gap-2">
                                 {otherActions.map((action) =>
                                   action === "직권 P" ? (
@@ -342,6 +375,7 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
                                   )
                                 )}
                               </div>
+                              )}
                             </>
                           )}
                         </div>
@@ -367,7 +401,13 @@ function PaidFineList({ isVisible }: { isVisible: boolean }) {
 // 으로 스터디원에게는 일요일 14교시 종료(23:30 KST) 전까지 settlement을
 // 숨기는데, 관리자는 그 시간 제한 없이 항상 봐야 하므로(사용자 지시대로
 // 상시 처리 화면) 백엔드에 isAdmin 조건을 추가해 우회한다(handleRosterStatus).
-function PrizeRecipientList({ isVisible }: { isVisible: boolean }) {
+function PrizeRecipientList({
+  isVisible,
+  cycleFileId,
+}: {
+  isVisible: boolean;
+  cycleFileId: string | null;
+}) {
   const { call } = useApi();
   const [collectMoney, setCollectMoney] = useState(0);
   // "랭킹"(RosterView)의 타이머·상점을 그대로 보여주려면 members(그 두
@@ -379,6 +419,9 @@ function PrizeRecipientList({ isVisible }: { isVisible: boolean }) {
   const [loading, setLoading] = useState(true);
   const [settling, setSettling] = useState(false);
   const [settled, setSettled] = useState(false);
+  // 지난 사이클 조회 중이면 읽기 전용 — "상금 정산 집행"은 그 시점 시트에
+  // 실제로 값을 쓰는 액션이라 현재 시트에서만 의미가 있다.
+  const readOnly = !!cycleFileId;
 
   // 🔧 2026-09: 더미 데이터를 걷어내고 실제 /roster-status를 호출한다 —
   // "랭킹"(RosterPage)이 이미 쓰는 것과 같은 엔드포인트다. settlement(1~5등
@@ -386,11 +429,13 @@ function PrizeRecipientList({ isVisible }: { isVisible: boolean }) {
   // "총 모금액"을 순위 인원수로 나눈 값) 백엔드 추가 작업 없이 그대로 쓸 수
   // 있다 — 일반 회원은 일요일 23:30 KST 전까지 이 필드를 못 보지만, 관리자는
   // "상금 수령 대상 처리"에서 미리 확인해야 하므로 서버가 관리자에게는 이
-  // 제한을 걸지 않는다(index.js, handleRosterStatus).
+  // 제한을 걸지 않는다(index.js, handleRosterStatus). cycle 쿼리는 이미
+  // handleRosterStatus가 resolveTargetFileId로 지원하는 기존 패턴이다.
   function load() {
     setLoading(true);
     setError(null);
-    call<RosterStatusResponse>("/roster-status")
+    const cycleParam = cycleFileId ? `?cycle=${encodeURIComponent(cycleFileId)}` : "";
+    call<RosterStatusResponse>(`/roster-status${cycleParam}`)
       .then((data) => {
         setCollectMoney(data.collectMoney ?? 0);
         setMembers(data.members ?? []);
@@ -400,7 +445,7 @@ function PrizeRecipientList({ isVisible }: { isVisible: boolean }) {
       .finally(() => setLoading(false));
   }
 
-  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(load, [cycleFileId]); // eslint-disable-line react-hooks/exhaustive-deps
   useRefreshOnVisible(isVisible, load);
   usePullRefreshListener(isVisible, load);
 
@@ -484,7 +529,7 @@ function PrizeRecipientList({ isVisible }: { isVisible: boolean }) {
           </div>
         )}
 
-        {settlement && settlement.length > 0 && (
+        {settlement && settlement.length > 0 && !readOnly && (
           <Button
             variant="outline"
             className="w-full sm:h-12 sm:text-base"
@@ -502,27 +547,46 @@ function PrizeRecipientList({ isVisible }: { isVisible: boolean }) {
 // PEN · MONEY 탭 — 페널티/벌금/상금 처리 전용: 송출P대상처리 → 사유반휴신청대상처리
 // → 벌금납부대상처리 → 예치금재납대상처리 → 상금수령대상처리.
 // (제보확인/예치금재납대상자/사유반휴신청은 기존 ACCOUNT 탭(구 MEM·PEN)에서 이동)
+//
+// 🔧 [PEN·MONEY 사이클 토글] 탭 상단에 사이클 토글 하나를 두면 5개 섹션이
+// 모두 그 주(월~일, KST) 기준으로 동시에 다시 로드된다(사용자 지시). 각
+// 섹션은 cycleFileId를 props로 받아 자체 useEffect([cycleFileId])에서
+// 재조회한다 — 이 컨테이너가 별도 로딩 상태를 관장하지 않고, 각 섹션이
+// 이미 갖고 있던 독립 loading/error를 그대로 쓴다. cycleWeekOf(선택된
+// 주차의 월요일 "YYMMDD")는 CycleSwitcher의 onSelect가 함께 넘겨주는
+// week 객체에서 얻어, 각 섹션의 요일별 날짜 라벨(thisWeekDateLabel)이
+// "오늘 기준"이 아니라 "그 주 기준"으로 정확히 계산되게 한다.
 export function AdminMoneyTab({ visible }: { visible: boolean }) {
+  const [cycleFileId, setCycleFileId] = useState<string | null>(null);
+  const [cycleWeekOf, setCycleWeekOf] = useState<string | null>(null);
+
+  function handleCycleSelect(fileId: string | null, week?: CycleWeek | null) {
+    setCycleFileId(fileId);
+    setCycleWeekOf(week ? week.weekOf : null);
+  }
+
   return (
     <div className="flex flex-col gap-4">
+      <CycleSwitcher selectedFileId={cycleFileId} onSelect={handleCycleSelect} />
+
       <SectionCard>
-        <ReportReviewList visible={visible} />
+        <ReportReviewList visible={visible} cycleFileId={cycleFileId} onCycleChange={handleCycleSelect} />
       </SectionCard>
 
       <SectionCard>
-        <ReasonLeaveReviewList visible={visible} />
+        <ReasonLeaveReviewList visible={visible} cycleFileId={cycleFileId} cycleWeekOf={cycleWeekOf} />
       </SectionCard>
 
       <SectionCard>
-        <PaidFineList isVisible={visible} />
+        <PaidFineList isVisible={visible} cycleFileId={cycleFileId} cycleWeekOf={cycleWeekOf} />
       </SectionCard>
 
       <SectionCard>
-        <PenaltyCandidateList visible={visible} />
+        <PenaltyCandidateList visible={visible} cycleFileId={cycleFileId} cycleWeekOf={cycleWeekOf} />
       </SectionCard>
 
       <SectionCard>
-        <PrizeRecipientList isVisible={visible} />
+        <PrizeRecipientList isVisible={visible} cycleFileId={cycleFileId} />
       </SectionCard>
     </div>
   );

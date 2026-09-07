@@ -714,6 +714,40 @@ async function _readLeaveQueueIndex(env) {
   }
 }
 
+// 🔧 [PEN·MONEY 사이클 토글] 사유반휴 신청은 승인/반려 즉시 큐(leaveq:*)와
+// 봇 manifest에서 삭제되어 처리 이력이 어디에도 남지 않는다 — 지난 사이클
+// 조회를 지원하려면 처리 시점에 별도 영구 로그가 필요하다(사용자 지시).
+// 시트 백업과 동일한 "그 주(월요일 weekOf)" 단위로 묶어, 키 하나
+// (leaveHistory:{weekOf})에 그 주 처리 기록 전체를 배열로 누적한다 — TTL
+// 없이 영구 보관. 처리는 항상 "지금"(과거 사이클을 재처리할 방법은 없음)
+// 일어나므로, weekOf는 항상 currentWeekMondayKST()(처리 시각=지금 기준)로
+// 계산한다 — 사이클 조회 시 백업 파일의 weekOf와 그대로 매칭된다.
+async function _appendLeaveHistory(env, entry) {
+  const weekOf = formatYYMMDD(currentWeekMondayKST());
+  const key = `leaveHistory:${weekOf}`;
+  const raw = await env.REPORTS_KV.get(key);
+  let items = [];
+  if (raw) {
+    try {
+      items = JSON.parse(raw);
+    } catch {
+      items = [];
+    }
+  }
+  items.push(entry);
+  await env.REPORTS_KV.put(key, JSON.stringify(items));
+}
+
+async function _readLeaveHistory(env, weekOf) {
+  const raw = await env.REPORTS_KV.get(`leaveHistory:${weekOf}`);
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
 // 시트 구조(권한관리·데이터 D~V 등)를 바꾸는 쓰기 작업 뒤에 호출해 캐시가
 // 오래된 명단/메타를 계속 돌려주지 않게 한다. 인메모리는 즉시 지우고,
 // KV는 비동기로 지운다(호출부가 await하지 않아도 되도록 fire-and-forget).
@@ -4325,9 +4359,36 @@ async function listQueuedReasonLeaveItems(env) {
   }));
 }
 
-async function handleAdminLeaveProofList(req, env, origin) {
+async function handleAdminLeaveProofList(req, env, origin, url) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
+
+  // 🔧 [PEN·MONEY 사이클 토글] cycle 쿼리 파라미터가 있으면 그 주(월~일,
+  // KST)의 처리 이력(_appendLeaveHistory가 쌓은 leaveHistory:{weekOf})을
+  // 대신 보여준다 — 대기 큐/봇 목록과 달리 이건 이미 처리 완료된 읽기
+  // 전용 기록이라 승인/반려 액션 없이 결과만 노출한다.
+  const cycleFileId = url ? url.searchParams.get("cycle") : null;
+  if (cycleFileId) {
+    const accessToken = await getServiceAccountAccessToken(env);
+    const { weekOf } = await resolveTargetFileId(env, accessToken, cycleFileId);
+    const history = weekOf ? await _readLeaveHistory(env, weekOf) : [];
+    const items = history
+      .map((h) => ({
+        id: h.id,
+        memberNumber: h.memberNumber,
+        memberName: h.memberName,
+        day: h.day,
+        reason: h.reason,
+        requesterEmail: null,
+        count: h.count || 1,
+        ts: h.decidedAt,
+        reviewStatus: h.decision,
+        rejectReason: h.rejectReason || null,
+        queued: false,
+      }))
+      .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    return json({ items, readOnly: true }, 200, origin);
+  }
 
   // 봇이 꺼져 있어도 관리자가 대기 중인 신청을 놓치지 않도록, 봇 목록과
   // KV 큐(아직 봇에 도달하지 못한 신청)를 합쳐서 보여준다. 봇이 응답하지
@@ -4339,7 +4400,7 @@ async function handleAdminLeaveProofList(req, env, origin) {
   ]);
   const botItems = (botData && botData.items) || [];
   const items = [...queuedItems, ...botItems].sort((a, b) => (b.ts || 0) - (a.ts || 0));
-  return json({ items }, 200, origin);
+  return json({ items, readOnly: false }, 200, origin);
 }
 
 function base64ToBytes(base64) {
@@ -4389,10 +4450,22 @@ async function handleAdminLeaveProofDecide(req, env, origin) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
 
-  const { id, decision, memberNumber, day, rejectReason, count: rawCount } = await req.json().catch(() => ({}));
+  const {
+    id,
+    decision,
+    memberNumber,
+    day,
+    rejectReason,
+    count: rawCount,
+    memberName,
+    reason,
+  } = await req.json().catch(() => ({}));
   // count: 이 증빙으로 승인 시 반영할 장수(1 또는 2) — 신청 시점에 학생이
   // 고른 값을 목록 아이템(item.count)에서 그대로 넘겨받는다. 미지정 시 1.
   const count = rawCount === undefined ? 1 : rawCount;
+  // memberName/reason: 목록 화면이 이미 갖고 있는 표시용 정보를 그대로
+  // 넘겨받아 처리 이력 로그(_appendLeaveHistory)에 함께 남긴다 — 권한
+  // 판정에는 쓰이지 않는 순수 표시값이라 클라이언트 제공값을 신뢰해도 된다.
   const col = statusColForDay(day);
   if (
     !id ||
@@ -4429,6 +4502,16 @@ async function handleAdminLeaveProofDecide(req, env, origin) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id, decision, rejectReason }),
         }).catch(() => null);
+        await _appendLeaveHistory(env, {
+          id,
+          decision,
+          memberNumber,
+          memberName: memberName || null,
+          day,
+          reason: reason || null,
+          rejectReason,
+          decidedAt: Date.now(),
+        });
         return json({ ok: true }, 200, origin);
       }
       // 시트에는 아무것도 쓰지 않는다 — 반려된 신청은 처음부터 없었던 것과 같다.
@@ -4438,6 +4521,16 @@ async function handleAdminLeaveProofDecide(req, env, origin) {
         body: JSON.stringify({ id, decision, rejectReason }),
       });
       if (!data) return json({ error: "봇에 연결할 수 없습니다." }, 502, origin);
+      await _appendLeaveHistory(env, {
+        id,
+        decision,
+        memberNumber,
+        memberName: memberName || null,
+        day,
+        reason: reason || null,
+        rejectReason,
+        decidedAt: Date.now(),
+      });
       return json(data, 200, origin);
     }
 
@@ -4469,6 +4562,16 @@ async function handleAdminLeaveProofDecide(req, env, origin) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, decision: "approved" }),
       }).catch(() => null);
+      await _appendLeaveHistory(env, {
+        id,
+        decision: "approved",
+        memberNumber,
+        memberName: memberName || null,
+        day,
+        reason: reason || null,
+        rejectReason: null,
+        decidedAt: Date.now(),
+      });
       return json({ ok: true }, 200, origin);
     }
 
@@ -4478,6 +4581,16 @@ async function handleAdminLeaveProofDecide(req, env, origin) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, decision: "approved" }),
+    });
+    await _appendLeaveHistory(env, {
+      id,
+      decision: "approved",
+      memberNumber,
+      memberName: memberName || null,
+      day,
+      reason: reason || null,
+      rejectReason: null,
+      decidedAt: Date.now(),
     });
     if (!data) {
       return json({ ok: true, botSyncFailed: true }, 200, origin);
@@ -4890,26 +5003,29 @@ async function handleAdminMemberStatus(req, env, origin, memberNumber, url) {
 
 const FINE_STATUS_VALUES = ["미납", "납부", "면제"];
 
-async function handleAdminFinesUnpaid(req, env, origin) {
+async function handleAdminFinesUnpaid(req, env, origin, url) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
 
   try {
     const accessToken = await getServiceAccountAccessToken(env);
-    const unpaid = await listUnpaidFines(env, accessToken, env.GOOGLE_SHEET_FILE_ID);
+    const cycleFileId = url ? url.searchParams.get("cycle") : null;
+    const { fileId } = await resolveTargetFileId(env, accessToken, cycleFileId);
+    const unpaid = await listUnpaidFines(env, accessToken, fileId);
     return json({ unpaid }, 200, origin);
   } catch (err) {
     return json({ error: "벌금 미납 목록 조회 실패: " + err.message }, 500, origin);
   }
 }
 
-async function handleAdminFinesPaid(req, env, origin) {
+async function handleAdminFinesPaid(req, env, origin, url) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
 
   try {
     const accessToken = await getServiceAccountAccessToken(env);
-    const fileId = env.GOOGLE_SHEET_FILE_ID;
+    const cycleFileId = url ? url.searchParams.get("cycle") : null;
+    const { fileId } = await resolveTargetFileId(env, accessToken, cycleFileId);
     const [paid, totalAmount] = await Promise.all([
       listPaidFines(env, accessToken, fileId),
       getWeeklyPaidFineTotal(env, accessToken, fileId),
@@ -4920,13 +5036,15 @@ async function handleAdminFinesPaid(req, env, origin) {
   }
 }
 
-async function handleAdminFinesExempt(req, env, origin) {
+async function handleAdminFinesExempt(req, env, origin, url) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
 
   try {
     const accessToken = await getServiceAccountAccessToken(env);
-    const exempt = await listExemptFines(env, accessToken, env.GOOGLE_SHEET_FILE_ID);
+    const cycleFileId = url ? url.searchParams.get("cycle") : null;
+    const { fileId } = await resolveTargetFileId(env, accessToken, cycleFileId);
+    const exempt = await listExemptFines(env, accessToken, fileId);
     return json({ exempt }, 200, origin);
   } catch (err) {
     return json({ error: "벌금 면제 목록 조회 실패: " + err.message }, 500, origin);
@@ -5564,14 +5682,19 @@ async function handleAdminSetPartiStatus(req, env, origin) {
   }
 }
 
-async function handleAdminExitCandidates(req, env, origin) {
+async function handleAdminExitCandidates(req, env, origin, url) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
 
   try {
     const accessToken = await getServiceAccountAccessToken(env);
-    const candidates = await listExitCandidates(env, accessToken, env.GOOGLE_SHEET_FILE_ID);
-    return json({ candidates }, 200, origin);
+    const cycleFileId = url ? url.searchParams.get("cycle") : null;
+    const { fileId } = await resolveTargetFileId(env, accessToken, cycleFileId);
+    const candidates = await listExitCandidates(env, accessToken, fileId);
+    // 지난 사이클(과거 백업) 조회면 그 시점의 대상자 명단만 보여주는 읽기
+    // 전용 스냅샷이다 — 실제 강제 퇴실/재납 확정 액션은 현재 시트에서만
+    // 의미가 있으므로, 프론트가 이 플래그로 처리 버튼을 잠근다.
+    return json({ candidates, readOnly: !!cycleFileId }, 200, origin);
   } catch (err) {
     return json({ error: "퇴실 후보 조회 실패: " + err.message }, 500, origin);
   }
@@ -7681,7 +7804,7 @@ export default {
         return await handleCancelReasonLeaveProof(req, env, origin);
       }
       if (url.pathname === "/admin/leave-proof" && req.method === "GET") {
-        return await handleAdminLeaveProofList(req, env, origin);
+        return await handleAdminLeaveProofList(req, env, origin, url);
       }
       if (url.pathname === "/admin/leave-proof/file" && req.method === "GET") {
         return await handleAdminLeaveProofFile(req, env, origin, url);
@@ -7733,13 +7856,13 @@ export default {
         return await handleAdminOpenSlots(req, env, origin);
       }
       if (url.pathname === "/admin/fines/unpaid" && req.method === "GET") {
-        return await handleAdminFinesUnpaid(req, env, origin);
+        return await handleAdminFinesUnpaid(req, env, origin, url);
       }
       if (url.pathname === "/admin/fines/paid" && req.method === "GET") {
-        return await handleAdminFinesPaid(req, env, origin);
+        return await handleAdminFinesPaid(req, env, origin, url);
       }
       if (url.pathname === "/admin/fines/exempt" && req.method === "GET") {
-        return await handleAdminFinesExempt(req, env, origin);
+        return await handleAdminFinesExempt(req, env, origin, url);
       }
       if (url.pathname === "/admin/fines/status" && req.method === "POST") {
         return await handleAdminFineStatus(req, env, origin);
@@ -7751,7 +7874,7 @@ export default {
         return await handleAdminPrizeSettle(req, env, origin);
       }
       if (url.pathname === "/admin/exit/candidates" && req.method === "GET") {
-        return await handleAdminExitCandidates(req, env, origin);
+        return await handleAdminExitCandidates(req, env, origin, url);
       }
       if (url.pathname === "/admin/exit/preview" && req.method === "POST") {
         return await handleAdminExitPreview(req, env, origin);

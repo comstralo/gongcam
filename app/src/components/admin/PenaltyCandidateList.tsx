@@ -28,15 +28,24 @@ const OUTPUT_PEN_SLOT_LABELS = [
   "페널티 (2차)",
 ];
 
-// 오늘 날짜 기준 이번 주(월~일)의 각 요일 실제 날짜를 "8월 19일" 형태로
-// 계산한다(벌금 미납 현황 · 송출 P 제보 확인과 동일 패턴).
-function thisWeekDateLabel(dayKr: string): string {
+// 기준 주(월~일)의 각 요일 실제 날짜를 "8월 19일" 형태로 계산한다(벌금 미납
+// 현황 · 송출 P 제보 확인과 동일 패턴). weekOf("YYMMDD")를 주면 그 주 기준,
+// 없으면 오늘이 속한 이번 주 기준 — 사이클 토글로 지난 주를 선택했을 때도
+// 실제 그 주의 날짜를 보여주기 위함.
+function thisWeekDateLabel(dayKr: string, weekOf?: string | null): string {
   const dayIndex = STATUS_DAYS.indexOf(dayKr);
   if (dayIndex === -1) return "";
-  const now = new Date();
-  const todayIndex = (now.getDay() + 6) % 7;
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - todayIndex);
+  let monday: Date;
+  if (weekOf) {
+    const m = /^(\d{2})(\d{2})(\d{2})$/.exec(weekOf);
+    if (!m) return "";
+    monday = new Date(2000 + parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+  } else {
+    const now = new Date();
+    const todayIndex = (now.getDay() + 6) % 7;
+    monday = new Date(now);
+    monday.setDate(now.getDate() - todayIndex);
+  }
   const target = new Date(monday);
   target.setDate(monday.getDate() + dayIndex);
   return `${target.getMonth() + 1}월 ${target.getDate()}일`;
@@ -61,7 +70,15 @@ function groupByDay(candidates: ExitCandidate[]) {
 // 페널티 2회 이상은 강제 퇴실자 조건 중 하나라 반환율이 항상 0%로 고정되며,
 // 유형 선택 없이 강제 퇴실자로 곧바로 확정할 수 있다(lockKind="forced").
 // "송출 P 제보 확인"과 동일하게 요일별 아코디언 → 인원별 토글 구조로 맞춘다.
-export function PenaltyCandidateList({ visible }: { visible: boolean }) {
+export function PenaltyCandidateList({
+  visible,
+  cycleFileId,
+  cycleWeekOf,
+}: {
+  visible: boolean;
+  cycleFileId: string | null;
+  cycleWeekOf: string | null;
+}) {
   const { call } = useApi();
   const { session } = useAuth();
 
@@ -75,17 +92,25 @@ export function PenaltyCandidateList({ visible }: { visible: boolean }) {
   // 결과("강퇴"/"재납")를 화면 상태로 기억해 뱃지로만 바꿔 그 자리에 남긴다
   // ("송출 P 제보 확인"과 동일한 패턴 — 사용자 요청으로 디자인 통일).
   const [processed, setProcessed] = useState<Record<string, ExitKind>>({});
+  // 서버가 지난 사이클 조회면 readOnly: true를 내려준다 — 그 시점의 페널티
+  // 누적 판정은 "현재 기준"이라는 전제가 깨지므로 강퇴/재납 확정 액션을
+  // 잠근다(사용자 지시: 과거 사이클은 스냅샷 조회만, 실제 처리는 현재에서만).
+  const [readOnly, setReadOnly] = useState(false);
 
   function load() {
     setLoading(true);
     setError(null);
-    call<AdminExitCandidatesResponse>("/admin/exit/candidates")
-      .then((data) => setCandidates(data.candidates || []))
+    const cycleParam = cycleFileId ? `?cycle=${encodeURIComponent(cycleFileId)}` : "";
+    call<AdminExitCandidatesResponse>(`/admin/exit/candidates${cycleParam}`)
+      .then((data) => {
+        setCandidates(data.candidates || []);
+        setReadOnly(!!data.readOnly);
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "예치금 재납 대상 처리 목록을 불러오지 못했습니다."))
       .finally(() => setLoading(false));
   }
 
-  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(load, [cycleFileId]); // eslint-disable-line react-hooks/exhaustive-deps
   // 다른 회원의 페널티 누적이 탭을 벗어난 사이에도 바뀔 수 있어, 돌아올
   // 때마다 새로 불러와야 최신 대상자를 놓치지 않는다.
   useRefreshOnVisible(visible, load);
@@ -125,7 +150,7 @@ export function PenaltyCandidateList({ visible }: { visible: boolean }) {
                     <span className="flex min-w-0 flex-1 items-center gap-1.5">
                       <span className="inline-flex shrink-0 items-center gap-1.25 text-xs font-semibold text-muted-foreground sm:text-sm">
                         <CalendarDays className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
-                        {isUnknown ? group.day : `${thisWeekDateLabel(group.day)} ${group.day}요일`}
+                        {isUnknown ? group.day : `${thisWeekDateLabel(group.day, cycleWeekOf)} ${group.day}요일`}
                       </span>
                       <span className="ml-auto flex flex-wrap items-center justify-end gap-1">
                         <span className="rounded-full bg-destructive/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-destructive">
@@ -198,7 +223,11 @@ export function PenaltyCandidateList({ visible }: { visible: boolean }) {
                                   />
                                 </div>
 
-                                {decidedKind ? (
+                                {readOnly ? (
+                                  <p className="text-center text-xs text-muted-foreground sm:text-sm">
+                                    지난 사이클 기록은 조회만 가능합니다.
+                                  </p>
+                                ) : decidedKind ? (
                                   <p className="text-center text-xs text-muted-foreground sm:text-sm">
                                     이미 처리된 대상입니다.
                                   </p>
