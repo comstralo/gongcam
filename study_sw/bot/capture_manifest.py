@@ -5,14 +5,17 @@ import time
 import uuid
 
 MANIFEST_PATH = "runtime/captures/manifest.json"
+ARCHIVE_DIR = "runtime/captures/archive"
+ARCHIVE_MANIFEST_PATH = os.path.join(ARCHIVE_DIR, "manifest.json")
+ARCHIVE_FILES_DIR = os.path.join(ARCHIVE_DIR, "report")
 _manifest_lock = threading.Lock()
 
 
-def _load():
-    if not os.path.exists(MANIFEST_PATH):
+def _load(path=MANIFEST_PATH):
+    if not os.path.exists(path):
         return {}
     try:
-        with open(MANIFEST_PATH, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             content = f.read()
             return json.loads(content) if content.strip() else {}
     except Exception:
@@ -25,12 +28,12 @@ def _load():
 # 사라졌다. 같은 디렉터리에 임시파일로 먼저 쓰고 os.replace로 원자적
 # 교체하면, 쓰기 도중 죽어도 원본 manifest는 그대로 남는다(os.replace는
 # 같은 파일시스템 내에서 원자적 연산이다).
-def _save(data):
-    os.makedirs(os.path.dirname(MANIFEST_PATH), exist_ok=True)
-    tmp_path = f"{MANIFEST_PATH}.tmp"
+def _save(data, path=MANIFEST_PATH):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp_path = f"{path}.tmp"
     with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-    os.replace(tmp_path, MANIFEST_PATH)
+    os.replace(tmp_path, path)
 
 
 # self_check: "내 화각 점검" 여부(사용자 요청) — 대상자가 항상 본인이고
@@ -69,7 +72,16 @@ def list_captures(status=None):
 def get_capture(capture_id):
     with _manifest_lock:
         data = _load()
-    return data.get(capture_id)
+        item = data.get(capture_id)
+        if item is not None:
+            return item
+        # 🔧 [버그 방어] archive_old_captures로 원본 manifest에서 옮겨진
+        # 건도 "예치금 재납 대상자" 카드 등에서 [cap:캡처ID] 이력을 눌러
+        # 원본 스크린샷/영상을 다시 불러오는 기존 기능이 계속 동작해야
+        # 한다 — 3주 지난 캡처를 archive로 옮긴 것이 "더 이상 조회 불가"를
+        # 의미하지는 않는다(사용자 결정: 삭제가 아니라 이동).
+        archive_data = _load(ARCHIVE_MANIFEST_PATH)
+    return archive_data.get(capture_id)
 
 
 # penalty/merit: 이 결정으로 시트에 실제 반영된 값(있으면) — 각각
@@ -169,3 +181,52 @@ def delete_capture(capture_id):
         except OSError:
             pass
     return True
+
+
+# 매주 월요일 정기 작업(scheduling.py)이 호출한다. cutoff_ms(그 시각보다
+# 이전에 접수된 건)에 해당하는 캡처를 완전히 지우지 않고, 원본 manifest에서
+# archive/manifest.json으로 옮기고 이미지·영상 파일도 archive/report/로
+# 함께 이동한다(사용자 결정: "삭제가 아니라 다른 폴더로 이동") — 관리자
+# 목록/자동 위반인정 계산 대상인 원본 manifest는 항상 최근 것만 남아 가벼운
+# 채로 유지되고, 지난 기록은 archive만 뒤지면 그대로 남아 있다.
+# 🔧 [버그 수정] 원래는 "접수 후 21일 지났는지"를 로컬에서 독립적으로
+# 계산했다 — 실제 3주 사이클 길이가 정확히 21일이 아니거나, 새 사이클이
+# 막 시작된 직후엔 "이번 사이클 안에서 아직 조회돼야 할" 캡처가 지난
+# 사이클 자료와 섞여 먼저 옮겨질 위험이 있었다(사용자 지적). cutoff_ms는
+# 이제 호출자(scheduling.py)가 Worker의 /internal/cycle-boundary로 물어본
+# "이번 3주 사이클이 시작된 실제 월요일 00:00(KST)"을 그대로 넘겨받는다 —
+# 그 이전에 접수된 건은 확실히 지난 사이클 소속이므로만 옮긴다. 반환값은
+# 옮긴 건수(로그용).
+def archive_old_captures(cutoff_ms):
+    with _manifest_lock:
+        data = _load()
+        # 아직 관리자가 처리하지 않은("pending") 건은 사이클이 넘어가도
+        # 아카이빙 대상에서 제외한다 — 지난 사이클로 넘어가도록 미처리로
+        # 방치된 제보라면 그 자체가 운영상 챙겨야 할 이례적 상황이지,
+        # 관리자 목록에서 조용히 사라져야 할 이유가 되지 않는다.
+        to_move = {
+            cid: entry
+            for cid, entry in data.items()
+            if entry.get("ts", cutoff_ms) < cutoff_ms and entry.get("reviewStatus") != "pending"
+        }
+        if not to_move:
+            return 0
+        archive_data = _load(ARCHIVE_MANIFEST_PATH)
+        for cid, entry in to_move.items():
+            archive_data[cid] = entry
+            del data[cid]
+        _save(archive_data, ARCHIVE_MANIFEST_PATH)
+        _save(data)
+    os.makedirs(ARCHIVE_FILES_DIR, exist_ok=True)
+    for entry in to_move.values():
+        filename = entry.get("filename")
+        if not filename:
+            continue
+        src = os.path.join("runtime/captures/report", filename)
+        dst = os.path.join(ARCHIVE_FILES_DIR, filename)
+        try:
+            if os.path.exists(src):
+                os.replace(src, dst)
+        except OSError:
+            pass
+    return len(to_move)

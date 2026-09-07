@@ -1,10 +1,13 @@
+import os
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import pandas as pd
+import requests
 import schedule
 
+from bot import capture_manifest
 from bot.gooroomee_room import daily_browser_reset, enter_studyroom, layout_manager
 from bot.sheets import set_sheet
 from bot.threads import (
@@ -14,6 +17,43 @@ from bot.threads import (
     stop_all_thread,
 )
 from bot.tracking import tracking_capture
+
+WORKER_BASE = "https://frame-checker-worker.comstralo.workers.dev"
+BOT_SECRET = os.getenv("BOT_SECRET")
+KST = timezone(timedelta(hours=9))
+
+
+# 🔧 [버그 방어] GET /admin/captures가 매 조회마다 봇 manifest 전체를 훑어
+# 재적용 카운트·자동 위반인정 등을 계산한다 — 캡처가 무기한 쌓이면(청소
+# 로직이 없었음) 이 비용이 계속 커져 관리자 화면이 느려지거나 Workers CPU
+# 시간 제한에 걸릴 위험이 있었다(사용자 확인). "접수 후 N일 지났는지"로
+# 로컬에서 독립 판단하면 실제 3주 사이클 경계와 어긋나 이번 사이클 안에서
+# 아직 조회돼야 할 캡처가 먼저 옮겨질 수 있다는 지적(사용자)에 따라, Worker의
+# /internal/cycle-boundary로 "이번 3주 사이클이 시작된 실제 월요일(KST)"을
+# 물어보고, 그 이전에 접수된 확정 건만 capture_manifest.archive_old_captures로
+# 옮긴다. 조회 실패(네트워크 문제 등)나 아직 백업이 하나도 없는 경우
+# (cycleStartWeekOf가 null)는 이번 회차 정리를 조용히 건너뛴다 — "정리를
+# 못 했다"는 데이터 유실이 아니라 성능 최적화가 하루 늦춰지는 정도이므로,
+# 무리해서 추측값으로 옮기는 것보다 안전하다.
+def run_cycle_capture_archiving(ctx):
+    try:
+        res = requests.get(
+            f"{WORKER_BASE}/internal/cycle-boundary",
+            headers={"X-Bot-Secret": BOT_SECRET},
+            timeout=15,
+        )
+        res.raise_for_status()
+        week_of = res.json().get("cycleStartWeekOf")
+        if not week_of or len(week_of) != 6:
+            ctx.logger.info("run_cycle_capture_archiving() : 이번 사이클 시작을 아직 알 수 없어 캡처 정리를 건너뜁니다.")
+            return
+        yy, mm, dd = int(week_of[0:2]), int(week_of[2:4]), int(week_of[4:6])
+        cutoff_dt = datetime(2000 + yy, mm, dd, 0, 0, 0, tzinfo=KST)
+        cutoff_ms = int(cutoff_dt.timestamp() * 1000)
+        moved = capture_manifest.archive_old_captures(cutoff_ms)
+        ctx.logger.info(f"run_cycle_capture_archiving() : 📦 지난 사이클 캡처 {moved}건을 archive로 이동했습니다.")
+    except Exception as e:
+        ctx.logger.warning(f"run_cycle_capture_archiving() : ⚠️ 캡처 정리 건너뜀 - {e}")
 
 
 # [MAIN] 함수 스케줄링 등록
@@ -57,6 +97,15 @@ def schedule_reserve(ctx):
     schedule.every().day.at("07:15").do(daily_browser_reset, ctx)
     print(
         "schedule_reserve() :  ⏰  [정기 리셋] [07:15] 브라우저 초기화 스케줄링 등록.  ⏰"
+    )
+
+    # 07:15 정기 리셋과 겹치지 않는 시각에, 매주 월요일마다 지난 3주
+    # 사이클로 넘어간 캡처를 archive/로 옮긴다(run_cycle_capture_archiving
+    # 참고 — 실제 옮길지는 그때그때 Sheets 사이클 경계를 물어봐서 결정하므로
+    # 3주에 두 번은 "이번 사이클 안"이라 아무것도 옮기지 않고 조용히 끝난다).
+    schedule.every().monday.at("07:10").do(run_cycle_capture_archiving, ctx)
+    print(
+        "schedule_reserve() :  ⏰  [캡처 정리] [월요일 07:10] 지난 사이클 캡처 아카이빙 스케줄링 등록.  ⏰"
     )
 
 

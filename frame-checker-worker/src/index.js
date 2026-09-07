@@ -2678,6 +2678,40 @@ async function handleBotSheetsUsageReport(req, env, origin) {
   return json({ ok: true }, 200, origin);
 }
 
+// 🔧 [버그 방어] 봇의 capture_manifest.py가 오래된 캡처를 정리(archive)할
+// 때, 단순히 "접수 후 N일 지났는지"로 판단하면 실제 3주 사이클 경계와
+// 어긋나 "이번 사이클 안에서 아직 조회돼야 할" 캡처가 먼저 옮겨질 수
+// 있다(사용자 지적) — 사이클 길이가 정확히 21일이 아닐 수 있고, 새
+// 사이클이 막 시작된 직후엔 지난 사이클 자료가 21일 전이라는 이유만으로
+// 옮겨지는 경우가 생긴다. listCurrentCycleBackups가 이미 "지금 진행 중인
+// 3주 묶음"을 정확히 계산해 두므로, 그 묶음에서 가장 오래된(=사이클 1주차)
+// 백업의 weekOf를 그대로 "그 이전 접수 건은 지난 사이클, 그 이후는 이번
+// 사이클"의 경계로 봇에게 알려준다 — 봇은 이 경계보다 이전에 접수된
+// 확정 건만 archive로 옮긴다. 매주 월요일 정기 작업 한 번만 호출되므로
+// Sheets API 부담은 미미하다.
+async function handleInternalCycleBoundary(req, env, origin) {
+  const botSecret = req.headers.get("X-Bot-Secret");
+  if (!botSecret || botSecret !== env.BOT_SECRET) {
+    return json({ error: "unauthorized" }, 401, origin);
+  }
+  try {
+    const accessToken = await getServiceAccountAccessToken(env);
+    const backups = await listCurrentCycleBackups(env, accessToken);
+    // backups는 최신순 정렬 — 배열의 마지막이 "이번 3주 묶음"에서 가장
+    // 과거(=사이클 1주차) 백업이다. 백업이 아직 하나도 없으면(운영 시작
+    // 직후 등) 이번 사이클 시작을 판단할 근거가 없으므로 null로 알려
+    // 봇이 이번 회차 정리를 건너뛰게 한다.
+    const oldestInCycle = backups[backups.length - 1] || null;
+    return json(
+      { cycleStartWeekOf: oldestInCycle ? oldestInCycle.weekOf : null },
+      200,
+      origin
+    );
+  } catch (err) {
+    return json({ error: "사이클 조회 실패: " + err.message }, 500, origin);
+  }
+}
+
 async function handleListReports(req, env, origin) {
   const botSecret = req.headers.get("X-Bot-Secret");
   if (!botSecret || botSecret !== env.BOT_SECRET) {
@@ -8080,6 +8114,9 @@ export default {
       }
       if (url.pathname === "/admin/bot-sheets-usage" && req.method === "POST") {
         return await handleBotSheetsUsageReport(req, env, origin);
+      }
+      if (url.pathname === "/internal/cycle-boundary" && req.method === "GET") {
+        return await handleInternalCycleBoundary(req, env, origin);
       }
       if (url.pathname === "/report-status" && req.method === "GET") {
         return await handleReportStatus(req, env, origin, url);

@@ -182,7 +182,14 @@ def make_dashboard_handler(ctx):
                     return
                 filename = item["filename"]
                 content_type = "video/mp4" if filename.endswith(".mp4") else "image/png"
-                self._send_file(os.path.join(CAPTURES_DIR, filename), content_type)
+                # 🔧 [버그 방어] get_capture는 archive_old_captures로 옮겨진
+                # 건도 반환할 수 있는데, 그 파일 자체는 CAPTURES_DIR이 아니라
+                # capture_manifest.ARCHIVE_FILES_DIR로 함께 이동돼 있다 —
+                # 원본 위치에 없으면 아카이브 위치를 폴백으로 확인한다.
+                path = os.path.join(CAPTURES_DIR, filename)
+                if not os.path.exists(path):
+                    path = os.path.join(capture_manifest.ARCHIVE_FILES_DIR, filename)
+                self._send_file(path, content_type)
                 return
 
             if parsed.path == "/leave-proof":
