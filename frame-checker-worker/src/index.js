@@ -8386,4 +8386,19 @@ export default {
       return json({ error: "서버 오류: " + err.message }, 500, origin);
     }
   },
+
+  // 🔧 [90분 자동 위반인정 — 크론 도입] 원래 applyAutoRecognitionForExpired는
+  // 별도 크론 없이 GET /admin/captures·GET /my-output-pen 조회 시점에만
+  // 지연 평가됐다 — 관리자도 대상자 본인도 한동안 해당 화면을 열지 않으면
+  // 90분이 훌쩍 지나도 자동 위반인정 자체가 무기한 보류될 수 있었다
+  // (사용자 결정: "90분 후 자동"이라는 문구가 실제로도 시간 기준으로
+  // 지켜지도록 크론으로 처리). 두 조회 경로의 지연 평가는 "혹시 크론이
+  // 늦게 돌기 전에 조회하는 경우"를 위한 안전망으로 그대로 남겨둔다 —
+  // 크론이 이미 처리해 둔 항목은 targetResponse가 채워져 있어 그 경로의
+  // 필터(!item.targetResponse)에 걸리지 않으므로 중복 처리 위험이 없다.
+  async scheduled(event, env) {
+    const data = await proxyToBotDashboard(env, "/captures");
+    if (!data) return; // 봇 연결 불가 — 다음 크론 실행이나 화면 조회 시 안전망이 재시도.
+    await applyAutoRecognitionForExpired(env, data.items || []);
+  },
 };

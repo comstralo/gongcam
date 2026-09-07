@@ -18,6 +18,12 @@ class_name = "ParticipantsRoster"
 tag = "v1"
 new_sqlite_classes = ["ParticipantsRoster"]
 
+# 90분 자동 위반인정(TARGET_RESPONSE_TIMEOUT_MS, index.js)이 관리자/대상자가
+# 화면을 열어야만 지연 평가되던 것을 보완 — 5분마다 만료된 항목을 스스로
+# 찾아 처리한다(사용자 결정). 90분 기준에 비해 5분은 충분히 촘촘하다.
+[triggers]
+crons = ["*/5 * * * *"]
+
 [vars]
 ALLOWED_ORIGIN = "https://comstralo.github.io"
 # 앱스크립트(sheet_reset)가 매주 초기화 직전 시트 전체를 복사해 저장하는 Drive 폴더.
