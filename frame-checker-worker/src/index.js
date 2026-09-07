@@ -595,7 +595,51 @@ async function _cachedCompute(env, key, ttlMs, compute) {
 // 배열 자체를 파일당 1개의 키에 저장해두고, 등록 시에만 다시 써서(list() 없이
 // get 1회 + put 1회) 갱신하고, 조회는 그 값을 그대로 돌려준다 — list()는
 // 조회 시점에 만료된 항목이 섞여 있을 때 정리 목적으로만 드물게 쓰인다.
+// 🔧 [동시 쓰기 레이스 수정] 이 인덱스는 배열 전체를 get→수정→put하는
+// 구조라(KV에 락/CAS가 없음), 두 요청이 거의 동시에 호출되면(예: 학생A
+// 제보 접수와 학생B 캡처 완료가 몇 초 간격으로 겹침) 둘 다 같은 "이전"
+// 배열을 읽어 각자 수정한 뒤, 나중에 put하는 쪽이 앞선 쪽의 결과를 통째로
+// 덮어써 그 항목이 사라지는 문제가 실제로 발생했다(사용자 보고: 1:21
+// 제보가 1:28 제보 이후 사라짐).
+//
+// put 직후 검증(내 항목이 남아있는지만 확인)하는 방식은 시뮬레이션으로
+// 검증해보니 무의미했다 — 상대방이 나를 덮어쓴 뒤 내가 다시 상대방을
+// 덮어써도 "내 항목은 남아있으니" 검증을 통과해버려, 상대방 항목이
+// 사라진 걸 전혀 잡아내지 못한다. 대신 CAS(compare-and-swap)를 그대로
+// 흉내낸다: get한 원본 문자열을 기억해두고, put하기 직전에 다시 get해
+// 그 사이 값이 조금이라도 바뀌었으면(누군가 먼저 썼다는 뜻) 이번 put을
+// 버리고 처음부터 다시 시도한다 — KV에 진짜 조건부 쓰기가 없어 "직전
+// 재확인 → 값이 같으면 즉시 put"으로 창을 최대한 좁히는 근사다.
+const LIVE_INDEX_MAX_RETRIES = 5;
+
 async function _appendToLiveIndex(env, indexKey, item, itemTtlSec) {
+  for (let attempt = 0; attempt < LIVE_INDEX_MAX_RETRIES; attempt++) {
+    const rawBefore = await env.REPORTS_KV.get(indexKey);
+    const now = Date.now();
+    let items = [];
+    if (rawBefore) {
+      try {
+        items = JSON.parse(rawBefore).filter((it) => it.expiresAt > now);
+      } catch {
+        items = [];
+      }
+    }
+    items.push(item);
+    const newValue = JSON.stringify(items);
+    // put하기 직전에 다시 읽어, 내가 처음 읽은 시점과 지금이 정말 같은
+    // 상태인지 확인한다 — 다르면(다른 요청이 그 사이 먼저 썼다는 뜻)
+    // 이번 계산은 낡은 것이므로 버리고 최신 상태로 재시도한다.
+    const rawJustBefore = await env.REPORTS_KV.get(indexKey);
+    if (rawJustBefore !== rawBefore) continue;
+    // 인덱스 자체의 TTL은 그 안에 남아있는 항목 중 가장 늦게 만료되는 것보다
+    // 넉넉히 길게 잡아, 아직 유효한 항목이 있는데 인덱스가 먼저 사라지는 일을 막는다.
+    await env.REPORTS_KV.put(indexKey, newValue, { expirationTtl: itemTtlSec + 300 });
+    return items;
+  }
+  // 여러 번 재시도해도 경합이 계속되면(동시 요청이 극단적으로 많을 때만
+  // 발생, 이 스터디 규모에서는 거의 없음) 마지막엔 그냥 강제로 덮어써
+  // 최소한 내 항목만이라도 반영한다 — 화면 표시용 인덱스라 무한 재시도보다
+  // 낙관적 반환이 안전하다.
   const raw = await env.REPORTS_KV.get(indexKey);
   const now = Date.now();
   let items = [];
@@ -607,8 +651,6 @@ async function _appendToLiveIndex(env, indexKey, item, itemTtlSec) {
     }
   }
   items.push(item);
-  // 인덱스 자체의 TTL은 그 안에 남아있는 항목 중 가장 늦게 만료되는 것보다
-  // 넉넉히 길게 잡아, 아직 유효한 항목이 있는데 인덱스가 먼저 사라지는 일을 막는다.
   await env.REPORTS_KV.put(indexKey, JSON.stringify(items), { expirationTtl: itemTtlSec + 300 });
   return items;
 }
@@ -626,44 +668,60 @@ async function _appendToLiveIndex(env, indexKey, item, itemTtlSec) {
 // 풀려버리기 때문이다. cooldownSec은 항목이 이미 알고 있는 만료 기준
 // (expiresAt - startedAt)을 그대로 재사용해, 셀프체크 등 다른 쿨다운
 // 길이가 생겨도 하드코딩 없이 맞물린다.
+// 🔧 [동시 쓰기 레이스 수정] _appendToLiveIndex와 동일한 배열 전체
+// get→수정→put 구조라 같은 취약점을 공유한다 — 이 함수와 _appendToLiveIndex가
+// 서로 다른 요청에서 거의 동시에 같은 인덱스를 건드려도(A 제보 접수 중에
+// B 캡처 완료가 끼어드는 등) 나중 put이 앞선 변경을 덮어쓸 수 있었다.
+// _appendToLiveIndex와 동일한 CAS 유사 재시도(put 직전에 원본을 다시 읽어
+// 그 사이 값이 바뀌었으면 처음부터 재시도)를 적용한다.
 async function _markCaptureDoneInLiveIndex(env, indexKey, id, capturedAt) {
-  const raw = await env.REPORTS_KV.get(indexKey);
-  if (!raw) return;
-  let items;
-  try {
-    items = JSON.parse(raw);
-  } catch {
+  for (let attempt = 0; attempt < LIVE_INDEX_MAX_RETRIES; attempt++) {
+    const rawBefore = await env.REPORTS_KV.get(indexKey);
+    if (!rawBefore) return;
+    let items;
+    try {
+      items = JSON.parse(rawBefore);
+    } catch {
+      return;
+    }
+    const now = Date.now();
+    let changed = false;
+    let cooldownRestart = null;
+    // 캡처가 예상보다 늦게 끝나 원래 expiresAt을 이미 넘겼을 수 있으므로,
+    // "완료 알림이 도착한" 이 항목만은 만료 필터로 미리 걸러내지 않는다 —
+    // 아래에서 새 expiresAt으로 갱신한 뒤에 함께 살아있는지 다시 판단한다.
+    const alive = items.filter((it) => it.expiresAt > now || it.id === id);
+    for (const it of alive) {
+      if (it.id === id && !it.capturedAt) {
+        it.capturedAt = capturedAt;
+        const cooldownSec = Math.round((it.expiresAt - it.startedAt) / 1000);
+        it.expiresAt = capturedAt + cooldownSec * 1000;
+        cooldownRestart = { nickname: it.nickname, cooldownSec };
+        changed = true;
+      }
+    }
+    if (!changed) return; // 이미 이 id에 capturedAt이 채워져 있거나 id가 없음 — 더 할 일 없음.
+    const stillAlive = alive.filter((it) => it.expiresAt > now);
+    const newValue = stillAlive.length > 0 ? JSON.stringify(stillAlive) : null;
+    // put하기 직전에 다시 읽어, 그 사이 다른 요청이 먼저 썼는지 확인한다 —
+    // 다르면 이번 계산은 낡은 것이므로 버리고 최신 상태로 재시도한다.
+    const rawJustBefore = await env.REPORTS_KV.get(indexKey);
+    if (rawJustBefore !== rawBefore) continue;
+    // cooldownKey 갱신은 같은 값을 다시 써도 무해(멱등)하므로 CAS 확인
+    // 이후 실행해도(재시도로 여러 번 불려도) 안전하다.
+    if (cooldownRestart) {
+      await env.REPORTS_KV
+        .put(`cooldown:${cooldownRestart.nickname}`, JSON.stringify({ nickname: cooldownRestart.nickname, ts: capturedAt }), {
+          expirationTtl: cooldownRestart.cooldownSec,
+        })
+        .catch(() => {});
+    }
+    if (!newValue) return;
+    const maxExpiresAt = Math.max(...stillAlive.map((it) => it.expiresAt));
+    const ttlSec = Math.max(60, Math.ceil((maxExpiresAt - now) / 1000) + 300);
+    await env.REPORTS_KV.put(indexKey, newValue, { expirationTtl: ttlSec }).catch(() => {});
     return;
   }
-  const now = Date.now();
-  let changed = false;
-  let cooldownRestart = null;
-  // 캡처가 예상보다 늦게 끝나 원래 expiresAt을 이미 넘겼을 수 있으므로,
-  // "완료 알림이 도착한" 이 항목만은 만료 필터로 미리 걸러내지 않는다 —
-  // 아래에서 새 expiresAt으로 갱신한 뒤에 함께 살아있는지 다시 판단한다.
-  const alive = items.filter((it) => it.expiresAt > now || it.id === id);
-  for (const it of alive) {
-    if (it.id === id && !it.capturedAt) {
-      it.capturedAt = capturedAt;
-      const cooldownSec = Math.round((it.expiresAt - it.startedAt) / 1000);
-      it.expiresAt = capturedAt + cooldownSec * 1000;
-      cooldownRestart = { nickname: it.nickname, cooldownSec };
-      changed = true;
-    }
-  }
-  if (!changed) return;
-  const stillAlive = alive.filter((it) => it.expiresAt > now);
-  if (cooldownRestart) {
-    await env.REPORTS_KV
-      .put(`cooldown:${cooldownRestart.nickname}`, JSON.stringify({ nickname: cooldownRestart.nickname, ts: capturedAt }), {
-        expirationTtl: cooldownRestart.cooldownSec,
-      })
-      .catch(() => {});
-  }
-  if (stillAlive.length === 0) return;
-  const maxExpiresAt = Math.max(...stillAlive.map((it) => it.expiresAt));
-  const ttlSec = Math.max(60, Math.ceil((maxExpiresAt - now) / 1000) + 300);
-  await env.REPORTS_KV.put(indexKey, JSON.stringify(stillAlive), { expirationTtl: ttlSec }).catch(() => {});
 }
 
 async function _readLiveIndex(env, indexKey) {
