@@ -123,36 +123,38 @@ function weeklyImpactLabel(occurrence: number | null, weeklyMinorPenaltyCount: n
   return "-";
 }
 
-// 제보 발생 시각(item.ts)의 요일을 "월"~"일"로 계산한다.
-function dayOfTs(ts: number): string {
-  const jsDay = new Date(ts).getDay(); // 일=0 ... 토=6
-  return STATUS_DAYS[(jsDay + 6) % 7]; // 월=0 ... 일=6으로 보정
+// 🔧 [버그 수정] 기존에는 dayOfTs가 요일 이름(월~일)만 계산하고
+// thisWeekDateLabel이 "오늘이 속한 주"의 그 요일 날짜를 역산해 헤더에
+// 붙였다 — "이번 주 대기 건만" 다루던 시절엔 문제없었지만, 지금은 24시간
+// 결정 창을 지나서도 pending인 항목이 여러 주에 걸쳐 계속 남을 수 있어
+// (사용자 확인: 지난주 테스트 제보가 pending으로 남아 관리자 화면에서
+// "이번 주 같은 요일" 헤더 밑에 잘못 합쳐져 보임) 서로 다른 주의 같은
+// 요일이 하나로 합쳐지고 헤더 날짜도 실제와 달라지는 문제가 있었다
+// (MyOutputPenSection.tsx에서 먼저 발견/수정한 것과 동일한 버그).
+// KST 기준 실제 날짜(YYYY-MM-DD)로 그룹핑해 근본적으로 없앤다.
+function kstDateKey(ts: number): string {
+  return new Date(ts).toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" }); // sv-SE 로케일이 YYYY-MM-DD를 그대로 출력.
 }
 
-// 오늘 날짜 기준 이번 주(월~일)의 각 요일 실제 날짜를 "8월 19일" 형태로
-// 계산한다(벌금 미납 현황의 thisWeekDateLabel과 동일 패턴).
-function thisWeekDateLabel(dayKr: string): string {
-  const dayIndex = STATUS_DAYS.indexOf(dayKr); // 월=0 ... 일=6
-  if (dayIndex === -1) return "";
-  const now = new Date();
-  const todayIndex = (now.getDay() + 6) % 7; // JS getDay()는 일=0 → 월=0으로 보정
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - todayIndex);
-  const target = new Date(monday);
-  target.setDate(monday.getDate() + dayIndex);
-  return `${target.getMonth() + 1}월 ${target.getDate()}일`;
+function dateLabel(dateKey: string): string {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  const dayKr = STATUS_DAYS[(date.getDay() + 6) % 7];
+  return `${m}월 ${d}일 ${dayKr}요일`;
 }
 
-// 같은 요일의 여러 제보를 요일별로 묶는다(벌금 미납 현황의 groupByDay와 동일 패턴).
 function groupByDay(items: CaptureReviewItem[]) {
   const map = new Map<string, CaptureReviewItem[]>();
   for (const item of items) {
-    const day = dayOfTs(item.ts);
-    const existing = map.get(day);
+    const key = kstDateKey(item.ts);
+    const existing = map.get(key);
     if (existing) existing.push(item);
-    else map.set(day, [item]);
+    else map.set(key, [item]);
   }
-  return STATUS_DAYS.filter((d) => map.has(d)).map((day) => ({ day, items: map.get(day)! }));
+  // 최근 날짜가 위로 오도록 내림차순 정렬.
+  return Array.from(map.entries())
+    .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+    .map(([dateKey, groupItems]) => ({ dateKey, items: groupItems }));
 }
 
 // "처리 완료/반려/유예" 여부는 이 세션에서 방금 처리한 화면 로컬 상태
@@ -698,7 +700,7 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
         {items && items.length > 0 && (
           <div className="flex flex-col gap-2 sm:gap-2.5">
             {groupByDay(items).map((group) => {
-              const isDayExpanded = expandedDay === group.day;
+              const isDayExpanded = expandedDay === group.dateKey;
               const appliedCount = group.items.filter((item) => isItemApplied(item, applied)).length;
               const deferredCount = group.items.filter((item) => isItemDeferred(item, applied)).length;
               const rejectedCount = group.items.filter((item) => isItemRejected(item, applied, rejected)).length;
@@ -711,16 +713,16 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
               const recognizedCount = group.items.filter((item) => stillPending(item) && item.targetResponse === "recognized").length;
               const pendingCount = group.items.length - appliedCount - deferredCount - rejectedCount - disputedCount - recognizedCount;
               return (
-                <InfoCard key={group.day} className="flex flex-col gap-2.5 bg-card">
+                <InfoCard key={group.dateKey} className="flex flex-col gap-2.5 bg-card">
                   <button
                     type="button"
-                    onClick={() => setExpandedDay(isDayExpanded ? null : group.day)}
+                    onClick={() => setExpandedDay(isDayExpanded ? null : group.dateKey)}
                     className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded"
                   >
                     <span className="flex min-w-0 flex-1 items-center gap-1.5">
                       <span className="inline-flex shrink-0 items-center gap-1.25 text-xs font-semibold sm:text-sm">
                         <CalendarDays className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
-                        {thisWeekDateLabel(group.day)} {group.day}요일
+                        {dateLabel(group.dateKey)}
                       </span>
                       <span className="ml-auto flex flex-wrap items-center justify-end gap-1">
                         <span className="rounded-full bg-destructive/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-destructive">
