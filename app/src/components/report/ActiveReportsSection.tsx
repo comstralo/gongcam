@@ -103,7 +103,14 @@ export function ActiveReportsSection({ refreshSignal }: { refreshSignal?: number
                 : `중복접수 방지 (${formatRemaining(item.expiresAt - now)} 남음)`;
             return (
               <SubRow
-                key={item.nickname}
+                // 🔧 [버그 수정] 원래는 nickname을 key로 썼다 — 관리자가 같은
+                // 대상을 짧은 간격으로 연달아 제보하면(관리자 중복 제보 허용
+                // 기능) 같은 nickname의 서로 다른 항목이 목록에 동시에 존재할
+                // 수 있어 React key가 충돌했다. 그러면 두 번째 이후 항목이
+                // 화면에서 누락되거나 다른 항목의 남은 시간으로 잘못
+                // 렌더링될 수 있었다 — "이미 제보됐다"를 정확히 알리려는
+                // 이 컴포넌트의 목적과 어긋난다. 제보마다 고유한 id로 바꾼다.
+                key={item.id}
                 label={item.nickname}
                 value={value}
                 labelClassName="text-xs sm:text-sm"

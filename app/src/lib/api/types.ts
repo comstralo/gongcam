@@ -728,6 +728,11 @@ export type ReportStatusResponse = {
 };
 
 export type ActiveCooldownItem = {
+  // 제보 고유 id(report_id) — handleReport가 항목 등록 시 이미 함께 저장해
+  // 두지만 타입 정의에서 빠져 있었다. 관리자가 같은 대상을 짧은 간격으로
+  // 연달아 제보하면(관리자 중복 제보 허용) 같은 nickname의 항목이 여러 개
+  // 동시에 존재할 수 있어, React key로 nickname 대신 이 고유 id를 써야 한다.
+  id: string;
   nickname: string;
   // 이 쿨다운이 풀리는 시각(ms epoch) — 20분 제보 쿨다운 종료 시점.
   expiresAt: number;
