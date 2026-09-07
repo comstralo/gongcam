@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, SubRow, TintedPill } from "@/components/dashboard/shared";
 import { SectionHeader, SectionCard, CapturePreview, AdminListSkeleton } from "@/components/admin/shared";
+import { CycleSwitcher } from "@/components/dashboard/CycleSwitcher";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { useAuth } from "@/lib/auth/useAuth";
@@ -106,6 +107,10 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [respondingId, setRespondingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // 🔧 [3주 사이클 토글] "현재 진행 중인 사이클"에서 어느 주(월~일, KST)를
+  // 볼지 — null이면 현재(실시간), 아니면 CycleSwitcher가 넘긴 백업 fileId.
+  // 사이클 밖(4주 이상 전)은 기존 CycleSwitcher와 마찬가지로 조회 대상이 아니다.
+  const [cycleFileId, setCycleFileId] = useState<string | null>(null);
 
   // 🔧 [버그 대응] 두 요청(/my-captures, /my-output-pen)을 동시에 보내다
   // 보니, 순간적인 네트워크 요동(브라우저 fetch 자체가 거부되는 "Failed to
@@ -113,15 +118,19 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
   // 아예 안 뜨는 경우가 가끔 있었다(사용자 확인: 가끔 뜨고 새로고침하면
   // 정상). 서버/코드 로직 문제가 아니라 일시적 계층 실패라 짧은 지연 후
   // 1회 자동 재시도로 대부분의 경우를 사용자가 체감하지 않게 흡수한다.
-  function loadOnce() {
-    return Promise.all([call<MyCapturesResponse>("/my-captures"), call<MyOutputPenResponse>("/my-output-pen")]);
+  function loadOnce(cycle: string | null) {
+    const cycleParam = cycle ? `?cycle=${encodeURIComponent(cycle)}` : "";
+    return Promise.all([
+      call<MyCapturesResponse>(`/my-captures${cycleParam}`),
+      call<MyOutputPenResponse>(`/my-output-pen${cycleParam}`),
+    ]);
   }
 
   function load() {
     setLoading(true);
     setError(null);
-    loadOnce()
-      .catch(() => new Promise((resolve) => setTimeout(resolve, 800)).then(loadOnce))
+    loadOnce(cycleFileId)
+      .catch(() => new Promise((resolve) => setTimeout(resolve, 800)).then(() => loadOnce(cycleFileId)))
       .then(([captures, outputPen]) => {
         setSelfCheckItems(captures.items || []);
         setReceivedItems(outputPen.items || []);
@@ -130,7 +139,7 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
       .finally(() => setLoading(false));
   }
 
-  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(load, [cycleFileId]); // eslint-disable-line react-hooks/exhaustive-deps
   useRefreshOnVisible(true, load);
   useEffect(() => {
     if (refreshSignal) load();
@@ -187,6 +196,7 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
         <SectionHeader icon={ListChecks} title="내 송출 P 제보 확인" loading={loading} onRefresh={load} />
         <CollapsiblePanel className="flex flex-col gap-4">
           <div className="h-px w-full bg-border" />
+          <CycleSwitcher selectedFileId={cycleFileId} onSelect={setCycleFileId} memberNumber="self" />
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>

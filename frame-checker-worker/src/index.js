@@ -2819,6 +2819,33 @@ function kstDateKey(ts) {
   return new Date(ts).toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" }); // sv-SE 로케일이 YYYY-MM-DD를 그대로 출력.
 }
 
+// 🔧 [3주 사이클 토글] weekOf("YYMMDD", 백업 파일명의 그 주 월요일)를 "그
+// 월요일 00:00 KST"의 진짜 UTC epoch ms로 변환한다. exitDateSettled류가 쓰는
+// `Date.UTC(...) - 9시간` 패턴과 동일 — parseWeekOfToMonday()가 만드는
+// "가짜 UTC"(실은 KST 날짜를 담은) Date와 달리, 여기서는 item.ts(진짜 epoch)와
+// 직접 비교해야 하므로 KST→UTC 오프셋을 명시적으로 뺀다.
+function weekOfToMondayEpochKST(weekOf) {
+  const m = /^(\d{2})(\d{2})(\d{2})$/.exec(weekOf || "");
+  if (!m) return null;
+  return Date.UTC(2000 + parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10)) - 9 * 60 * 60 * 1000;
+}
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+// cycleFileId(GET /cycles가 내려준 백업 fileId, 없으면 "현재 진행 중")로
+// 캡처 items를 그 주(월~일, KST)에 속한 것만 걸러낸다. 현재 진행 중인 사이클은
+// 이번 주 월요일 00:00 KST부터 지금까지 — 상한이 없다.
+async function filterItemsByCycle(env, accessToken, items, cycleFileId) {
+  if (!cycleFileId) {
+    const mondayEpoch = weekOfToMondayEpochKST(formatYYMMDD(currentWeekMondayKST()));
+    return items.filter((item) => item.ts >= mondayEpoch);
+  }
+  const { weekOf } = await resolveTargetFileId(env, accessToken, cycleFileId);
+  const mondayEpoch = weekOfToMondayEpochKST(weekOf);
+  if (mondayEpoch == null) return items;
+  return items.filter((item) => item.ts >= mondayEpoch && item.ts < mondayEpoch + WEEK_MS);
+}
+
 // 🔧 [90분 자동 위반인정] 대상자가 접수 시점(ts)으로부터 90분 내에 "위반인정"/
 // "이의제기"를 제출하지 않으면 자동으로 "위반인정"으로 간주한다(사용자
 // 지시). 별도 크론 없이, 관리자 목록(handleAdminCapturesList)과 본인 목록
@@ -2945,7 +2972,7 @@ async function handleAdminCapturesList(req, env, origin) {
 // 단순하다. reporterEmail이 본인이고 selfCheck인 항목만 남긴다 — nickname이
 // 아니라 reporterEmail로 거르는 이유는 닉네임 변경/동명이인 가능성과 무관하게
 // "누가 실행했는지"가 로그인 계정 기준으로 항상 정확하기 때문이다.
-async function handleMyCaptures(req, env, origin) {
+async function handleMyCaptures(req, env, origin, url) {
   const authHeader = req.headers.get("Authorization") || "";
   const token = authHeader.replace(/^Bearer\s+/i, "");
   const session = await verifySession(token, env.SESSION_SECRET);
@@ -2956,9 +2983,14 @@ async function handleMyCaptures(req, env, origin) {
     return json({ items: [] }, 200, origin);
   }
   const myEmail = (session.email || "").toLowerCase();
-  const items = (data.items || []).filter(
+  const mine = (data.items || []).filter(
     (item) => item.selfCheck && (item.reporterEmail || "").toLowerCase() === myEmail
   );
+  // 🔧 [3주 사이클 토글] handleMyOutputPen과 동일하게 cycle 쿼리 파라미터로
+  // 그 주(월~일, KST)에 발생한 기록만 걸러 보여준다.
+  const accessToken = await getServiceAccountAccessToken(env);
+  const cycleFileId = url ? url.searchParams.get("cycle") : null;
+  const items = await filterItemsByCycle(env, accessToken, mine, cycleFileId);
   return json({ items }, 200, origin);
 }
 
@@ -2997,10 +3029,10 @@ async function handleMyCaptureDelete(req, env, origin) {
 // [내 송출 P 제보 확인]이 "나를 대상으로 한 다른 사람의 제보"(selfCheck가
 // 아닌 일반 제보 중 nickname이 본인)를 조회한다 — 대상자가 "위반인정"/
 // "이의제기"를 누를 수 있는 목록. handleAdminCapturesList와 달리 관리자
-// 권한이 필요 없다(로그인만 하면 자기 것만 볼 수 있음). 최근 결정된 항목도
-// 함께 보여준다(RECENT_DECISION_WINDOW_MS와 동일 창 — 방금 응답/처리된
-// 제보가 새로고침 한 번에 사라져 보이지 않도록).
-async function handleMyOutputPen(req, env, origin) {
+// 권한이 필요 없다(로그인만 하면 자기 것만 볼 수 있음). cycle 쿼리
+// 파라미터(GET /cycles가 내려준 백업 fileId, 없으면 현재 진행 중)로 그
+// 주(월~일, KST)에 발생한 항목 전체를 reviewStatus 무관하게 보여준다.
+async function handleMyOutputPen(req, env, origin, url) {
   const authHeader = req.headers.get("Authorization") || "";
   const token = authHeader.replace(/^Bearer\s+/i, "");
   const session = await verifySession(token, env.SESSION_SECRET);
@@ -3015,14 +3047,13 @@ async function handleMyOutputPen(req, env, origin) {
     if (!data) return json({ items: [] }, 200, origin);
 
     const allItems = await applyAutoRecognitionForExpired(env, data.items || []);
-    const now = Date.now();
-    const visible = allItems
-      .filter((item) => !item.selfCheck && item.nickname === member.name)
-      .filter(
-        (item) =>
-          item.reviewStatus === "pending" ||
-          (item.decidedAt && now - item.decidedAt < RECENT_DECISION_WINDOW_MS)
-      );
+    // 🔧 [3주 사이클 토글] cycle 쿼리 파라미터(백업 fileId, 없으면 현재
+    // 진행 중)로 그 주(월~일, KST)에 발생한 항목만 걸러 보여준다 — 예전
+    // 24시간 창(RECENT_DECISION_WINDOW_MS) 제한은 폐지, 선택된 주 전체를
+    // reviewStatus 무관하게 노출한다.
+    const cycleFileId = url ? url.searchParams.get("cycle") : null;
+    const inCycle = await filterItemsByCycle(env, accessToken, allItems, cycleFileId);
+    const visible = inCycle.filter((item) => !item.selfCheck && item.nickname === member.name);
     // 🔧 [상세 화면 관리자 화면과 동일화] "벌점·페널티 변동"(적용 시 차수,
     // 이번 주 영향)을 관리자 화면과 동일하게 보여주려면 nextOccurrence/
     // weeklyMinorPenaltyCount가 필요하다 — attachNextOccurrence는 그대로
@@ -7516,13 +7547,13 @@ export default {
         return await handleAdminCapturesList(req, env, origin);
       }
       if (url.pathname === "/my-captures" && req.method === "GET") {
-        return await handleMyCaptures(req, env, origin);
+        return await handleMyCaptures(req, env, origin, url);
       }
       if (url.pathname === "/my-captures/delete" && req.method === "POST") {
         return await handleMyCaptureDelete(req, env, origin);
       }
       if (url.pathname === "/my-output-pen" && req.method === "GET") {
-        return await handleMyOutputPen(req, env, origin);
+        return await handleMyOutputPen(req, env, origin, url);
       }
       if (url.pathname === "/captures/target-respond" && req.method === "POST") {
         return await handleCaptureTargetRespond(req, env, origin);
