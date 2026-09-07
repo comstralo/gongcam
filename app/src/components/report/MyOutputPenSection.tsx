@@ -391,7 +391,7 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
                                       <div className="flex flex-col gap-1.5">
                                         <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
                                           <FileText className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-                                          제보 정보
+                                          제보정보
                                         </span>
                                         {/* 관리자 화면과 동일한 레이아웃이되, 제보자는 숨긴다(사용자 지시). */}
                                         <SubRow label="사유" value={displayReason(received!.reason)} valueClassName="text-destructive" />
@@ -404,7 +404,7 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
                                       <div className="flex flex-col gap-1.5">
                                         <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
                                           <Clock className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-                                          시간 차감
+                                          시간차감
                                         </span>
                                         <SubRow
                                           label="응답일시"
@@ -415,7 +415,7 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
                                           }
                                         />
                                         <SubRow
-                                          label="예상 차감"
+                                          label="예상차감"
                                           value={(() => {
                                             const confirmed = received!.penalty?.deductedMinutes;
                                             if (confirmed !== undefined && confirmed !== null) {
