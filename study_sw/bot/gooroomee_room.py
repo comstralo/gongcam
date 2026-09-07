@@ -434,6 +434,7 @@ def daily_browser_reset(ctx, is_emergency=False):
                             task["interval"],
                             task.get("previous_temp_files", []),
                         ),
+                        kwargs={"reporter_name": task.get("reporter_name")},
                     )
 
             ctx.logger.info("✅ [시스템] 필수 백그라운드 스레드 재가동 완료!")

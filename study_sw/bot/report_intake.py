@@ -35,18 +35,32 @@ POLL_INTERVAL_SEC = 600
 RELOAD_WAIT_TIMEOUT_SEC = 60
 
 
-def _wait_then_capture(ctx, target_func, nickname, reason, reporter_email, thread_id, report_id, self_check):
+def _wait_then_capture(
+    ctx, target_func, nickname, reason, reporter_email, thread_id, report_id, self_check, reporter_name
+):
     if not ctx.period_reload_done.wait(timeout=RELOAD_WAIT_TIMEOUT_SEC):
         ctx.logger.warning(
             f"⚠️ [웹 제보 수신] [{nickname}] 교시 시작 새로고침 대기 시간 초과 — 그대로 촬영을 시작합니다."
         )
-    target_func(ctx, nickname, reason, reporter_email, thread_id, report_id=report_id, self_check=self_check)
+    target_func(
+        ctx,
+        nickname,
+        reason,
+        reporter_email,
+        thread_id,
+        report_id=report_id,
+        self_check=self_check,
+        reporter_name=reporter_name,
+    )
 
 
 def _start_capture_for_report(ctx, entry):
     nickname = entry.get("nickname")
     reason = entry.get("reason", "")
     reporter_email = entry.get("reporterEmail", "")
+    # 텔레그램 캡션에 "제보자: <이름>"으로 보여주기 위함 — manifest에 저장되는
+    # reporterEmail(제보상점 지급 시 회원 매칭용)과는 별개로, 표시 전용이다.
+    reporter_name = entry.get("reporterName", "")
     mode = entry.get("mode", "screenshot")
     report_id = entry.get("id")
     self_check = bool(entry.get("selfCheck"))
@@ -72,7 +86,7 @@ def _start_capture_for_report(ctx, entry):
         ctx,
         thread_id,
         _wait_then_capture,
-        (target_func, nickname, reason, reporter_email, thread_id, report_id, self_check),
+        (target_func, nickname, reason, reporter_email, thread_id, report_id, self_check, reporter_name),
     )
     if started:
         ctx.logger.info(f"📩 [웹 제보 수신] [{nickname}] {mode} 캡처를 시작합니다. (사유: {reason})")

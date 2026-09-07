@@ -195,7 +195,7 @@ def schedule_process(ctx, period_str, period_time, period_minute, schedule_kind)
                         task["interval"],
                         task.get("previous_temp_files", []),  # 임시 파일 경로 전달
                     ),
-                    kwargs={"report_id": task.get("report_id")},
+                    kwargs={"report_id": task.get("report_id"), "reporter_name": task.get("reporter_name")},
                 )
         # ▲ -------------------------------------------------------------------
 

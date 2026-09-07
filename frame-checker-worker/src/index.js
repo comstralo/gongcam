@@ -2417,6 +2417,11 @@ async function handleReport(req, env, origin) {
     reason: finalReason,
     mode: finalMode,
     reporterEmail: session.email,
+    // 텔레그램 알림에 "제보자: <이름>"으로 보여주기 위함(사용자 지시) —
+    // 세션이 로그인 시점에 이미 회원 시트에서 조회해둔 이름(memberName)을
+    // 그대로 재사용해 별도 시트 조회 없이 얻는다. 명단에 없는 계정이면
+    // null이므로 이메일로 폴백한다.
+    reporterName: session.memberName || session.email,
     ts,
     selfCheck: isSelfCheck,
   };

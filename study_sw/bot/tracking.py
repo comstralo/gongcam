@@ -140,6 +140,7 @@ def tracking_capture(
     previous_temp_files=None,
     report_id=None,
     self_check=False,
+    reporter_name=None,
 ):
 
     grid_rows = GRID_ROWS
@@ -300,8 +301,8 @@ def tracking_capture(
                 combined.save(filename)
                 ctx.logger.info(f"tracking_capture() : 📂 부분 파일 저장 완료: {filename}")
 
-                caption_msg = f"🧒 관리자 : {sender_name}\n🧒 대상자 : {target_name}\n🔎 내용 : {reason_txt}\n⏰ 시점 : {timestamp_chat}"
-                caption_msg += f"\n🔄 횟수 : {count}회 (분할 전송)"
+                caption_msg = f"🧒 제보자 : {reporter_name or sender_name}\n🧒 대상자 : {target_name}\n🔎 내용 : {reason_txt}\n⏰ 시점 : {timestamp_chat}"
+                caption_msg += "\n📷 유형 : 스크린샷"
 
                 send_chat_telegram(ctx, ["report", [f"./{filename}", caption_msg]])
                 capture_manifest.record_capture(
@@ -408,6 +409,7 @@ def tracking_capture(
             "interval": manual_interval if manual_interval else 30,
             "previous_temp_files": saved_temp_paths,
             "report_id": report_id,
+            "reporter_name": reporter_name,
         }
         save_task_to_disk(ctx, resume_info)
         ctx.logger.warning(f"tracking_capture() : 💾 [{thread_id}] 중단됨. 작업 백업 완료.")
@@ -433,7 +435,9 @@ def tracking_capture(
 
 
 # [MAIN] 90초 영상 녹화 및 전송
-def tracking_capture_video(ctx, target_name, reason_txt, sender_name, thread_id, report_id=None, self_check=False):
+def tracking_capture_video(
+    ctx, target_name, reason_txt, sender_name, thread_id, report_id=None, self_check=False, reporter_name=None
+):
     FPS = 2
     DURATION_SEC = 90
     TOTAL_FRAMES = FPS * DURATION_SEC
@@ -516,8 +520,8 @@ def tracking_capture_video(ctx, target_name, reason_txt, sender_name, thread_id,
         ctx.logger.info(f"tracking_capture_video() : 📂 영상 저장 완료: {filename} ({len(frames)}프레임)")
 
         timestamp_chat = datetime.now().strftime("%y%m%d-%H:%M")
-        caption_msg = f"🧒 관리자 : {sender_name}\n🧒 대상자 : {target_name}\n🔎 내용 : {reason_txt}\n⏰ 시점 : {timestamp_chat}"
-        caption_msg += f"\n🎥 영상 ({len(frames)}프레임, {len(frames)/FPS:.0f}초)"
+        caption_msg = f"🧒 제보자 : {reporter_name or sender_name}\n🧒 대상자 : {target_name}\n🔎 내용 : {reason_txt}\n⏰ 시점 : {timestamp_chat}"
+        caption_msg += "\n📷 유형 : 영상"
 
         send_chat_telegram(ctx, ["report_video", [f"./{filename}", caption_msg]])
         capture_manifest.record_capture(
