@@ -3661,74 +3661,81 @@ async function applyTimeDeduction(env, accessToken, fileId, memberNumber, ts, se
 // 사유"를 함께 남겨 나중에 상세 조회 시 근거를 보여줄 수 있게 한다.
 // sendTime/replyTime: 관리자가 입력한 화각 요청 발신·회신 시각(HH:MM) —
 // 20분 초과 지연분을 개인 탭 27행(보정 학습시간)에서 차감한다.
+// 🔧 [버그 수정] "빈 슬롯 찾기 → 쓰기"는 락 없이 실행하면 같은 대상자에게
+// 밀린 제보 여러 건을 관리자가 짧은 시간 안에 연속 승인할 때(백로그 정리 시
+// 흔한 패턴) 두 요청이 같은 빈 슬롯을 읽어 하나가 조용히 덮어써지는
+// 레이스가 있었다. withMemberLock으로 닉네임(대상자)별 임계구역을 감싸
+// 동일 대상자에 대한 슬롯 배정은 항상 순차 실행되도록 한다.
 async function applyOutputPenalty(env, accessToken, fileId, nickname, reason, ts, sendTime, replyTime, captureId) {
-  const [members, sheetId] = await Promise.all([
-    listAllMembers(env, accessToken, fileId),
-    getSheetIdByName(env, accessToken, fileId, OUTPUT_PEN_SHEET_NAME),
-  ]);
-  const member = members.find((m) => m.name === nickname);
-  if (!member) {
-    throw new Error(`"${nickname}" 이름과 일치하는 등록 회원을 찾을 수 없습니다.`);
-  }
-  const row = parseInt(member.number, 10) + 3;
-
-  const [slotRows, currentD25] = await Promise.all([
-    getSheetValues(env, accessToken, fileId, `'${OUTPUT_PEN_SHEET_NAME}'!F${row}:K${row}`),
-    getCurrentPenCycle(env, accessToken, fileId),
-  ]);
-  const slotValues = (slotRows[0] || []).map((v) => parseInt(v, 10) || 0);
-
-  // 값이 0인(=아직 안 채워진) 첫 칸을 찾는다.
-  let slotIndex = -1;
-  for (let i = 0; i < OUTPUT_PEN_SLOT_COLUMNS.length; i++) {
-    if (slotValues[i] === 0) {
-      slotIndex = i;
-      break;
+  return withMemberLock(env, `pen:${nickname}`, async () => {
+    const [members, sheetId] = await Promise.all([
+      listAllMembers(env, accessToken, fileId),
+      getSheetIdByName(env, accessToken, fileId, OUTPUT_PEN_SHEET_NAME),
+    ]);
+    const member = members.find((m) => m.name === nickname);
+    if (!member) {
+      throw new Error(`"${nickname}" 이름과 일치하는 등록 회원을 찾을 수 없습니다.`);
     }
-  }
-  if (slotIndex === -1) {
-    // 사용자 확인: 6차(송출P 2회)에서 예치금 재납으로 기록이 초기화되므로
-    // 정상 운영에서는 이 지점에 도달할 수 없다 — 도달하면 조용히 넘기지 않고 알린다.
-    throw new Error(`${nickname}님은 1차~6차 칸이 모두 채워져 있습니다. 예치금 재납 처리가 필요할 수 있습니다.`);
-  }
+    const row = parseInt(member.number, 10) + 3;
 
-  const col = OUTPUT_PEN_SLOT_COLUMNS[slotIndex];
-  const occurrence = slotIndex + 1; // 1차~6차
-  const isPCount = OUTPUT_PEN_P_SLOTS.has(col);
+    const [slotRows, currentD25] = await Promise.all([
+      getSheetValues(env, accessToken, fileId, `'${OUTPUT_PEN_SHEET_NAME}'!F${row}:K${row}`),
+      getCurrentPenCycle(env, accessToken, fileId),
+    ]);
+    const slotValues = (slotRows[0] || []).map((v) => parseInt(v, 10) || 0);
 
-  const writes = [writeSheetValues(env, accessToken, fileId, [
-    { range: `'${OUTPUT_PEN_SHEET_NAME}'!${col}${row}`, values: [[currentD25]] },
-  ])];
-  // 🔧 [사유·발생일시·캡처ID 주석] 1~6차 모든 슬롯에 동일하게
-  // "발생일시 · 사유 [cap:캡처ID]"를 남긴다 — reason이 비어 있어도 발생일시만이라도
-  // 기록해 추적 가능하게 한다. 캡처ID는 " · "가 아니라 "[cap:...]" 대괄호
-  // 표기로 맨 끝에 붙인다 — reason 자체가 관리자/봇이 자유 입력한 텍스트라
-  // " · "를 포함할 수 있어, 같은 구분자로 세 번째 필드를 나누면 오파싱
-  // 위험이 있기 때문이다. "예치금 재납 대상자" 카드에서 이 이력을 눌렀을 때
-  // 봇이 보관 중인 원본 스크린샷·영상을 다시 불러오는 데 쓴다.
-  if (sheetId !== null) {
-    // 🔧 [타임존 버그] toLocaleString("ko-KR")은 표기 형식만 한국식일 뿐
-    // 타임존은 Worker 실행 환경(UTC)을 그대로 쓴다 — timeZone을 명시해야
-    // 실제 한국 시각으로 기록된다.
-    const whenDate = ts ? new Date(ts) : new Date();
-    const when = whenDate.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
-    let note = reason ? `${when} · ${reason}` : when;
-    if (captureId) note += ` [cap:${captureId}]`;
-    writes.push(writeCellNote(env, accessToken, fileId, sheetId, row - 1, col, note));
-  }
-  await Promise.all(writes);
+    // 값이 0인(=아직 안 채워진) 첫 칸을 찾는다.
+    let slotIndex = -1;
+    for (let i = 0; i < OUTPUT_PEN_SLOT_COLUMNS.length; i++) {
+      if (slotValues[i] === 0) {
+        slotIndex = i;
+        break;
+      }
+    }
+    if (slotIndex === -1) {
+      // 사용자 확인: 6차(송출P 2회)에서 예치금 재납으로 기록이 초기화되므로
+      // 정상 운영에서는 이 지점에 도달할 수 없다 — 도달하면 조용히 넘기지 않고 알린다.
+      throw new Error(`${nickname}님은 1차~6차 칸이 모두 채워져 있습니다. 예치금 재납 처리가 필요할 수 있습니다.`);
+    }
 
-  const timeDeduction = await applyTimeDeduction(env, accessToken, fileId, member.number, ts, sendTime, replyTime);
+    const col = OUTPUT_PEN_SLOT_COLUMNS[slotIndex];
+    const occurrence = slotIndex + 1; // 1차~6차
+    const isPCount = OUTPUT_PEN_P_SLOTS.has(col);
 
-  return {
-    number: member.number,
-    name: member.name,
-    occurrence,
-    isPCount,
-    col,
-    deductedMinutes: timeDeduction.deductedMinutes,
-    dayCol: timeDeduction.dayCol,
-  };
+    const writes = [writeSheetValues(env, accessToken, fileId, [
+      { range: `'${OUTPUT_PEN_SHEET_NAME}'!${col}${row}`, values: [[currentD25]] },
+    ])];
+    // 🔧 [사유·발생일시·캡처ID 주석] 1~6차 모든 슬롯에 동일하게
+    // "발생일시 · 사유 [cap:캡처ID]"를 남긴다 — reason이 비어 있어도 발생일시만이라도
+    // 기록해 추적 가능하게 한다. 캡처ID는 " · "가 아니라 "[cap:...]" 대괄호
+    // 표기로 맨 끝에 붙인다 — reason 자체가 관리자/봇이 자유 입력한 텍스트라
+    // " · "를 포함할 수 있어, 같은 구분자로 세 번째 필드를 나누면 오파싱
+    // 위험이 있기 때문이다. "예치금 재납 대상자" 카드에서 이 이력을 눌렀을 때
+    // 봇이 보관 중인 원본 스크린샷·영상을 다시 불러오는 데 쓴다.
+    if (sheetId !== null) {
+      // 🔧 [타임존 버그] toLocaleString("ko-KR")은 표기 형식만 한국식일 뿐
+      // 타임존은 Worker 실행 환경(UTC)을 그대로 쓴다 — timeZone을 명시해야
+      // 실제 한국 시각으로 기록된다.
+      const whenDate = ts ? new Date(ts) : new Date();
+      const when = whenDate.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+      let note = reason ? `${when} · ${reason}` : when;
+      if (captureId) note += ` [cap:${captureId}]`;
+      writes.push(writeCellNote(env, accessToken, fileId, sheetId, row - 1, col, note));
+    }
+    await Promise.all(writes);
+
+    const timeDeduction = await applyTimeDeduction(env, accessToken, fileId, member.number, ts, sendTime, replyTime);
+
+    return {
+      number: member.number,
+      name: member.name,
+      occurrence,
+      isPCount,
+      col,
+      deductedMinutes: timeDeduction.deductedMinutes,
+      dayCol: timeDeduction.dayCol,
+    };
+  });
 }
 
 // 제보 승인("적용"/"반려 (인정)") 시 제보자에게 제보상점을 부여한다 —
@@ -3738,49 +3745,51 @@ async function applyOutputPenalty(env, accessToken, fileId, nickname, reason, ts
 // 운영에서는 도달하지 않아야 함) applyOutputPenalty와 동일하게 조용히
 // 넘기지 않고 명시적 에러를 던진다.
 async function applyReportMerit(env, accessToken, fileId, reporterEmail, reason, ts, captureId) {
-  const [members, sheetId] = await Promise.all([
-    listAllMembers(env, accessToken, fileId),
-    getSheetIdByName(env, accessToken, fileId, OUTPUT_PEN_SHEET_NAME),
-  ]);
-  const reporter = members.find((m) => m.email.toLowerCase() === (reporterEmail || "").toLowerCase());
-  if (!reporter) {
-    throw new Error(`제보자(${reporterEmail || "이메일 없음"})와 일치하는 등록 회원을 찾을 수 없습니다.`);
-  }
-  const row = parseInt(reporter.number, 10) + 3;
-
-  const [slotRows, currentD25] = await Promise.all([
-    getSheetValues(env, accessToken, fileId, `'${OUTPUT_PEN_SHEET_NAME}'!R${row}:V${row}`),
-    getCurrentPenCycle(env, accessToken, fileId),
-  ]);
-  const slotValues = (slotRows[0] || []).map((v) => parseInt(v, 10) || 0);
-
-  let slotIndex = -1;
-  for (let i = 0; i < REPORT_MERIT_SLOT_COLUMNS.length; i++) {
-    if (slotValues[i] === 0) {
-      slotIndex = i;
-      break;
+  return withMemberLock(env, `merit:${(reporterEmail || "").toLowerCase()}`, async () => {
+    const [members, sheetId] = await Promise.all([
+      listAllMembers(env, accessToken, fileId),
+      getSheetIdByName(env, accessToken, fileId, OUTPUT_PEN_SHEET_NAME),
+    ]);
+    const reporter = members.find((m) => m.email.toLowerCase() === (reporterEmail || "").toLowerCase());
+    if (!reporter) {
+      throw new Error(`제보자(${reporterEmail || "이메일 없음"})와 일치하는 등록 회원을 찾을 수 없습니다.`);
     }
-  }
-  if (slotIndex === -1) {
-    throw new Error(`${reporter.name}님은 제보상점 1차~5차 칸이 모두 채워져 있습니다.`);
-  }
+    const row = parseInt(reporter.number, 10) + 3;
 
-  const col = REPORT_MERIT_SLOT_COLUMNS[slotIndex];
-  const occurrence = slotIndex + 1; // 1차~5차
+    const [slotRows, currentD25] = await Promise.all([
+      getSheetValues(env, accessToken, fileId, `'${OUTPUT_PEN_SHEET_NAME}'!R${row}:V${row}`),
+      getCurrentPenCycle(env, accessToken, fileId),
+    ]);
+    const slotValues = (slotRows[0] || []).map((v) => parseInt(v, 10) || 0);
 
-  const writes = [writeSheetValues(env, accessToken, fileId, [
-    { range: `'${OUTPUT_PEN_SHEET_NAME}'!${col}${row}`, values: [[currentD25]] },
-  ])];
-  if (sheetId !== null) {
-    const whenDate = ts ? new Date(ts) : new Date();
-    const when = whenDate.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
-    let note = reason ? `${when} · ${reason}` : when;
-    if (captureId) note += ` [cap:${captureId}]`;
-    writes.push(writeCellNote(env, accessToken, fileId, sheetId, row - 1, col, note));
-  }
-  await Promise.all(writes);
+    let slotIndex = -1;
+    for (let i = 0; i < REPORT_MERIT_SLOT_COLUMNS.length; i++) {
+      if (slotValues[i] === 0) {
+        slotIndex = i;
+        break;
+      }
+    }
+    if (slotIndex === -1) {
+      throw new Error(`${reporter.name}님은 제보상점 1차~5차 칸이 모두 채워져 있습니다.`);
+    }
 
-  return { number: reporter.number, name: reporter.name, occurrence, col };
+    const col = REPORT_MERIT_SLOT_COLUMNS[slotIndex];
+    const occurrence = slotIndex + 1; // 1차~5차
+
+    const writes = [writeSheetValues(env, accessToken, fileId, [
+      { range: `'${OUTPUT_PEN_SHEET_NAME}'!${col}${row}`, values: [[currentD25]] },
+    ])];
+    if (sheetId !== null) {
+      const whenDate = ts ? new Date(ts) : new Date();
+      const when = whenDate.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+      let note = reason ? `${when} · ${reason}` : when;
+      if (captureId) note += ` [cap:${captureId}]`;
+      writes.push(writeCellNote(env, accessToken, fileId, sheetId, row - 1, col, note));
+    }
+    await Promise.all(writes);
+
+    return { number: reporter.number, name: reporter.name, occurrence, col };
+  });
 }
 
 // applyOutputPenalty()가 방금 기록한 슬롯을 되돌린다 — 관리자가 오적용을
@@ -3942,7 +3951,52 @@ async function handleAdminCaptureDecide(req, env, origin) {
     body: JSON.stringify({ id, decision, penalty: penaltyResult, merit: meritResult }),
   });
   if (!data) {
-    return json({ error: "봇에 연결할 수 없습니다." }, 502, origin);
+    // 🔧 [버그 수정] 원래는 여기서 502만 반환했다 — 그런데 위에서 이미
+    // applyOutputPenalty/applyReportMerit로 시트에는 페널티/제보상점을
+    // 써버린 뒤라, 봇 manifest 반영(이 호출)만 실패하면 시트에는 반영됐는데
+    // manifest는 여전히 "pending"인 불일치가 생겼다. 관리자는 에러를 보고
+    // 재시도할 수밖에 없는데, 그러면 같은 캡처가 다시 승인되어 슬롯이
+    // 중복 소비되거나(재시도가 성공하는 경우), 첫 시도의 시트 기록이
+    // manifest 어디에도 연결되지 않아 findStoredPenaltyMerit로도 찾을 수
+    // 없는 고아 기록으로 영구히 남았다(폐기/반려취소로도 되돌릴 길이 없음).
+    // 여기서 실패하면 방금 쓴 시트 기록을 즉시 되돌려, 재시도가 항상
+    // "처음부터 다시"가 되도록 한다.
+    if (penaltyResult && penaltyResult.number && penaltyResult.col) {
+      try {
+        const accessToken = await getServiceAccountAccessToken(env);
+        await cancelOutputPenalty(
+          env,
+          accessToken,
+          env.GOOGLE_SHEET_FILE_ID,
+          penaltyResult.number,
+          penaltyResult.col,
+          penaltyResult.deductedMinutes || 0,
+          penaltyResult.dayCol || null
+        );
+      } catch (rollbackErr) {
+        return json(
+          { error: `봇에 연결할 수 없고, 시트 롤백도 실패했습니다(수동 확인 필요: ${rollbackErr.message}).` },
+          502,
+          origin
+        );
+      }
+    }
+    if (meritResult && meritResult.number && meritResult.col) {
+      try {
+        const accessToken = await getServiceAccountAccessToken(env);
+        await cancelReportMerit(env, accessToken, env.GOOGLE_SHEET_FILE_ID, meritResult.number, meritResult.col);
+      } catch (rollbackErr) {
+        return json(
+          { error: `봇에 연결할 수 없고, 제보상점 롤백도 실패했습니다(수동 확인 필요: ${rollbackErr.message}).` },
+          502,
+          origin
+        );
+      }
+    }
+    if (penaltyResult || meritResult) {
+      await invalidateMemberCache(env);
+    }
+    return json({ error: "봇에 연결할 수 없습니다. 시트 반영은 자동으로 되돌렸으니 다시 시도해주세요." }, 502, origin);
   }
   return json({ ...data, penalty: penaltyResult, merit: meritResult }, 200, origin);
 }
@@ -6971,11 +7025,21 @@ async function resolveTargetFileId(env, accessToken, cycleFileId) {
 
 const PARTICIPANTS_STALE_MS = 60 * 1000;
 
+// 🔧 [버그 수정] applyOutputPenalty/applyReportMerit는 "빈 슬롯 찾기 →
+// 쓰기"가 락 없는 read-modify-write라, 같은 대상자(또는 같은 제보자)에게
+// 밀린 제보 여러 건을 관리자가 빠르게 연속 승인하면(백로그 정리 시 흔한
+// 패턴) 둘 다 같은 빈 슬롯을 읽어 하나가 조용히 덮어써지는 레이스가 있었다.
+// 이 Durable Object는 이미 단일 인스턴스로 모든 요청을 순차(직렬) 처리하는
+// 성질을 그대로 이용해, 키(닉네임/제보자 이메일)별 순번 대기열을 메모리에
+// 두는 최소한의 뮤텍스로 쓴다 — Sheets API 호출 자체는 여전히 Worker에서
+// 하되, "acquire"(내 차례가 될 때까지 대기 후 티켓 발급)와 "release"(다음
+// 대기자에게 순번 넘기기) 두 요청으로 임계구역을 감싼다.
 export class ParticipantsRoster {
   constructor(state) {
     this.state = state;
     this.members = [];
     this.updatedAt = 0;
+    this.locks = new Map(); // key -> { holding: bool, queue: [resolve, ...] }
   }
 
   async fetch(req) {
@@ -6994,7 +7058,69 @@ export class ParticipantsRoster {
         { headers: { "Content-Type": "application/json" } }
       );
     }
+    if (req.method === "POST") {
+      const url = new URL(req.url);
+      const key = url.searchParams.get("key");
+      if (!key) return new Response(JSON.stringify({ error: "key required" }), { status: 400 });
+      if (url.pathname === "/lock/acquire") {
+        let entry = this.locks.get(key);
+        if (!entry) {
+          entry = { holding: false, queue: [] };
+          this.locks.set(key, entry);
+        }
+        if (!entry.holding) {
+          entry.holding = true;
+        } else {
+          await new Promise((resolve) => entry.queue.push(resolve));
+        }
+        return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+      }
+      if (url.pathname === "/lock/release") {
+        const entry = this.locks.get(key);
+        if (entry) {
+          const next = entry.queue.shift();
+          if (next) {
+            next(); // 다음 대기자가 락을 이어받는다(holding은 계속 true).
+          } else {
+            entry.holding = false;
+            this.locks.delete(key);
+          }
+        }
+        return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+      }
+    }
     return new Response("method not allowed", { status: 405 });
+  }
+}
+
+// key(닉네임 등)별로 fn()을 상호 배타적으로 실행한다 — DO가 죽거나 acquire가
+// 예외를 던지는 극단적 상황에서도 fn() 자체가 멈추지 않도록, 락 획득
+// 자체가 실패하면(예: DO 일시 장애) 잠금 없이 그냥 진행한다 — 락은 레이스를
+// "줄이는" 안전장치이지, 락이 없다고 승인 자체를 막을 정도로 중요하지는
+// 않다는 판단(사용자 확인: 시트 반영이 관리자의 유일한 처리 수단이라 완전히
+// 막히면 더 큰 문제가 된다).
+async function withMemberLock(env, key, fn) {
+  const stub = getRosterStub(env);
+  const lockKey = `slotlock:${key}`;
+  let acquired = false;
+  try {
+    await stub.fetch(`https://do/lock/acquire?key=${encodeURIComponent(lockKey)}`, { method: "POST" });
+    acquired = true;
+  } catch {
+    // DO 장애 시 잠금 없이 진행(위 주석 참고).
+  }
+  try {
+    return await fn();
+  } finally {
+    if (acquired) {
+      try {
+        await stub.fetch(`https://do/lock/release?key=${encodeURIComponent(lockKey)}`, { method: "POST" });
+      } catch {
+        // release 실패는 무시 — 최악의 경우 해당 key의 락이 그 DO 인스턴스
+        // 수명 동안 풀리지 않을 수 있으나, DO는 유휴 시 재시작되며 그때
+        // this.locks도 함께 초기화된다.
+      }
+    }
   }
 }
 
