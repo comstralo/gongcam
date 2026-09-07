@@ -4077,14 +4077,21 @@ async function handleAdminCaptureDecide(req, env, origin) {
   return json({ ...data, penalty: penaltyResult, merit: meritResult }, 200, origin);
 }
 
-// GET /captures(봇 manifest 전체)에서 특정 캡처 id에 저장된 penalty/merit을
-// 찾는다 — 관리자가 새로고침해 프론트 로컬 state(applied[item.id])를 잃은
-// 뒤에도 handleAdminCaptureDelete/handleAdminCaptureRevert가 무엇을
-// 되돌려야 하는지 알 수 있게 하는 폴백 조회다(handleAdminCaptureDecide가
-// 결정 시점에 봇 manifest에도 함께 저장해 둔다).
+// 특정 캡처 id에 저장된 penalty/merit을 찾는다 — 관리자가 새로고침해
+// 프론트 로컬 state(applied[item.id])를 잃은 뒤에도
+// handleAdminCaptureDelete/handleAdminCaptureRevert가 무엇을 되돌려야
+// 하는지 알 수 있게 하는 폴백 조회다(handleAdminCaptureDecide가 결정
+// 시점에 봇 manifest에도 함께 저장해 둔다).
+// 🔧 [버그 수정] 원래는 GET /captures(원본 manifest 전체만, archive
+// 미포함)에서 id를 찾았다 — archive_old_captures로 옮겨진(3주 이상 지난
+// 확정) 캡처에 대해 관리자가 새로고침 후 "폐기"/"반려 취소"를 누르면
+// penalty/merit을 못 찾아 시트에 반영된 벌점/제보상점을 되돌리지 못한 채
+// 그대로 진행됐다. 봇의 get_capture는 이미 archive도 함께 조회하므로,
+// 이를 그대로 노출하는 단건 조회(/captures/one)로 바꿔 항상 정확한
+// penalty/merit을 찾을 수 있게 한다.
 async function findStoredPenaltyMerit(env, id) {
-  const data = await proxyToBotDashboard(env, "/captures");
-  const item = data && (data.items || []).find((i) => i.id === id);
+  const data = await proxyToBotDashboard(env, `/captures/one?id=${encodeURIComponent(id)}`);
+  const item = data && data.item;
   return { penalty: item?.penalty || null, merit: item?.merit || null };
 }
 

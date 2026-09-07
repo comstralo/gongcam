@@ -52,13 +52,6 @@ if __name__ == "__main__":
     # 0. 찌꺼기 임시 파일 청소 (고아 파일 방지)
     init_directories()  # 맨 처음에 딱 한 번 실행
 
-    if os.path.exists("runtime/captures/temp"):
-        for f in glob.glob("runtime/captures/temp/*.png"):
-            try:
-                os.remove(f)
-            except:
-                pass
-
     # 0-1. 컨텍스트 생성 + 로거/캠 서브프로세스/Chrome 드라이버/감시자 스레드 셋업.
     # 모듈을 단순히 import하는 것만으로는 이 셋업이 실행되지 않는다 — 반드시
     # __main__ 진입점에서 명시적으로 호출해야 실제 부작용(Chrome 실행 등)이 발생한다.
@@ -68,7 +61,24 @@ if __name__ == "__main__":
     # 즉사했다면(OOM killer, kill -9, 정전 등), 그때 진행 중이던 캡처의
     # 스냅샷이 runtime/captures/inflight/에 남아있다 — 이를 기존 재개 큐로
     # 합류시켜 첫 스케줄이 평소처럼 이어받게 한다(threads.py 참고).
-    recover_inflight_snapshots(ctx)
+    # 🔧 [버그 수정] 원래는 이 호출 전에 runtime/captures/temp/*.png를
+    # 무조건 전부 지웠다 — 그런데 이 스냅샷이 가리키는 previous_temp_files가
+    # 바로 그 temp 폴더 안에 있는 이미지들이라, 정작 이 기능이 필요한 상황
+    # (진짜 즉사 후 재시작)에서 복구 큐가 참조하기도 전에 이미지 파일부터
+    # 먼저 삭제돼 즉사 방어 기능 자체가 스스로 무력화됐다. 이제 먼저 복구를
+    # 실행해 "보존해야 할 파일 목록"을 받은 뒤, temp 청소 시 그 파일들만
+    # 제외하고 지운다 — 방금 재개 큐로 옮긴 진행 중 캡처는 살아남고, 그
+    # 외의 진짜 고아 파일(재개 큐에 연결되지 않은 것들)은 그대로 청소된다.
+    preserved_temp_files = recover_inflight_snapshots(ctx)
+
+    if os.path.exists("runtime/captures/temp"):
+        for f in glob.glob("runtime/captures/temp/*.png"):
+            if f in preserved_temp_files:
+                continue
+            try:
+                os.remove(f)
+            except:
+                pass
 
     # 1. 파이썬 정상 종료 시 무조건 실행되도록 등록
     atexit.register(functools.partial(cleanup_and_exit, ctx))

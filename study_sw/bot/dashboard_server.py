@@ -171,6 +171,27 @@ def make_dashboard_handler(ctx):
                 self._send_json(200, {"items": capture_manifest.list_captures(status)})
                 return
 
+            # 🔧 [버그 수정] Worker의 findStoredPenaltyMerit이 원래 GET
+            # /captures(원본 manifest 전체, archive 미포함)에서만 id를 찾았다
+            # — archive_old_captures로 옮겨진 캡처에 대해 관리자가 뒤늦게
+            # "폐기"/"반려 취소"를 누르면 새로고침으로 프론트 로컬 state를
+            # 잃은 경우 penalty/merit을 못 찾아, 시트에 반영된 벌점/제보상점을
+            # 되돌리지 못한 채 삭제/반려취소만 진행됐다. get_capture는 이미
+            # archive도 함께 조회하므로, 이를 그대로 노출하는 단건 조회
+            # 라우트를 추가해 Worker가 archive 포함 여부와 무관하게 항상
+            # 정확한 penalty/merit을 찾을 수 있게 한다.
+            if parsed.path == "/captures/one":
+                if not self._check_secret():
+                    self._unauthorized()
+                    return
+                capture_id = parse_qs(parsed.query).get("id", [""])[0]
+                item = capture_manifest.get_capture(capture_id)
+                if not item:
+                    self._send_json(404, {"error": "not found"})
+                    return
+                self._send_json(200, {"item": item})
+                return
+
             if parsed.path == "/captures/file":
                 if not self._check_secret():
                     self._unauthorized()

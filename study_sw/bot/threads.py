@@ -1,4 +1,5 @@
 import glob
+import hashlib
 import json
 import os
 import re
@@ -20,9 +21,19 @@ import threading
 INFLIGHT_DIR = "runtime/captures/inflight"
 
 
+# 🔧 [버그 수정] 원래는 정규식 치환만으로 안전한 파일명을 만들었다 —
+# 특수문자를 전부 "_"로 뭉개는 방식이라, 예를 들어 닉네임 "철수!"와
+# "철수@"가 서로 다른 대상자인데도 같은 sanitize 결과("철수_")로 충돌했다.
+# 두 스레드가 같은 파일을 공유하게 되면, 한쪽이 먼저 정상 완료돼
+# clear_inflight_snapshot을 호출하는 순간 아직 진행 중인 다른 쪽의 스냅샷
+# 파일까지 함께 지워져, 그 상태에서 즉사하면 그 스레드의 진행 상황을 다시는
+# 복구할 수 없었다. 원본 thread_id의 해시를 파일명에 덧붙여, sanitize
+# 결과가 같아도 서로 다른 파일을 가리키게 한다(가독성을 위해 sanitize된
+# 이름은 그대로 유지하고 구분용 접미사만 추가).
 def _inflight_path(thread_id):
     safe_name = re.sub(r"[^0-9A-Za-z가-힣_-]", "_", thread_id)
-    return os.path.join(INFLIGHT_DIR, f"{safe_name}.json")
+    digest = hashlib.sha1(thread_id.encode("utf-8")).hexdigest()[:10]
+    return os.path.join(INFLIGHT_DIR, f"{safe_name}_{digest}.json")
 
 
 def save_inflight_snapshot(ctx, thread_id, resume_info):
@@ -52,12 +63,20 @@ def clear_inflight_snapshot(ctx, thread_id):
 # 재개 경로로 자연스럽게 이어받게 한다. 이 함수 자체가 실행되는 시점(즉
 # 프로그램이 정상적으로 재기동된 시점)엔 더 이상 즉사 위험이 없으므로,
 # 합류 후 inflight 폴더는 비워 다음 캡처들이 다시 채우게 한다.
+# 🔧 [버그 수정] 원래는 반환값이 없었다 — 호출자(study_manager_260418.py)가
+# 그 직후(원래는 직전) "고아 임시 파일 정리"로 runtime/captures/temp/*.png를
+# 무조건 전부 지웠는데, 이 함수가 방금 재개 큐로 옮긴 resume_info의
+# previous_temp_files가 가리키는 이미지도 하필 그 폴더 안에 있어 즉사 방어가
+# 지켜야 할 파일을 그 청소 로직이 지워버렸다. 호출자가 "이 파일들만은 지우지
+# 말라"고 판단할 수 있도록, 복구된 각 resume_info의 previous_temp_files를
+# 모아 반환한다.
 def recover_inflight_snapshots(ctx):
+    preserved_paths = set()
     if not os.path.isdir(INFLIGHT_DIR):
-        return
+        return preserved_paths
     paths = glob.glob(os.path.join(INFLIGHT_DIR, "*.json"))
     if not paths:
-        return
+        return preserved_paths
     recovered = 0
     for path in paths:
         try:
@@ -66,6 +85,7 @@ def recover_inflight_snapshots(ctx):
             if content.strip():
                 resume_info = json.loads(content)
                 save_task_to_disk(ctx, resume_info)
+                preserved_paths.update(resume_info.get("previous_temp_files") or [])
                 recovered += 1
         except Exception as e:
             print(f"recover_inflight_snapshots() : ⚠️ 스냅샷 복구 실패({path}) - {e}")
@@ -76,6 +96,7 @@ def recover_inflight_snapshots(ctx):
                 pass
     if recovered:
         print(f"recover_inflight_snapshots() : 💾 즉사로 중단됐던 캡처 {recovered}건을 재개 대기열에 합류시켰습니다.")
+    return preserved_paths
 
 
 def save_task_to_disk(ctx, task_info):

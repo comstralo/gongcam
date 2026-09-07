@@ -168,6 +168,15 @@ def tracking_capture(
     screenshots = []  # 현재 세트(6장)를 담을 버퍼
     # 즉사 방어용 스냅샷이 매 캡처마다 만드는 임시 파일들 — 다음 스냅샷을
     # 찍기 전에 이전 파일들을 지워야 temp 폴더에 중복이 쌓이지 않는다.
+    # 🔧 [버그 수정] 원래는 항상 빈 리스트로 시작했다 — previous_temp_files로
+    # 복구된 세션은 그 이미지들이 screenshots에 이미 채워져 있는데도
+    # inflight_temp_paths는 모른 채로 시작해, 다음 스냅샷 갱신/재중단 시점에
+    # screenshots 전체(복구분+신규분)를 새 파일명으로 다시 저장하면서
+    # inflight_temp_paths에 없던 원본 previous_temp_files는 지우지 않아
+    # 디스크에 참조되지 않는 고아 파일로 영구히 남았다(재개가 반복되거나
+    # 재개 후 다시 중단될 때마다 누적). previous_temp_files 중 실제로
+    # 불러오기에 성공한 파일만 초기값으로 채워, 이후 정리 로직이 이들도
+    # 함께 추적하게 한다.
     inflight_temp_paths = []
 
     # 🔄 [1] 복구 로직: 이전에 찍어둔 파일이 있으면 불러오기
@@ -179,6 +188,7 @@ def tracking_capture(
             try:
                 if os.path.exists(p_path):
                     screenshots.append(Image.open(p_path))
+                    inflight_temp_paths.append(p_path)
             except Exception as e:
                 ctx.logger.warning(f"이미지 복구 실패: {p_path} - {e}")
 

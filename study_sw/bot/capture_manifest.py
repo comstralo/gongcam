@@ -117,11 +117,22 @@ def set_decision(capture_id, decision, penalty=None, merit=None):
 # 다시 평가되는데, 이는 "대상자가 아직 응답하지 않은 건"이라는 전제가
 # 그대로 참이므로(관리자가 재검토를 시작했다고 해서 대상자 응답 기한이
 # 유예되는 것은 아님) 의도된 동작이다.
+# 🔧 [버그 수정] 원래는 원본 manifest만 확인했다 — archive_old_captures로
+# 이미 옮겨진(3주 이상 지난 확정) 캡처에 대해 관리자가 뒤늦게 "반려 취소"를
+# 누르면 capture_id가 원본 manifest에 없어 조용히 False(404)만 반환하고
+# 아무 것도 되돌리지 못했다. get_capture()는 이미 archive도 함께 조회하도록
+# 되어 있는데 이 함수는 빠져 있었다 — 원본에 없으면 archive manifest에서
+# 찾아 그 안에서 되돌린다(파일 자체는 옮길 필요 없음, "반려 취소"는 상태
+# 필드만 바꾸는 작업이므로).
 def revert_decision(capture_id):
     with _manifest_lock:
         data = _load()
+        target_path = MANIFEST_PATH
         if capture_id not in data:
-            return False
+            data = _load(ARCHIVE_MANIFEST_PATH)
+            target_path = ARCHIVE_MANIFEST_PATH
+            if capture_id not in data:
+                return False
         data[capture_id]["reviewStatus"] = "pending"
         data[capture_id].pop("decidedAt", None)
         data[capture_id].pop("penalty", None)
@@ -129,7 +140,7 @@ def revert_decision(capture_id):
         data[capture_id].pop("targetResponse", None)
         data[capture_id].pop("targetRespondedAt", None)
         data[capture_id].pop("targetResponseAuto", None)
-        _save(data)
+        _save(data, target_path)
     return True
 
 
@@ -164,17 +175,30 @@ def set_target_response(capture_id, response, auto=False):
     return True
 
 
+# 🔧 [버그 수정] 원래는 원본 manifest만 확인했고, 이미지도 항상
+# runtime/captures/report/에서만 지우려 했다 — archive_old_captures로
+# 옮겨진 캡처를 관리자가 뒤늦게 "폐기"하면 capture_id가 원본에 없어
+# 조용히 실패했고, 설령 manifest 쪽만 archive를 봤더라도 실제 이미지
+# 파일은 ARCHIVE_FILES_DIR로 함께 옮겨져 있어 원래 경로에서는 못 찾았을
+# 것이다. 원본에 없으면 archive manifest/파일 위치를 폴백으로 사용한다.
 def delete_capture(capture_id):
     with _manifest_lock:
         data = _load()
+        target_path = MANIFEST_PATH
+        files_dir = "runtime/captures/report"
         entry = data.get(capture_id)
         if entry is None:
-            return False
+            data = _load(ARCHIVE_MANIFEST_PATH)
+            target_path = ARCHIVE_MANIFEST_PATH
+            files_dir = ARCHIVE_FILES_DIR
+            entry = data.get(capture_id)
+            if entry is None:
+                return False
         del data[capture_id]
-        _save(data)
+        _save(data, target_path)
     filename = entry.get("filename")
     if filename:
-        path = os.path.join("runtime/captures/report", filename)
+        path = os.path.join(files_dir, filename)
         try:
             if os.path.exists(path):
                 os.remove(path)
