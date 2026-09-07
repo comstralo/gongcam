@@ -1,6 +1,7 @@
 import importlib
 import os
 import time
+import uuid
 from datetime import datetime
 from io import BytesIO
 
@@ -306,8 +307,15 @@ def tracking_capture(
                     )
 
                 timestamp_chat = datetime.now().strftime("%y%m%d-%H:%M")
-                # 파일명 중복 방지를 위해 초 단위까지 포함
-                filename = f"./runtime/captures/report/{datetime.now().strftime('%y%m%d_%H_%M_%S')}_{target_name}.png"
+                # 🔧 [버그 수정] 원래는 "초 단위 시각 + 대상 닉네임"만으로 파일명을
+                # 만들었다 — 같은 대상을 거의 동시에 두 번 제보하면(관리자는 이미
+                # 동시 진행이 허용됨, report_intake.py 참고) 두 tracking_capture
+                # 스레드가 같은 초에 save_capture()를 호출할 수 있어 두 번째
+                # 저장이 첫 번째 파일을 덮어썼다. 서로 다른 제보는 report_id도
+                # 서로 다르므로(짧은 조각만 붙여도 충돌 확률이 사실상 0) 이를
+                # 덧붙여 항상 고유한 파일명이 되게 한다.
+                unique_suffix = (report_id or uuid.uuid4().hex)[:8]
+                filename = f"./runtime/captures/report/{datetime.now().strftime('%y%m%d_%H_%M_%S')}_{target_name}_{unique_suffix}.png"
                 os.makedirs(os.path.dirname(filename), exist_ok=True)
                 combined.save(filename)
                 ctx.logger.info(f"tracking_capture() : 📂 부분 파일 저장 완료: {filename}")
@@ -528,7 +536,10 @@ def tracking_capture_video(
         # 업스케일되고 큰 프레임의 화질은 그대로 유지되게 한다.
         height = max(f.shape[0] for f in frames)
         width = max(f.shape[1] for f in frames)
-        filename = f"./runtime/captures/report/{datetime.now().strftime('%y%m%d_%H_%M_%S')}_{target_name}.mp4"
+        # 🔧 [버그 수정] save_capture()와 동일한 파일명 충돌 문제 — report_id
+        # (또는 없으면 uuid) 조각을 덧붙여 항상 고유하게 만든다.
+        unique_suffix = (report_id or uuid.uuid4().hex)[:8]
+        filename = f"./runtime/captures/report/{datetime.now().strftime('%y%m%d_%H_%M_%S')}_{target_name}_{unique_suffix}.mp4"
         os.makedirs(os.path.dirname(filename), exist_ok=True)
 
         fourcc = cv2.VideoWriter_fourcc(*"avc1")

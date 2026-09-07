@@ -2516,23 +2516,34 @@ async function handleReport(req, env, origin) {
     // 쌓였다. listAllMembers는 60초 캐시가 있어 매 제보마다 새로 시트를
     // 읽지 않으므로, 접수 시점에 앞당겨 확인해도 API 호출 부담이 늘지
     // 않는다.
+    let members;
     try {
       const accessToken = await getServiceAccountAccessToken(env);
-      const members = await listAllMembers(env, accessToken, env.GOOGLE_SHEET_FILE_ID);
+      members = await listAllMembers(env, accessToken, env.GOOGLE_SHEET_FILE_ID);
       if (!members.some((m) => m.name === trimmedNickname)) {
         return json({ error: "회원 명단에서 해당 참여자를 찾을 수 없습니다." }, 400, origin);
       }
     } catch (err) {
       return json({ error: "회원 조회 실패: " + err.message }, 500, origin);
     }
-    // 🔧 [버그 방어] "내 화각 점검" 기능이 이미 자기 자신을 확인하는 용도로
+    // 🔧 [버그 수정] "내 화각 점검" 기능이 이미 자기 자신을 확인하는 용도로
     // 따로 있으므로, 일반 제보(=위반 심사로 이어짐)에서는 관리자가 아닌
     // 이상 자기 자신을 대상자로 지정할 수 없게 막는다(사용자 결정). 웹
     // UI 드롭다운은 이미 본인 이름을 안 보여주지만, /report는 직접 호출도
     // 가능한 엔드포인트라 서버에서도 동일하게 막아야 한다. 관리자는 기능
     // 테스트를 위해 예외로 허용한다(사용자 결정).
-    if (!isAdmin && session.memberName && trimmedNickname === session.memberName) {
-      return json({ error: "본인은 제보 대상으로 지정할 수 없습니다. '내 화각 점검'을 이용해주세요." }, 400, origin);
+    // 🔧 원래는 session.memberName(로그인 시점에 고정, 최대 30일 유지되는
+    // 세션 값)과 비교했다 — 로그인 이후 시트에서 본인 닉네임이 바뀌면
+    // (개명·오타 정정 등) 세션의 옛 이름과 현재 닉네임이 달라져 자기 자신을
+    // 신고해도 통과되거나, 반대로 옛 이름을 물려받은 다른 사람을 신고했는데
+    // 잘못 차단될 수 있었다. 바로 위에서 이미 조회해 둔 최신 회원 명단에서
+    // session.email로 현재 닉네임을 다시 찾아 비교해, 세션이 오래돼도 항상
+    // 최신 상태 기준으로 판단하게 한다.
+    if (!isAdmin) {
+      const selfMember = members.find((m) => m.email.toLowerCase() === (session.email || "").toLowerCase());
+      if (selfMember && trimmedNickname === selfMember.name) {
+        return json({ error: "본인은 제보 대상으로 지정할 수 없습니다. '내 화각 점검'을 이용해주세요." }, 400, origin);
+      }
     }
     finalReason = reason.slice(0, 200);
     finalMode = mode === "video" ? "video" : "screenshot";
@@ -7056,6 +7067,13 @@ async function resolveTargetFileId(env, accessToken, cycleFileId) {
 
 const PARTICIPANTS_STALE_MS = 60 * 1000;
 
+// 슬롯 배정 락(아래 ParticipantsRoster의 /lock/acquire)에서 한 대기자가
+// 최대 기다릴 시간 — 이보다 오래 걸리면 락을 쥔 요청이 죽었거나 비정상적으로
+// 지연되는 것으로 보고 대기를 포기시켜, 영구 데드락으로 이어지지 않게 한다.
+// applyOutputPenalty/applyReportMerit 한 번의 실행 시간(Sheets API 호출
+// 몇 번, 수백ms~수 초)보다 넉넉히 길게 잡는다.
+const LOCK_WAIT_TIMEOUT_MS = 15000;
+
 // 🔧 [버그 수정] applyOutputPenalty/applyReportMerit는 "빈 슬롯 찾기 →
 // 쓰기"가 락 없는 read-modify-write라, 같은 대상자(또는 같은 제보자)에게
 // 밀린 제보 여러 건을 관리자가 빠르게 연속 승인하면(백로그 정리 시 흔한
@@ -7102,7 +7120,35 @@ export class ParticipantsRoster {
         if (!entry.holding) {
           entry.holding = true;
         } else {
-          await new Promise((resolve) => entry.queue.push(resolve));
+          // 🔧 [버그 수정] 원래는 타임아웃 없이 무기한 대기했다 — 락을 쥔
+          // 요청이 release 없이 죽으면(Worker 강제종료 등, 드물지만 가능)
+          // entry.holding이 영원히 true로 남아 이후 같은 key의 모든 acquire가
+          // 무한 대기하는 영구 데드락이 됐다. 게다가 대기자가 존재하는 것
+          // 자체가 DO를 "처리 중인 요청이 남아있다"로 보이게 해, 유휴 시
+          // 자연 evict(재시작으로 this.locks가 초기화되는 자가치유)조차
+          // 막을 수 있었다. LOCK_WAIT_TIMEOUT_MS 안에 못 받으면 큐에서
+          // 자기 항목을 직접 제거하고 "실패"로 응답해, 상위(withMemberLock)가
+          // 락 없이 진행하도록 한다 — 죽은 락 보유자로 인한 무한 대기 사슬을
+          // 끊는다. release가 나중에 이 항목을 next()로 깨우는 레이스를
+          // 막기 위해, 깨워진 콜백이 "이미 시간초과로 빠졌는지"를 own 배열
+          // 참조로 직접 확인해 제거한다(splice는 항등 비교라 안전).
+          const waiter = { resolve: null };
+          const waitPromise = new Promise((resolve) => {
+            waiter.resolve = resolve;
+            entry.queue.push(waiter);
+          });
+          const acquiredInTime = await Promise.race([
+            waitPromise.then(() => true),
+            new Promise((resolve) => setTimeout(() => resolve(false), LOCK_WAIT_TIMEOUT_MS)),
+          ]);
+          if (!acquiredInTime) {
+            const idx = entry.queue.indexOf(waiter);
+            if (idx !== -1) entry.queue.splice(idx, 1); // 아직 안 깨워졌으면 큐에서 제거.
+            return new Response(JSON.stringify({ ok: false, timedOut: true }), {
+              status: 503,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
         }
         return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
       }
@@ -7111,7 +7157,7 @@ export class ParticipantsRoster {
         if (entry) {
           const next = entry.queue.shift();
           if (next) {
-            next(); // 다음 대기자가 락을 이어받는다(holding은 계속 true).
+            next.resolve(); // 다음 대기자가 락을 이어받는다(holding은 계속 true).
           } else {
             entry.holding = false;
             this.locks.delete(key);
@@ -7135,8 +7181,16 @@ async function withMemberLock(env, key, fn) {
   const lockKey = `slotlock:${key}`;
   let acquired = false;
   try {
-    await stub.fetch(`https://do/lock/acquire?key=${encodeURIComponent(lockKey)}`, { method: "POST" });
-    acquired = true;
+    const res = await stub.fetch(`https://do/lock/acquire?key=${encodeURIComponent(lockKey)}`, { method: "POST" });
+    // 🔧 [버그 수정] 원래는 fetch가 예외 없이 응답을 받으면(HTTP 상태와
+    // 무관하게) 무조건 acquired = true로 간주했다 — DO가 LOCK_WAIT_TIMEOUT_MS
+    // 안에 락을 못 줘서 503(ok:false, timedOut:true)을 응답해도 이를
+    // "락을 획득함"으로 잘못 판단해, 나중에 release를 호출하게 됐다. 이
+    // release가 실제로는 아무도 쥐고 있지 않은(또는 다른 요청이 이미 새로
+    // 쥔) 엔트리를 잘못 건드려, 아직 락 대기 중인 다음 요청을 조기에
+    // 풀어주는(release가 큐의 다음 대기자를 next()로 깨움) 이중 실행
+    // 가능성을 만들었다. 응답 바디의 ok 값까지 확인해야 정확하다.
+    acquired = res.ok;
   } catch {
     // DO 장애 시 잠금 없이 진행(위 주석 참고).
   }
