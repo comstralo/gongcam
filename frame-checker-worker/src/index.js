@@ -2617,14 +2617,26 @@ async function handleReport(req, env, origin) {
   }
 
   // 봇에 즉시 푸시해서 폴링 지연 없이 바로 캡처를 시작시킨다. proxyToBotDashboard는
-  // 실패(터널이 그 순간 끊겨 있는 등) 시 예외 없이 null만 반환하므로 여기서
-  // 결과를 신경 쓰지 않는다 — 위 KV 기록은 이미 남아있으니 안전망 폴링
-  // (report_intake.py, 훨씬 낮은 빈도)이 놓친 걸 나중에 집어간다.
-  await proxyToBotDashboard(env, "/reports/new", {
+  // 실패(터널이 그 순간 끊겨 있는 등) 시 예외 없이 null만 반환한다 — 실패하면
+  // 위 KV 기록(report:{id})이 이미 남아있으니 안전망 폴링(report_intake.py,
+  // 훨씬 낮은 빈도)이 놓친 걸 나중에 집어간다.
+  // 🔧 [버그 수정] 원래는 이 호출의 성공/실패와 무관하게 report:{id} KV를
+  // 그대로 뒀다 — handleListReports(안전망 폴링이 부르는 경로)만 유일하게
+  // 이 키를 지우는데, 즉시 푸시가 성공해도 이 키는 그대로 남아 TTL(6시간)
+  // 동안 존재했다. 스크린샷(3분)/영상(90초) 캡처는 항상 안전망 폴링 주기
+  // (10분)보다 먼저 끝나므로, 정상적으로 즉시 처리된 거의 모든 제보가
+  // 10분 뒤 안전망 폴링에 다시 걸려 캡처가 중복 실행되고 텔레그램도
+  // 중복 전송됐다. 즉시 푸시가 성공한 경우에는 그 자리에서 바로 지워
+  // 안전망이 재처리하지 못하게 한다 — 실패한 경우에만 안전망이 나중에
+  // 이 키를 발견해 처리한다.
+  const pushed = await proxyToBotDashboard(env, "/reports/new", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(entry),
   });
+  if (pushed) {
+    await env.REPORTS_KV.delete(`report:${id}`);
+  }
 
   return json({ ok: true }, 200, origin);
 }
@@ -3131,17 +3143,32 @@ async function applyAutoRecognitionForExpired(env, items) {
   if (targets.length === 0) return items;
 
   const respondedAt = Date.now();
-  await Promise.all(
+  // 🔧 [버그 수정] 원래는 각 /captures/respond 호출의 성공/실패를 전혀
+  // 확인하지 않고, 시도한 항목 전부를 무조건 "자동 위반인정됨"으로 화면에
+  // 반영했다 — 봇 연결이 그 순간 끊겨 있으면(proxyToBotDashboard가 null
+  // 반환) 실제로는 봇 manifest에 targetResponse가 저장되지 않았는데도
+  // 응답에는 확정된 것처럼 표시됐다. 그 사이 관리자가 이를 보고 "적용"을
+  // 눌러 reviewStatus가 pending을 벗어나면, 이 함수의 대상 필터(pending만)
+  // 에 다시는 걸리지 않아 targetResponse가 영원히 기록되지 않는 채로
+  // 끝났다. 각 호출의 실제 결과(null이 아닌지)를 확인해, 실제로 저장에
+  // 성공한 항목만 "자동 위반인정됨"으로 반영한다 — 실패한 항목은 pending +
+  // targetResponse 없음 상태 그대로 남아, 다음 조회 시점에 다시 자동인정을
+  // 시도한다(최초 설계 의도인 "다음 조회부터는 재판정 안 함"이 실제로
+  // 저장에 성공했을 때만 성립하도록 바로잡음).
+  const results = await Promise.all(
     targets.map((item) =>
       proxyToBotDashboard(env, "/captures/respond", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: item.id, response: "recognized", auto: true }),
-      }).catch(() => null)
+      })
     )
   );
 
-  const autoRecognized = new Set(targets.map((item) => item.id));
+  const autoRecognized = new Set();
+  targets.forEach((item, idx) => {
+    if (results[idx]) autoRecognized.add(item.id);
+  });
   return items.map((item) =>
     autoRecognized.has(item.id)
       ? { ...item, targetResponse: "recognized", targetRespondedAt: respondedAt, targetResponseAuto: true }

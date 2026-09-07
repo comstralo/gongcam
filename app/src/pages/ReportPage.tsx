@@ -126,6 +126,23 @@ export function ReportPage() {
     return () => clearInterval(timer);
   }, []);
 
+  // 🔧 [버그 수정] useRosterPolling이 15초마다 참여자 명단을 새로 받아오는데,
+  // 사용자가 대상자를 고른 뒤(또는 드롭다운을 열어 고민하는 사이) 그 사람이
+  // 스터디룸에서 퇴장하면 다음 폴링에서 members 배열에서 사라진다 — 하지만
+  // nickname state는 그대로 남아 있어, Select 트리거가 더 이상 목록에 없는
+  // 값을 표시하려다 빈 것처럼 보이거나 이전 라벨에 고정된 채로 어긋났다.
+  // 제출 시 서버(handleReport)가 재검증해 400으로 막아 데이터 정합성은
+  // 지켜지지만, 사용자 입장에서는 "방금 고른 사람이 왜 안 되지"라는 혼란만
+  // 남았다. members가 갱신될 때마다 현재 선택값이 여전히 유효한지 확인해,
+  // 아니면 즉시 초기화해 드롭다운이 "다시 선택해주세요" 상태로 명확히
+  // 돌아가게 한다.
+  useEffect(() => {
+    if (nickname && !members.includes(nickname)) {
+      setNickname("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [members]);
+
   const [params, setParams] = useSearchParams();
   // AdminPage와 동일한 이유 — 최초 마운트 시 한 번만 URL에서 초기 탭을 읽고,
   // 이후로는 로컬 state로만 관리한다(하단 탭바로 다른 페이지에 갔다가 돌아와도
