@@ -496,6 +496,16 @@ export function ReportReviewList({
             [item.id]: { decision, penalty: data.penalty ?? null, merit: data.merit ?? null },
           }));
         }
+        // 🔧 [버그 수정] "적용"/"유예" 결정은 같은 대상자의 다른 대기 항목의
+        // shouldDefer(당일 유예 상한 판정, 서버가 매 조회마다 재계산)에
+        // 영향을 준다 — 로컬 state만 갱신하고 끝내면, 화면에 함께 떠 있는
+        // 다른 항목은 새로고침 전까지 "적용"/"유예" 버튼 구분이 갱신되지
+        // 않아 이미 상한을 넘겼는데도 "유예"가 계속 보이거나 그 반대인
+        // 상태로 남을 수 있었다. 순수 반려("rejected")는 이 카운트에 영향을
+        // 주지 않으므로 재조회할 필요가 없다.
+        if (decision === "approved" || decision === "deferred") {
+          load();
+        }
       })
       .catch((err) => setError(err instanceof Error ? err.message : "처리에 실패했습니다."))
       .finally(() => setDecidingId(null));

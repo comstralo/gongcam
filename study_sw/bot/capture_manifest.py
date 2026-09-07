@@ -88,6 +88,15 @@ def set_decision(capture_id, decision, penalty=None, merit=None):
 # penalty/merit 기록도 함께 지운다 — 시트 반영분은 호출자(웹 index.js)가
 # 이 함수를 부르기 전에 이미 cancelOutputPenalty/cancelReportMerit로
 # 되돌렸다는 전제다.
+# 🔧 [버그 수정] 원래는 targetResponse(대상자의 위반인정/이의제기)를 지우지
+# 않았다 — 관리자가 "재검토"를 위해 되돌렸는데도 이미 응답한 대상자는
+# set_target_response의 "이미 응답 있으면 거부" 조건에 걸려 영원히 다시
+# 응답을 제출할 수 없었다. 완전히 처음(통보 직후) 상태로 되돌리는 게
+# "재검토"의 자연스러운 의미이므로 당사자 응답도 함께 초기화한다 — 그
+# 결과 접수 시각(ts)이 이미 90분을 넘긴 건은 다음 조회 시 자동 위반인정이
+# 다시 평가되는데, 이는 "대상자가 아직 응답하지 않은 건"이라는 전제가
+# 그대로 참이므로(관리자가 재검토를 시작했다고 해서 대상자 응답 기한이
+# 유예되는 것은 아님) 의도된 동작이다.
 def revert_decision(capture_id):
     with _manifest_lock:
         data = _load()
@@ -97,6 +106,9 @@ def revert_decision(capture_id):
         data[capture_id].pop("decidedAt", None)
         data[capture_id].pop("penalty", None)
         data[capture_id].pop("merit", None)
+        data[capture_id].pop("targetResponse", None)
+        data[capture_id].pop("targetRespondedAt", None)
+        data[capture_id].pop("targetResponseAuto", None)
         _save(data)
     return True
 

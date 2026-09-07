@@ -3311,8 +3311,13 @@ async function handleCaptureTargetRespond(req, env, origin) {
     const member = await findMemberNumberByEmail(env, accessToken, env.GOOGLE_SHEET_FILE_ID, session.email);
     if (!member) return json({ error: "데이터 시트 명단에서 계정을 찾을 수 없습니다." }, 403, origin);
 
+    // 🔧 [버그 수정] data가 null이면(proxyToBotDashboard는 타임아웃/네트워크
+    // 실패/!res.ok를 전부 null로 뭉뚱그림) "봇이 완전히 꺼져 있다"는 뜻인데,
+    // 원래는 이 경우도 "그 id의 캡처가 없다"는 404로 뭉뚱그려 사용자가
+    // 실제 원인(봇 연결 문제)을 알 수 없었다. 여기서 먼저 명시적으로 구분한다.
     const data = await proxyToBotDashboard(env, "/captures");
-    const item = data && (data.items || []).find((i) => i.id === id);
+    if (!data) return json({ error: "봇에 연결할 수 없습니다. 잠시 후 다시 시도해주세요." }, 502, origin);
+    const item = (data.items || []).find((i) => i.id === id);
     if (!item) return json({ error: "제보를 찾을 수 없습니다." }, 404, origin);
     if (item.nickname !== member.name) {
       return json({ error: "본인이 대상자인 제보에만 응답할 수 있습니다." }, 403, origin);
@@ -3336,13 +3341,18 @@ async function handleCaptureTargetRespond(req, env, origin) {
     });
     // 🔧 [버그 수정] proxyToBotDashboard는 봇이 404(capture_manifest.
     // set_target_response가 "이미 응답 있음"으로 거부)를 반환해도 !res.ok라
-    // null을 돌려줘, 여기서는 "진짜 연결 실패"와 "레이스로 인한 거부"를
-    // 구분할 수 없었다 — 둘 다 "봇에 연결할 수 없습니다"로 잘못 안내됐다.
-    // 위에서 이미 봇 조회 스냅샷 기준으로 409 사전 검증을 했으므로, 그
-    // 검증을 통과한 뒤에도 result가 null이면 대부분 그 사이 다른 탭/자동
-    // 확정이 먼저 기록을 마친 레이스라고 보는 게 더 정확하다.
+    // null을 돌려줘, "진짜 연결 실패"와 "레이스로 인한 거부"를 구분할 수
+    // 없다 — 다만 방금 위에서 GET /captures가 성공했으므로(연결 실패였다면
+    // 이미 502로 끝났을 것) 봇이 이 요청 사이 짧은 순간에 완전히 끊겼을
+    // 가능성은 낮고, 대부분 그 사이 다른 탭/자동확정이 먼저 기록을 마친
+        // 레이스라고 보는 게 더 정확하다. 100% 확정할 수는 없어 문구에도 두
+    // 가능성을 함께 안내한다.
     if (!result) {
-      return json({ error: "이미 다른 곳에서 응답이 처리됐습니다. 새로고침 후 다시 확인해주세요." }, 409, origin);
+      return json(
+        { error: "응답이 반영되지 않았습니다. 이미 다른 곳에서 처리됐거나 봇 연결이 끊겼을 수 있습니다. 새로고침 후 다시 확인해주세요." },
+        409,
+        origin
+      );
     }
     return json(result, 200, origin);
   } catch (err) {
@@ -3374,7 +3384,8 @@ async function handleAdminCaptureVote(req, env, origin) {
     // 기록될 수 있었다(프론트는 UI로만 막고 있어 직접 API 호출이나
     // 레이스에는 무방비).
     const data = await proxyToBotDashboard(env, "/captures");
-    const item = data && (data.items || []).find((i) => i.id === id);
+    if (!data) return json({ error: "봇에 연결할 수 없습니다. 잠시 후 다시 시도해주세요." }, 502, origin);
+    const item = (data.items || []).find((i) => i.id === id);
     if (!item) return json({ error: "제보를 찾을 수 없습니다." }, 404, origin);
     if (item.reviewStatus !== "pending") {
       return json({ error: "이미 처리가 완료된 제보에는 의견을 제출할 수 없습니다." }, 409, origin);
