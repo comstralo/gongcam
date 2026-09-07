@@ -782,7 +782,7 @@ export function ReportReviewList({
                           인정 : {recognizedCount}건
                         </span>
                         <span className="rounded-full bg-ok/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-ok">
-                          적용 : {appliedCount}건
+                          확정 : {appliedCount}건
                         </span>
                         <span className="rounded-full bg-foreground/8 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-muted-foreground">
                           유예 : {deferredCount}건
