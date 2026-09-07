@@ -327,7 +327,7 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
                                           제보 정보
                                         </span>
                                         {/* 관리자 화면과 동일한 레이아웃이되, 제보자는 숨긴다(사용자 지시). */}
-                                        <SubRow label="사유" value={received!.reason || "-"} />
+                                        <SubRow label="사유" value={received!.reason || "-"} valueClassName="text-destructive" />
                                         <SubRow label="발생일시" value={new Date(item.ts).toLocaleString("ko-KR")} />
                                       </div>
 
@@ -345,11 +345,7 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
                                               ? `-${received!.penalty.deductedMinutes}분`
                                               : "대상자 응답 대기 중"
                                           }
-                                          valueClassName={
-                                            received!.penalty && received!.penalty.deductedMinutes > 0
-                                              ? "text-destructive"
-                                              : undefined
-                                          }
+                                          valueClassName="text-destructive"
                                         />
                                       </div>
 
@@ -367,7 +363,7 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
                                               ? occurrenceLabel(received!.penalty.occurrence)
                                               : occurrenceLabel(received!.nextOccurrence)
                                           }
-                                          valueClassName="font-semibold text-foreground"
+                                          valueClassName="font-semibold text-destructive"
                                         />
                                         <SubRow
                                           label="이번 주 영향"
