@@ -3011,6 +3011,16 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 // cycleFileId(GET /cycles가 내려준 백업 fileId, 없으면 "현재 진행 중")로
 // 캡처 items를 그 주(월~일, KST)에 속한 것만 걸러낸다. 현재 진행 중인 사이클은
 // 이번 주 월요일 00:00 KST부터 지금까지 — 상한이 없다.
+// 🔧 [검토 완료, 수정 보류] 앱스크립트 sheet_reset()은 월요일 00:00이 아니라
+// 새벽 5~6시에 실행되므로(exitWeekResetPassed 주석 참고), 이론적으로는
+// 월요일 00:00~05:59 사이 발생한 캡처가 "이번 주"로 분류되지만 그 시각
+// 실시간 시트의 사이클 번호(집계!D25)는 아직 리셋 전(=지난 사이클)이라
+// 화면 분류와 실제 페널티 슬롯 판정이 어긋날 수 있는 경계가 존재한다.
+// 다만 정상 운영에서는 교시 시간표(1교시 07:20 시작 ~ 14교시 23:30 종료)가
+// 이 새벽 시간대를 아예 포함하지 않아 제보/캡처 자체가 발생하지 않으므로
+// (사용자 확인), 실무에 영향이 없는 이론적 경계로 판단해 지금은 손대지
+// 않는다 — 교시 시간표 밖에서 캡처가 발생하는 상황(예: 테스트)이 생기면
+// 이 함수의 경계를 weekOfToMondayEpochKST + 6시간으로 옮기는 걸 재검토할 것.
 async function filterItemsByCycle(env, accessToken, items, cycleFileId) {
   if (!cycleFileId) {
     const mondayEpoch = weekOfToMondayEpochKST(formatYYMMDD(currentWeekMondayKST()));
