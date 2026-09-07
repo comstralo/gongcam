@@ -54,6 +54,21 @@ def _wait_then_capture(
     )
 
 
+# 🔧 [버그 수정] 원래는 반환값이 없었다 — 호출자인 /reports/new 핸들러가
+# 이 함수의 성공/실패와 무관하게 항상 202를 응답해, Worker(handleReport)가
+# "HTTP 푸시 성공 = 캡처가 실제로 시작됨"으로 오해해 report:{id} KV를 그
+# 자리에서 지워버렸다(6차 라운드 수정). 그런데 실제로는 set_thread가 같은
+# thread_id(닉네임 기준 공유)로 이미 진행 중인 캡처가 있으면 새로 시작하지
+# 않고 조용히 건너뛰기만 한다 — 예를 들어 어떤 사람의 "내 화각 점검"(self
+# -check, 별도 쿨다운 키를 씀)이 진행 중인 동안 다른 사람이 같은 대상을
+# 진짜로 신고하면(일반 제보는 다른 쿨다운 키라 막히지 않음), 봇 쪽에서는
+# 같은 닉네임이라 thread_id가 겹쳐 두 번째 제보가 조용히 스킵됐다. 이때도
+# HTTP는 200을 반환해 Worker가 KV를 지워버려서, 진짜 위반 제보가 캡처도
+# 텔레그램 알림도 manifest 기록도 없이 조용히 영구 소실되고 제보자에게는
+# "제보가 접수되었습니다"라는 성공 메시지만 보였다. 이제 실제로 캡처가
+# 시작됐는지(started)를 그대로 반환해, 호출자가 이 값을 Worker에 전달할 수
+# 있게 한다 — Worker는 started가 true일 때만 KV를 지우고, false면 안전망
+# 폴링이 나중에 다시 시도하도록 KV를 그대로 남겨둔다.
 def _start_capture_for_report(ctx, entry):
     nickname = entry.get("nickname")
     reason = entry.get("reason", "")
@@ -66,7 +81,7 @@ def _start_capture_for_report(ctx, entry):
     self_check = bool(entry.get("selfCheck"))
     is_admin = bool(entry.get("isAdmin"))
     if not nickname:
-        return
+        return False
 
     # thread_id는 모드와 무관하게 닉네임 기준으로 공유한다 — 같은 대상에 대해
     # 스크린샷/영상 제보가 동시에 두 개 진행되지 않도록(set_thread의 중복 방지에 위임).
@@ -100,6 +115,7 @@ def _start_capture_for_report(ctx, entry):
         ctx.logger.info(f"📩 [웹 제보 수신] [{nickname}] {mode} 캡처를 시작합니다. (사유: {reason})")
     else:
         ctx.logger.info(f"📩 [웹 제보 수신] [{nickname}] 이미 캡처가 진행 중이라 건너뜁니다.")
+    return started
 
 
 def _poll_and_start_captures(ctx):

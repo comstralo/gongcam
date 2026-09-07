@@ -469,8 +469,14 @@ def make_dashboard_handler(ctx):
                 # 실제로 쓰는 시점(요청이 들어왔을 때)에만 지역 임포트한다.
                 from bot.report_intake import _start_capture_for_report
 
-                _start_capture_for_report(ctx, entry)
-                self._send_json(202, {"ok": True})
+                # 🔧 [버그 수정] 원래는 이 함수의 반환값(실제로 캡처가 시작됐는지)을
+                # 무시하고 항상 {"ok": true}만 응답했다 — Worker가 이를 "실제로
+                # 처리됨"으로 오해해 안전망 큐(report:{id})를 지워버려, set_thread가
+                # 조용히 건너뛴 제보(예: 같은 대상에 대한 다른 캡처가 이미 진행
+                # 중인 경우)가 영구히 유실됐다. started를 그대로 실어 보내
+                # Worker가 이 값을 보고 KV 삭제 여부를 정확히 판단하게 한다.
+                started = _start_capture_for_report(ctx, entry)
+                self._send_json(202, {"ok": True, "started": bool(started)})
                 return
 
             self._send_json(404, {"error": "not found"})

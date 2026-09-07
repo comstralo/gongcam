@@ -2629,12 +2629,23 @@ async function handleReport(req, env, origin) {
   // 중복 전송됐다. 즉시 푸시가 성공한 경우에는 그 자리에서 바로 지워
   // 안전망이 재처리하지 못하게 한다 — 실패한 경우에만 안전망이 나중에
   // 이 키를 발견해 처리한다.
+  // 🔧 [버그 수정, 2차] 위 수정이 "HTTP 200/202 = 실제로 캡처가 시작됨"으로
+  // 오해해 생긴 새 회귀 — 봇의 set_thread는 같은 대상에 대해 이미 진행
+  // 중인 캡처가 있으면(예: 이 대상자의 "내 화각 점검"이 마침 진행 중일 때
+  // 다른 사람이 진짜로 신고하는 경우, 서로 다른 쿨다운 키라 둘 다 통과됨)
+  // 새로 시작하지 않고 조용히 건너뛰지만 HTTP 응답은 여전히 200/202였다.
+  // 그러면 이 분기가 "성공"으로 오판해 KV를 지워버려, 그 진짜 위반 제보가
+  // 캡처도 텔레그램 알림도 manifest 기록도 없이 조용히 영구 소실되고
+  // 제보자에게는 "제보가 접수되었습니다"만 보였다. 이제 봇이 응답 바디에
+  // 실어 보내는 started 필드까지 확인해, 실제로 캡처가 시작된 경우에만
+  // KV를 지운다 — 건너뛴 경우는 KV를 그대로 남겨 안전망 폴링이 나중에
+  // (그 사이 기존 캡처가 끝나 thread_id가 비면) 다시 시도하게 한다.
   const pushed = await proxyToBotDashboard(env, "/reports/new", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(entry),
   });
-  if (pushed) {
+  if (pushed && pushed.started) {
     await env.REPORTS_KV.delete(`report:${id}`);
   }
 
