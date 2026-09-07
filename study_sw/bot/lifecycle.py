@@ -12,6 +12,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 
 from bot.telegram import send_chat_telegram
+from bot.threads import stop_all_thread
 
 try:
     import win32con
@@ -178,6 +179,26 @@ def build_context_and_driver():
 # 💡 인자(signum, frame)를 선택적으로 받도록 수정 (atexit 등에서 호출할 때 에러 방지)
 def cleanup_and_exit(ctx, signum=None, frame=None):
     print("\n🚨 [시스템] 프로그램 종료 신호 감지! 브라우저를 안전하게 닫습니다.")
+
+    # 🔧 [버그 수정] 원래는 이 함수가 stop_event/stop_all_thread를 전혀
+    # 거치지 않고 곧장 os._exit(0)으로 직행했다 — SIGTERM/SIGINT/SIGHUP은
+    # 모두 이 함수로 연결되므로(study_manager_260418.py), 관리자가 봇을
+    # "정상적으로" 재시작할 때마다(터미널 Ctrl+C, 배포 스크립트의 SIGTERM
+    # 등) 진행 중이던 모든 캡처 스레드가 tracking_capture의 정상 중단
+    # 처리(완전한 재개 정보를 남기는 경로, stop_event.is_set() 분기)를
+    # 타지 못한 채 즉시 죽었다. 즉사 방어(threads.py의 inflight snapshot)가
+    # 원래 대비하려던 건 "atexit/signal 핸들러조차 못 타는" OOM/kill -9/
+    # 정전 같은 진짜 예외 상황인데, 실제로는 정상 종료 신호를 받을 때마다
+    # 매번 그 예외 상황과 동일하게 취급됐다. stop_all_thread()를 먼저
+    # 호출해 각 스레드가 정상 중단 처리(재개 정보 저장, 시트 기록 완료
+    # 대기 등)를 마칠 시간을 준 뒤에 종료한다 — os._exit(0)로 최종
+    # 종료하는 것 자체는 그대로 유지한다(데몬 스레드가 종료를 막는 것을
+    # 방지하려는 기존 의도).
+    try:
+        stop_all_thread(ctx)
+    except Exception:
+        pass
+
     # 추가: 서브프로세스 종료
     try:
         if ctx.cam_process is not None:
