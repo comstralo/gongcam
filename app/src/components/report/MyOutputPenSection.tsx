@@ -42,21 +42,22 @@ function displayReason(reason: string): string {
 
 // "처리현황" — 대상자 응답(targetResponse)과 관리자 최종 처리(reviewStatus)를
 // 조합한 문구. 코드상 "이의제기 인정/미인정"이라는 값이 별도로 저장되지
-// 않고(관리자는 이의 여부와 무관하게 approved/rejected_recognized/rejected/
-// deferred 중 자유롭게 고른다), 최종 reviewStatus로부터 역산한다(사용자 확인):
-// approved/deferred(대상자에게 결국 적용된 처리) → "미인정 · 적용처리",
-// rejected/rejected_recognized(대상자에게 적용되지 않은 처리) → "인정 · 반려처리".
-// 위반인정(recognized) 후 처리 완료는 세분화하지 않고 항상 "적용처리"로
-// 고정한다(사용자 확인) — 스스로 인정한 위반은 사실상 항상 적용으로
-// 귀결되므로 반려/폐기를 구분하는 실익이 없다는 판단.
+// 않고(관리자는 대상자 응답과 무관하게 approved/rejected_recognized/rejected/
+// deferred 중 자유롭게 고른다 — 대상자가 "위반인정"을 눌러도 관리자가 검토 후
+// 위반이 아니라고 판단해 반려할 수 있다), 최종 reviewStatus로부터 역산한다:
+// approved/deferred(대상자에게 결국 적용된 처리) → "적용처리",
+// rejected/rejected_recognized(대상자에게 적용되지 않은 처리) → "반려처리".
+// 이 구분은 위반인정/이의제기 둘 다 동일하게 적용한다(사용자 지적: 위반인정
+// 건도 관리자 판단에 따라 반려될 수 있으므로 "적용처리"로 고정하면 안 됨).
 function statusLabel(item: MyOutputPenItem): string {
   if (!item.targetResponse) return "대상자 응답 대기 중";
-  if (item.reviewStatus === "pending") {
-    return item.targetResponse === "disputed" ? "이의제기 (검토 중)" : "위반인정 (검토 중)";
-  }
-  if (item.targetResponse === "recognized") return "위반인정 (적용처리)";
+  const label = item.targetResponse === "disputed" ? "이의제기" : "위반인정";
+  if (item.reviewStatus === "pending") return `${label} (검토 중)`;
   const wasApplied = item.reviewStatus === "approved" || item.reviewStatus === "deferred";
-  return wasApplied ? "이의제기 (미인정 · 적용처리)" : "이의제기 (인정 · 반려처리)";
+  if (item.targetResponse === "recognized") {
+    return wasApplied ? `${label} (적용처리)` : `${label} (반려처리)`;
+  }
+  return wasApplied ? `${label} (미인정 · 적용처리)` : `${label} (인정 · 반려처리)`;
 }
 
 // "송출 P 대상 처리"(관리자용 ReportReviewList)와 동일한 요일별 아코디언 →
