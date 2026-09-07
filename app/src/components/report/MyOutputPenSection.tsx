@@ -32,32 +32,37 @@ type MergedItem =
   | { kind: "selfCheck"; id: string; ts: number; data: MyCaptureItem }
   | { kind: "received"; id: string; ts: number; data: MyOutputPenItem };
 
-function dayOfTs(ts: number): string {
-  const jsDay = new Date(ts).getDay();
-  return STATUS_DAYS[(jsDay + 6) % 7];
+// 🔧 [버그 수정] 관리자 화면(ReportReviewList)의 groupByDay/thisWeekDateLabel은
+// "이번 주 대기 건만" 다루는 화면이라 요일 이름(월~일)만으로 그룹핑해도
+// 문제가 없었다. 하지만 이 컴포넌트는 여러 주에 걸친 이력을 계속 쌓아
+// 보여주므로, 요일 이름만으로 그룹핑하면 서로 다른 주의 같은 요일이
+// 하나로 합쳐지고, 헤더 날짜는 "오늘이 속한 주의 그 요일"로 계산돼 실제
+// 항목 날짜와 어긋나 보이는 문제가 있었다(예: 9월 6일 접수 건인데 헤더가
+// "9월 13일"로 표시). 요일 이름 대신 KST 기준 실제 날짜(YYYY-MM-DD)로
+// 그룹핑해 이 문제를 근본적으로 없앤다.
+function kstDateKey(ts: number): string {
+  return new Date(ts).toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" }); // sv-SE 로케일이 YYYY-MM-DD를 그대로 출력.
 }
 
-function thisWeekDateLabel(dayKr: string): string {
-  const dayIndex = STATUS_DAYS.indexOf(dayKr);
-  if (dayIndex === -1) return "";
-  const now = new Date();
-  const todayIndex = (now.getDay() + 6) % 7;
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - todayIndex);
-  const target = new Date(monday);
-  target.setDate(monday.getDate() + dayIndex);
-  return `${target.getMonth() + 1}월 ${target.getDate()}일`;
+function dateLabel(dateKey: string): string {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  const dayKr = STATUS_DAYS[(date.getDay() + 6) % 7];
+  return `${m}월 ${d}일 ${dayKr}요일`;
 }
 
 function groupByDay(items: MergedItem[]) {
   const map = new Map<string, MergedItem[]>();
   for (const item of items) {
-    const day = dayOfTs(item.ts);
-    const existing = map.get(day);
+    const key = kstDateKey(item.ts);
+    const existing = map.get(key);
     if (existing) existing.push(item);
-    else map.set(day, [item]);
+    else map.set(key, [item]);
   }
-  return STATUS_DAYS.filter((d) => map.has(d)).map((day) => ({ day, items: map.get(day)! }));
+  // 최근 날짜가 위로 오도록 내림차순 정렬.
+  return Array.from(map.entries())
+    .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+    .map(([dateKey, groupItems]) => ({ dateKey, items: groupItems }));
 }
 
 export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }) {
@@ -146,17 +151,17 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
           {loaded && items.length > 0 && (
             <div className="flex flex-col gap-2 sm:gap-2.5">
               {groupByDay(items).map((group) => {
-                const isDayExpanded = expandedDay === group.day;
+                const isDayExpanded = expandedDay === group.dateKey;
                 return (
-                  <InfoCard key={group.day} className="flex flex-col gap-2.5 bg-card">
+                  <InfoCard key={group.dateKey} className="flex flex-col gap-2.5 bg-card">
                     <button
                       type="button"
-                      onClick={() => setExpandedDay(isDayExpanded ? null : group.day)}
+                      onClick={() => setExpandedDay(isDayExpanded ? null : group.dateKey)}
                       className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded"
                     >
                       <span className="inline-flex shrink-0 items-center gap-1.25 text-xs font-semibold sm:text-sm">
                         <CalendarDays className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
-                        {thisWeekDateLabel(group.day)} {group.day}요일
+                        {dateLabel(group.dateKey)}
                         <span className="ml-1 rounded-full bg-foreground/8 px-2 py-1 text-micro-lg leading-none text-muted-foreground sm:text-xs">
                           {group.items.length}건
                         </span>
