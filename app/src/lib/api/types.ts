@@ -721,6 +721,13 @@ export type ActiveCooldownItem = {
   nickname: string;
   // 이 쿨다운이 풀리는 시각(ms epoch) — 20분 제보 쿨다운 종료 시점.
   expiresAt: number;
+  // 아래 세 필드는 "촬영이 아직 진행 중인지"를 프론트가 판정하는 데 쓴다 —
+  // 접수 직후 20분 쿨다운을 바로 보여주는 대신, 봇이 실제 캡처를 끝내기
+  // 전까지는 촬영 예상 소요시간으로 카운트다운을 보여주기 위함.
+  mode: "screenshot" | "video";
+  startedAt: number;
+  // 봇이 캡처를 끝내고 Worker에 알리기 전까지는 null.
+  capturedAt: number | null;
 };
 
 export type ReportCooldownsResponse = {

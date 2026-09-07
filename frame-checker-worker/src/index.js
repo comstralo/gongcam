@@ -613,6 +613,34 @@ async function _appendToLiveIndex(env, indexKey, item, itemTtlSec) {
   return items;
 }
 
+// COOLDOWN_INDEX_KEY 안의 특정 항목(id로 식별)에 capturedAt을 채워
+// 갱신한다 — 봇이 실제 캡처를 끝낸 시점을 서버에 알릴 때 쓴다. 이미 TTL로
+// 만료됐거나 애초에 없는 id면 조용히 무시한다(쿨다운 자체는 그대로 유효).
+async function _markCaptureDoneInLiveIndex(env, indexKey, id, capturedAt) {
+  const raw = await env.REPORTS_KV.get(indexKey);
+  if (!raw) return;
+  let items;
+  try {
+    items = JSON.parse(raw);
+  } catch {
+    return;
+  }
+  const now = Date.now();
+  let changed = false;
+  const alive = items.filter((it) => it.expiresAt > now);
+  for (const it of alive) {
+    if (it.id === id && !it.capturedAt) {
+      it.capturedAt = capturedAt;
+      changed = true;
+    }
+  }
+  if (!changed) return;
+  if (alive.length === 0) return;
+  const maxExpiresAt = Math.max(...alive.map((it) => it.expiresAt));
+  const ttlSec = Math.max(60, Math.ceil((maxExpiresAt - now) / 1000) + 300);
+  await env.REPORTS_KV.put(indexKey, JSON.stringify(alive), { expirationTtl: ttlSec }).catch(() => {});
+}
+
 async function _readLiveIndex(env, indexKey) {
   const raw = await env.REPORTS_KV.get(indexKey);
   if (!raw) return [];
@@ -2306,6 +2334,15 @@ async function handleVerify(req, env, origin) {
 
 const REPORT_COOLDOWN_SEC = 20 * 60;
 const COOLDOWN_INDEX_KEY = "cooldownIndex:current";
+// 🔧 [촬영 진행 중 카운트다운] 제보 접수 직후부터 20분 재제보 쿨다운을 바로
+// 보여주면, 실제로 봇이 촬영 중인 짧은 구간(스크린샷 약 2.5분, 영상 약
+// 1.5~3분)에도 20분짜리 숫자가 떠 사용자가 "촬영이 끝났나?"를 가늠할 수
+// 없었다(사용자 지시). 모드별 예상 촬영 소요시간을 실제값(study_sw/bot/
+// tracking.py의 스크린샷 30초×6장=150초, 영상 DURATION_SEC=90초, 최대
+// 180초 상한)에 맞춰 넉넉히 잡아, 봇이 캡처 완료를 보고하기 전까지는 이
+// 값으로 카운트다운하다가 완료 보고를 받으면(또는 예상 시간을 넘기면) 그
+// 때부터 20분 카운트다운으로 자연히 전환한다.
+const EXPECTED_CAPTURE_SEC = { screenshot: 150, video: 180 };
 // "내 화각 점검" — 제보와 동일한 캡처 메커니즘(스크린샷)을 쓰지만 대상자가
 // 항상 본인이고, 벌점/페널티 판정 대상이 아닌 셀프 확인용이다(사용자 요청).
 // 일반 제보와 쿨다운/노출 목록을 공유하면 서로 간섭하므로 완전히 분리한다.
@@ -2397,11 +2434,13 @@ async function handleReport(req, env, origin) {
     // 접수됐는데도 참여자들에게 "제보가 없다"고 잘못 보인다(사용자 지적).
     // 목록 화면(handleListActiveCooldowns)이 "언제 끝나는지"를 계산할 수
     // 있도록 ts도 함께 저장한다 — 값 자체(TTL 만료 여부)로 쿨다운 중인지는
-    // 이미 판별되므로, ts는 순수하게 표시용 부가 정보다.
+    // 이미 판별되므로, ts는 순수하게 표시용 부가 정보다. id/mode/capturedAt은
+    // "촬영 진행 중" 카운트다운 판정에 쓰인다 — 봇이 캡처를 끝내면
+    // handleReportCaptureDone이 이 id를 찾아 capturedAt을 채운다.
     await _appendToLiveIndex(
       env,
       COOLDOWN_INDEX_KEY,
-      { nickname: trimmedNickname, expiresAt: ts + cooldownSec * 1000 },
+      { id, nickname: trimmedNickname, mode: finalMode, startedAt: ts, capturedAt: null, expiresAt: ts + cooldownSec * 1000 },
       cooldownSec
     );
   }
@@ -2435,6 +2474,21 @@ async function handleListActiveCooldowns(req, env, origin) {
   const items = await _readLiveIndex(env, COOLDOWN_INDEX_KEY);
   items.sort((a, b) => a.expiresAt - b.expiresAt);
   return json({ items }, 200, origin);
+}
+
+// 봇이 실제 캡처(스크린샷/영상)를 끝낸 시점을 알려준다 — 참여자 명단
+// 동기화(roster_sync.py)와 동일하게 봇→Worker POST + X-Bot-Secret 인증
+// 패턴을 그대로 따른다. id를 못 찾거나 이미 만료된 쿨다운이어도 조용히
+// ok:true만 반환한다(쿨다운 자체의 정상 동작에는 영향이 없으므로).
+async function handleReportCaptureDone(req, env, origin) {
+  const botSecret = req.headers.get("X-Bot-Secret");
+  if (!botSecret || botSecret !== env.BOT_SECRET) {
+    return json({ error: "unauthorized" }, 401, origin);
+  }
+  const { id } = await req.json().catch(() => ({}));
+  if (!id) return json({ error: "id가 필요합니다." }, 400, origin);
+  await _markCaptureDoneInLiveIndex(env, COOLDOWN_INDEX_KEY, id, Date.now());
+  return json({ ok: true }, 200, origin);
 }
 
 // 봇(study_manager_260418.py)이 이 Worker와 같은 Google 서비스 계정을 써서
@@ -7523,6 +7577,9 @@ export default {
       }
       if (url.pathname === "/report-cooldowns" && req.method === "GET") {
         return await handleListActiveCooldowns(req, env, origin);
+      }
+      if (url.pathname === "/reports/capture-done" && req.method === "POST") {
+        return await handleReportCaptureDone(req, env, origin);
       }
       if (url.pathname === "/reports" && req.method === "GET") {
         return await handleListReports(req, env, origin);

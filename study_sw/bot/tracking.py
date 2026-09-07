@@ -6,6 +6,7 @@ from io import BytesIO
 
 import cv2
 import numpy as np
+import requests
 from PIL import Image, ImageDraw, ImageFont
 from selenium.webdriver.common.by import By
 
@@ -13,6 +14,27 @@ from assets import tracking_list
 from bot import capture_manifest
 from bot.telegram import send_chat_telegram
 from bot.threads import remove_thread_id, save_task_to_disk
+
+# [촬영 진행 중 카운트다운] 캡처가 실제로 끝난 시점을 Worker에 알려, "최근
+# 진행된 제보" 화면이 20분 재제보 쿨다운 대신 촬영 예상 소요시간으로
+# 카운트다운을 보여주다가 이 신호를 받으면 20분 카운트다운으로 전환하게
+# 한다(roster_sync.py와 동일한 봇→Worker POST + X-Bot-Secret 패턴).
+WORKER_BASE = "https://frame-checker-worker.comstralo.workers.dev"
+BOT_SECRET = os.getenv("BOT_SECRET")
+
+
+def _notify_capture_done(ctx, report_id):
+    if not report_id or not BOT_SECRET:
+        return
+    try:
+        requests.post(
+            f"{WORKER_BASE}/reports/capture-done",
+            json={"id": report_id},
+            headers={"X-Bot-Secret": BOT_SECRET},
+            timeout=10,
+        )
+    except Exception as e:
+        ctx.logger.warning(f"⚠️ [웹 제보 수신] 캡처 완료 알림 실패(무시): {e}")
 
 
 def _find_target_area(ctx, target_name):
@@ -405,6 +427,7 @@ def tracking_capture(
             except:
                 pass
 
+    _notify_capture_done(ctx, report_id)
     remove_thread_id(ctx, thread_id)
     return
 
@@ -500,6 +523,7 @@ def tracking_capture_video(ctx, target_name, reason_txt, sender_name, thread_id,
         capture_manifest.record_capture(
             report_id, target_name, reason_txt, "video", filename, sender_name, self_check=self_check
         )
+        _notify_capture_done(ctx, report_id)
 
     except Exception as e:
         ctx.logger.error(f"tracking_capture_video() : 인코딩/전송 실패 - {e}")

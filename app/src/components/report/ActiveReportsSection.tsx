@@ -8,11 +8,28 @@ import type { ActiveCooldownItem, ReportCooldownsResponse } from "@/lib/api/type
 const COOLDOWN_POLL_MS = 15000;
 const TICK_MS = 1000;
 
+// 봇(study_sw/bot/tracking.py)의 실제 캡처 소요시간에 맞춘 예상값 —
+// 스크린샷은 30초 간격 6장(약 150초), 영상은 목표 90초(최대 180초 상한).
+// 서버(frame-checker-worker EXPECTED_CAPTURE_SEC)와 동일한 값을 쓴다.
+const EXPECTED_CAPTURE_SEC: Record<"screenshot" | "video", number> = { screenshot: 150, video: 180 };
+
 function formatRemaining(ms: number): string {
   const totalSec = Math.max(0, Math.ceil(ms / 1000));
   const min = Math.floor(totalSec / 60);
   const sec = totalSec % 60;
   return `${min}:${String(sec).padStart(2, "0")}`;
+}
+
+// 🔧 [촬영 진행 중 카운트다운] 접수 직후부터 20분 재제보 쿨다운을 바로
+// 보여주면 실제 촬영이 끝났는지 가늠할 수 없었다(사용자 지시). 봇이 캡처를
+// 끝내고 서버에 알리기 전까지는(capturedAt이 null) 모드별 예상 소요시간으로
+// 카운트다운하다가, 완료 알림을 받거나 예상 시간을 넘기면 20분 카운트다운으로
+// 자연히 전환한다(둘 중 하나만 있어도 되므로 봇 알림이 늦거나 유실돼도 안전).
+function captureRemainingMs(item: ActiveCooldownItem, now: number): number | null {
+  if (item.capturedAt) return null;
+  const expectedMs = EXPECTED_CAPTURE_SEC[item.mode] * 1000;
+  const remaining = item.startedAt + expectedMs - now;
+  return remaining > 0 ? remaining : null;
 }
 
 // 최근 20분 내 제보가 접수돼 재제보 쿨다운이 걸린 대상을 모두가 볼 수 있게
@@ -78,15 +95,22 @@ export function ActiveReportsSection({ refreshSignal }: { refreshSignal?: number
         <SubRow label="최근 진행된 제보가 없습니다." value="" labelClassName="text-xs sm:text-sm" />
       ) : (
         <div className="flex flex-col gap-1">
-          {active.map((item) => (
-            <SubRow
-              key={item.nickname}
-              label={item.nickname}
-              value={`${formatRemaining(item.expiresAt - now)} 남음`}
-              labelClassName="text-xs sm:text-sm"
-              valueClassName="text-xs sm:text-sm"
-            />
-          ))}
+          {active.map((item) => {
+            const captureRemaining = captureRemainingMs(item, now);
+            const value =
+              captureRemaining !== null
+                ? `촬영 중 (${formatRemaining(captureRemaining)} 남음)`
+                : `${formatRemaining(item.expiresAt - now)} 남음`;
+            return (
+              <SubRow
+                key={item.nickname}
+                label={item.nickname}
+                value={value}
+                labelClassName="text-xs sm:text-sm"
+                valueClassName="text-xs sm:text-sm"
+              />
+            );
+          })}
         </div>
       )}
     </SectionCard>
