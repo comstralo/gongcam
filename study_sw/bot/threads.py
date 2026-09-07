@@ -1,6 +1,81 @@
+import glob
 import json
 import os
+import re
 import threading
+
+# 🔧 [버그 방어] tracking_capture()의 중단 처리(save_task_to_disk 호출부,
+# tracking.py)는 stop_event로 "정상적으로" 중단될 때만 실행된다 — 프로세스
+# 자체가 즉사하면(OOM killer, kill -9, 정전 등 atexit/signal 핸들러조차
+# 못 타는 경우) 그 코드 자체가 실행될 기회가 없어, 그때까지 메모리에만
+# 있던 진행 상황(찍은 스크린샷들, 남은 목표 횟수)이 통째로 사라진다(사용자
+# 확인: 발견한 이상 대비할 것). 이를 막기 위해 캡처를 한 장 찍을 때마다
+# (정상 종료 여부와 무관하게) 진행 상황 스냅샷을 이 디렉터리에 즉시
+# 원자적으로 덮어써 둔다 — 정상 종료/정상 중단 시에는 clear_inflight_snapshot
+# 으로 지우므로, 다음 프로그램 시작 시 여기 파일이 남아있다는 것 자체가
+# "즉사로 중단된 작업이 있다"는 신호가 된다. recover_inflight_snapshots가
+# 그 파일들을 기존 STATE_FILE 재개 큐로 그대로 합류시켜, 기존 재개 로직
+# (load_tasks_from_disk → tracking_capture(previous_temp_files=...))을
+# 그대로 재사용한다 — 재개 경로를 새로 만들 필요가 없다.
+INFLIGHT_DIR = "runtime/captures/inflight"
+
+
+def _inflight_path(thread_id):
+    safe_name = re.sub(r"[^0-9A-Za-z가-힣_-]", "_", thread_id)
+    return os.path.join(INFLIGHT_DIR, f"{safe_name}.json")
+
+
+def save_inflight_snapshot(ctx, thread_id, resume_info):
+    os.makedirs(INFLIGHT_DIR, exist_ok=True)
+    path = _inflight_path(thread_id)
+    tmp_path = f"{path}.tmp"
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(resume_info, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, path)
+    except OSError as e:
+        ctx.logger.warning(f"save_inflight_snapshot() : ⚠️ 스냅샷 저장 실패 - {e}")
+
+
+def clear_inflight_snapshot(ctx, thread_id):
+    path = _inflight_path(thread_id)
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+    except OSError:
+        pass
+
+
+# 프로그램 시작 시 딱 한 번 호출한다(study_manager_260418.py). 남아있는
+# inflight 스냅샷은 지난 실행이 즉사로 끝났다는 뜻이므로, 기존 재개 큐
+# (STATE_FILE)에 그대로 합류시켜 다음 첫 스케줄(schedule_process)이 평소
+# 재개 경로로 자연스럽게 이어받게 한다. 이 함수 자체가 실행되는 시점(즉
+# 프로그램이 정상적으로 재기동된 시점)엔 더 이상 즉사 위험이 없으므로,
+# 합류 후 inflight 폴더는 비워 다음 캡처들이 다시 채우게 한다.
+def recover_inflight_snapshots(ctx):
+    if not os.path.isdir(INFLIGHT_DIR):
+        return
+    paths = glob.glob(os.path.join(INFLIGHT_DIR, "*.json"))
+    if not paths:
+        return
+    recovered = 0
+    for path in paths:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read()
+            if content.strip():
+                resume_info = json.loads(content)
+                save_task_to_disk(ctx, resume_info)
+                recovered += 1
+        except Exception as e:
+            print(f"recover_inflight_snapshots() : ⚠️ 스냅샷 복구 실패({path}) - {e}")
+        finally:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+    if recovered:
+        print(f"recover_inflight_snapshots() : 💾 즉사로 중단됐던 캡처 {recovered}건을 재개 대기열에 합류시켰습니다.")
 
 
 def save_task_to_disk(ctx, task_info):

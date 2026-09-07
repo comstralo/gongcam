@@ -27,6 +27,7 @@ from bot.lifecycle import (
 from bot.report_intake import start_report_intake
 from bot.roster_sync import start_participants_sync
 from bot.scheduling import run_scheduler, schedule_process
+from bot.threads import recover_inflight_snapshots
 from bot.tunnel import start_tunnel_and_register
 from bot.usage_tracker import install as install_usage_tracker
 
@@ -62,6 +63,12 @@ if __name__ == "__main__":
     # 모듈을 단순히 import하는 것만으로는 이 셋업이 실행되지 않는다 — 반드시
     # __main__ 진입점에서 명시적으로 호출해야 실제 부작용(Chrome 실행 등)이 발생한다.
     ctx = build_context_and_driver()
+
+    # 0-2. [버그 방어] 지난 실행이 정상 종료 절차(atexit/signal)조차 못 타고
+    # 즉사했다면(OOM killer, kill -9, 정전 등), 그때 진행 중이던 캡처의
+    # 스냅샷이 runtime/captures/inflight/에 남아있다 — 이를 기존 재개 큐로
+    # 합류시켜 첫 스케줄이 평소처럼 이어받게 한다(threads.py 참고).
+    recover_inflight_snapshots(ctx)
 
     # 1. 파이썬 정상 종료 시 무조건 실행되도록 등록
     atexit.register(functools.partial(cleanup_and_exit, ctx))

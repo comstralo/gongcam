@@ -14,7 +14,12 @@ from selenium.webdriver.common.by import By
 from assets import tracking_list
 from bot import capture_manifest
 from bot.telegram import send_chat_telegram
-from bot.threads import remove_thread_id, save_task_to_disk
+from bot.threads import (
+    clear_inflight_snapshot,
+    remove_thread_id,
+    save_inflight_snapshot,
+    save_task_to_disk,
+)
 
 # [촬영 진행 중 카운트다운] 캡처가 실제로 끝난 시점을 Worker에 알려, "최근
 # 진행된 제보" 화면이 20분 재제보 쿨다운 대신 촬영 예상 소요시간으로
@@ -161,6 +166,9 @@ def tracking_capture(
     circled_nums = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮"
 
     screenshots = []  # 현재 세트(6장)를 담을 버퍼
+    # 즉사 방어용 스냅샷이 매 캡처마다 만드는 임시 파일들 — 다음 스냅샷을
+    # 찍기 전에 이전 파일들을 지워야 temp 폴더에 중복이 쌓이지 않는다.
+    inflight_temp_paths = []
 
     # 🔄 [1] 복구 로직: 이전에 찍어둔 파일이 있으면 불러오기
     if previous_temp_files:
@@ -387,6 +395,52 @@ def tracking_capture(
             if len(screenshots) >= 6:
                 save_capture()  # 성공 여부와 관계없이 시도
                 screenshots = []  # 리스트 무조건 초기화 (무한루프 방지)
+                # 이 세트는 이미 save_capture()로 전송·기록을 시도했으므로,
+                # 즉사해도 다시 재개할 대상이 아니다 — 스냅샷과 그 임시
+                # 파일들을 지운다.
+                clear_inflight_snapshot(ctx, thread_id)
+                for p in inflight_temp_paths:
+                    try:
+                        os.remove(p)
+                    except OSError:
+                        pass
+                inflight_temp_paths = []
+            else:
+                # 🔧 [버그 방어] 여기까지 못 오고 프로세스 자체가 즉사하면
+                # (OOM killer, kill -9, 정전 등) 아래 "정상 중단 처리"
+                # 블록이 실행될 기회가 없어 지금까지 찍은 screenshots가
+                # 메모리에서만 사라진다(사용자 확인: 발견한 이상 대비할 것).
+                # 한 장 찍을 때마다 지금까지의 진행 상황을 임시 파일 +
+                # 스냅샷으로 즉시 디스크에 남겨, 다음 프로그램 시작 시
+                # recover_inflight_snapshots가 이를 주워 기존 재개 큐로
+                # 합류시킬 수 있게 한다. 이전 스냅샷이 만든 임시 파일들은
+                # 먼저 지워야 temp 폴더에 중복이 쌓이지 않는다.
+                for p in inflight_temp_paths:
+                    try:
+                        os.remove(p)
+                    except OSError:
+                        pass
+                temp_dir = "runtime/captures/temp"
+                os.makedirs(temp_dir, exist_ok=True)
+                inflight_temp_paths = []
+                for idx, img in enumerate(screenshots):
+                    t_path = f"{temp_dir}/{target_name}_{datetime.now().strftime('%Y%m%d%H%M%S')}_{idx}.png"
+                    img.save(t_path)
+                    inflight_temp_paths.append(t_path)
+                save_inflight_snapshot(
+                    ctx,
+                    thread_id,
+                    {
+                        "target_name": target_name,
+                        "reason_txt": reason_txt,
+                        "sender_name": sender_name,
+                        "remaining_count": track_total - (current_session_capture_count + 1),
+                        "interval": manual_interval if manual_interval else 30,
+                        "previous_temp_files": inflight_temp_paths,
+                        "report_id": report_id,
+                        "reporter_name": reporter_name,
+                    },
+                )
 
             # 전체 횟수 증가 (캡처 성공 여부와 관계없이 시간 흐름에 따라 증가)
             current_session_capture_count += 1
@@ -424,12 +478,26 @@ def tracking_capture(
     if current_session_capture_count < track_total and (
         ctx.stop_event.is_set() or thread_id not in ctx.current_threads
     ):
+        # 이 블록이 정상적인 재개 정보(STATE_FILE)를 새로 만들 것이므로,
+        # 즉사 방어용 스냅샷은 먼저 지운다(정상 종료 경로이니 즉사 대비가
+        # 더 이상 필요 없음) — clear_inflight_snapshot은 STATE_FILE에는
+        # 영향이 없으므로 아래 저장과 독립적으로 안전하다.
+        clear_inflight_snapshot(ctx, thread_id)
         temp_dir = "runtime/captures/temp"
         saved_temp_paths = []
         for idx, img in enumerate(screenshots):
             t_path = f"{temp_dir}/{target_name}_{datetime.now().strftime('%Y%m%d%H%M%S')}_{idx}.png"
             img.save(t_path)
             saved_temp_paths.append(t_path)
+        # 스냅샷이 마지막으로 저장해 둔 임시 파일들은 위에서 새로 다시
+        # 저장했으므로 더 이상 필요 없다 — 지운다(둘 다 같은 screenshots를
+        # 담고 있어 내용은 같지만, 파일 경로가 다르므로 정리해야 temp
+        # 폴더에 중복이 남지 않는다).
+        for p in inflight_temp_paths:
+            try:
+                os.remove(p)
+            except OSError:
+                pass
 
         resume_info = {
             "target_name": target_name,
@@ -458,6 +526,14 @@ def tracking_capture(
                 os.remove(p_path)
             except:
                 pass
+
+    # 정상 완료됐으므로 즉사 방어용 스냅샷과 그 임시 파일들도 정리한다.
+    clear_inflight_snapshot(ctx, thread_id)
+    for p in inflight_temp_paths:
+        try:
+            os.remove(p)
+        except OSError:
+            pass
 
     _notify_capture_done(ctx, report_id)
     remove_thread_id(ctx, thread_id)
