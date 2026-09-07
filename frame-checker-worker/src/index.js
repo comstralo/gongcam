@@ -3035,11 +3035,37 @@ async function handleAdminBotCommand(req, env, origin) {
     return json({ error: "알 수 없는 명령입니다." }, 400, origin);
   }
 
-  const data = await proxyToBotDashboard(env, "/" + command, { method: "POST" });
-  if (!data) {
+  // 🔧 [버그 수정] proxyToBotDashboard는 봇 응답이 200번대가 아니면(409
+  // 포함) 무조건 null로 뭉뚱그린다 — 그래서 봇의 /restart가 "이미 재시작
+  // 진행 중"을 알리려고 409를 반환해도 이 핸들러는 이를 "봇에 연결할 수
+  // 없음"(502)과 구분하지 못하고 항상 502로만 응답했다. 관리자에게 정확한
+  // 사유를 보여주기 위해 이 호출만은 proxyToBotDashboard를 거치지 않고
+  // 직접 fetch해 상태 코드를 그대로 확인한다.
+  const botUrl = await env.REPORTS_KV.get(BOT_URL_KV_KEY);
+  if (!botUrl) {
     return json({ error: "봇에 연결할 수 없습니다. 봇이 꺼져 있거나 Tunnel이 끊겼을 수 있습니다." }, 502, origin);
   }
-  return json(data, 200, origin);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), BOT_PROXY_TIMEOUT_MS);
+  try {
+    const res = await fetch(botUrl + "/" + command, {
+      method: "POST",
+      headers: { "X-Dashboard-Secret": env.BOT_SECRET },
+      signal: controller.signal,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 409) {
+      return json({ error: data.error || "이미 처리 중인 명령이 있습니다." }, 409, origin);
+    }
+    if (!res.ok) {
+      return json({ error: "봇에 연결할 수 없습니다. 봇이 꺼져 있거나 Tunnel이 끊겼을 수 있습니다." }, 502, origin);
+    }
+    return json(data, 200, origin);
+  } catch {
+    return json({ error: "봇에 연결할 수 없습니다. 봇이 꺼져 있거나 Tunnel이 끊겼을 수 있습니다." }, 502, origin);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // proxyToBotDashboard는 항상 res.json()을 호출해 JSON 응답만 다룰 수 있다.

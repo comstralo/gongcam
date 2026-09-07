@@ -20,6 +20,15 @@ class BotContext:
         self.lock_element = threading.Lock()
         self.file_lock = threading.Lock()
         self.is_browser_resetting = False
+        # 🔧 [버그 수정] daily_browser_reset(07:15 정기 리셋/OOM 비상 복구/
+        # 관리자 "재시작" 버튼 세 경로가 모두 호출)의 재진입 가드
+        # (is_browser_resetting 체크)와 실제 설정 사이에는 원자성이 없어,
+        # 이론적으로 두 호출이 거의 동시에 그 체크를 통과할 여지가 있다.
+        # 그 순간이 겹치면 ctx.driver/ctx.lock_element/ctx.lock_chat/
+        # ctx.cam_process를 두 스레드가 동시에 재할당하게 되므로(특히 Lock
+        # 객체 자체를 교체하는 부분이 위험 — 상호 배제가 조용히 무력화됨),
+        # 가드 체크와 플래그 설정을 이 락으로 감싸 완전히 원자적으로 만든다.
+        self.browser_reset_lock = threading.Lock()
         # 교시 "시작" 시각마다 schedule_process()가 스터디룸 페이지를 강제
         # 새로고침한다(메모리 확보 목적, is_browser_resetting과는 별개 —
         # 그건 브라우저 프로세스 자체를 재기동하는 07:15 정기 리셋/비상

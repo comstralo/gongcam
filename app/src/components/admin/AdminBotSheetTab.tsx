@@ -265,17 +265,43 @@ function BotStatusSection({ visible }: { visible: boolean }) {
   useRefreshOnVisible(visible, load);
   usePullRefreshListener(visible, load);
 
+  // 🔧 [버그 수정] daily_browser_reset(실제 재시작 작업) 자체는 완료까지
+  // 수십 초(스레드 정리 대기+브라우저 재기동)가 걸리는데, 원래는 명령
+  // 전송(POST) 응답이 오는 즉시 restarting을 풀어 버튼을 다시 누를 수
+  // 있게 했다 — 관리자가 "왜 아직 안 됐지" 하며 그 사이 다시 누르면
+  // 봇 쪽에서 daily_browser_reset이 동시에 두 번 실행되어 ctx.driver/
+  // ctx.lock_element 등 공유 자원이 두 스레드에서 동시에 재할당되는 레이스
+  // 로 이어졌다(봇 쪽에도 재진입 가드를 추가했지만, 애초에 프론트에서
+  // 재클릭 자체를 막는 게 사용자 경험상 더 명확하다). 실제 재시작 소요
+  // 시간(정지 대기 2초+스레드별 최대 11초 join+정리 3초+브라우저 재기동)
+  // 보다 넉넉하게 MIN_RESTART_LOCK_MS 동안은 명령 전송이 성공해도 버튼을
+  // 계속 비활성 상태로 유지한다.
+  const MIN_RESTART_LOCK_MS = 40_000;
+
   async function sendRestart() {
     setRestarting(true);
     setError(null);
     setMessage(null);
+    const startedAt = Date.now();
+    // 명령 전송 자체가 실패한 경우(네트워크 오류, 인증 만료 등)는 실제로
+    // 재시작이 시작되지 않았을 가능성이 높으므로 즉시 다시 시도할 수
+    // 있게 둔다 — 다만 봇이 "이미 재시작 진행 중"(409)이라고 응답한
+    // 경우는 실제로 진행 중인 것이므로 그대로 대기시킨다.
+    let shouldWait = true;
     try {
       await call<BotCommandResponse>("/admin/bot/command", { method: "POST", body: { command: "restart" } });
-      setMessage("재시작 명령을 전송했습니다. 봇이 즉시 브라우저를 재시작합니다.");
+      setMessage("재시작 명령을 전송했습니다. 봇이 브라우저를 재시작하는 동안 잠시 기다려주세요.");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "명령 전송에 실패했습니다.");
+      shouldWait = err instanceof ApiError && err.status === 409;
     } finally {
-      setRestarting(false);
+      const elapsed = Date.now() - startedAt;
+      const remaining = MIN_RESTART_LOCK_MS - elapsed;
+      if (shouldWait && remaining > 0) {
+        setTimeout(() => setRestarting(false), remaining);
+      } else {
+        setRestarting(false);
+      }
     }
   }
 

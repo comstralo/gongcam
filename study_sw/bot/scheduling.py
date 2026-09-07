@@ -13,6 +13,7 @@ from bot.sheets import set_sheet
 from bot.threads import (
     load_tasks_from_disk,
     run_threaded_schedule,
+    save_task_to_disk,
     set_thread,
     stop_all_thread,
 )
@@ -235,8 +236,20 @@ def schedule_process(ctx, period_str, period_time, period_minute, schedule_kind)
                 # 영상 녹화 중 중단된 작업은 mode:"video"로 구분해 처음부터
                 # 재녹화하도록 tracking_capture_video로 분기한다(사용자 결정 —
                 # 프레임 단위 재개는 비디오 인코딩 특성상 비현실적).
+                # 🔧 [버그 수정] 원래는 set_thread의 반환값(실제로 스레드가
+                # 시작됐는지)을 전혀 확인하지 않았다 — load_tasks_from_disk가
+                # STATE_FILE을 읽자마자 비우는 소비형 큐라서, 같은 대상에
+                # 대해 새로 재개하려는 작업과 똑같은 thread_id를 가진 스레드가
+                # 이미 진행 중이면(예: 재녹화가 시작되자마자 다음 교시 경계에
+                # 또 중단되는 경우) set_thread가 조용히 스킵하는데, 그 순간
+                # 이 작업은 STATE_FILE에서도 이미 지워진 뒤라 다시 시도할
+                # 방법이 없이 그 제보가 영구 소실됐다(report_intake.py가 이미
+                # 동일한 문제를 겪고 started 확인+/reports/requeue로 고친
+                # 것과 같은 종류의 문제). set_thread가 실패하면 이 작업을
+                # 다시 STATE_FILE에 되돌려 써서, 다음 재개 시점(다음 교시
+                # 전환 등)에 다시 시도되게 한다.
                 if task.get("mode") == "video":
-                    set_thread(
+                    started = set_thread(
                         ctx,
                         new_thread_id,
                         tracking_capture_video,
@@ -248,9 +261,11 @@ def schedule_process(ctx, period_str, period_time, period_minute, schedule_kind)
                         ),
                         kwargs={"report_id": task.get("report_id"), "reporter_name": task.get("reporter_name")},
                     )
+                    if not started:
+                        save_task_to_disk(ctx, task)
                     continue
 
-                set_thread(
+                started = set_thread(
                     ctx,
                     new_thread_id,
                     tracking_capture,
@@ -265,5 +280,7 @@ def schedule_process(ctx, period_str, period_time, period_minute, schedule_kind)
                     ),
                     kwargs={"report_id": task.get("report_id"), "reporter_name": task.get("reporter_name")},
                 )
+                if not started:
+                    save_task_to_disk(ctx, task)
         # ▲ -------------------------------------------------------------------
 

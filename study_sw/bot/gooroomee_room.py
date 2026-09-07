@@ -10,7 +10,7 @@ from selenium.webdriver.common.by import By
 
 from bot.lifecycle import build_chrome_options, kill_selenium_processes, python_executable
 from bot.retry import retry_action
-from bot.threads import load_tasks_from_disk, remove_thread_id, set_thread, stop_all_thread
+from bot.threads import load_tasks_from_disk, remove_thread_id, save_task_to_disk, set_thread, stop_all_thread
 
 
 # [MAIN] 레이아웃 관리자
@@ -359,9 +359,33 @@ def enter_studyroom(ctx, is_recovery=False, force_reload=False):
 # 🚨 [핵심 수정] 매개변수 `is_emergency=False` 추가
 def daily_browser_reset(ctx, is_emergency=False):
     msg_type = "비상 복구" if is_emergency else "안전 초기화"
+
+    # 🔧 [버그 수정] 원래는 이 함수가 재진입 가드 없이 곧바로 시작됐다 —
+    # 이 함수를 부르는 세 경로(매일 07:15 정기 리셋, OOM 비상 복구, 관리자
+    # "재시작" 버튼)가 짧은 시간 안에 겹치면(특히 관리자가 재시작 버튼을
+    # 응답 지연에 초조해 다시 누르는 경우 — 프론트의 restarting 상태가
+    # 실제 재시작 완료가 아니라 명령 전송 완료 시점에 풀려 재클릭이
+    # 쉬웠다) 이 함수가 동시에 두 스레드에서 실행될 수 있었다. 그러면
+    # ctx.driver/ctx.cam_process를 두 스레드가 동시에 재할당하고, 특히
+    # ctx.lock_chat/ctx.lock_element를 각자 새 Lock 객체로 교체하는 부분
+    # (아래)이 위험하다 — 한 스레드가 옛 Lock을 이미 잠근 상태에서 다른
+    # 스레드가 그 Lock을 새 객체로 바꿔치기하면, 이후 코드가 잠그는 Lock과
+    # 실제 보호돼야 할 임계구역의 Lock이 서로 달라져 상호 배제 자체가
+    # 무력화된다. ctx.is_browser_resetting은 이미 이 함수가 "리셋 중"임을
+    # 나타내는 플래그로 다른 곳(scheduling.py, lifecycle.py)에서 쓰이고
+    # 있었는데, 정작 이 함수를 시작하는 지점(여기)과 /restart 핸들러에는
+    # 그 값을 확인하는 가드가 빠져 있었다 — 이미 있는 플래그를 재진입
+    # 방지에도 그대로 활용한다.
+    with ctx.browser_reset_lock:
+        if ctx.is_browser_resetting:
+            ctx.logger.warning(
+                f"⚠️ [시스템] 이미 브라우저 재시작이 진행 중이라 이번 {msg_type} 요청은 건너뜁니다."
+            )
+            return
+        ctx.is_browser_resetting = True
+
     ctx.logger.info(f"🌅 [시스템] 크롬 브라우저 {msg_type} 시작!")
 
-    ctx.is_browser_resetting = True
     ctx.stop_event.set()
     time.sleep(2)
     stop_all_thread(ctx)
@@ -443,8 +467,18 @@ def daily_browser_reset(ctx, is_emergency=False):
                     # 프레임 단위 재개가 비디오 인코딩 특성상 비현실적이라
                     # (사용자 결정), 같은 report_id로 처음부터 재녹화하도록
                     # mode로 분기한다.
+                    # 🔧 [버그 수정] 원래는 set_thread의 반환값을 확인하지
+                    # 않았다 — load_tasks_from_disk가 STATE_FILE을 읽자마자
+                    # 비우는 소비형 큐라서, 같은 대상에 대해 이미 진행 중인
+                    # 스레드가 있으면(예: 재녹화가 시작되자마자 또 중단되는
+                    # 경우) set_thread가 조용히 스킵하는데, 이 시점엔 이미
+                    # STATE_FILE에서도 지워진 뒤라 다시 시도할 방법 없이 그
+                    # 제보가 영구 소실됐다(report_intake.py가 이미 동일한
+                    # 문제를 started 확인+/reports/requeue로 고친 것과 같은
+                    # 종류의 문제). 실패하면 다시 STATE_FILE에 되돌려 써서
+                    # 다음 재개 시점에 다시 시도되게 한다.
                     if task.get("mode") == "video":
-                        set_thread(
+                        started = set_thread(
                             ctx,
                             new_thread_id,
                             tracking_capture_video,
@@ -459,8 +493,10 @@ def daily_browser_reset(ctx, is_emergency=False):
                                 "report_id": task.get("report_id"),
                             },
                         )
+                        if not started:
+                            save_task_to_disk(ctx, task)
                         continue
-                    set_thread(
+                    started = set_thread(
                         ctx,
                         new_thread_id,
                         tracking_capture,
@@ -485,6 +521,8 @@ def daily_browser_reset(ctx, is_emergency=False):
                             "report_id": task.get("report_id"),
                         },
                     )
+                    if not started:
+                        save_task_to_disk(ctx, task)
 
             ctx.logger.info("✅ [시스템] 필수 백그라운드 스레드 재가동 완료!")
         else:

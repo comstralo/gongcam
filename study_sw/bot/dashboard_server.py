@@ -284,6 +284,19 @@ def make_dashboard_handler(ctx):
                     self._unauthorized()
                     return
 
+                # 🔧 [버그 수정] daily_browser_reset 자체가 이제 재진입 가드를
+                # 갖고 있어(gooroomee_room.py) 실제로 동시 실행되지는 않지만,
+                # 원래는 이 핸들러가 이미 재시작이 진행 중인지 전혀 확인하지
+                # 않고 매번 202를 반환했다 — 관리자가 "왜 아직 안 됐지" 하며
+                # 응답만 보고 다시 누르면(실제 재시작은 수십 초 걸리는데
+                # 프론트는 이 202 응답 시점에 버튼을 다시 눌러도 되는 상태로
+                # 풀어버렸다) 매번 202만 받고 실제로는 아무 일도 안 일어나는
+                # 뒤의 요청들이 조용히 무시됐다. 여기서 미리 확인해 이미
+                # 진행 중이면 그 사실을 명확히 알려준다.
+                if ctx.is_browser_resetting:
+                    self._send_json(409, {"error": "이미 브라우저 재시작이 진행 중입니다."})
+                    return
+
                 ctx.logger.info("🔁 [원격 제어] 관리자 명령으로 브라우저를 재시작합니다.")
                 threading.Thread(
                     target=daily_browser_reset,
