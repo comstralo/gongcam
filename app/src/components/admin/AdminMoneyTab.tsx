@@ -70,6 +70,14 @@ function thisWeekDateLabel(dayKr: string, weekOf?: string | null): string {
   return `${target.getMonth() + 1}월 ${target.getDate()}일`;
 }
 
+// weekOf("YYMMDD", 그 주 월요일)를 경고 배너용 짧은 라벨("8월 19일")로 바꾼다.
+function weekOfToShortLabel(weekOf: string): string {
+  const m = /^(\d{2})(\d{2})(\d{2})$/.exec(weekOf);
+  if (!m) return weekOf;
+  const [, , mm, dd] = m;
+  return `${parseInt(mm, 10)}월 ${parseInt(dd, 10)}일`;
+}
+
 // 같은 요일의 여러 항목을 요일별로 하나로 묶는다.
 function groupByDay<T extends { day: string }>(items: T[]) {
   const map = new Map<string, T[]>();
@@ -568,6 +576,20 @@ export function AdminMoneyTab({ visible }: { visible: boolean }) {
   return (
     <div className="flex flex-col gap-4">
       <CycleSwitcher selectedFileId={cycleFileId} onSelect={handleCycleSelect} />
+      {/* 🔧 [버그 수정] 탭 전환(hidden 패턴, 언마운트 없음)이나 화면 스크롤로
+          CycleSwitcher의 선택 강조만 보고는 "지금 지난 사이클을 보고 있다"는
+          걸 놓치기 쉬웠다 — 지난 주 데이터를 "이번 주 현황"으로 착각해 실제
+          이번 주 처리를 놓칠 위험이 있어, 지난 사이클 선택 시 명시적 경고를
+          추가한다. */}
+      {cycleFileId && (
+        <Alert>
+          <AlertDescription className="flex items-center gap-1.5">
+            <CalendarDays className="size-3.5 shrink-0" strokeWidth={ICON_STROKE.default} />
+            {cycleWeekOf ? `${weekOfToShortLabel(cycleWeekOf)} 주` : "지난"} 기록을 보고 있습니다 — 실제 처리는
+            "이번 주"로 돌아가서 하세요.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <SectionCard>
         <ReportReviewList visible={visible} cycleFileId={cycleFileId} onCycleChange={handleCycleSelect} />

@@ -731,7 +731,22 @@ export function ReportReviewList({
       <SectionHeader icon={Flag} title="송출 P 대상 처리" loading={loading} onRefresh={load} />
       <CollapsiblePanel className="flex flex-col gap-4">
         <div className="h-px w-full bg-border" />
-        {cycleFileIdProp === undefined && <CycleSwitcher selectedFileId={cycleFileId} onSelect={setCycleFileId} />}
+        {cycleFileIdProp === undefined && (
+          <>
+            <CycleSwitcher selectedFileId={cycleFileId} onSelect={setCycleFileId} />
+            {/* 🔧 [버그 수정] AdminMoneyTab이 렌더링할 때는 부모가 공용 경고
+                배너를 이미 보여주므로 여기서는 이 컴포넌트가 자체 토글을
+                쓰는 독립 모드(부스터디장 단독 화면)일 때만 표시한다. */}
+            {cycleFileId && (
+              <Alert>
+                <AlertDescription className="flex items-center gap-1.5">
+                  <CalendarDays className="size-3.5 shrink-0" strokeWidth={ICON_STROKE.default} />
+                  지난 기록을 보고 있습니다 — 실제 처리는 "이번 주"로 돌아가서 하세요.
+                </AlertDescription>
+              </Alert>
+            )}
+          </>
+        )}
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
