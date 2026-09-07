@@ -107,13 +107,16 @@ def revert_decision(capture_id):
 # 상태라, 하나로 합치면 "이미 인정했는데 관리자가 다시 판단 대기로 되돌리는"
 # 경우 등에서 값이 서로를 덮어써 버린다(사용자 지시로 설계된 별도 프로세스:
 # 통보 → 당사자 응답 → 관리자 최종 처리).
-def set_target_response(capture_id, response):
+def set_target_response(capture_id, response, auto=False):
     with _manifest_lock:
         data = _load()
         if capture_id not in data:
             return False
         data[capture_id]["targetResponse"] = response
         data[capture_id]["targetRespondedAt"] = int(time.time() * 1000)
+        # 90분 타임아웃으로 자동 위반인정된 건인지 - 대상자가 직접 버튼을
+        # 눌러 응답한 것과 프론트에서 다른 문구로 구분해 보여주기 위함.
+        data[capture_id]["targetResponseAuto"] = bool(auto)
         _save(data)
     return True
 

@@ -52,7 +52,12 @@ function statusLabel(item: MyOutputPenItem): string {
   if (!item.targetResponse) return "대상자 응답 대기 중";
   const isDisputed = item.targetResponse === "disputed";
   const label = isDisputed ? "이의제기" : "위반인정";
-  if (item.reviewStatus === "pending") return `${label} 제출 (검토 중)`;
+  if (item.reviewStatus === "pending") {
+    // 90분 내 응답이 없으면 자동으로 위반인정 처리된다 — 본인이 직접
+    // 누른 것과 구분해 보여준다(사용자 지시).
+    if (item.targetResponseAuto) return "시한 (90분) 초과로 위반인정 자동 제출 (검토 중)";
+    return `${label} 제출 (검토 중)`;
+  }
   const wasApplied = item.reviewStatus === "approved" || item.reviewStatus === "deferred";
   const approvedByAdmin = isDisputed ? !wasApplied : wasApplied;
   const outcome = isDisputed ? (approvedByAdmin ? "반려" : "확정") : (approvedByAdmin ? "확정" : "반려");

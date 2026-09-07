@@ -305,10 +305,11 @@ def make_dashboard_handler(ctx):
                     body = {}
                 capture_id = body.get("id")
                 response = body.get("response")
+                auto = bool(body.get("auto"))
                 if not capture_id or response not in ("disputed", "recognized"):
                     self._send_json(400, {"error": "invalid request"})
                     return
-                ok = capture_manifest.set_target_response(capture_id, response)
+                ok = capture_manifest.set_target_response(capture_id, response, auto=auto)
                 self._send_json(200 if ok else 404, {"ok": ok})
                 return
 

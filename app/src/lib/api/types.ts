@@ -797,6 +797,9 @@ export type MyOutputPenItem = {
   reviewStatus: "pending" | "approved" | "rejected" | "rejected_recognized" | "deferred";
   targetResponse: "disputed" | "recognized" | null;
   targetRespondedAt: number | null;
+  // 90분 타임아웃으로 자동 위반인정된 건인지 — 대상자가 직접 버튼을 눌러
+  // 응답한 것과 처리현황 문구를 다르게 보여주기 위함.
+  targetResponseAuto: boolean;
   // 관리자 화면(ReportReviewList)의 "벌점 · 페널티 변동"과 동일한 값을
   // 보여주기 위해 attachNextOccurrence가 계산해 함께 내려주는 필드.
   nextOccurrence: number | null;

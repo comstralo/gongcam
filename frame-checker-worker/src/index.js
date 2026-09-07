@@ -2874,14 +2874,16 @@ async function applyAutoRecognitionForExpired(env, items) {
       proxyToBotDashboard(env, "/captures/respond", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: item.id, response: "recognized" }),
+        body: JSON.stringify({ id: item.id, response: "recognized", auto: true }),
       }).catch(() => null)
     )
   );
 
   const autoRecognized = new Set(targets.map((item) => item.id));
   return items.map((item) =>
-    autoRecognized.has(item.id) ? { ...item, targetResponse: "recognized", targetRespondedAt: respondedAt } : item
+    autoRecognized.has(item.id)
+      ? { ...item, targetResponse: "recognized", targetRespondedAt: respondedAt, targetResponseAuto: true }
+      : item
   );
 }
 
@@ -3069,6 +3071,9 @@ async function handleMyOutputPen(req, env, origin, url) {
       reviewStatus: item.reviewStatus,
       targetResponse: item.targetResponse || null,
       targetRespondedAt: item.targetRespondedAt || null,
+      // 90분 타임아웃으로 자동 위반인정된 건인지 — 대상자가 직접 버튼을 눌러
+      // 응답한 것과 프론트에서 다른 문구로 구분해 보여주기 위함.
+      targetResponseAuto: !!item.targetResponseAuto,
       nextOccurrence: item.nextOccurrence,
       weeklyMinorPenaltyCount: item.weeklyMinorPenaltyCount,
       // 이미 확정(approved 등)된 항목이면 봇 manifest에 실제 penalty/merit이
