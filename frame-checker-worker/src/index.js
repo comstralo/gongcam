@@ -3311,7 +3311,16 @@ async function handleCaptureTargetRespond(req, env, origin) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, response }),
     });
-    if (!result) return json({ error: "봇에 연결할 수 없습니다." }, 502, origin);
+    // 🔧 [버그 수정] proxyToBotDashboard는 봇이 404(capture_manifest.
+    // set_target_response가 "이미 응답 있음"으로 거부)를 반환해도 !res.ok라
+    // null을 돌려줘, 여기서는 "진짜 연결 실패"와 "레이스로 인한 거부"를
+    // 구분할 수 없었다 — 둘 다 "봇에 연결할 수 없습니다"로 잘못 안내됐다.
+    // 위에서 이미 봇 조회 스냅샷 기준으로 409 사전 검증을 했으므로, 그
+    // 검증을 통과한 뒤에도 result가 null이면 대부분 그 사이 다른 탭/자동
+    // 확정이 먼저 기록을 마친 레이스라고 보는 게 더 정확하다.
+    if (!result) {
+      return json({ error: "이미 다른 곳에서 응답이 처리됐습니다. 새로고침 후 다시 확인해주세요." }, 409, origin);
+    }
     return json(result, 200, origin);
   } catch (err) {
     return json({ error: "응답 제출 실패: " + err.message }, 500, origin);
@@ -3334,6 +3343,20 @@ async function handleAdminCaptureVote(req, env, origin) {
   }
 
   try {
+    // 🔧 [버그 수정] 원래는 id 형식만 검증하고 그 캡처가 실제 존재하는지,
+    // 이미 관리자가 최종 처리(승인/반려/유예)했는지 전혀 확인하지 않았다 —
+    // handleCaptureTargetRespond(당사자 응답)에는 이미 있는 검증이 이
+    // 경로에만 빠져 있었다. 관리자가 승인을 누르는 순간과 거의 동시에
+    // 부스터디장이 투표하면, 이미 확정된 항목에 뒤늦은 투표가 조용히
+    // 기록될 수 있었다(프론트는 UI로만 막고 있어 직접 API 호출이나
+    // 레이스에는 무방비).
+    const data = await proxyToBotDashboard(env, "/captures");
+    const item = data && (data.items || []).find((i) => i.id === id);
+    if (!item) return json({ error: "제보를 찾을 수 없습니다." }, 404, origin);
+    if (item.reviewStatus !== "pending") {
+      return json({ error: "이미 처리가 완료된 제보에는 의견을 제출할 수 없습니다." }, 409, origin);
+    }
+
     const accessToken = await getServiceAccountAccessToken(env);
     const coReviewers = await getCurrentCoReviewers(env, accessToken, env.GOOGLE_SHEET_FILE_ID);
     const me = coReviewers.find((m) => m.number === auth.memberNumber);

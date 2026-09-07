@@ -108,9 +108,20 @@ def revert_decision(capture_id):
 # 경우 등에서 값이 서로를 덮어써 버린다(사용자 지시로 설계된 별도 프로세스:
 # 통보 → 당사자 응답 → 관리자 최종 처리).
 def set_target_response(capture_id, response, auto=False):
+    # 🔧 [버그 수정] 원래는 기존 targetResponse를 확인하지 않고 무조건
+    # 덮어썼다 — 대상자가 다중 탭에서 "위반인정"/"이의제기"를 거의 동시에
+    # 각각 제출하거나, 90분 자동확정 직후 그 이전에 읽은 스냅샷을 근거로
+    # 수동 응답이 뒤늦게 도착하면 "나중에 쓴 값이 이긴다"는 레이스가
+    # 생겼다(Worker의 handleCaptureTargetRespond가 처리 전 읽은 스냅샷만
+    # 검사하는 TOCTOU 구조라 서버측 409 검증만으로는 못 막음). 이미 응답이
+    # 기록된 상태면 거부해 "가장 먼저 도착한 응답이 최종"이 되도록 이 함수
+    # 자체에서 원자적으로 막는다 — _manifest_lock이 파일 I/O를 직렬화하는
+    # 지점을 그대로 이용해 조건부 쓰기(CAS)처럼 동작하게 한다.
     with _manifest_lock:
         data = _load()
         if capture_id not in data:
+            return False
+        if data[capture_id].get("targetResponse"):
             return False
         data[capture_id]["targetResponse"] = response
         data[capture_id]["targetRespondedAt"] = int(time.time() * 1000)

@@ -26,15 +26,26 @@ BOT_SECRET = os.getenv("BOT_SECRET")
 def _notify_capture_done(ctx, report_id):
     if not report_id or not BOT_SECRET:
         return
-    try:
-        requests.post(
-            f"{WORKER_BASE}/reports/capture-done",
-            json={"id": report_id},
-            headers={"X-Bot-Secret": BOT_SECRET},
-            timeout=10,
-        )
-    except Exception as e:
-        ctx.logger.warning(f"⚠️ [웹 제보 수신] 캡처 완료 알림 실패(무시): {e}")
+    # 🔧 [버그 수정] 재시도가 전혀 없어 순간적인 네트워크 문제로 이 요청 한
+    # 번만 실패해도 20분 재제보 쿨다운이 캡처 완료 시점으로 재시작되지
+    # 못하고 원래 접수 시각 기준으로 짧게 끝나버렸다(촬영 시간만큼 재제보를
+    # 더 빨리 허용하게 되는 부작용). 짧은 간격으로 최대 3번 재시도한다 —
+    # 캡처 스레드 안에서 동기 호출되므로 지연을 과하게 주지 않는다.
+    last_err = None
+    for attempt in range(3):
+        try:
+            requests.post(
+                f"{WORKER_BASE}/reports/capture-done",
+                json={"id": report_id},
+                headers={"X-Bot-Secret": BOT_SECRET},
+                timeout=10,
+            )
+            return
+        except Exception as e:
+            last_err = e
+            if attempt < 2:
+                time.sleep(2)
+    ctx.logger.warning(f"⚠️ [웹 제보 수신] 캡처 완료 알림 실패(3회 재시도 후 포기): {last_err}")
 
 
 def _find_target_area(ctx, target_name):
@@ -301,13 +312,24 @@ def tracking_capture(
                 combined.save(filename)
                 ctx.logger.info(f"tracking_capture() : 📂 부분 파일 저장 완료: {filename}")
 
-                caption_msg = f"🧒 제보자 : {reporter_name or sender_name}\n🧒 대상자 : {target_name}\n🔎 내용 : {reason_txt}\n⏰ 시점 : {timestamp_chat}"
-                caption_msg += "\n📷 유형 : 스크린샷"
-
-                send_chat_telegram(ctx, ["report", [f"./{filename}", caption_msg]])
+                # 🔧 [버그 수정] 원래는 텔레그램 전송(send_chat_telegram)까지 같은
+                # try 블록 안에서 record_capture보다 먼저 실행됐다 — 전송이
+                # 예외를 던지면(네트워크 문제 등) record_capture 자체가 호출되지
+                # 않아 capture_manifest에 이 제보 건이 통째로 기록되지 않았다.
+                # 접수는 정상 완료(_notify_capture_done도 호출됨)되는데 관리자/
+                # 본인 화면 어디에도 영원히 나타나지 않는 유실이 발생했다.
+                # manifest 기록은 텔레그램 전송 성패와 무관하게 항상 남겨야 하므로
+                # 먼저 실행하고, 텔레그램 전송 실패는 별도로 로그만 남긴다.
                 capture_manifest.record_capture(
                     report_id, target_name, reason_txt, "screenshot", filename, sender_name, self_check=self_check
                 )
+
+                caption_msg = f"🧒 제보자 : {reporter_name or sender_name}\n🧒 대상자 : {target_name}\n🔎 내용 : {reason_txt}\n⏰ 시점 : {timestamp_chat}"
+                caption_msg += "\n📷 유형 : 스크린샷"
+                try:
+                    send_chat_telegram(ctx, ["report", [f"./{filename}", caption_msg]])
+                except Exception as telegram_err:
+                    ctx.logger.error(f"save_capture() : 텔레그램 전송 실패(기록은 유지됨): {telegram_err}")
 
                 return True  # 성공 리턴
             except Exception as e:
@@ -519,18 +541,26 @@ def tracking_capture_video(
 
         ctx.logger.info(f"tracking_capture_video() : 📂 영상 저장 완료: {filename} ({len(frames)}프레임)")
 
-        timestamp_chat = datetime.now().strftime("%y%m%d-%H:%M")
-        caption_msg = f"🧒 제보자 : {reporter_name or sender_name}\n🧒 대상자 : {target_name}\n🔎 내용 : {reason_txt}\n⏰ 시점 : {timestamp_chat}"
-        caption_msg += "\n📷 유형 : 영상"
-
-        send_chat_telegram(ctx, ["report_video", [f"./{filename}", caption_msg]])
+        # 🔧 [버그 수정] 스크린샷(save_capture)과 동일한 문제 — 텔레그램 전송이
+        # record_capture보다 먼저 실행되어, 전송 실패 시 manifest 기록 자체가
+        # 통째로 유실됐다. 영상 인코딩까지 성공했으면 그 결과는 반드시 남겨야
+        # 하므로 record_capture/완료 알림을 먼저 실행하고, 텔레그램 전송
+        # 실패는 별도로 로그만 남긴다.
         capture_manifest.record_capture(
             report_id, target_name, reason_txt, "video", filename, sender_name, self_check=self_check
         )
         _notify_capture_done(ctx, report_id)
 
+        timestamp_chat = datetime.now().strftime("%y%m%d-%H:%M")
+        caption_msg = f"🧒 제보자 : {reporter_name or sender_name}\n🧒 대상자 : {target_name}\n🔎 내용 : {reason_txt}\n⏰ 시점 : {timestamp_chat}"
+        caption_msg += "\n📷 유형 : 영상"
+        try:
+            send_chat_telegram(ctx, ["report_video", [f"./{filename}", caption_msg]])
+        except Exception as telegram_err:
+            ctx.logger.error(f"tracking_capture_video() : 텔레그램 전송 실패(기록은 유지됨): {telegram_err}")
+
     except Exception as e:
-        ctx.logger.error(f"tracking_capture_video() : 인코딩/전송 실패 - {e}")
+        ctx.logger.error(f"tracking_capture_video() : 인코딩 실패 - {e}")
 
     remove_thread_id(ctx, thread_id)
     return

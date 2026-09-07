@@ -448,7 +448,17 @@ def daily_browser_reset(ctx, is_emergency=False):
                             task["interval"],
                             task.get("previous_temp_files", []),
                         ),
-                        kwargs={"reporter_name": task.get("reporter_name")},
+                        # 🔧 [버그 수정] report_id가 빠져 있어, 07:15 정기 리셋/OOM
+                        # 복구 중에 캡처가 중단·재개되면 원래 제보 id와 무관한 새
+                        # UUID로 capture_manifest에 기록되고, _notify_capture_done도
+                        # report_id=None이라 조용히 아무 알림을 안 보내 20분 재제보
+                        # 쿨다운이 캡처 완료 시점으로 재시작되지 못했다(scheduling.py의
+                        # 동일 재개 로직은 이미 report_id를 넘기고 있었음 — 그쪽과
+                        # 맞춘다).
+                        kwargs={
+                            "reporter_name": task.get("reporter_name"),
+                            "report_id": task.get("report_id"),
+                        },
                     )
 
             ctx.logger.info("✅ [시스템] 필수 백그라운드 스레드 재가동 완료!")

@@ -49,7 +49,18 @@ function displayReason(reason: string): string {
 // rejected_recognized(대상자에게 적용되지 않은 처리) → "반려". "승인"은 대상자
 // 응답과 관리자 최종 처리가 같은 방향(이의제기→반려, 위반인정→확정)일 때다.
 function statusLabel(item: MyOutputPenItem): string {
-  if (!item.targetResponse) return "대상자 응답 대기 중";
+  if (!item.targetResponse) {
+    // 🔧 [버그 수정] 관리자는 당사자 응답을 기다리지 않고도 4가지 결정 중
+    // 자유롭게 처리할 수 있다(docs/WEB_ADMIN.md §3.1c) — 이 경우
+    // targetResponse는 계속 null이지만 reviewStatus는 이미 확정 상태다.
+    // 원래는 이 사각지대를 놓쳐 이미 처리 완료된 건에도 "대상자 응답 대기
+    // 중"이라는 오해의 소지가 있는 문구가 계속 떴다.
+    if (item.reviewStatus !== "pending") {
+      const wasApplied = item.reviewStatus === "approved" || item.reviewStatus === "deferred";
+      return wasApplied ? "무응답 (관리자 확정)" : "무응답 (관리자 반려)";
+    }
+    return "대상자 응답 대기 중";
+  }
   const isDisputed = item.targetResponse === "disputed";
   const label = isDisputed ? "이의제기" : "위반인정";
   if (item.reviewStatus === "pending") {
