@@ -238,7 +238,7 @@ export function ReportPage() {
       <Tabs value={view} onValueChange={changeView} className="w-full">
         <TabsList className="w-full">
           <TabsTrigger value="capture" className="flex-1 font-mono text-xs tracking-wide uppercase">
-            송출 P 제보
+            화각 불량 제보
           </TabsTrigger>
           <TabsTrigger value="notice" className="flex-1 font-mono text-xs tracking-wide uppercase">
             PUSH 알림 전송
@@ -252,7 +252,7 @@ export function ReportPage() {
             <Card className="w-full">
               <CardContent>
                 <Collapsible defaultOpen className="flex flex-col gap-4">
-                  <SectionHeader icon={Flag} title="송출 P 제보" onRefresh={refresh} />
+                  <SectionHeader icon={Flag} title="화각 불량 제보" onRefresh={refresh} />
                   <CollapsiblePanel className="flex flex-col gap-4">
                     <div className="h-px w-full bg-border" />
                     <SectionCard className="flex flex-col gap-3">

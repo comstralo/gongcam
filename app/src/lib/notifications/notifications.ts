@@ -16,7 +16,7 @@ export const DUMMY_NOTIFICATIONS: NotificationItem[] = [
   {
     id: "1",
     icon: ShieldAlert,
-    title: "송출 P 제보 반영",
+    title: "화각 불량 제보 반영",
     body: "화각 이탈 제보가 승인되어 송출 P가 1 추가되었습니다.",
     time: "10분 전",
     read: false,
