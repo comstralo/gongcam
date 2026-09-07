@@ -407,6 +407,14 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
                                           시간 차감
                                         </span>
                                         <SubRow
+                                          label="응답일시"
+                                          value={
+                                            received!.targetRespondedAt
+                                              ? new Date(received!.targetRespondedAt).toLocaleString("ko-KR")
+                                              : "-"
+                                          }
+                                        />
+                                        <SubRow
                                           label="예상 차감"
                                           value={(() => {
                                             const confirmed = received!.penalty?.deductedMinutes;

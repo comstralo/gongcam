@@ -978,6 +978,10 @@ export function ReportReviewList({
                                         이루어진다 — 그 전까지는 이 예상값만 표시.
                                     */}
                                     <SubRow
+                                      label="응답일시"
+                                      value={item.targetRespondedAt ? new Date(item.targetRespondedAt).toLocaleString("ko-KR") : "-"}
+                                    />
+                                    <SubRow
                                       label="예상 차감"
                                       value={(() => {
                                         const confirmed = applied[item.id]?.penalty?.deductedMinutes;
