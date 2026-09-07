@@ -967,7 +967,7 @@ export function ReportReviewList({
                                   <div className="flex flex-col gap-1.5">
                                     <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
                                       <Clock className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-                                      시간차감
+                                      학습시간 차감
                                     </span>
                                     {/* 🔧 [자동 계산으로 전환] 관리자가 발신/회신시각을 수동 입력하던
                                         기존 방식을 대체 — 스크린샷·영상 저장 시점(item.ts)부터 대상자가

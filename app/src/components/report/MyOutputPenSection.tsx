@@ -404,7 +404,7 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
                                       <div className="flex flex-col gap-1.5">
                                         <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
                                           <Clock className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-                                          시간차감
+                                          학습시간 차감
                                         </span>
                                         <SubRow
                                           label="응답일시"
