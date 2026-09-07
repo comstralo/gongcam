@@ -6,6 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, SubRow, TintedPill } from "@/components/dashboard/shared";
+import { CycleSwitcher } from "@/components/dashboard/CycleSwitcher";
 import { SectionHeader, CapturePreview, AdminListSkeleton } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
@@ -380,11 +381,16 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
     const timer = setInterval(() => setNowTick((n) => n + 1), 60_000);
     return () => clearInterval(timer);
   }, []);
+  // 🔧 [3주 사이클 토글] "내 송출 P 제보 확인"과 동일한 CycleSwitcher를
+  // 재사용한다 — null이면 현재 진행 중(대기 중이거나 24시간 이내 결정만),
+  // 백업 fileId를 고르면 그 주(월~일, KST) 전체를 reviewStatus 무관하게 노출.
+  const [cycleFileId, setCycleFileId] = useState<string | null>(null);
 
   function load() {
     setLoading(true);
     setError(null);
-    call<CapturesListResponse>("/admin/captures")
+    const cycleParam = cycleFileId ? `?cycle=${encodeURIComponent(cycleFileId)}` : "";
+    call<CapturesListResponse>(`/admin/captures${cycleParam}`)
       .then((data) => {
         setItems(data.items || []);
         const nextCoReviewers = data.coReviewers || [];
@@ -406,7 +412,7 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
       .finally(() => setLoading(false));
   }
 
-  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(load, [cycleFileId]); // eslint-disable-line react-hooks/exhaustive-deps
   // 다른 학생이 이 탭을 벗어난 사이에 새 제보를 넣을 수 있어, 승인 대기열은
   // 관리자가 이 탭으로 돌아올 때마다 새로 불러와야 방금 들어온 제보를 놓치지 않는다.
   useRefreshOnVisible(visible, load);
@@ -685,6 +691,7 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
       <SectionHeader icon={Flag} title="송출 P 대상 처리" loading={loading} onRefresh={load} />
       <CollapsiblePanel className="flex flex-col gap-4">
         <div className="h-px w-full bg-border" />
+        <CycleSwitcher selectedFileId={cycleFileId} onSelect={setCycleFileId} />
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>

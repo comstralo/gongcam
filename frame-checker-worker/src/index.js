@@ -2946,7 +2946,7 @@ async function applyAutoRecognitionForExpired(env, items) {
   );
 }
 
-async function handleAdminCapturesList(req, env, origin) {
+async function handleAdminCapturesList(req, env, origin, url) {
   const auth = await requireAdminOrCoReviewer(req, env);
   if (!auth) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
 
@@ -2956,10 +2956,23 @@ async function handleAdminCapturesList(req, env, origin) {
   }
   const allItems = await applyAutoRecognitionForExpired(env, data.items || []);
   const now = Date.now();
-  const visible = allItems.filter(
+  // 🔧 [3주 사이클 토글] cycle 쿼리 파라미터(백업 fileId, 없으면 현재 진행
+  // 중)가 있으면 그 주(월~일, KST)에 발생한 항목 전체를 reviewStatus
+  // 무관하게 노출한다("내 송출 P 제보 확인"과 동일한 패턴) — 없으면 기존과
+  // 동일하게 "대기 중이거나 24시간 이내 결정"만 노출한다. shouldDefer(당일
+  // 유예 판정, 아래)는 이 필터와 무관하게 항상 allItems 전체를 스캔해야
+  // 하므로 여기서 걸러내지 않는다. accessToken은 모듈 레벨 캐시가 있어
+  // 아래에서 다시 호출해도 비용이 거의 없다.
+  const accessToken = await getServiceAccountAccessToken(env);
+  const cycleFileId = url ? url.searchParams.get("cycle") : null;
+  const baseItems = cycleFileId
+    ? await filterItemsByCycle(env, accessToken, allItems, cycleFileId)
+    : allItems;
+  const visible = baseItems.filter(
     (item) =>
       !item.selfCheck && // "내 화각 점검"은 벌점/페널티 판정 대상이 아니므로 관리자 목록에서 제외(사용자 요청).
-      (item.reviewStatus === "pending" ||
+      (cycleFileId ||
+        item.reviewStatus === "pending" ||
         (item.decidedAt && now - item.decidedAt < RECENT_DECISION_WINDOW_MS))
   );
   const withOccurrence = await attachNextOccurrence(env, visible);
@@ -2986,7 +2999,6 @@ async function handleAdminCapturesList(req, env, origin) {
     return { ...item, shouldDefer };
   });
 
-  const accessToken = await getServiceAccountAccessToken(env);
   const fileId = env.GOOGLE_SHEET_FILE_ID;
   const coReviewers = await getCurrentCoReviewers(env, accessToken, fileId);
   const items = await Promise.all(
@@ -7611,7 +7623,7 @@ export default {
         return await handleAdminBotCommand(req, env, origin);
       }
       if (url.pathname === "/admin/captures" && req.method === "GET") {
-        return await handleAdminCapturesList(req, env, origin);
+        return await handleAdminCapturesList(req, env, origin, url);
       }
       if (url.pathname === "/my-captures" && req.method === "GET") {
         return await handleMyCaptures(req, env, origin, url);
