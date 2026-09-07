@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ListChecks, ChevronDown, CalendarDays, User, Image as ImageIcon } from "lucide-react";
+import { ListChecks, ChevronDown, CalendarDays, User, Image as ImageIcon, Trash2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
@@ -10,6 +10,7 @@ import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { useAuth } from "@/lib/auth/useAuth";
 import { ICON_STROKE, cn } from "@/lib/utils";
 import type {
+  MyCaptureDeleteResponse,
   MyCaptureItem,
   MyCapturesResponse,
   MyOutputPenItem,
@@ -76,6 +77,7 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [respondingId, setRespondingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // 🔧 [버그 대응] 두 요청(/my-captures, /my-output-pen)을 동시에 보내다
   // 보니, 순간적인 네트워크 요동(브라우저 fetch 자체가 거부되는 "Failed to
@@ -128,6 +130,21 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
         load();
       })
       .finally(() => setRespondingId(null));
+  }
+
+  // "내 화각 점검"은 벌점/페널티 판정 대상이 아닌 순수 셀프 확인용 기록이라
+  // (사용자 요청) 본인이 직접 삭제할 수 있다. "받은 제보"는 관리자 처리
+  // 대상이라 여기서 삭제 버튼을 제공하지 않는다.
+  function deleteSelfCheck(item: MyCaptureItem) {
+    if (!window.confirm("이 내 화각 점검 기록을 삭제할까요? 되돌릴 수 없습니다.")) return;
+    setDeletingId(item.id);
+    setError(null);
+    call<MyCaptureDeleteResponse>("/my-captures/delete", { method: "POST", body: { id: item.id } })
+      .then(() => {
+        setSelfCheckItems((prev) => (prev ? prev.filter((i) => i.id !== item.id) : prev));
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : "삭제에 실패했습니다."))
+      .finally(() => setDeletingId(null));
   }
 
   const items: MergedItem[] = [
@@ -270,6 +287,21 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
                                           이의제기
                                         </Button>
                                       </div>
+                                    </>
+                                  )}
+
+                                  {!isReceived && (
+                                    <>
+                                      <div className="h-px w-full bg-border" />
+                                      <Button
+                                        variant="outline"
+                                        className="text-destructive hover:bg-destructive/10 hover:text-destructive sm:h-11 sm:text-base"
+                                        disabled={deletingId === item.id}
+                                        onClick={() => deleteSelfCheck(item.data as MyCaptureItem)}
+                                      >
+                                        <Trash2 className="size-3.5 shrink-0" strokeWidth={ICON_STROKE.default} />
+                                        삭제
+                                      </Button>
                                     </>
                                   )}
                                 </div>

@@ -782,6 +782,10 @@ export type MyCapturesResponse = {
   items: MyCaptureItem[];
 };
 
+export type MyCaptureDeleteResponse = {
+  ok: boolean;
+};
+
 // [내 송출 P 제보 확인]에서 "나를 대상으로 한 다른 사람의 제보" —
 // GET /my-output-pen이 내려주는 항목. 대상자 본인이 "위반인정"/"이의제기"를
 // 제출할 수 있다.

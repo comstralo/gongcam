@@ -2962,6 +2962,38 @@ async function handleMyCaptures(req, env, origin) {
   return json({ items }, 200, origin);
 }
 
+// "내 화각 점검"은 벌점/페널티 판정 대상이 아닌 순수 셀프 확인용 기록이라
+// (applyOutputPenalty/applyReportMerit이 전혀 관여하지 않음) 시트를 되돌릴
+// 필요 없이 봇 기록만 지우면 된다(사용자 요청: 본인이 직접 삭제 가능하게).
+// 관리자 전용 handleAdminCaptureDelete와 달리 로그인한 본인이 자신의
+// selfCheck 기록만 지울 수 있도록 별도 라우트로 둔다 — 다른 사람의 캡처나
+// 일반 제보를 실수로/악의적으로 지우지 못하게.
+async function handleMyCaptureDelete(req, env, origin) {
+  const authHeader = req.headers.get("Authorization") || "";
+  const token = authHeader.replace(/^Bearer\s+/i, "");
+  const session = await verifySession(token, env.SESSION_SECRET);
+  if (!session) return json({ error: "로그인이 만료되었습니다. 다시 로그인해주세요." }, 401, origin);
+
+  const { id } = await req.json().catch(() => ({}));
+  if (!id) return json({ error: "id가 필요합니다." }, 400, origin);
+
+  const data = await proxyToBotDashboard(env, "/captures");
+  const item = data && (data.items || []).find((i) => i.id === id);
+  if (!item) return json({ error: "기록을 찾을 수 없습니다." }, 404, origin);
+  const myEmail = (session.email || "").toLowerCase();
+  if (!item.selfCheck || (item.reporterEmail || "").toLowerCase() !== myEmail) {
+    return json({ error: "본인의 내 화각 점검 기록만 삭제할 수 있습니다." }, 403, origin);
+  }
+
+  const result = await proxyToBotDashboard(env, "/captures/delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
+  if (!result) return json({ error: "봇에 연결할 수 없습니다." }, 502, origin);
+  return json(result, 200, origin);
+}
+
 // [내 송출 P 제보 확인]이 "나를 대상으로 한 다른 사람의 제보"(selfCheck가
 // 아닌 일반 제보 중 nickname이 본인)를 조회한다 — 대상자가 "위반인정"/
 // "이의제기"를 누를 수 있는 목록. handleAdminCapturesList와 달리 관리자
@@ -7472,6 +7504,9 @@ export default {
       }
       if (url.pathname === "/my-captures" && req.method === "GET") {
         return await handleMyCaptures(req, env, origin);
+      }
+      if (url.pathname === "/my-captures/delete" && req.method === "POST") {
+        return await handleMyCaptureDelete(req, env, origin);
       }
       if (url.pathname === "/my-output-pen" && req.method === "GET") {
         return await handleMyOutputPen(req, env, origin);
