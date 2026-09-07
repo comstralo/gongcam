@@ -40,6 +40,25 @@ function displayReason(reason: string): string {
   return FIXED_REASONS.has(reason) ? reason : "기타 (관리자 문의)";
 }
 
+// "처리현황" — 대상자 응답(targetResponse)과 관리자 최종 처리(reviewStatus)를
+// 조합한 문구. 코드상 "이의제기 인정/미인정"이라는 값이 별도로 저장되지
+// 않고(관리자는 이의 여부와 무관하게 approved/rejected_recognized/rejected/
+// deferred 중 자유롭게 고른다), 최종 reviewStatus로부터 역산한다(사용자 확인):
+// approved/deferred(대상자에게 결국 적용된 처리) → "미인정 · 적용처리",
+// rejected/rejected_recognized(대상자에게 적용되지 않은 처리) → "인정 · 반려처리".
+// 위반인정(recognized) 후 처리 완료는 세분화하지 않고 항상 "적용처리"로
+// 고정한다(사용자 확인) — 스스로 인정한 위반은 사실상 항상 적용으로
+// 귀결되므로 반려/폐기를 구분하는 실익이 없다는 판단.
+function statusLabel(item: MyOutputPenItem): string {
+  if (!item.targetResponse) return "대상자 응답 대기 중";
+  if (item.reviewStatus === "pending") {
+    return item.targetResponse === "disputed" ? "이의제기 (검토 중)" : "위반인정 (검토 중)";
+  }
+  if (item.targetResponse === "recognized") return "위반인정 (적용처리)";
+  const wasApplied = item.reviewStatus === "approved" || item.reviewStatus === "deferred";
+  return wasApplied ? "이의제기 (미인정 · 적용처리)" : "이의제기 (인정 · 반려처리)";
+}
+
 // "송출 P 대상 처리"(관리자용 ReportReviewList)와 동일한 요일별 아코디언 →
 // 항목별 토글 → 캡처 미리보기 구조를 재활용한다(사용자 지시). 이 화면은
 // 두 가지 서로 다른 항목을 같은 섹션에 함께 보여준다(사용자 지시):
@@ -348,6 +367,7 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
                                         {/* 관리자 화면과 동일한 레이아웃이되, 제보자는 숨긴다(사용자 지시). */}
                                         <SubRow label="사유" value={displayReason(received!.reason)} valueClassName="text-destructive" />
                                         <SubRow label="발생일시" value={new Date(item.ts).toLocaleString("ko-KR")} />
+                                        <SubRow label="처리현황" value={statusLabel(received!)} />
                                       </div>
 
                                       <div className="h-px w-full bg-border" />
