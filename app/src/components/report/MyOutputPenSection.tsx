@@ -52,7 +52,7 @@ function statusLabel(item: MyOutputPenItem): string {
   if (!item.targetResponse) return "대상자 응답 대기 중";
   const isDisputed = item.targetResponse === "disputed";
   const label = isDisputed ? "이의제기" : "위반인정";
-  if (item.reviewStatus === "pending") return `${label} (제출 검토 중)`;
+  if (item.reviewStatus === "pending") return `${label} 제출 (검토 중)`;
   const wasApplied = item.reviewStatus === "approved" || item.reviewStatus === "deferred";
   const approvedByAdmin = isDisputed ? !wasApplied : wasApplied;
   const outcome = isDisputed ? (approvedByAdmin ? "반려" : "확정") : (approvedByAdmin ? "확정" : "반려");
