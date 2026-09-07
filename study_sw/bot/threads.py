@@ -221,7 +221,21 @@ def stop_all_thread(ctx):
         for thread_id, thread in threads_to_stop:
             # 강제로 기다리지 않은 시트 기록 스레드는 여기서 지우지 않고 스스로 지우도록 둡니다.
             if "시트" not in thread_id and "기록" not in thread_id:
-                if thread_id in ctx.current_threads:
+                # 🔧 [버그 수정] 원래는 join(timeout=11.0) 이후 thread.is_alive()
+                # 여부와 무관하게 무조건 지웠다 — 바로 위 212행에서 "응답
+                # 없음"으로 로그를 남기고도 그 판단이 삭제 여부에는 반영되지
+                # 않았다. stop_event에 반응하지 않는 좀비 스레드(예: Selenium
+                # 호출이 멈춘 경우)가 지워지면, 그 스레드는 여전히 살아서
+                # ctx.driver와 대상자를 계속 건드리는 중인데도 current_threads
+                # 에는 없는 것으로 보여, 다음 재개/재제보 시점에 set_thread가
+                # "비어 있다"고 착각해 같은 대상에 대해 새 스레드를 또
+                # 만들었다 — 좀비 스레드와 새 스레드가 동시에 같은 대상을
+                # 추적하는 상황이 생겼다. 실제로 죽은 스레드만 지우도록
+                # 수정한다 — 좀비는 딕셔너리에 남겨 두어(이 함수 주석의
+                # 원래 의도인 "종료가 완료된 스레드만 정리"를 그대로
+                # 지킴), 같은 대상에 대한 이후 요청이 조용히 중복 시작되지
+                # 않고 "이미 진행 중"으로 정확히 스킵되게 한다.
+                if not thread.is_alive() and thread_id in ctx.current_threads:
                     del ctx.current_threads[thread_id]
         # stop_event.clear()  # 다음 스케줄을 위해 이벤트 초기화
 

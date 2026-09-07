@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowRightLeft, Bell, Bot, Database, Gauge, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -277,6 +277,17 @@ function BotStatusSection({ visible }: { visible: boolean }) {
   // 보다 넉넉하게 MIN_RESTART_LOCK_MS 동안은 명령 전송이 성공해도 버튼을
   // 계속 비활성 상태로 유지한다.
   const MIN_RESTART_LOCK_MS = 40_000;
+  // 🔧 [버그 수정] 예약된 setTimeout에 clearTimeout이 전혀 없었다 — 관리자가
+  // 재시작 버튼을 누른 직후(40초 대기 중) 로그아웃 등으로 이 컴포넌트가
+  // 언마운트되면, 언마운트된 컴포넌트에 대해 나중에 setState가 호출되는
+  // React 경고와 잠재적 누수로 이어졌다. 타이머 id를 ref로 들고 있다가
+  // 언마운트 시 정리한다.
+  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+    };
+  }, []);
 
   async function sendRestart() {
     setRestarting(true);
@@ -298,7 +309,7 @@ function BotStatusSection({ visible }: { visible: boolean }) {
       const elapsed = Date.now() - startedAt;
       const remaining = MIN_RESTART_LOCK_MS - elapsed;
       if (shouldWait && remaining > 0) {
-        setTimeout(() => setRestarting(false), remaining);
+        restartTimerRef.current = setTimeout(() => setRestarting(false), remaining);
       } else {
         setRestarting(false);
       }

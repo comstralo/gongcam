@@ -85,7 +85,7 @@ def make_dashboard_handler(ctx):
     # bot.gooroomee_room은 이 모듈을 임포트하지 않으므로 top-level 임포트가
     # 안전하지만, 이 서버 자체가 여러 봇 모듈이 완성된 뒤(엔트리포인트)에만
     # 기동되는 편이 자연스러워 지역 임포트로 지연시킨다.
-    from bot.gooroomee_room import daily_browser_reset
+    from bot.gooroomee_room import daily_browser_reset, try_acquire_browser_reset
 
     class DashboardHandler(BaseHTTPRequestHandler):
         def log_message(self, format, *args):
@@ -284,16 +284,19 @@ def make_dashboard_handler(ctx):
                     self._unauthorized()
                     return
 
-                # 🔧 [버그 수정] daily_browser_reset 자체가 이제 재진입 가드를
-                # 갖고 있어(gooroomee_room.py) 실제로 동시 실행되지는 않지만,
-                # 원래는 이 핸들러가 이미 재시작이 진행 중인지 전혀 확인하지
-                # 않고 매번 202를 반환했다 — 관리자가 "왜 아직 안 됐지" 하며
-                # 응답만 보고 다시 누르면(실제 재시작은 수십 초 걸리는데
-                # 프론트는 이 202 응답 시점에 버튼을 다시 눌러도 되는 상태로
-                # 풀어버렸다) 매번 202만 받고 실제로는 아무 일도 안 일어나는
-                # 뒤의 요청들이 조용히 무시됐다. 여기서 미리 확인해 이미
-                # 진행 중이면 그 사실을 명확히 알려준다.
-                if ctx.is_browser_resetting:
+                # 🔧 [버그 수정] 원래는 이 핸들러가 ctx.is_browser_resetting을
+                # 락 없이 직접 읽어서 확인했다 — 이 서버가 ThreadingHTTPServer
+                # 라 요청마다 별도 스레드로 처리되므로, 두 /restart 요청이
+                # 거의 동시에 도착하면 둘 다 이 체크를 통과해 각자
+                # daily_browser_reset을 기동하고 둘 다 202(성공)를 반환할 수
+                # 있었다(daily_browser_reset 자신의 재진입 가드 덕분에 실제
+                # 실행은 하나만 되어 데이터 손상은 안 나지만, "정확한 사유를
+                # 관리자에게 보여준다"는 409 응답의 목적 자체가 이 지점에서
+                # 우회됐다 — 두 번째 요청자는 자기 요청이 무시됐다는 걸 알
+                # 방법이 없었다). try_acquire_browser_reset으로 체크+설정을
+                # daily_browser_reset과 동일한 락으로 원자적으로 수행해,
+                # 이 핸들러 레벨에서부터 정확한 결과를 얻는다.
+                if not try_acquire_browser_reset(ctx):
                     self._send_json(409, {"error": "이미 브라우저 재시작이 진행 중입니다."})
                     return
 
@@ -301,7 +304,7 @@ def make_dashboard_handler(ctx):
                 threading.Thread(
                     target=daily_browser_reset,
                     args=(ctx,),
-                    kwargs={"is_emergency": False},
+                    kwargs={"is_emergency": False, "_already_acquired": True},
                     daemon=True,
                 ).start()
                 self._send_json(202, {"ok": True, "command": "restart"})

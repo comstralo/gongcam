@@ -356,8 +356,31 @@ def enter_studyroom(ctx, is_recovery=False, force_reload=False):
     return True
 
 
+# 🔧 [버그 수정] 재진입 가드(아래) 체크+설정을 함수 안에서만 하면, 이
+# 함수를 "던지기 전에" 이미 진행 중인지 알아야 하는 호출부(/restart
+# 핸들러)가 정확한 결과를 알 방법이 없다 — 원래 /restart는 이 체크를
+# 자기 나름대로 다시(락 없이) 확인했는데, 그러면 서로 다른 요청 두 개가
+# 거의 동시에 그 체크를 통과해 둘 다 202(성공)를 반환할 수 있었다(이
+# 함수 자체의 재진입 가드 덕분에 실제 실행은 하나만 되어 데이터 손상은
+# 안 나지만, 정확한 사유를 관리자에게 알려준다는 409 응답의 목적 자체가
+# 이 지점에서 우회됐다). 이제 체크+설정 자체를 별도 함수로 빼, 호출부가
+# 이 함수를 실제로 스레드로 던지기 전에 미리 같은 락으로 원자적으로
+# 확인할 수 있게 한다 — daily_browser_reset 자신도 이 함수를 그대로
+# 재사용해 이중 체크가 아니라 단일 진입점이 되게 한다.
+def try_acquire_browser_reset(ctx):
+    """이미 재시작 진행 중이 아니면 즉시 True(그리고 진행 중 상태로
+    표시), 이미 진행 중이면 False를 반환한다. 호출자가 True를 받으면
+    반드시 나중에(정상/예외 경로 모두) is_browser_resetting을 False로
+    되돌려야 한다 — daily_browser_reset이 이를 보장한다."""
+    with ctx.browser_reset_lock:
+        if ctx.is_browser_resetting:
+            return False
+        ctx.is_browser_resetting = True
+        return True
+
+
 # 🚨 [핵심 수정] 매개변수 `is_emergency=False` 추가
-def daily_browser_reset(ctx, is_emergency=False):
+def daily_browser_reset(ctx, is_emergency=False, _already_acquired=False):
     msg_type = "비상 복구" if is_emergency else "안전 초기화"
 
     # 🔧 [버그 수정] 원래는 이 함수가 재진입 가드 없이 곧바로 시작됐다 —
@@ -375,14 +398,14 @@ def daily_browser_reset(ctx, is_emergency=False):
     # 나타내는 플래그로 다른 곳(scheduling.py, lifecycle.py)에서 쓰이고
     # 있었는데, 정작 이 함수를 시작하는 지점(여기)과 /restart 핸들러에는
     # 그 값을 확인하는 가드가 빠져 있었다 — 이미 있는 플래그를 재진입
-    # 방지에도 그대로 활용한다.
-    with ctx.browser_reset_lock:
-        if ctx.is_browser_resetting:
-            ctx.logger.warning(
-                f"⚠️ [시스템] 이미 브라우저 재시작이 진행 중이라 이번 {msg_type} 요청은 건너뜁니다."
-            )
-            return
-        ctx.is_browser_resetting = True
+    # 방지에도 그대로 활용한다. _already_acquired=True로 불리면(호출자가
+    # try_acquire_browser_reset으로 이미 원자적으로 확보해 둔 경우) 여기서
+    # 다시 체크하지 않는다 — /restart 핸들러가 정확히 이 경로를 쓴다.
+    if not _already_acquired and not try_acquire_browser_reset(ctx):
+        ctx.logger.warning(
+            f"⚠️ [시스템] 이미 브라우저 재시작이 진행 중이라 이번 {msg_type} 요청은 건너뜁니다."
+        )
+        return
 
     ctx.logger.info(f"🌅 [시스템] 크롬 브라우저 {msg_type} 시작!")
 
