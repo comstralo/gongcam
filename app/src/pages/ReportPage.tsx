@@ -12,6 +12,7 @@ import { SectionHeader, SectionCard } from "@/components/admin/shared";
 import { useRosterPolling } from "@/hooks/useRosterPolling";
 import { usePullRefreshListener } from "@/hooks/usePullToRefresh";
 import { useApi } from "@/hooks/useApi";
+import { useAuth } from "@/lib/auth/useAuth";
 import { ApiError } from "@/lib/api/client";
 import { Bell, Flag, Lightbulb, MessageSquareWarning, TriangleAlert, User } from "lucide-react";
 import { InfoCard } from "@/components/dashboard/shared";
@@ -92,7 +93,12 @@ function normalizeView(raw: string | null): ReportView {
 
 export function ReportPage() {
   const { call } = useApi();
-  const { members, stale, hint, refresh } = useRosterPolling();
+  const { isAdmin, session } = useAuth();
+  const { members: allMembers, stale, hint, refresh } = useRosterPolling();
+  // "내 화각 점검" 기능이 따로 있으므로 일반 회원에게는 제보 대상자
+  // 드롭다운에서 본인을 아예 안 보여준다(사용자 결정) — 관리자는 기능
+  // 테스트를 위해 계속 자기 자신도 선택할 수 있어야 하므로 예외로 둔다.
+  const members = isAdmin ? allMembers : allMembers.filter((name) => name !== session?.name);
   usePullRefreshListener(true, refresh);
   const [nickname, setNickname] = useState("");
   const [reason, setReason] = useState("");

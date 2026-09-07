@@ -2496,7 +2496,13 @@ async function handleReport(req, env, origin) {
     finalMode = "screenshot"; // 셀프 확인은 스크린샷만 지원(사용자 확정).
     cooldownKey = `selfcheck-cooldown:${session.email}`;
     cooldownSec = SELF_CHECK_COOLDOWN_SEC;
-  } else {
+  }
+
+  // 관리자는 일반 제보 20분 쿨다운을 우회한다 — 같은 대상을 반복 확인해야
+  // 하는 경우가 있어서다. 셀프 체크는 관리자 여부와 무관하게 항상 쿨다운을 둔다.
+  const isAdmin = (session.email || "").toLowerCase() === (env.ADMIN_EMAIL || "").toLowerCase();
+
+  if (!isSelfCheck) {
     if (!nickname) return json({ error: "필수 항목 누락" }, 400, origin);
     if (!reason) return json({ error: "상황 설명을 선택해주세요." }, 400, origin);
     trimmedNickname = nickname.slice(0, 50);
@@ -2519,6 +2525,15 @@ async function handleReport(req, env, origin) {
     } catch (err) {
       return json({ error: "회원 조회 실패: " + err.message }, 500, origin);
     }
+    // 🔧 [버그 방어] "내 화각 점검" 기능이 이미 자기 자신을 확인하는 용도로
+    // 따로 있으므로, 일반 제보(=위반 심사로 이어짐)에서는 관리자가 아닌
+    // 이상 자기 자신을 대상자로 지정할 수 없게 막는다(사용자 결정). 웹
+    // UI 드롭다운은 이미 본인 이름을 안 보여주지만, /report는 직접 호출도
+    // 가능한 엔드포인트라 서버에서도 동일하게 막아야 한다. 관리자는 기능
+    // 테스트를 위해 예외로 허용한다(사용자 결정).
+    if (!isAdmin && session.memberName && trimmedNickname === session.memberName) {
+      return json({ error: "본인은 제보 대상으로 지정할 수 없습니다. '내 화각 점검'을 이용해주세요." }, 400, origin);
+    }
     finalReason = reason.slice(0, 200);
     finalMode = mode === "video" ? "video" : "screenshot";
     // 쿨다운은 모드와 무관하게 닉네임 기준으로 공유한다 — 스크린샷 제보 직후
@@ -2527,9 +2542,6 @@ async function handleReport(req, env, origin) {
     cooldownSec = REPORT_COOLDOWN_SEC;
   }
 
-  // 관리자는 일반 제보 20분 쿨다운을 우회한다 — 같은 대상을 반복 확인해야
-  // 하는 경우가 있어서다. 셀프 체크는 관리자 여부와 무관하게 항상 쿨다운을 둔다.
-  const isAdmin = (session.email || "").toLowerCase() === (env.ADMIN_EMAIL || "").toLowerCase();
   if (isSelfCheck || !isAdmin) {
     const onCooldown = await env.REPORTS_KV.get(cooldownKey);
     if (onCooldown) {
