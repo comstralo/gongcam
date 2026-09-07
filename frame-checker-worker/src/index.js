@@ -3089,24 +3089,37 @@ async function handleAdminCapturesList(req, env, origin, url) {
   const withOccurrence = await attachNextOccurrence(env, visible);
 
   // 🔧 [유예 조건] "대상자가 당일 이미 1회 적용을 받았다면, 이후 최대 2건은
-  // '적용' 대신 '유예'를 노출"(사용자 지시). "당일"은 접수 시각(ts) 기준
-  // KST 날짜 — 봇 manifest 전체(24시간 노출 창을 벗어난 것도 포함)에서
-  // "같은 날, 같은 대상자, 실제로 대상자 penalty가 기록된(=approved && penalty
-  // 있음) 건수"를 센다. rejected_recognized/deferred는 대상자 penalty가
-  // 없으므로 여기서 세지 않는다(applyOutputPenalty가 실제로 실행된 건만
-  // "1회 적용"으로 친다).
+  // '적용' 대신 '유예'를 노출 → 그 2건을 다 쓰면 다시 '적용'으로 돌아간다"
+  // (사용자 지시: "1회 적용 → 2회 유예 → 다음 1회 적용" 순환). "당일"은
+  // 접수 시각(ts) 기준 KST 날짜 — 봇 manifest 전체(24시간 노출 창을 벗어난
+  // 것도 포함)에서 "같은 날, 같은 대상자" 기준으로 두 가지를 센다:
+  // (a) 실제로 대상자 penalty가 기록된(=approved && penalty 있음) 건수,
+  // (b) 유예(deferred) 처리된 건수. 🔧 [버그 수정] 원래는 (b)를 전혀 세지
+  // 않아 "최대 2건"이라는 주석과 달리 당일 1회 적용 이후 들어오는 모든
+  // pending 건이 개수 제한 없이 계속 유예 대상으로 노출됐다 — 유예가
+  // 무한정 반복되고 재적용으로 돌아가지 않는 문제였다.
   const appliedTodayCountByKey = new Map();
+  const deferredTodayCountByKey = new Map();
   for (const it of allItems) {
-    if (it.selfCheck || it.reviewStatus !== "approved" || !it.penalty) continue;
+    if (it.selfCheck) continue;
     const key = `${it.nickname}::${kstDateKey(it.ts)}`;
-    appliedTodayCountByKey.set(key, (appliedTodayCountByKey.get(key) || 0) + 1);
+    if (it.reviewStatus === "approved" && it.penalty) {
+      appliedTodayCountByKey.set(key, (appliedTodayCountByKey.get(key) || 0) + 1);
+    } else if (it.reviewStatus === "deferred") {
+      deferredTodayCountByKey.set(key, (deferredTodayCountByKey.get(key) || 0) + 1);
+    }
   }
+  const MAX_DEFER_PER_DAY = 2;
   const withOccurrenceAndDeferral = withOccurrence.map((item) => {
     const key = `${item.nickname}::${kstDateKey(item.ts)}`;
     const appliedTodayCount = appliedTodayCountByKey.get(key) || 0;
+    const deferredTodayCount = deferredTodayCountByKey.get(key) || 0;
     // 이 항목 자신이 이미 처리(적용/반려/유예 등)되었으면 재판정할 필요가
-    // 없다 — pending인 항목에만 "당일 1회 적용 이후 유예 대상"을 매긴다.
-    const shouldDefer = item.reviewStatus === "pending" && appliedTodayCount >= 1;
+    // 없다 — pending인 항목에만 "당일 1회 적용 이후, 아직 유예 2건을 다
+    // 쓰지 않았을 때만" 유예 대상을 매긴다. 2건을 다 쓴 다음 pending
+    // 건부터는 shouldDefer가 false로 돌아가 다시 "적용" 옵션이 나온다.
+    const shouldDefer =
+      item.reviewStatus === "pending" && appliedTodayCount >= 1 && deferredTodayCount < MAX_DEFER_PER_DAY;
     return { ...item, shouldDefer };
   });
 
