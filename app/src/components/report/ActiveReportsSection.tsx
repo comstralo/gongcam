@@ -99,7 +99,7 @@ export function ActiveReportsSection({ refreshSignal }: { refreshSignal?: number
             const captureRemaining = captureRemainingMs(item, now);
             const value =
               captureRemaining !== null
-                ? `촬영 중 (${formatRemaining(captureRemaining)} 남음)`
+                ? `진행 중 (${formatRemaining(captureRemaining)} 남음)`
                 : `${formatRemaining(item.expiresAt - now)} 남음`;
             return (
               <SubRow
