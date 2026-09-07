@@ -797,6 +797,14 @@ export type MyOutputPenItem = {
   reviewStatus: "pending" | "approved" | "rejected" | "rejected_recognized" | "deferred";
   targetResponse: "disputed" | "recognized" | null;
   targetRespondedAt: number | null;
+  // 관리자 화면(ReportReviewList)의 "벌점 · 페널티 변동"과 동일한 값을
+  // 보여주기 위해 attachNextOccurrence가 계산해 함께 내려주는 필드.
+  nextOccurrence: number | null;
+  weeklyMinorPenaltyCount: number;
+  // 이미 확정된 항목이면 봇 manifest에 저장된 실제 값(관리자가 "예상 차감"
+  // 대신 확정값을 보여주는 것과 동일한 패턴).
+  penalty: OutputPenaltyResult | null;
+  merit: ReportMeritResult | { error: string } | null;
 };
 
 export type MyOutputPenResponse = {

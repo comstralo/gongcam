@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ListChecks, ChevronDown, CalendarDays, User, Image as ImageIcon, Trash2 } from "lucide-react";
+import { ListChecks, ChevronDown, CalendarDays, User, Image as ImageIcon, Trash2, FileText, Clock, Gavel } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
@@ -50,6 +50,34 @@ function dateLabel(dateKey: string): string {
   const date = new Date(y, m - 1, d);
   const dayKr = STATUS_DAYS[(date.getDay() + 6) % 7];
   return `${m}월 ${d}일 ${dayKr}요일`;
+}
+
+// 아래 3개 함수는 관리자 화면(ReportReviewList)의 동명 함수와 동일한
+// 로직이다 — "받은 제보" 상세를 관리자 화면과 완전히 동일하게 보여달라는
+// 사용자 지시에 맞춰, 별도 공용 유틸로 옮기는 대신 이 파일에도 필요한
+// 만큼만 복제했다(다른 파일 변경을 최소화하려는 이 세션의 기존 패턴).
+function actionLabel(occurrence: number | null): string {
+  if (occurrence === 1) return "구두경고";
+  if (occurrence === 2 || occurrence === 3 || occurrence === 5) return "벌점";
+  if (occurrence === 4) return "송출 P : 1회";
+  if (occurrence === 6) return "송출 P : 2회";
+  return "적용 불가 (잔여 슬롯 없음)";
+}
+
+function occurrenceLabel(occurrence: number | null): string {
+  const action = actionLabel(occurrence);
+  return occurrence ? `${occurrence}차 (${action})` : action;
+}
+
+function weeklyImpactLabel(occurrence: number | null, weeklyMinorPenaltyCount: number): string {
+  if (occurrence === 1) return "주간 총 상점 변동 없음";
+  if (occurrence === 2 || occurrence === 3 || occurrence === 5) {
+    const deduction = Math.round(weeklyMinorPenaltyCount * 0.1 * 10) / 10;
+    return `주간 총 상점에서 -${deduction}점`;
+  }
+  if (occurrence === 4) return "송출 P : 1회";
+  if (occurrence === 6) return "송출 P : 2회";
+  return "-";
 }
 
 function groupByDay(items: MergedItem[]) {
@@ -283,8 +311,62 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
                                   {isReceived && (
                                     <>
                                       <div className="h-px w-full bg-border" />
-                                      <SubRow label="발생일시" value={new Date(item.ts).toLocaleString("ko-KR")} />
-                                      <SubRow label="사유" value={received!.reason || "-"} />
+                                      <div className="flex flex-col gap-1.5">
+                                        <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                                          <FileText className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
+                                          제보 정보
+                                        </span>
+                                        {/* 관리자 화면과 동일한 레이아웃이되, 제보자는 숨긴다(사용자 지시). */}
+                                        <SubRow label="사유" value={received!.reason || "-"} />
+                                        <SubRow label="발생일시" value={new Date(item.ts).toLocaleString("ko-KR")} />
+                                      </div>
+
+                                      <div className="h-px w-full bg-border" />
+
+                                      <div className="flex flex-col gap-1.5">
+                                        <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                                          <Clock className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
+                                          시간 차감
+                                        </span>
+                                        <SubRow
+                                          label="예상 차감"
+                                          value={
+                                            received!.penalty && received!.penalty.deductedMinutes > 0
+                                              ? `-${received!.penalty.deductedMinutes}분`
+                                              : "대상자 응답 대기 중"
+                                          }
+                                          valueClassName={
+                                            received!.penalty && received!.penalty.deductedMinutes > 0
+                                              ? "text-destructive"
+                                              : undefined
+                                          }
+                                        />
+                                      </div>
+
+                                      <div className="h-px w-full bg-border" />
+
+                                      <div className="flex flex-col gap-1.5">
+                                        <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                                          <Gavel className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
+                                          벌점 · 페널티 변동
+                                        </span>
+                                        <SubRow
+                                          label="적용 시"
+                                          value={
+                                            received!.penalty
+                                              ? occurrenceLabel(received!.penalty.occurrence)
+                                              : occurrenceLabel(received!.nextOccurrence)
+                                          }
+                                          valueClassName="font-semibold text-foreground"
+                                        />
+                                        <SubRow
+                                          label="이번 주 영향"
+                                          value={weeklyImpactLabel(
+                                            received!.penalty ? received!.penalty.occurrence : received!.nextOccurrence,
+                                            received!.weeklyMinorPenaltyCount
+                                          )}
+                                        />
+                                      </div>
                                     </>
                                   )}
 

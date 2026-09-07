@@ -3016,22 +3016,35 @@ async function handleMyOutputPen(req, env, origin) {
 
     const allItems = await applyAutoRecognitionForExpired(env, data.items || []);
     const now = Date.now();
-    const items = allItems
+    const visible = allItems
       .filter((item) => !item.selfCheck && item.nickname === member.name)
       .filter(
         (item) =>
           item.reviewStatus === "pending" ||
           (item.decidedAt && now - item.decidedAt < RECENT_DECISION_WINDOW_MS)
-      )
-      .map((item) => ({
-        id: item.id,
-        reason: item.reason,
-        mode: item.mode,
-        ts: item.ts,
-        reviewStatus: item.reviewStatus,
-        targetResponse: item.targetResponse || null,
-        targetRespondedAt: item.targetRespondedAt || null,
-      }));
+      );
+    // 🔧 [상세 화면 관리자 화면과 동일화] "벌점·페널티 변동"(적용 시 차수,
+    // 이번 주 영향)을 관리자 화면과 동일하게 보여주려면 nextOccurrence/
+    // weeklyMinorPenaltyCount가 필요하다 — attachNextOccurrence는 그대로
+    // 재사용 가능한 순수 함수다(env, items만 받음). 제보자 이름도 이 함수가
+    // 함께 채워주지만, "제보자는 숨긴다"(사용자 지시)는 프론트에서 그냥
+    // 안 보여주는 방식으로 처리하고 여기서는 굳이 제거하지 않는다.
+    const withOccurrence = await attachNextOccurrence(env, visible);
+    const items = withOccurrence.map((item) => ({
+      id: item.id,
+      reason: item.reason,
+      mode: item.mode,
+      ts: item.ts,
+      reviewStatus: item.reviewStatus,
+      targetResponse: item.targetResponse || null,
+      targetRespondedAt: item.targetRespondedAt || null,
+      nextOccurrence: item.nextOccurrence,
+      weeklyMinorPenaltyCount: item.weeklyMinorPenaltyCount,
+      // 이미 확정(approved 등)된 항목이면 봇 manifest에 실제 penalty/merit이
+      // 저장되어 있다 — "예상 차감"/"적용 시"에 확정값을 보여줄 수 있게 전달.
+      penalty: item.penalty || null,
+      merit: item.merit || null,
+    }));
     return json({ items }, 200, origin);
   } catch (err) {
     return json({ error: "조회 실패: " + err.message }, 500, origin);
