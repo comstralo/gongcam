@@ -101,6 +101,23 @@ def revert_decision(capture_id):
     return True
 
 
+# 제보 대상자 본인이 [내 송출 P 제보 확인]에서 "위반인정"/"이의제기" 중
+#하나를 누른 결과. reviewStatus(관리자의 최종 결정)와는 별개 필드로 둔다 —
+# 당사자 응답과 관리자 결정은 서로 다른 시점·다른 사람이 만드는 독립적인
+# 상태라, 하나로 합치면 "이미 인정했는데 관리자가 다시 판단 대기로 되돌리는"
+# 경우 등에서 값이 서로를 덮어써 버린다(사용자 지시로 설계된 별도 프로세스:
+# 통보 → 당사자 응답 → 관리자 최종 처리).
+def set_target_response(capture_id, response):
+    with _manifest_lock:
+        data = _load()
+        if capture_id not in data:
+            return False
+        data[capture_id]["targetResponse"] = response
+        data[capture_id]["targetRespondedAt"] = int(time.time() * 1000)
+        _save(data)
+    return True
+
+
 def delete_capture(capture_id):
     with _manifest_lock:
         data = _load()

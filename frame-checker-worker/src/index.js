@@ -2756,11 +2756,12 @@ async function attachNextOccurrence(env, items) {
   if (!items.length) return items;
   const accessToken = await getServiceAccountAccessToken(env);
   const fileId = env.GOOGLE_SHEET_FILE_ID;
-  const [members, dataRows] = await Promise.all([
+  const [members, dataRows, currentCycle] = await Promise.all([
     listAllMembers(env, accessToken, fileId),
     _cachedCompute(env, `penSlotGrid:${fileId}`, 60_000, () =>
       getSheetValues(env, accessToken, fileId, `'${OUTPUT_PEN_SHEET_NAME}'!F4:K18`)
     ),
+    getCurrentPenCycle(env, accessToken, fileId),
   ]);
   const memberByName = new Map(members.map((m) => [m.name, m]));
   const memberByEmail = new Map(members.map((m) => [m.email.toLowerCase(), m]));
@@ -2768,14 +2769,28 @@ async function attachNextOccurrence(env, items) {
   return items.map((item) => {
     const member = memberByName.get(item.nickname);
     const reporter = memberByEmail.get((item.reporterEmail || "").toLowerCase());
+    const row = member ? dataRows[parseInt(member.number, 10) - 1] || [] : [];
+    const slotValues = OUTPUT_PEN_SLOT_COLUMNS.map((_, i) => parseInt(row[i], 10) || 0);
     const nextOccurrence = (() => {
       if (!member) return null;
-      const row = dataRows[parseInt(member.number, 10) - 1] || [];
-      const slotValues = OUTPUT_PEN_SLOT_COLUMNS.map((_, i) => parseInt(row[i], 10) || 0);
       const slotIndex = slotValues.findIndex((v) => v === 0);
       return slotIndex === -1 ? null : slotIndex + 1;
     })();
-    return { ...item, nextOccurrence, reporterName: reporter ? reporter.name : null };
+    // 🔧 ["이번 주 영향" 실데이터화] 2/3/5차(idx 1,2,4)는 개인 탭 C35 수식과
+    // 동일하게 "이번 사이클과 일치하는 슬롯 개수 × 0.1점" 차감이다
+    // (buildPersonalStatus의 minorOutputPenCount와 동일 로직). 이 제보가
+    // 적용되면 nextOccurrence 슬롯도 currentCycle 값으로 채워지므로,
+    // 그 슬롯이 2/3/5차에 해당하면 기존 개수에 1을 더해 "적용 후" 개수를
+    // 미리 계산해 둔다 — 프론트가 승인 전에 정확한 예상 차감점을 보여줄 수 있다.
+    const existingMinorCount = [1, 2, 4].filter((idx) => slotValues[idx] === currentCycle).length;
+    const nextIsMinorSlot = nextOccurrence !== null && [2, 3, 5].includes(nextOccurrence);
+    const weeklyMinorPenaltyCount = existingMinorCount + (nextIsMinorSlot ? 1 : 0);
+    return {
+      ...item,
+      nextOccurrence,
+      weeklyMinorPenaltyCount,
+      reporterName: reporter ? reporter.name : null,
+    };
   });
 }
 
@@ -2799,6 +2814,11 @@ const REPORT_VOTE_TTL_SECONDS = 7 * 24 * 60 * 60;
 // 확정) 방식으로 바뀌었다(사용자 지시) — 프론트 SEVERITY_LEVELS와 동일.
 const REPORT_SEVERITY_VALUES = ["yes", "no"];
 
+// KST(Asia/Seoul) 기준 "YYYY-MM-DD" 날짜 문자열 — "당일" 판정에 쓴다.
+function kstDateKey(ts) {
+  return new Date(ts).toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" }); // sv-SE 로케일이 YYYY-MM-DD를 그대로 출력.
+}
+
 async function handleAdminCapturesList(req, env, origin) {
   const auth = await requireAdminOrCoReviewer(req, env);
   if (!auth) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
@@ -2807,8 +2827,9 @@ async function handleAdminCapturesList(req, env, origin) {
   if (!data) {
     return json({ items: [], coReviewers: [] }, 200, origin);
   }
+  const allItems = data.items || [];
   const now = Date.now();
-  const visible = (data.items || []).filter(
+  const visible = allItems.filter(
     (item) =>
       !item.selfCheck && // "내 화각 점검"은 벌점/페널티 판정 대상이 아니므로 관리자 목록에서 제외(사용자 요청).
       (item.reviewStatus === "pending" ||
@@ -2816,11 +2837,33 @@ async function handleAdminCapturesList(req, env, origin) {
   );
   const withOccurrence = await attachNextOccurrence(env, visible);
 
+  // 🔧 [유예 조건] "대상자가 당일 이미 1회 적용을 받았다면, 이후 최대 2건은
+  // '적용' 대신 '유예'를 노출"(사용자 지시). "당일"은 접수 시각(ts) 기준
+  // KST 날짜 — 봇 manifest 전체(24시간 노출 창을 벗어난 것도 포함)에서
+  // "같은 날, 같은 대상자, 실제로 대상자 penalty가 기록된(=approved && penalty
+  // 있음) 건수"를 센다. rejected_recognized/deferred는 대상자 penalty가
+  // 없으므로 여기서 세지 않는다(applyOutputPenalty가 실제로 실행된 건만
+  // "1회 적용"으로 친다).
+  const appliedTodayCountByKey = new Map();
+  for (const it of allItems) {
+    if (it.selfCheck || it.reviewStatus !== "approved" || !it.penalty) continue;
+    const key = `${it.nickname}::${kstDateKey(it.ts)}`;
+    appliedTodayCountByKey.set(key, (appliedTodayCountByKey.get(key) || 0) + 1);
+  }
+  const withOccurrenceAndDeferral = withOccurrence.map((item) => {
+    const key = `${item.nickname}::${kstDateKey(item.ts)}`;
+    const appliedTodayCount = appliedTodayCountByKey.get(key) || 0;
+    // 이 항목 자신이 이미 처리(적용/반려/유예 등)되었으면 재판정할 필요가
+    // 없다 — pending인 항목에만 "당일 1회 적용 이후 유예 대상"을 매긴다.
+    const shouldDefer = item.reviewStatus === "pending" && appliedTodayCount >= 1;
+    return { ...item, shouldDefer };
+  });
+
   const accessToken = await getServiceAccountAccessToken(env);
   const fileId = env.GOOGLE_SHEET_FILE_ID;
   const coReviewers = await getCurrentCoReviewers(env, accessToken, fileId);
   const items = await Promise.all(
-    withOccurrence.map(async (item) => {
+    withOccurrenceAndDeferral.map(async (item) => {
       const votes = {};
       for (const m of coReviewers) {
         const raw = await env.REPORTS_KV.get(`${REPORT_VOTE_KV_PREFIX}${item.id}:${m.number}`).catch(() => null);
@@ -2878,6 +2921,99 @@ async function handleMyCaptures(req, env, origin) {
     (item) => item.selfCheck && (item.reporterEmail || "").toLowerCase() === myEmail
   );
   return json({ items }, 200, origin);
+}
+
+// [내 송출 P 제보 확인]이 "나를 대상으로 한 다른 사람의 제보"(selfCheck가
+// 아닌 일반 제보 중 nickname이 본인)를 조회한다 — 대상자가 "위반인정"/
+// "이의제기"를 누를 수 있는 목록. handleAdminCapturesList와 달리 관리자
+// 권한이 필요 없다(로그인만 하면 자기 것만 볼 수 있음). 최근 결정된 항목도
+// 함께 보여준다(RECENT_DECISION_WINDOW_MS와 동일 창 — 방금 응답/처리된
+// 제보가 새로고침 한 번에 사라져 보이지 않도록).
+async function handleMyOutputPen(req, env, origin) {
+  const authHeader = req.headers.get("Authorization") || "";
+  const token = authHeader.replace(/^Bearer\s+/i, "");
+  const session = await verifySession(token, env.SESSION_SECRET);
+  if (!session) return json({ error: "로그인이 만료되었습니다. 다시 로그인해주세요." }, 401, origin);
+
+  try {
+    const accessToken = await getServiceAccountAccessToken(env);
+    const member = await findMemberNumberByEmail(env, accessToken, env.GOOGLE_SHEET_FILE_ID, session.email);
+    if (!member) return json({ items: [] }, 200, origin);
+
+    const data = await proxyToBotDashboard(env, "/captures");
+    if (!data) return json({ items: [] }, 200, origin);
+
+    const now = Date.now();
+    const items = (data.items || [])
+      .filter((item) => !item.selfCheck && item.nickname === member.name)
+      .filter(
+        (item) =>
+          item.reviewStatus === "pending" ||
+          (item.decidedAt && now - item.decidedAt < RECENT_DECISION_WINDOW_MS)
+      )
+      .map((item) => ({
+        id: item.id,
+        reason: item.reason,
+        mode: item.mode,
+        ts: item.ts,
+        reviewStatus: item.reviewStatus,
+        targetResponse: item.targetResponse || null,
+        targetRespondedAt: item.targetRespondedAt || null,
+      }));
+    return json({ items }, 200, origin);
+  } catch (err) {
+    return json({ error: "조회 실패: " + err.message }, 500, origin);
+  }
+}
+
+// [내 송출 P 제보 확인]에서 대상자 본인이 "위반인정"/"이의제기" 중 하나를
+// 제출한다. 대상자 신원 확인은 여기서 회원 명단 조회로 하고(닉네임 매칭),
+// 본인이 대상자인 캡처가 아니면 거부한다 — 다른 사람의 제보에 함부로
+// 응답하지 못하게 막는 최소한의 안전장치.
+async function handleCaptureTargetRespond(req, env, origin) {
+  const authHeader = req.headers.get("Authorization") || "";
+  const token = authHeader.replace(/^Bearer\s+/i, "");
+  const session = await verifySession(token, env.SESSION_SECRET);
+  if (!session) return json({ error: "로그인이 만료되었습니다. 다시 로그인해주세요." }, 401, origin);
+
+  const { id, response } = await req.json().catch(() => ({}));
+  if (!id || (response !== "disputed" && response !== "recognized")) {
+    return json({ error: "잘못된 요청입니다." }, 400, origin);
+  }
+
+  try {
+    const accessToken = await getServiceAccountAccessToken(env);
+    const member = await findMemberNumberByEmail(env, accessToken, env.GOOGLE_SHEET_FILE_ID, session.email);
+    if (!member) return json({ error: "데이터 시트 명단에서 계정을 찾을 수 없습니다." }, 403, origin);
+
+    const data = await proxyToBotDashboard(env, "/captures");
+    const item = data && (data.items || []).find((i) => i.id === id);
+    if (!item) return json({ error: "제보를 찾을 수 없습니다." }, 404, origin);
+    if (item.nickname !== member.name) {
+      return json({ error: "본인이 대상자인 제보에만 응답할 수 있습니다." }, 403, origin);
+    }
+    // 🔧 [버그 수정] 클라이언트(canRespond)는 이미 응답했거나 관리자가
+    // 최종 처리(승인/반려/유예 등)한 건에는 버튼 자체를 숨기지만, API를
+    // 직접 호출하거나 두 탭에서 경합하면 서버 검증이 없어 이미 "위반인정"
+    // 한 건을 "이의제기"로 덮어쓰거나, 관리자가 이미 승인 처리한 건에도
+    // 뒤늦게 응답이 기록될 수 있었다. 서버에서도 동일 조건을 강제한다.
+    if (item.reviewStatus !== "pending") {
+      return json({ error: "이미 처리가 완료된 제보입니다." }, 409, origin);
+    }
+    if (item.targetResponse) {
+      return json({ error: "이미 응답을 제출한 제보입니다." }, 409, origin);
+    }
+
+    const result = await proxyToBotDashboard(env, "/captures/respond", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, response }),
+    });
+    if (!result) return json({ error: "봇에 연결할 수 없습니다." }, 502, origin);
+    return json(result, 200, origin);
+  } catch (err) {
+    return json({ error: "응답 제출 실패: " + err.message }, 500, origin);
+  }
 }
 
 // 부스터디장(공동 검토자)이 대기 중인 제보 하나에 자신의 위반 수준 판단을
@@ -3383,17 +3519,23 @@ async function handleAdminCaptureCancelMerit(req, env, origin) {
   }
 }
 
-// 🔧 [3버튼 재설계] 결정 종류가 "적용"/"반려"에서 3가지로 늘었다(사용자 확정):
+// 🔧 [3버튼 재설계 → 유예 추가] 결정 종류:
 // - "approved" : 페널티로 인정되며 대상자 슬롯에 여유가 있음
 //     → 제보자에게 제보상점 추가(applyReportMerit) + 대상자에게 벌점/페널티 추가(applyOutputPenalty).
 // - "rejected_recognized" : 페널티로 인정되나 대상자 잔여 슬롯이 없어 등록 불가
 //     → 제보자에게 제보상점만 추가, 대상자에게는 아무 처리도 하지 않음.
-//     (프론트: "페널티 적용 (불가)" 버튼이 이 decision을 보낸다 — 사용자 지시로
+//     (프론트: "송출 P 적용 (불가)" 버튼이 이 decision을 보낸다 — 사용자 지시로
 //     별도 "반려 (인정)" 버튼을 만들지 않고 "적용" 버튼의 동적 라벨/동작으로 흡수했다.)
+// - "deferred" : 페널티로 인정되나, 대상자가 "당일 이미 1회 적용을 받아" 이후
+//     최대 2건은 적용을 미룬다(사용자 지시 — "유예"). rejected_recognized와
+//     처리 자체(제보자 상점만 부여, 대상자 처리 없음)는 동일하지만, "왜
+//     대상자 처리를 안 했는지" 사유가 다르므로(잔여 슬롯 없음 vs 당일 1회
+//     제한) 별도 decision 값으로 구분한다 — 나중에 "몇 번째 유예인지"를
+//     추적해 "다음 적용"으로 재개할 시점을 판단하려면 이 구분이 필요하다.
 // - "rejected" : 페널티로 인정되지 않음 → 아무 처리도 하지 않음(웹에는 계속 표시).
 // "폐기"는 새 decision이 아니라 기존 handleAdminCaptureDelete(완전 삭제) 경로를
 // 그대로 재사용한다(사용자 확정) — 여기서는 다루지 않는다.
-const CAPTURE_DECISIONS = ["approved", "rejected_recognized", "rejected"];
+const CAPTURE_DECISIONS = ["approved", "rejected_recognized", "deferred", "rejected"];
 
 async function handleAdminCaptureDecide(req, env, origin) {
   const admin = await requireAdmin(req, env);
@@ -3406,7 +3548,7 @@ async function handleAdminCaptureDecide(req, env, origin) {
 
   let penaltyResult = null;
   let meritResult = null;
-  if (decision === "approved" || decision === "rejected_recognized") {
+  if (decision === "approved" || decision === "rejected_recognized" || decision === "deferred") {
     try {
       const accessToken = await getServiceAccountAccessToken(env);
       const fileId = env.GOOGLE_SHEET_FILE_ID;
@@ -3516,10 +3658,16 @@ async function handleAdminCaptureRevert(req, env, origin) {
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
 
   const body = await req.json().catch(() => ({}));
-  const { id } = body;
+  const { id, skipMeritLookup } = body;
   if (!id) return json({ error: "id가 필요합니다." }, 400, origin);
   let { merit } = body;
-  if (!merit) {
+  // 🔧 [버그 수정] cancel()이 별도로 이미 cancel-merit을 호출해 시트를
+  // 되돌린 뒤 상태만 pending으로 되돌리려는 경우, merit을 굳이 안 보냈다고
+  // 폴백 조회를 하면 manifest에 아직 남아있는 옛 merit 값을 다시 찾아
+  // cancelReportMerit을 중복 호출하게 된다(이미 빈 슬롯을 또 지우거나,
+  // 그 사이 다른 제보가 같은 슬롯을 채웠다면 잘못 지울 위험) — 호출자가
+  // "직접 이미 처리했다"고 명시하면 폴백을 건너뛴다.
+  if (!merit && !skipMeritLookup) {
     ({ merit } = await findStoredPenaltyMerit(env, id));
   }
 
@@ -7284,6 +7432,12 @@ export default {
       }
       if (url.pathname === "/my-captures" && req.method === "GET") {
         return await handleMyCaptures(req, env, origin);
+      }
+      if (url.pathname === "/my-output-pen" && req.method === "GET") {
+        return await handleMyOutputPen(req, env, origin);
+      }
+      if (url.pathname === "/captures/target-respond" && req.method === "POST") {
+        return await handleCaptureTargetRespond(req, env, origin);
       }
       if (url.pathname === "/admin/captures/file" && req.method === "GET") {
         return await handleAdminCaptureFile(req, env, origin, url);

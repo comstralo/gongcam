@@ -3,20 +3,35 @@ import { ListChecks, ChevronDown, CalendarDays, User, Image as ImageIcon } from 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
-import { InfoCard, SubRow } from "@/components/dashboard/shared";
+import { InfoCard, SubRow, TintedPill } from "@/components/dashboard/shared";
 import { SectionHeader, SectionCard, CapturePreview, AdminListSkeleton } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { useAuth } from "@/lib/auth/useAuth";
 import { ICON_STROKE, cn } from "@/lib/utils";
-import type { MyCaptureItem, MyCapturesResponse } from "@/lib/api/types";
+import type {
+  MyCaptureItem,
+  MyCapturesResponse,
+  MyOutputPenItem,
+  MyOutputPenResponse,
+  TargetRespondResponse,
+} from "@/lib/api/types";
 
 const STATUS_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
 
 // "송출 P 대상 처리"(관리자용 ReportReviewList)와 동일한 요일별 아코디언 →
-// 항목별 토글 → 캡처 미리보기 구조를 재활용한다(사용자 지시) — 다만 "내
-// 화각 점검"은 벌점/페널티 판정 대상이 아니라 승인/반려/투표/시간차감 등
-// 관리자 전용 조작은 전부 뺀 읽기 전용 버전이다.
+// 항목별 토글 → 캡처 미리보기 구조를 재활용한다(사용자 지시). 이 화면은
+// 두 가지 서로 다른 항목을 같은 섹션에 함께 보여준다(사용자 지시):
+// - "내 화각 점검"(kind: "selfCheck") — 본인이 스스로 찍은 것, 벌점/페널티
+//   판정 대상이 아닌 읽기 전용.
+// - "받은 제보"(kind: "received") — 다른 사람이 나를 대상으로 접수한 일반
+//   제보. 대상자 본인이 "위반인정"/"이의제기" 중 하나를 제출할 수 있다
+//   (관리자 화면의 90분 타임아웃·"다른 관리자 의견 반영" 활성화 조건이
+//   이 응답을 사용한다).
+type MergedItem =
+  | { kind: "selfCheck"; id: string; ts: number; data: MyCaptureItem }
+  | { kind: "received"; id: string; ts: number; data: MyOutputPenItem };
+
 function dayOfTs(ts: number): string {
   const jsDay = new Date(ts).getDay();
   return STATUS_DAYS[(jsDay + 6) % 7];
@@ -34,8 +49,8 @@ function thisWeekDateLabel(dayKr: string): string {
   return `${target.getMonth() + 1}월 ${target.getDate()}일`;
 }
 
-function groupByDay(items: MyCaptureItem[]) {
-  const map = new Map<string, MyCaptureItem[]>();
+function groupByDay(items: MergedItem[]) {
+  const map = new Map<string, MergedItem[]>();
   for (const item of items) {
     const day = dayOfTs(item.ts);
     const existing = map.get(day);
@@ -49,17 +64,25 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
   const { call } = useApi();
   const { session } = useAuth();
 
-  const [items, setItems] = useState<MyCaptureItem[] | null>(null);
+  const [selfCheckItems, setSelfCheckItems] = useState<MyCaptureItem[] | null>(null);
+  const [receivedItems, setReceivedItems] = useState<MyOutputPenItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [respondingId, setRespondingId] = useState<string | null>(null);
 
   function load() {
     setLoading(true);
     setError(null);
-    call<MyCapturesResponse>("/my-captures")
-      .then((data) => setItems(data.items || []))
+    Promise.all([
+      call<MyCapturesResponse>("/my-captures"),
+      call<MyOutputPenResponse>("/my-output-pen"),
+    ])
+      .then(([captures, outputPen]) => {
+        setSelfCheckItems(captures.items || []);
+        setReceivedItems(outputPen.items || []);
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "제보 확인 목록을 불러오지 못했습니다."))
       .finally(() => setLoading(false));
   }
@@ -70,6 +93,35 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
     if (refreshSignal) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshSignal]);
+
+  // 당사자 본인이 "위반인정"/"이의제기" 중 하나를 제출한다 — 제출 성공 시
+  // 서버 재조회 없이 로컬 상태만 갱신해 즉시 반영한다(다른 결정 흐름과 동일 패턴).
+  function respond(item: MyOutputPenItem, response: "disputed" | "recognized") {
+    setRespondingId(item.id);
+    setError(null);
+    call<TargetRespondResponse>("/captures/target-respond", { method: "POST", body: { id: item.id, response } })
+      .then(() => {
+        setReceivedItems((prev) =>
+          prev
+            ? prev.map((i) => (i.id === item.id ? { ...i, targetResponse: response, targetRespondedAt: Date.now() } : i))
+            : prev
+        );
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "응답 제출에 실패했습니다.");
+        // 서버가 409(이미 응답함/이미 처리됨)를 반환한 경우 로컬 state가
+        // 실제 서버 상태와 어긋나 있을 수 있어(예: 다른 탭에서 먼저 응답)
+        // 최신 상태로 다시 불러온다.
+        load();
+      })
+      .finally(() => setRespondingId(null));
+  }
+
+  const items: MergedItem[] = [
+    ...(selfCheckItems || []).map((data): MergedItem => ({ kind: "selfCheck", id: data.id, ts: data.ts, data })),
+    ...(receivedItems || []).map((data): MergedItem => ({ kind: "received", id: data.id, ts: data.ts, data })),
+  ];
+  const loaded = selfCheckItems !== null && receivedItems !== null;
 
   return (
     <SectionCard>
@@ -83,15 +135,15 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
             </Alert>
           )}
 
-          {loading && !items && <AdminListSkeleton />}
+          {loading && !loaded && <AdminListSkeleton />}
 
-          {!loading && items && items.length === 0 && (
+          {!loading && loaded && items.length === 0 && (
             <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">
-              실행한 내 화각 점검이 없습니다.
+              확인할 내 화각 점검·제보가 없습니다.
             </p>
           )}
 
-          {items && items.length > 0 && (
+          {loaded && items.length > 0 && (
             <div className="flex flex-col gap-2 sm:gap-2.5">
               {groupByDay(items).map((group) => {
                 const isDayExpanded = expandedDay === group.day;
@@ -119,6 +171,12 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
                       <div className="flex flex-col gap-2.5">
                         {group.items.map((item) => {
                           const isItemExpanded = expandedId === item.id;
+                          const isReceived = item.kind === "received";
+                          const received = isReceived ? (item.data as MyOutputPenItem) : null;
+                          // 이미 관리자가 최종 처리(적용/유예/반려)했거나, 대상자가
+                          // 이미 응답을 제출한 건에는 위반인정/이의제기 버튼을 숨긴다.
+                          const canRespond =
+                            isReceived && received!.reviewStatus === "pending" && !received!.targetResponse;
                           return (
                             <div key={item.id} className="flex flex-col gap-2.5 rounded-lg border bg-card p-3">
                               <div className="flex items-center justify-between gap-2">
@@ -126,17 +184,35 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
                                   <User className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
                                   {new Date(item.ts).toLocaleString("ko-KR")}
                                 </span>
-                                <Button
-                                  variant="outline"
-                                  size="icon-sm"
-                                  onClick={() => setExpandedId(isItemExpanded ? null : item.id)}
-                                  aria-label={isItemExpanded ? "상세 접기" : "상세 펼치기"}
-                                >
-                                  <ChevronDown
-                                    className={cn("size-3.5 transition-transform", isItemExpanded && "rotate-180")}
-                                    strokeWidth={ICON_STROKE.default}
-                                  />
-                                </Button>
+                                <div className="flex items-center gap-1.5">
+                                  {isReceived ? (
+                                    received!.targetResponse === "disputed" ? (
+                                      <TintedPill tone="primary">이의제기함</TintedPill>
+                                    ) : received!.targetResponse === "recognized" ? (
+                                      <TintedPill
+                                        tone="primary"
+                                        className="bg-violet-600/15 text-violet-600 dark:bg-violet-400/15 dark:text-violet-400"
+                                      >
+                                        위반인정함
+                                      </TintedPill>
+                                    ) : (
+                                      <TintedPill tone="warn">응답 대기 중</TintedPill>
+                                    )
+                                  ) : (
+                                    <TintedPill tone="muted">내 화각 점검</TintedPill>
+                                  )}
+                                  <Button
+                                    variant="outline"
+                                    size="icon-sm"
+                                    onClick={() => setExpandedId(isItemExpanded ? null : item.id)}
+                                    aria-label={isItemExpanded ? "상세 접기" : "상세 펼치기"}
+                                  >
+                                    <ChevronDown
+                                      className={cn("size-3.5 transition-transform", isItemExpanded && "rotate-180")}
+                                      strokeWidth={ICON_STROKE.default}
+                                    />
+                                  </Button>
+                                </div>
                               </div>
 
                               {isItemExpanded && (
@@ -158,6 +234,31 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
                                   </div>
                                   <div className="h-px w-full bg-border" />
                                   <SubRow label="발생일시" value={new Date(item.ts).toLocaleString("ko-KR")} />
+                                  {isReceived && <SubRow label="사유" value={received!.reason || "-"} />}
+
+                                  {canRespond && (
+                                    <>
+                                      <div className="h-px w-full bg-border" />
+                                      <div className="grid grid-cols-2 gap-2">
+                                        <Button
+                                          variant="outline"
+                                          className="sm:h-11 sm:text-base"
+                                          disabled={respondingId === item.id}
+                                          onClick={() => respond(received!, "recognized")}
+                                        >
+                                          위반인정
+                                        </Button>
+                                        <Button
+                                          variant="destructive"
+                                          className="sm:h-11 sm:text-base"
+                                          disabled={respondingId === item.id}
+                                          onClick={() => respond(received!, "disputed")}
+                                        >
+                                          이의제기
+                                        </Button>
+                                      </div>
+                                    </>
+                                  )}
                                 </div>
                               )}
                             </div>

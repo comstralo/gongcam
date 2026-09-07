@@ -744,12 +744,26 @@ export type CaptureReviewItem = {
   ts: number;
   // 🔧 [3버튼 재설계] "rejected_recognized" — 페널티로는 인정되나 대상자
   // 잔여 슬롯이 없어 등록만 못 하는 경우(제보자 상점은 부여됨).
-  reviewStatus: "pending" | "approved" | "rejected" | "rejected_recognized";
+  // 🔧 [유예] "deferred" — 당일 1회 적용 후 최대 2건 보류(제보자 상점만 부여).
+  reviewStatus: "pending" | "approved" | "rejected" | "rejected_recognized" | "deferred";
   // 승인 시 몇 차 슬롯(1~6)에 기록될지 미리 계산된 값. 회원을 찾지 못했거나
   // 슬롯이 모두 찼으면 null.
   nextOccurrence: number | null;
+  // 이 제보가 적용될 경우, 이번 사이클의 2/3/5차(경미 벌점) 슬롯이 총 몇
+  // 개가 되는지(기존 개수 + 이번 건). "주간 총 상점 -0.X점" 계산에 쓰인다.
+  weeklyMinorPenaltyCount: number;
+  // 🔧 [유예 조건] 대상자가 오늘 이미 1회 적용(penalty 실제 반영)을 받았으면
+  // true — "적용" 버튼 대신 "유예"를 노출해야 한다(사용자 지시, pending
+  // 항목에만 계산됨).
+  shouldDefer: boolean;
   // 제보자 이메일로 매칭한 이름. 등록 회원이 아니면 null.
   reporterName: string | null;
+  // 🔧 [당사자 응답 시스템] 대상자 본인이 [내 송출 P 제보 확인]에서 제출한
+  // 응답 — reviewStatus(관리자 최종 결정)와는 독립적인 별도 필드다. null이면
+  // 아직 응답 전(90분 경과 여부와 함께 관리자 화면의 "적용"/"반려" 버튼
+  // 활성화 조건에 쓰인다).
+  targetResponse: "disputed" | "recognized" | null;
+  targetRespondedAt: number | null;
   votes: Record<string, CaptureVote>;
 };
 
@@ -766,6 +780,27 @@ export type MyCaptureItem = {
 
 export type MyCapturesResponse = {
   items: MyCaptureItem[];
+};
+
+// [내 송출 P 제보 확인]에서 "나를 대상으로 한 다른 사람의 제보" —
+// GET /my-output-pen이 내려주는 항목. 대상자 본인이 "위반인정"/"이의제기"를
+// 제출할 수 있다.
+export type MyOutputPenItem = {
+  id: string;
+  reason: string;
+  mode: "screenshot" | "video";
+  ts: number;
+  reviewStatus: "pending" | "approved" | "rejected" | "rejected_recognized" | "deferred";
+  targetResponse: "disputed" | "recognized" | null;
+  targetRespondedAt: number | null;
+};
+
+export type MyOutputPenResponse = {
+  items: MyOutputPenItem[];
+};
+
+export type TargetRespondResponse = {
+  ok: boolean;
 };
 
 export type CapturesListResponse = {

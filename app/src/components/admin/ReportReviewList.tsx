@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Flag, ChevronDown, CalendarDays, FileText, Clock, Gavel, Image as ImageIcon, User, Users, Trash2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
@@ -24,26 +23,18 @@ import type {
   ReportMeritResult,
 } from "@/lib/api/types";
 
-// "적용"/"페널티 적용 (불가)" 결정 한 건의 화면 상태 — 대상자 페널티(있을 수도,
-// 없을 수도 있음)와 제보자 제보상점(둘 다 실패할 수 있어 error만 남을 수 있음)을
-// 함께 들고 있어야 "취소"/"폐기" 시 무엇을 되돌려야 하는지 알 수 있다.
+// "적용"/"송출 P 적용 (불가)"/"유예" 결정 한 건의 화면 상태 — 대상자 페널티
+// (있을 수도, 없을 수도 있음)와 제보자 제보상점(둘 다 실패할 수 있어 error만
+// 남을 수 있음)을 함께 들고 있어야 "취소"/"폐기" 시 무엇을 되돌려야 하는지
+// 알 수 있다. decision은 penalty가 없는 경우("rejected_recognized" vs
+// "deferred")를 구분해 정확한 뱃지·취소 버튼 문구를 고르는 데 쓴다.
 type AppliedResult = {
+  decision: "approved" | "rejected_recognized" | "deferred";
   penalty: OutputPenaltyResult | null;
   merit: ReportMeritResult | { error: string } | null;
 };
 
 const STATUS_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
-
-// 네이티브 <input type="time">은 OS/브라우저 로케일에 따라 오전/오후(12시간제)
-// 표기로 렌더링될 수 있어, 항상 24시간제로 "3:32"처럼 입력하려는 요구와
-// 충돌한다(사용자 지적) — 순수 텍스트 입력에 숫자만 받아 "HH:MM"으로 자동
-// 정렬하는 방식으로 대체한다. 백엔드(minutesBetween)는 어차피 "H:MM"/"HH:MM"
-// 형태의 문자열만 파싱하면 되므로 그대로 호환된다.
-function formatTimeInput(raw: string): string {
-  const digits = raw.replace(/\D/g, "").slice(0, 4);
-  if (digits.length <= 2) return digits;
-  return `${digits.slice(0, 2)}:${digits.slice(2)}`;
-}
 
 // 위반 수준 판정 — 상/중/하/위반 아님 4단계에서 "위반 O"/"위반 X" 2단계로
 // 단순화(사용자 지시).
@@ -82,38 +73,53 @@ function computeConsensus(myVote: string | undefined, coReviewers: CoReviewer[],
 // 발생해 예치금 재납 등 페널티로 이어진다(OUTPUT_PEN_P_SLOTS와 동일 기준).
 function actionLabel(occurrence: number | null): string {
   if (occurrence === 1) return "구두경고";
-  if (occurrence === 2 || occurrence === 3 || occurrence === 5) return "송출 벌점";
-  return "송출 페널티";
+  if (occurrence === 2 || occurrence === 3 || occurrence === 5) return "벌점";
+  if (occurrence === 4) return "송출 P : 1회";
+  if (occurrence === 6) return "송출 P : 2회";
+  return "적용 불가 (잔여 슬롯 없음)";
 }
 
 // 버튼 문구용 "N차 (조치명)" 형태. occurrence가 없으면(회원을 못 찾았거나
-// 슬롯이 다 찼으면) 차수 없이 조치명만 보여준다.
+// 슬롯이 다 찼으면) "적용 불가 (잔여 슬롯 없음)"만 보여준다(사용자 지시).
 function occurrenceLabel(occurrence: number | null): string {
   const action = actionLabel(occurrence);
   return occurrence ? `${occurrence}차 (${action})` : action;
 }
 
+// "취소" 버튼 문구용 — "구두경고 적용 취소"/"송출 벌점 적용 취소"/"송출 P
+// 적용 취소"(사용자 확정 형식). applyButtonLabel과 동일한 차수 매핑을 쓴다.
+function cancelButtonLabel(occurrence: number | null): string {
+  return `${applyButtonLabel(occurrence)} 취소`;
+}
+
 // 🔧 [3버튼 재설계] 사용자 확정: "반려 (인정)" 버튼을 따로 만들지 않고,
-// "적용" 버튼 하나가 상황에 따라 라벨과 동작을 바꾼다 — 벌점 상황이면
-// "벌점 적용"(decision: approved), 페널티 상황이면 "페널티 적용"(decision:
-// approved), 잔여 슬롯이 없어 등록 자체가 불가능하면 "페널티 적용 (불가)"
+// "적용" 버튼 하나가 상황에 따라 라벨과 동작을 바꾼다 — 1차는 "구두경고
+// 적용", 2/3/5차는 "송출 벌점 적용", 4/6차는 "송출 P 적용"(decision:
+// approved), 잔여 슬롯이 없어 등록 자체가 불가능하면 "송출 P 적용 (불가)"
 // 로 보여주고 클릭 시 반려(인정)과 동일하게 decision: "rejected_recognized"를
-// 보낸다(대상자 처리 없이 제보자 상점만 부여).
+// 보낸다(대상자 처리 없이 제보자 상점만 부여). "취소" 버튼은 occurrenceLabel이
+// 아니라 이 함수의 라벨을 그대로 재사용해 "구두경고 적용 취소" 등 요구
+// 형식과 정확히 맞춘다.
 function applyButtonLabel(occurrence: number | null): string {
-  if (occurrence === null) return "페널티 적용 (불가)";
-  if (occurrence === 2 || occurrence === 3 || occurrence === 5) return "벌점 적용";
-  if (occurrence === 4 || occurrence === 6) return "페널티 적용";
+  if (occurrence === null) return "송출 P 적용 (불가)";
+  if (occurrence === 2 || occurrence === 3 || occurrence === 5) return "송출 벌점 적용";
+  if (occurrence === 4 || occurrence === 6) return "송출 P 적용";
   return "구두경고 적용"; // occurrence === 1
 }
 
 // "적용 시" 아래에 보여줄 이번 건의 실질적 영향 — 개인 탭 C35(주간 총 상점)
-// 수식 기준: 1차는 점수 변동 없음, 2/3/5차는 0.1점 차감, 4/6차는 그 주 상점이
-// 전액(0점) 제외 처리된다(제외 조건에 걸림). 실제 상점을 조회하지 않고
-// 규칙만 안내하는 문구라, 회원별 정확한 점수 변화량은 아님.
-function weeklyImpactLabel(occurrence: number | null): string {
+// 수식 기준: 1차는 점수 변동 없음, 4/6차는 송출 P 발생 자체를 알린다.
+// 2/3/5차는 고정 0.1점이 아니라 "이번 사이클 2/3/5차 슬롯 개수 × 0.1점"을
+// 실제로 계산해 보여준다(weeklyMinorPenaltyCount — attachNextOccurrence가
+// 미리 계산해 붙여준 값, 사용자 지시).
+function weeklyImpactLabel(occurrence: number | null, weeklyMinorPenaltyCount: number): string {
   if (occurrence === 1) return "주간 총 상점 변동 없음";
-  if (occurrence === 2 || occurrence === 3 || occurrence === 5) return "주간 총 상점 0.1점 차감";
-  if (occurrence === 4 || occurrence === 6) return "주간 총 상점 전액 제외(0점 처리)";
+  if (occurrence === 2 || occurrence === 3 || occurrence === 5) {
+    const deduction = Math.round(weeklyMinorPenaltyCount * 0.1 * 10) / 10;
+    return `주간 총 상점에서 -${deduction}점`;
+  }
+  if (occurrence === 4) return "송출 P : 1회";
+  if (occurrence === 6) return "송출 P : 2회";
   return "-";
 }
 
@@ -149,19 +155,27 @@ function groupByDay(items: CaptureReviewItem[]) {
   return STATUS_DAYS.filter((d) => map.has(d)).map((day) => ({ day, items: map.get(day)! }));
 }
 
-// "처리 완료/반려" 여부는 이 세션에서 방금 처리한 화면 로컬 상태(applied/
-// rejected — 승인 상세 정보를 함께 들고 있어야 해서 우선한다)뿐 아니라,
-// 서버가 내려준 item.reviewStatus도 함께 본다 — 그러지 않으면 페이지를
-// 완전히 새로고침(F5)했을 때 방금 처리한 항목이 로컬 상태를 잃고 다시
-// "처리 대기"로 보이는 문제가 있다. "rejected_recognized"(반려·인정 — 대상자
-// 슬롯이 없어 제보자 상점만 부여됨)는 대상자 관점에서는 아무 조치가 없었으므로
-// "적용"이 아니라 "반려" 뱃지로 묶는다 — applied 맵에는 취소를 위해 여전히
-// 들어 있지만(제보상점을 되돌려야 하므로), penalty 필드가 없으면(=대상자
-// 처리가 없었으면) "적용"으로 치지 않는다.
+// "처리 완료/반려/유예" 여부는 이 세션에서 방금 처리한 화면 로컬 상태
+// (applied — decision 필드로 어느 경로였는지 구분, rejected — 순수 반려는
+// 시트에 아무것도 안 써서 별도 상태로만 관리)뿐 아니라, 서버가 내려준
+// item.reviewStatus도 함께 본다 — 그러지 않으면 페이지를 완전히 새로고침
+// (F5)했을 때 방금 처리한 항목이 로컬 상태를 잃고 다시 "처리 대기"로
+// 보이는 문제가 있다. "rejected_recognized"(반려·인정 — 잔여 슬롯 없어
+// 제보자 상점만 부여)와 "deferred"(유예 — 당일 1회 제한으로 제보자 상점만
+// 부여)는 둘 다 대상자 penalty가 없다는 점은 같지만, 사유가 달라 서로 다른
+// 뱃지("반려 (인정)" vs "유예")로 구분해야 한다(사용자 지시).
 function isItemApplied(item: CaptureReviewItem, applied: Record<string, AppliedResult>): boolean {
   return !!applied[item.id]?.penalty || item.reviewStatus === "approved";
 }
-function isItemRejected(item: CaptureReviewItem, applied: Record<string, AppliedResult>, rejected: Record<string, unknown>): boolean {
+function isItemDeferred(item: CaptureReviewItem, applied: Record<string, AppliedResult>): boolean {
+  return applied[item.id]?.decision === "deferred" || item.reviewStatus === "deferred";
+}
+function isItemRejected(
+  item: CaptureReviewItem,
+  applied: Record<string, AppliedResult>,
+  rejected: Record<string, unknown>
+): boolean {
+  if (isItemDeferred(item, applied)) return false;
   return (
     !!rejected[item.id] ||
     (!!applied[item.id] && !applied[item.id].penalty) ||
@@ -170,10 +184,15 @@ function isItemRejected(item: CaptureReviewItem, applied: Record<string, Applied
   );
 }
 
-// 요일 그룹 내부 표시 순서 — "처리 대기" → "처리 완료" → "처리 반려".
-function statusRank(item: CaptureReviewItem, applied: Record<string, AppliedResult>, rejected: Record<string, unknown>) {
+// 요일 그룹 내부 표시 순서 — "처리 대기" → "처리 완료" → "유예" → "처리 반려".
+function statusRank(
+  item: CaptureReviewItem,
+  applied: Record<string, AppliedResult>,
+  rejected: Record<string, unknown>
+) {
   if (isItemApplied(item, applied)) return 1;
-  if (isItemRejected(item, applied, rejected)) return 2;
+  if (isItemDeferred(item, applied)) return 2;
+  if (isItemRejected(item, applied, rejected)) return 3;
   return 0;
 }
 
@@ -191,6 +210,7 @@ function ConsensusSection({
   myName,
   coReviewers,
   votes,
+  targetResponse,
 }: {
   isConsensus: boolean;
   onToggleConsensus: (checked: boolean) => void;
@@ -199,28 +219,39 @@ function ConsensusSection({
   myName: string | null;
   coReviewers: CoReviewer[];
   votes: VoteMap;
+  targetResponse: "disputed" | "recognized" | null;
 }) {
   const { allSubmitted, yesCount, willApprove } = computeConsensus(myVote, coReviewers, votes);
   const noCoReviewers = coReviewers.length === 0;
   const totalReviewers = 1 + coReviewers.length; // 스터디장 본인 + 부스터디장 전원
+  // 🔧 [이의제기 연동] 제보 대상자가 [내 송출 P 제보 확인]에서 "이의제기"를
+  // 눌러야만(targetResponse === "disputed") 체크박스를 켤 수 있다(사용자 지시).
+  const hasDispute = targetResponse === "disputed";
+  const disabled = noCoReviewers || !hasDispute;
 
   return (
     <div className="flex flex-col gap-1.5">
-      <Label className={cn("justify-start", noCoReviewers && "opacity-50")}>
-        <Checkbox checked={isConsensus && !noCoReviewers} disabled={noCoReviewers} onCheckedChange={onToggleConsensus} />
+      <Label className={cn("justify-start", disabled && "opacity-50")}>
+        <Checkbox checked={isConsensus && !disabled} disabled={disabled} onCheckedChange={onToggleConsensus} />
         <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
           <Users className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
           다른 관리자 의견 반영
         </span>
       </Label>
 
-      {noCoReviewers && (
+      {noCoReviewers ? (
         <p className="pl-5 text-micro-lg text-muted-foreground sm:pl-5.5 sm:text-xs">
           현재 임명된 부스터디장이 없습니다.
         </p>
+      ) : (
+        !hasDispute && (
+          <p className="pl-5 text-micro-lg text-muted-foreground sm:pl-5.5 sm:text-xs">
+            제보 대상자가 이의제기한 건에서만 켤 수 있습니다.
+          </p>
+        )
       )}
 
-      {isConsensus && !noCoReviewers && (
+      {isConsensus && !disabled && (
         <>
           <SeverityPicker label={myName ? `스터디장 (${myName})` : "스터디장"} value={myVote} onChange={onMyVoteChange} />
           {coReviewers.map((m) => (
@@ -235,7 +266,9 @@ function ConsensusSection({
             label="판정 현황"
             value={
               allSubmitted
-                ? `위반 O ${yesCount}/${totalReviewers}명 → ${willApprove ? "확정" : "반려"}`
+                ? willApprove
+                  ? `검토 결과 위반으로 인정 (위반 O ${yesCount}/${totalReviewers}명)`
+                  : `위반 O ${yesCount}/${totalReviewers}명 → 반려`
                 : `전원 제출 대기 중 (기준 위반 O ${CONSENSUS_THRESHOLD}명 이상)`
             }
             valueClassName={allSubmitted ? cn("font-semibold", willApprove ? "text-destructive" : "text-foreground") : undefined}
@@ -319,15 +352,14 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
   // 바로잡을 수 있게. 새로고침하면 초기화되는 화면 상태로만 관리한다
   // (봇 연결 전까지는 서버가 이 상태를 별도로 기억하지 않음).
   const [applied, setApplied] = useState<Record<string, AppliedResult>>({});
+  // cancel()이 시트 취소는 끝냈지만 서버 revert가 실패했을 때, 재시도 시
+  // 시트 취소를 중복 실행하지 않기 위한 표시(cancel 함수 참고).
+  const [cancelSheetCleared, setCancelSheetCleared] = useState<Record<string, true>>({});
   // 순수 반려("rejected" — 미인정, 시트에 아무것도 쓰지 않음)도 승인과
   // 동일하게 목록에서 지우지 않고 화면 상태로만 표시한다("처리 반려" 뱃지)
   // — "반려 취소"를 누르면 이 항목만 지워 "처리 대기"로 되돌린다(서버
   // 되돌림 불필요).
   const [rejected, setRejected] = useState<Record<string, true>>({});
-  // 화각 요청 발신·회신 시각(HH:MM) — 항목별로 관리자가 입력. 20분 초과분이
-  // 개인 탭 27행(보정 학습시간)에서 차감된다.
-  const [sendTimes, setSendTimes] = useState<Record<string, string>>({});
-  const [replyTimes, setReplyTimes] = useState<Record<string, string>>({});
   // "다른 관리자 의견 반영" — 체크하면 주 관리자가 먼저 위반 수준을 고르고,
   // 실제 부스터디장들의 제출 현황을 모아 평균 가중치로 확정/반려를 가리는
   // 합의 모드로 전환한다. 부스터디장 값은 item.votes로 서버에서 오며(그들
@@ -338,6 +370,14 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
   // 부스터디장 본인 화면에서만 쓰는 "아직 제출 안 한 임시 선택값" — 제출
   // 버튼을 눌러야 서버(item.votes)에 반영된다.
   const [coReviewerDraft, setCoReviewerDraft] = useState<Record<string, string>>({});
+  // "90분 경과" 판정(canProcess)이 시간 흐름에 따라 바뀌므로, 그 경계를
+  // 넘는 순간 버튼이 자동으로 활성화되도록 1분 간격으로만 다시 렌더링한다
+  // (ReportPage의 재접속 대기 tick과 동일 패턴 — 초 단위로 잦게 돌 필요는 없음).
+  const [, setNowTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setNowTick((n) => n + 1), 60_000);
+    return () => clearInterval(timer);
+  }, []);
 
   function load() {
     setLoading(true);
@@ -345,9 +385,20 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
     call<CapturesListResponse>("/admin/captures")
       .then((data) => {
         setItems(data.items || []);
-        setCoReviewers(data.coReviewers || []);
+        const nextCoReviewers = data.coReviewers || [];
+        setCoReviewers(nextCoReviewers);
         setMyMemberNumber(data.myMemberNumber ?? null);
         setMyName(data.myName ?? null);
+        // 🔧 [버그 수정] 부스터디장이 0명이 되면 isConsensusActive가 이미
+        // false를 반환해 버튼은 정상 동작하지만, consensusEnabled 로컬
+        // state 자체는 남아있어 이후 부스터디장이 재임명되면(같은 세션
+        // 유지 중) 사용자가 체크박스를 다시 켠 적 없이 합의 모드가 갑자기
+        // 부활해 버튼이 잠긴다. 0명이 되는 시점에 통째로 비워 이 부작용을
+        // 막는다 — 부스터디장이 없으면 어차피 모든 항목의 합의 모드가
+        // 무의미하므로 전체 초기화해도 안전하다.
+        if (nextCoReviewers.length === 0) {
+          setConsensusEnabled({});
+        }
       })
       .catch((err) => setError(err instanceof Error ? err.message : "제보 목록을 불러오지 못했습니다."))
       .finally(() => setLoading(false));
@@ -371,7 +422,10 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
       .finally(() => setVotingId(null));
   }
 
-  function decide(item: CaptureReviewItem, decision: "approved" | "rejected" | "rejected_recognized") {
+  function decide(
+    item: CaptureReviewItem,
+    decision: "approved" | "rejected" | "rejected_recognized" | "deferred"
+  ) {
     setDecidingId(item.id);
     setError(null);
     call<CaptureDecideResponse>("/admin/captures/decide", {
@@ -383,8 +437,6 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
         reporterEmail: item.reporterEmail,
         reason: item.reason,
         ts: item.ts,
-        sendTime: sendTimes[item.id] || "",
-        replyTime: replyTimes[item.id] || "",
       },
     })
       .then((data) => {
@@ -393,7 +445,7 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
         } else {
           setApplied((prev) => ({
             ...prev,
-            [item.id]: { penalty: data.penalty ?? null, merit: data.merit ?? null },
+            [item.id]: { decision, penalty: data.penalty ?? null, merit: data.merit ?? null },
           }));
         }
       })
@@ -441,9 +493,42 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
   }
 
   // 합의 모드가 꺼져 있으면 항상 처리 가능, 켜져 있으면 전원 제출이 끝나야 처리 가능.
-  function canDecide(item: CaptureReviewItem): boolean {
-    if (!consensusEnabled[item.id]) return true;
+  // 합의 모드가 꺼져 있으면 항상 처리 가능. 켜져 있으면 전원 제출이 끝나야
+  // "반려"를 누를 수 있다.
+  // "적용"/"반려" 공통 활성화 전제 조건(사용자 지시): 제보 대상자가
+  // [내 송출 P 제보 확인]에서 "위반인정"/"이의제기" 중 하나를 눌렀거나,
+  // 접수 시점(item.ts)으로부터 90분이 지나야 관리자가 처리할 수 있다 —
+  // 당사자에게 소명 기회를 준 뒤에만 확정하려는 취지.
+  const TARGET_RESPONSE_TIMEOUT_MS = 90 * 60 * 1000;
+  function canProcess(item: CaptureReviewItem): boolean {
+    if (item.targetResponse) return true;
+    return Date.now() - item.ts >= TARGET_RESPONSE_TIMEOUT_MS;
+  }
+
+  // 🔧 [버그 수정] "합의는 항상 선택 사항"(부스터디장이 있어도 스터디장
+  // 독단으로 처리 가능, 사용자 확정)이므로 consensusEnabled가 꺼져 있으면
+  // 즉시 처리 가능한 것 자체는 의도된 동작이다. 다만 체크박스가 부스터디장
+  // 0명이라 강제로 잠겨 있는 상태(noCoReviewers)에서는 "합의 모드"라는
+  // 개념 자체가 성립하지 않으므로 — 로컬 consensusEnabled 값이 남아있어도
+  // (부스터디장 해임 등으로) 무시하고 항상 즉시 처리 가능해야 한다. 그러지
+  // 않으면 UI는 체크박스를 꺼서 보여주는데 로직은 여전히 "합의 모드"로
+  // 착각해 새로고침 외에는 풀 수 없는 영구 잠김이 생긴다.
+  function isConsensusActive(item: CaptureReviewItem): boolean {
+    return !!consensusEnabled[item.id] && coReviewers.length > 0;
+  }
+  function canReject(item: CaptureReviewItem): boolean {
+    if (!canProcess(item)) return false;
+    if (!isConsensusActive(item)) return true;
     return computeConsensus(severityLevel[item.id], coReviewers, item.votes || {}).allSubmitted;
+  }
+  // "적용"은 합의 모드가 켜져 있으면 "전원 제출 + 위반 O가
+  // CONSENSUS_THRESHOLD명 이상"(검토 결과 위반으로 인정)일 때만 연다(사용자
+  // 지시) — 전원이 제출했어도 위반 O가 기준 미만이면 인정이 아니므로
+  // "적용"이 아니라 "반려"로 처리해야 한다.
+  function canApply(item: CaptureReviewItem): boolean {
+    if (!canProcess(item)) return false;
+    if (!isConsensusActive(item)) return true;
+    return computeConsensus(severityLevel[item.id], coReviewers, item.votes || {}).willApprove;
   }
 
   // "적용"/"페널티 적용 (불가)"를 되돌린다. 대상자 페널티(penalty)가 있으면
@@ -451,40 +536,91 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
   // 있으면 새 cancel-merit으로 각각 되돌린다. 두 시트 반영이 서로 다른
   // 실패 지점이라(예: 페널티는 있는데 제보상점 부여가 실패했을 수 있음)
   // 독립적으로 처리한다.
+  // 🔧 [버그 수정] 시트만 되돌리고 서버 reviewStatus를 그대로 "approved"로
+  // 남겨두면, ① 이 항목이 "적용" 뱃지 + "이미 처리된 제보입니다."로 고착돼
+  // 재적용이 불가능해지고, ② handleAdminCapturesList의 shouldDefer 집계가
+  // (reviewStatus==="approved" && penalty 존재)만으로 세기 때문에 이미
+  // 취소된 이 건이 계속 "오늘 적용 1건"으로 잡혀 같은 대상자의 다른 정상
+  // 제보가 부당하게 유예 처리된다. cancel-penalty/cancel-merit으로 시트를
+  // 되돌린 뒤, revertReject와 동일하게 /admin/captures/revert를 호출해
+  // 서버 reviewStatus도 "pending"으로 되돌린다 — merit은 이미 위에서
+  // 회수했으므로 여기서는 null을 보내 중복 회수를 막는다.
   function cancel(item: CaptureReviewItem) {
     const result = applied[item.id];
     if (!result) return;
     const meritToCancel = result.merit && !("error" in result.merit) ? result.merit : null;
-    if (!result.penalty && !meritToCancel) return;
+    // 🔧 [부분 실패 대응] 시트 취소(cancel-penalty/cancel-merit)까지는 이미
+    // 끝났는데 마지막 /admin/captures/revert(서버 reviewStatus 되돌리기)만
+    // 네트워크 오류 등으로 실패하면, 시트는 깨끗한데 봇 manifest만
+    // "approved"로 남아 shouldDefer가 다시 오염되고 새로고침 시 영구
+    // 고착된다. sheetCleared로 "시트는 이미 비웠다"를 기억해 두면, 재시도
+    // 시 이미 0으로 비운 슬롯에 cancel-penalty/cancel-merit을 또 실행하지
+    // 않고 revert만 재시도한다(deductedMinutes 등 복원 연산이 멱등이
+    // 아닐 수 있어 중복 호출 자체를 피하는 게 안전하다).
+    const alreadyCleared = cancelSheetCleared[item.id];
+    if (!result.penalty && !meritToCancel && !alreadyCleared) return;
     setDecidingId(item.id);
     setError(null);
-    Promise.all([
-      result.penalty
-        ? call<{ ok: boolean }>("/admin/captures/cancel-penalty", {
-            method: "POST",
-            body: {
-              number: result.penalty.number,
-              col: result.penalty.col,
-              deductedMinutes: result.penalty.deductedMinutes,
-              dayCol: result.penalty.dayCol,
-            },
-          })
-        : Promise.resolve(),
-      meritToCancel
-        ? call<{ ok: boolean }>("/admin/captures/cancel-merit", {
-            method: "POST",
-            body: { number: meritToCancel.number, col: meritToCancel.col },
-          })
-        : Promise.resolve(),
-    ])
+    const sheetStep = alreadyCleared
+      ? Promise.resolve()
+      : Promise.all([
+          result.penalty
+            ? call<{ ok: boolean }>("/admin/captures/cancel-penalty", {
+                method: "POST",
+                body: {
+                  number: result.penalty.number,
+                  col: result.penalty.col,
+                  deductedMinutes: result.penalty.deductedMinutes,
+                  dayCol: result.penalty.dayCol,
+                },
+              })
+            : Promise.resolve(),
+          meritToCancel
+            ? call<{ ok: boolean }>("/admin/captures/cancel-merit", {
+                method: "POST",
+                body: { number: meritToCancel.number, col: meritToCancel.col },
+              })
+            : Promise.resolve(),
+        ]);
+    sheetStep
+      .then(() => {
+        // 시트 취소가 이 호출에서 성공했든, 이미 이전 시도에서 끝나 있었든
+        // 여기 도달했다면 시트는 확실히 깨끗하다 — 표시해 둔다.
+        setCancelSheetCleared((prev) => ({ ...prev, [item.id]: true }));
+        return call<CaptureRevertResponse>("/admin/captures/revert", {
+          method: "POST",
+          body: { id: item.id, merit: null, skipMeritLookup: true },
+        });
+      })
       .then(() => {
         setApplied((prev) => {
           const next = { ...prev };
           delete next[item.id];
           return next;
         });
+        setCancelSheetCleared((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+        setItems((prev) =>
+          prev ? prev.map((i) => (i.id === item.id ? { ...i, reviewStatus: "pending" } : i)) : prev
+        );
+        // load()로 목록을 다시 받아와야 이 항목뿐 아니라 같은 대상자의
+        // 다른 대기 항목의 nextOccurrence/shouldDefer도 방금 비운 슬롯을
+        // 반영해 정확해진다(스냅샷인 item.nextOccurrence는 취소만으로는
+        // 갱신되지 않는다).
+        load();
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "취소에 실패했습니다."))
+      .catch((err) =>
+        setError(
+          err instanceof Error
+            ? alreadyCleared
+              ? `시트는 이미 되돌렸지만 상태 갱신에 실패했습니다: ${err.message} — 새로고침하지 말고 다시 시도해주세요.`
+              : err.message
+            : "취소에 실패했습니다."
+        )
+      )
       .finally(() => setDecidingId(null));
   }
 
@@ -510,6 +646,29 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
           return next;
         });
         setRejected((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+        // 🔧 [정리] 캡처가 완전히 삭제되면 다시 화면에 나타날 일이 없으므로
+        // (id가 uuid라 재사용도 안 됨) 이 항목에 대한 나머지 로컬 편집
+        // state도 함께 정리해 세션 동안의 메모리 누수를 없앤다.
+        setCancelSheetCleared((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+        setConsensusEnabled((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+        setSeverityLevel((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+        setCoReviewerDraft((prev) => {
           const next = { ...prev };
           delete next[item.id];
           return next;
@@ -541,8 +700,16 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
             {groupByDay(items).map((group) => {
               const isDayExpanded = expandedDay === group.day;
               const appliedCount = group.items.filter((item) => isItemApplied(item, applied)).length;
+              const deferredCount = group.items.filter((item) => isItemDeferred(item, applied)).length;
               const rejectedCount = group.items.filter((item) => isItemRejected(item, applied, rejected)).length;
-              const pendingCount = group.items.length - appliedCount - rejectedCount;
+              // "이의"/"인정"은 아직 관리자가 처리하지 않은 항목 중, 당사자가
+              // 응답을 제출한 것만 센다 — 처리 완료(적용/유예/반려)된 건은
+              // targetResponse가 남아있어도 그 결과 뱃지로만 표시한다.
+              const stillPending = (item: CaptureReviewItem) =>
+                !isItemApplied(item, applied) && !isItemDeferred(item, applied) && !isItemRejected(item, applied, rejected);
+              const disputedCount = group.items.filter((item) => stillPending(item) && item.targetResponse === "disputed").length;
+              const recognizedCount = group.items.filter((item) => stillPending(item) && item.targetResponse === "recognized").length;
+              const pendingCount = group.items.length - appliedCount - deferredCount - rejectedCount - disputedCount - recognizedCount;
               return (
                 <InfoCard key={group.day} className="flex flex-col gap-2.5 bg-card">
                   <button
@@ -559,8 +726,17 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
                         <span className="rounded-full bg-destructive/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-destructive">
                           대기 : {pendingCount}건
                         </span>
+                        <span className="rounded-full bg-primary/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-primary">
+                          이의 : {disputedCount}건
+                        </span>
+                        <span className="rounded-full bg-violet-600/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-violet-600 dark:bg-violet-400/15 dark:text-violet-400">
+                          인정 : {recognizedCount}건
+                        </span>
                         <span className="rounded-full bg-ok/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-ok">
                           적용 : {appliedCount}건
+                        </span>
+                        <span className="rounded-full bg-foreground/8 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-muted-foreground">
+                          유예 : {deferredCount}건
                         </span>
                         <span className="rounded-full bg-amber-600/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-amber-600 dark:bg-amber-400/15 dark:text-amber-400">
                           반려 : {rejectedCount}건
@@ -589,13 +765,30 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
                                 {item.nickname}
                               </span>
                               <div className="flex items-center gap-1.5">
+                                {/* 🔧 [6종 뱃지 재설계] 대기/이의/인정/적용/유예/반려 순으로 확장.
+                                    "이의"/"인정"은 당사자가 [내 송출 P 제보 확인]에서 제출한
+                                    targetResponse를 그대로 보여준다 — 아직 관리자가 최종
+                                    처리(적용/유예/반려)하지 않은 건에서만 의미가 있으므로
+                                    isApplied/isItemDeferred/isRejected보다 아래에서 판정한다. */}
                                 {isApplied ? (
                                   <TintedPill tone="ok">적용</TintedPill>
+                                ) : isItemDeferred(item, applied) ? (
+                                  <TintedPill tone="muted">유예</TintedPill>
                                 ) : isRejected ? (
                                   <TintedPill tone="amber">
-                                    {(applied[item.id] && !applied[item.id].penalty) || item.reviewStatus === "rejected_recognized"
+                                    {applied[item.id]?.decision === "rejected_recognized" ||
+                                    item.reviewStatus === "rejected_recognized"
                                       ? "반려 (인정)"
                                       : "반려"}
+                                  </TintedPill>
+                                ) : item.targetResponse === "disputed" ? (
+                                  <TintedPill tone="primary">이의</TintedPill>
+                                ) : item.targetResponse === "recognized" ? (
+                                  <TintedPill
+                                    tone="primary"
+                                    className="bg-violet-600/15 text-violet-600 dark:bg-violet-400/15 dark:text-violet-400"
+                                  >
+                                    인정
                                   </TintedPill>
                                 ) : (
                                   <TintedPill tone="warn">대기</TintedPill>
@@ -624,7 +817,7 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
                                   <div className="flex flex-col gap-1.5">
                                     <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
                                       <ImageIcon className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-                                      제보 내용
+                                      스크린샷 · 영상
                                     </span>
                                     {session?.token ? (
                                       <CapturePreview id={item.id} token={session.token} />
@@ -695,7 +888,7 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
                                   <div className="flex flex-col gap-1.5">
                                     <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
                                       <ImageIcon className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-                                      제보 내용
+                                      스크린샷 · 영상
                                     </span>
                                     {session?.token ? (
                                       <CapturePreview id={item.id} token={session.token} />
@@ -727,55 +920,28 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
                                       <Clock className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                       시간 차감
                                     </span>
-                                    <div className="grid grid-cols-2 gap-2 pl-5 sm:pl-5.5">
-                                      <label className="flex flex-col gap-1">
-                                        <span className="text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
-                                          발신시각
-                                        </span>
-                                        <Input
-                                          type="text"
-                                          inputMode="numeric"
-                                          placeholder="HH:MM"
-                                          maxLength={5}
-                                          value={sendTimes[item.id] || ""}
-                                          disabled={isApplied}
-                                          onChange={(e) =>
-                                            setSendTimes((prev) => ({
-                                              ...prev,
-                                              [item.id]: formatTimeInput(e.target.value),
-                                            }))
-                                          }
-                                          className="sm:h-12 sm:text-base md:text-base"
-                                        />
-                                      </label>
-                                      <label className="flex flex-col gap-1">
-                                        <span className="text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
-                                          회신시각
-                                        </span>
-                                        <Input
-                                          type="text"
-                                          inputMode="numeric"
-                                          placeholder="HH:MM"
-                                          maxLength={5}
-                                          value={replyTimes[item.id] || ""}
-                                          disabled={isApplied}
-                                          onChange={(e) =>
-                                            setReplyTimes((prev) => ({
-                                              ...prev,
-                                              [item.id]: formatTimeInput(e.target.value),
-                                            }))
-                                          }
-                                          className="sm:h-12 sm:text-base md:text-base"
-                                        />
-                                      </label>
-                                    </div>
-                                    {applied[item.id]?.penalty && applied[item.id]!.penalty!.deductedMinutes > 0 && (
-                                      <SubRow
-                                        label="학습시간 차감"
-                                        value={`-${applied[item.id]!.penalty!.deductedMinutes}분`}
-                                        valueClassName="text-destructive"
-                                      />
-                                    )}
+                                    {/* 🔧 [자동 계산으로 전환] 관리자가 발신/회신시각을 수동 입력하던
+                                        기존 방식을 대체 — 이제는 스크린샷·영상 저장 시점(item.ts)부터
+                                        대상자가 "위반인정"/"이의제기" 버튼을 누른 시점까지의 간격이
+                                        20분을 초과하면 자동으로 차감 대상이 된다(사용자 지시). 대상자
+                                        응답 시각을 기록하는 시스템이 아직 없어 지금은 예상값을 계산할
+                                        수 없다 — 이후 항목에서 그 시스템이 갖춰지면 여기서 실제 차감
+                                        예상 분을 보여주도록 이어서 구현한다. 실제 반영은 "적용" 버튼을
+                                        눌렀을 때 이루어진다(예상값만 표시, 사용자 지시).
+                                    */}
+                                    <SubRow
+                                      label="예상 차감"
+                                      value={
+                                        applied[item.id]?.penalty && applied[item.id]!.penalty!.deductedMinutes > 0
+                                          ? `-${applied[item.id]!.penalty!.deductedMinutes}분`
+                                          : "대상자 응답 대기 중"
+                                      }
+                                      valueClassName={
+                                        applied[item.id]?.penalty && applied[item.id]!.penalty!.deductedMinutes > 0
+                                          ? "text-destructive"
+                                          : undefined
+                                      }
+                                    />
                                   </div>
 
                                   <div className="h-px w-full bg-border" />
@@ -797,7 +963,8 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
                                     <SubRow
                                       label="이번 주 영향"
                                       value={weeklyImpactLabel(
-                                        applied[item.id]?.penalty ? applied[item.id]!.penalty!.occurrence : item.nextOccurrence
+                                        applied[item.id]?.penalty ? applied[item.id]!.penalty!.occurrence : item.nextOccurrence,
+                                        item.weeklyMinorPenaltyCount
                                       )}
                                     />
                                     {applied[item.id] && !applied[item.id]!.penalty && (
@@ -836,6 +1003,7 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
                                       }
                                       coReviewers={coReviewers}
                                       votes={item.votes || {}}
+                                      targetResponse={item.targetResponse}
                                     />
                                   </div>
                                 )}
@@ -849,7 +1017,7 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
                                         disabled={decidingId === item.id}
                                         onClick={() => cancel(item)}
                                       >
-                                        {occurrenceLabel(applied[item.id]!.penalty!.occurrence)} 취소
+                                        {cancelButtonLabel(applied[item.id]!.penalty!.occurrence)}
                                       </Button>
                                     ) : (
                                       // 새로고침 등으로 이 세션이 승인 상세 정보(penalty col 등)를
@@ -859,6 +1027,18 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
                                         이미 처리된 제보입니다.
                                       </p>
                                     )
+                                  ) : isItemDeferred(item, applied) ? (
+                                    // "유예 취소" — "유예" 클릭으로 부여된 제보자 상점을 되돌리고
+                                    // 다시 "처리 대기"로 되돌린다(사용자 지시). revertReject와
+                                    // 처리 로직은 동일하다(merit 회수 + reviewStatus를 pending으로).
+                                    <Button
+                                      variant="outline"
+                                      className="sm:h-12 sm:text-base"
+                                      disabled={decidingId === item.id}
+                                      onClick={() => revertReject(item)}
+                                    >
+                                      유예 취소
+                                    </Button>
                                   ) : isRejected ? (
                                     // "반려 취소" — 순수 반려("rejected")든 반려 (인정)
                                     // ("rejected_recognized", 제보상점만 부여된 경우)든 항상
@@ -874,25 +1054,47 @@ export function ReportReviewList({ visible }: { visible: boolean }) {
                                       반려 취소
                                     </Button>
                                   ) : (
-                                    <div className="grid grid-cols-2 gap-2">
-                                      <Button
-                                        variant="destructive"
-                                        className="sm:h-12 sm:text-base"
-                                        disabled={decidingId === item.id || !canDecide(item)}
-                                        onClick={() =>
-                                          decide(item, item.nextOccurrence === null ? "rejected_recognized" : "approved")
-                                        }
-                                      >
-                                        {applyButtonLabel(item.nextOccurrence)}
-                                      </Button>
-                                      <Button
-                                        variant="outline"
-                                        className="sm:h-12 sm:text-base"
-                                        disabled={decidingId === item.id || !canDecide(item)}
-                                        onClick={() => decide(item, "rejected")}
-                                      >
-                                        반려
-                                      </Button>
+                                    <div className="flex flex-col gap-1.5">
+                                      <div className="grid grid-cols-2 gap-2">
+                                        {/* 🔧 [유예 조건] 대상자가 오늘 이미 1회 적용을 받았으면
+                                            "적용" 대신 "유예"를 노출한다(사용자 지시) — 클릭 시
+                                            decision: "deferred"로, 대상자 페널티 없이 제보자
+                                            상점만 부여된다(applyReportMerit 재사용). */}
+                                        {item.shouldDefer ? (
+                                          <Button
+                                            variant="destructive"
+                                            className="sm:h-12 sm:text-base"
+                                            disabled={decidingId === item.id || !canApply(item)}
+                                            onClick={() => decide(item, "deferred")}
+                                          >
+                                            유예
+                                          </Button>
+                                        ) : (
+                                          <Button
+                                            variant="destructive"
+                                            className="sm:h-12 sm:text-base"
+                                            disabled={decidingId === item.id || !canApply(item)}
+                                            onClick={() =>
+                                              decide(item, item.nextOccurrence === null ? "rejected_recognized" : "approved")
+                                            }
+                                          >
+                                            {applyButtonLabel(item.nextOccurrence)}
+                                          </Button>
+                                        )}
+                                        <Button
+                                          variant="outline"
+                                          className="sm:h-12 sm:text-base"
+                                          disabled={decidingId === item.id || !canReject(item)}
+                                          onClick={() => decide(item, "rejected")}
+                                        >
+                                          반려
+                                        </Button>
+                                      </div>
+                                      {!canProcess(item) && (
+                                        <p className="text-center text-micro-lg text-muted-foreground sm:text-xs">
+                                          대상자 응답 대기 중 — 접수 후 90분이 지나야 처리할 수 있습니다.
+                                        </p>
+                                      )}
                                     </div>
                                   )}
                                   <Button

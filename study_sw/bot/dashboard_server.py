@@ -272,11 +272,12 @@ def make_dashboard_handler(ctx):
                     body = {}
                 capture_id = body.get("id")
                 decision = body.get("decision")
-                # 🔧 [3버튼 재설계] "반려 (인정)" — 페널티로는 인정되나 대상자
-                # 잔여 슬롯이 없어 등록만 못 하는 경우. 제보자 상점은 부여되지만
-                # 대상자 페널티는 기록되지 않으므로, 순수 미인정("rejected")과는
-                # 구분되는 별도 값으로 저장한다(웹 index.js의 CAPTURE_DECISIONS와 동일).
-                if not capture_id or decision not in ("approved", "rejected", "rejected_recognized"):
+                # 🔧 [3버튼 재설계 → 유예 추가] "rejected_recognized"(반려·인정
+                # — 잔여 슬롯 없음)와 "deferred"(유예 — 당일 1회 적용 후 최대
+                # 2건 보류) 둘 다 제보자 상점만 부여하고 대상자 페널티는 기록
+                # 하지 않지만, 사유가 다르므로 별도 값으로 저장한다(웹
+                # index.js의 CAPTURE_DECISIONS와 동일).
+                if not capture_id or decision not in ("approved", "rejected", "rejected_recognized", "deferred"):
                     self._send_json(400, {"error": "invalid request"})
                     return
                 # penalty/merit: 웹(index.js)이 시트에 이미 반영한 값을 함께
@@ -285,6 +286,29 @@ def make_dashboard_handler(ctx):
                 penalty = body.get("penalty")
                 merit = body.get("merit")
                 ok = capture_manifest.set_decision(capture_id, decision, penalty=penalty, merit=merit)
+                self._send_json(200 if ok else 404, {"ok": ok})
+                return
+
+            if parsed.path == "/captures/respond":
+                # 제보 대상자 본인이 [내 송출 P 제보 확인]에서 "위반인정"/
+                # "이의제기"를 누른 결과를 저장한다. 신원 확인(본인이 실제
+                # 대상자인지)은 Worker(index.js)가 세션으로 이미 검증한 뒤 이
+                # 엔드포인트를 대신 호출하므로, 여기서는 다른 봇 API와 동일하게
+                # X-Dashboard-Secret 인증만 확인한다.
+                if not self._check_secret():
+                    self._unauthorized()
+                    return
+                length = int(self.headers.get("Content-Length", 0))
+                try:
+                    body = json.loads(self.rfile.read(length)) if length else {}
+                except Exception:
+                    body = {}
+                capture_id = body.get("id")
+                response = body.get("response")
+                if not capture_id or response not in ("disputed", "recognized"):
+                    self._send_json(400, {"error": "invalid request"})
+                    return
+                ok = capture_manifest.set_target_response(capture_id, response)
                 self._send_json(200 if ok else 404, {"ok": ok})
                 return
 
