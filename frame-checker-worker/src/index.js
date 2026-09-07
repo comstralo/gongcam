@@ -2465,6 +2465,9 @@ const EXPECTED_CAPTURE_SEC = { screenshot: 150, video: 180 };
 // 일반 제보와 쿨다운/노출 목록을 공유하면 서로 간섭하므로 완전히 분리한다.
 const SELF_CHECK_REASON = "본인 화각 점검";
 const SELF_CHECK_COOLDOWN_SEC = 20 * 60;
+// handleReport가 report:{id}를 최초로 KV에 쓸 때와 handleRequeueReport가
+// 안전망 폴링에서 스킵된 항목을 재등록할 때 동일하게 참조하는 TTL.
+const REPORT_TTL_SEC = 60 * 60 * 6;
 
 async function handleReport(req, env, origin) {
   const { token, nickname, reason, mode, selfCheck } = await req.json();
@@ -2592,7 +2595,7 @@ async function handleReport(req, env, origin) {
     isAdmin,
   };
   await env.REPORTS_KV.put(`report:${id}`, JSON.stringify(entry), {
-    expirationTtl: 60 * 60 * 6,
+    expirationTtl: REPORT_TTL_SEC,
   });
   await env.REPORTS_KV.put(cooldownKey, JSON.stringify({ nickname: trimmedNickname, ts }), {
     expirationTtl: cooldownSec,
@@ -2750,6 +2753,40 @@ async function handleListReports(req, env, origin) {
   }
   entries.sort((a, b) => a.ts - b.ts);
   return json(entries, 200, origin);
+}
+
+// 🔧 [버그 수정] 안전망 폴링(report_intake.py의 _poll_and_start_captures,
+// 10분 간격) 경로는 handleListReports가 GET /reports 호출 즉시 KV의
+// report:{id}를 무조건 지운 뒤 봇에 넘긴다. 그런데 그 시점에 같은 대상에
+// 대한 다른 캡처가 여전히 진행 중이면(set_thread가 조용히 건너뜀,
+// started=false) 이 항목은 Worker KV에도 없고 봇도 처리하지 않은 채로
+// 영구 소실됐다 — 즉시 푸시 경로(handleReport)의 "started 확인 후에만 KV
+// 삭제" 안전장치는 이 안전망 경로 자체에는 적용되지 않는 구조적 한계였다.
+// 봇이 안전망 폴링에서도 started=false를 받으면 이 엔드포인트로 그 entry를
+// 되돌려 보내, 다음 안전망 주기(10분 뒤)에 다시 시도할 수 있게 한다.
+// 원래 접수 시각(entry.ts) 기준 REPORT_TTL_SEC가 이미 지났으면 재등록하지
+// 않는다 — 무한정 스킵되는 항목이 TTL 없이 영원히 되살아나는 것을 막는다.
+async function handleRequeueReport(req, env, origin) {
+  const botSecret = req.headers.get("X-Bot-Secret");
+  if (!botSecret || botSecret !== env.BOT_SECRET) {
+    return json({ error: "unauthorized" }, 401, origin);
+  }
+  const entry = await req.json().catch(() => null);
+  if (!entry || !entry.id || !entry.ts) {
+    return json({ error: "잘못된 요청입니다." }, 400, origin);
+  }
+  const remainingSec = Math.floor((entry.ts + REPORT_TTL_SEC * 1000 - Date.now()) / 1000);
+  if (remainingSec <= 0) {
+    // 원래 접수로부터 이미 TTL이 다 지났다 — 더는 재시도 가치가 없다.
+    return json({ ok: true, requeued: false }, 200, origin);
+  }
+  // Cloudflare KV expirationTtl은 최소 60초 이상이어야 한다 — TTL 만료
+  // 직전(60초 미만 남음)이어도 다음 안전망 주기(10분 뒤)까지는 버티게
+  // 최소값을 보장한다.
+  await env.REPORTS_KV.put(`report:${entry.id}`, JSON.stringify(entry), {
+    expirationTtl: Math.max(remainingSec, 60),
+  });
+  return json({ ok: true, requeued: true }, 200, origin);
 }
 
 // --- 도움봇(study_manager_260418.py) 원격 상태/명령 ---
@@ -8156,6 +8193,9 @@ export default {
       }
       if (url.pathname === "/reports" && req.method === "GET") {
         return await handleListReports(req, env, origin);
+      }
+      if (url.pathname === "/reports/requeue" && req.method === "POST") {
+        return await handleRequeueReport(req, env, origin);
       }
       if (url.pathname === "/admin/bot-sheets-usage" && req.method === "POST") {
         return await handleBotSheetsUsageReport(req, env, origin);

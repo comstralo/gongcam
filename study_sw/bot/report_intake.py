@@ -131,7 +131,30 @@ def _poll_and_start_captures(ctx):
             return
         entries = res.json()
         for entry in entries:
-            _start_capture_for_report(ctx, entry)
+            # 🔧 [버그 수정] 원래는 이 반환값을 그냥 버렸다 — GET /reports는
+            # Worker(handleListReports)가 읽는 즉시 report:{id} KV를 무조건
+            # 지우고 넘겨주는 소비형 큐라서, 여기서 set_thread가 조용히
+            # 건너뛰면(같은 대상에 대한 다른 캡처가 여전히 진행 중인 경우)
+            # 그 시점부터는 Worker KV에도 없고 봇도 처리하지 않은 채로 이
+            # 제보가 완전히 영구 소실됐다(즉시 푸시 경로의 "started 확인
+            # 후에만 KV 삭제" 안전장치는 이미 지워진 뒤 넘어오는 이 안전망
+            # 경로 자체에는 적용되지 않는 구조적 한계였다). 건너뛴 경우
+            # /reports/requeue로 그 entry를 Worker에 되돌려 보내, 다음
+            # 안전망 주기(10분 뒤, 그때는 먼저 진행 중이던 캡처가 끝나
+            # thread_id가 비어 있을 가능성이 높음)에 다시 시도할 수 있게
+            # 한다. 원래 접수 시각(entry["ts"]) 기준 TTL이 이미 다 됐으면
+            # Worker가 재등록을 건너뛰므로 무한정 되살아나지는 않는다.
+            started = _start_capture_for_report(ctx, entry)
+            if not started:
+                try:
+                    requests.post(
+                        f"{WORKER_BASE}/reports/requeue",
+                        json=entry,
+                        headers={"X-Bot-Secret": BOT_SECRET},
+                        timeout=10,
+                    )
+                except Exception as e:
+                    ctx.logger.warning(f"⚠️ [웹 제보 수신] 재등록 실패(무시): {e}")
     except Exception as e:
         ctx.logger.warning(f"⚠️ [웹 제보 수신] 폴링 실패(무시): {e}")
 

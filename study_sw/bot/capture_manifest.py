@@ -224,6 +224,22 @@ def delete_capture(capture_id):
 def archive_old_captures(cutoff_ms):
     with _manifest_lock:
         data = _load()
+        archive_data = _load(ARCHIVE_MANIFEST_PATH)
+        # 🔧 [버그 수정] 이 함수는 "archive에 먼저 저장 → 그다음 원본에서
+        # 삭제 저장" 순서로 쓴다(유실보다 중복이 안전하다는 원칙 — 순서를
+        # 반대로 하면 중간에 죽었을 때 "원본에서도 지워졌고 archive에도
+        # 아직 없는" 진짜 데이터 유실이 생긴다). 다만 이 순서 자체도
+        # 완전히 원자적이지는 않아서, 정확히 두 _save 사이(archive 저장
+        # 직후, 원본 저장 직전)에 프로세스가 죽으면 같은 capture_id가
+        # archive와 원본 양쪽에 동시에 남는다 — get_capture는 원본을
+        # 우선하므로 조회 자체는 안전하지만, 그 중복 상태가 다음 실행까지
+        # 방치됐다. 이번 실행 시작 시점에 이미 archive에도 있는 항목이
+        # 원본에 남아있으면(=지난 실행이 중간에 죽어 못 끝낸 정리) 여기서
+        # 바로 원본에서 마저 지워, 중복이 한 사이클 이상 오래 남지 않게
+        # 한다.
+        already_archived_but_stale = [cid for cid in data if cid in archive_data]
+        for cid in already_archived_but_stale:
+            del data[cid]
         # 아직 관리자가 처리하지 않은("pending") 건은 사이클이 넘어가도
         # 아카이빙 대상에서 제외한다 — 지난 사이클로 넘어가도록 미처리로
         # 방치된 제보라면 그 자체가 운영상 챙겨야 할 이례적 상황이지,
@@ -233,9 +249,8 @@ def archive_old_captures(cutoff_ms):
             for cid, entry in data.items()
             if entry.get("ts", cutoff_ms) < cutoff_ms and entry.get("reviewStatus") != "pending"
         }
-        if not to_move:
+        if not to_move and not already_archived_but_stale:
             return 0
-        archive_data = _load(ARCHIVE_MANIFEST_PATH)
         for cid, entry in to_move.items():
             archive_data[cid] = entry
             del data[cid]
