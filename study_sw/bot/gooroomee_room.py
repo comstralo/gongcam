@@ -233,6 +233,20 @@ def _setup_and_enter_room(ctx):
                 (By.CSS_SELECTOR, "[class='btn btn-lg btn-skin cordi-enterRoom-btn']")
             )
         ).click()
+
+        # 🔧 [입장 실패 감지] 클릭 자체는 예외 없이 성공해도(오버레이에
+        # 가로채이거나 서버 응답이 늦어) 화면이 실제로 방 내부로 전환되지
+        # 않고 이 설정 화면에 그대로 멈춰있는 경우가 있었다(사용자 보고:
+        # "완료" 로그가 찍혔는데 실제로는 입장 전 화면에 머묾). dashboard_server.py의
+        # _room_state_unlocked()와 동일한 판정 기준(URL에 '#coordi;'가 사라지고
+        # room-join-count가 표시됨)을 여기서도 확인해, 그래도 실패하면 예외를
+        # 던져 이 함수를 감싸는 @retry_action이 최대 4번까지 자동 재시도하게 한다
+        # (지금까지는 이 검증이 없어 클릭 실패를 조용히 "성공"으로 보고했다).
+        ctx.wait.until(
+            lambda d: "#coordi;" not in d.current_url
+            and len(d.find_elements(By.CSS_SELECTOR, "div.room-join-count")) > 0
+            and d.find_elements(By.CSS_SELECTOR, "div.room-join-count")[0].is_displayed()
+        )
     return True
 
 
