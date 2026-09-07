@@ -4,6 +4,18 @@ import json
 import os
 import re
 import threading
+import time
+
+# 좀비 스레드(stop_event에 반응하지 않고 join(timeout=11.0) 이후에도
+# 살아있는 스레드)를 stop_all_thread가 처음 발견한 시점부터 이 시간이
+# 지나도 여전히 좀비 상태면 강제로 current_threads에서 지운다(사용자
+# 결정) — 좀비를 무기한 보존하면 해당 대상자에 대한 이후 모든 제보가
+# 프로세스 재시작 전까지 영구히 캡처를 시작 못 하는 문제가 생기므로,
+# "데이터 손상 위험"과 "영구 봉쇄" 사이에서 일정 시간 뒤에는 새 스레드가
+# 다시 시작될 수 있게 완화한다. 정기 리셋(07:15)/교시 전환(최대 하루
+# 28회)마다 stop_all_thread가 불리므로, 5분이면 짧게는 다음 교시 전환
+# 시점에, 늦어도 몇 차례 안에 강제 정리가 이뤄진다.
+ZOMBIE_FORCE_CLEAR_SEC = 5 * 60
 
 # 🔧 [버그 방어] tracking_capture()의 중단 처리(save_task_to_disk 호출부,
 # tracking.py)는 stop_event로 "정상적으로" 중단될 때만 실행된다 — 프로세스
@@ -217,6 +229,7 @@ def stop_all_thread(ctx):
             print(f"stop_all_thread() :  ⚙️  스레드 [{thread_id}] 종료 대기 완료.  ⚙️")
 
     # 4. 종료가 완료된 스레드만 딕셔너리에서 정리하고 이벤트 초기화
+    now = time.time()
     with ctx.lock:
         for thread_id, thread in threads_to_stop:
             # 강제로 기다리지 않은 시트 기록 스레드는 여기서 지우지 않고 스스로 지우도록 둡니다.
@@ -235,8 +248,34 @@ def stop_all_thread(ctx):
                 # 원래 의도인 "종료가 완료된 스레드만 정리"를 그대로
                 # 지킴), 같은 대상에 대한 이후 요청이 조용히 중복 시작되지
                 # 않고 "이미 진행 중"으로 정확히 스킵되게 한다.
-                if not thread.is_alive() and thread_id in ctx.current_threads:
-                    del ctx.current_threads[thread_id]
+                if not thread.is_alive():
+                    if thread_id in ctx.current_threads:
+                        del ctx.current_threads[thread_id]
+                    ctx.zombie_since.pop(thread_id, None)
+                else:
+                    # 🔧 [버그 방어] 좀비를 무기한 보존하면, 그 스레드가
+                    # 정말로 영원히 안 죽는 경우(예: Selenium 호출이 응답
+                    # 없이 완전히 멈춤) 해당 대상자에 대한 이후 모든 제보가
+                    # 프로세스 재시작 전까지 영구히 캡처를 시작 못 하게
+                    # 된다(사용자 결정: 일정 시간 지나면 강제로 지운다).
+                    # 이번이 처음 좀비로 판정된 순간이면 시각만 기록하고,
+                    # 이미 기록돼 있는데 ZOMBIE_FORCE_CLEAR_SEC(5분)가 지나도
+                    # 여전히 좀비면 강제로 지워 다음 요청이 새 스레드를 시작할
+                    # 수 있게 한다 — 좀비 자체(옛 driver를 계속 참조하며
+                    # 도는 스레드)는 프로세스 안에 남아있을 수 있지만, 이는
+                    # kill_selenium_processes()가 다음 정기 리셋에서 그
+                    # driver의 실제 크롬 프로세스를 정리해 결국 예외로
+                    # 끝나도록 유도한다.
+                    first_seen = ctx.zombie_since.get(thread_id)
+                    if first_seen is None:
+                        ctx.zombie_since[thread_id] = now
+                    elif now - first_seen >= ZOMBIE_FORCE_CLEAR_SEC:
+                        print(
+                            f"stop_all_thread() : 🪓 스레드 [{thread_id}]가 {ZOMBIE_FORCE_CLEAR_SEC}초 넘게 응답이 없어 강제로 정리합니다."
+                        )
+                        if thread_id in ctx.current_threads:
+                            del ctx.current_threads[thread_id]
+                        ctx.zombie_since.pop(thread_id, None)
         # stop_event.clear()  # 다음 스케줄을 위해 이벤트 초기화
 
     print("stop_all_thread() :  ⚙️  모든 스레드 종료 정리 완료.  ⚙️")

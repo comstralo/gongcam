@@ -14,6 +14,18 @@ class BotContext:
         self.logger = None
         self.timetable_df = None
         self.current_threads = {}
+        # 🔧 [버그 방어] stop_all_thread가 stop_event/join(timeout=11.0)
+        # 이후에도 살아있는(좀비) 스레드를 current_threads에서 지우지 않고
+        # 남겨두게 되면서(threads.py 참고 — 죽지도 않은 스레드를 지워
+        # 좀비와 새 스레드가 동시에 같은 대상을 건드리는 걸 막기 위함),
+        # 좀비가 영원히 안 죽으면 그 thread_id에 대한 이후 모든 제보가
+        # set_thread에서 계속 거부되어 프로세스 재시작 전까지 영구히
+        # 캡처를 시작 못 하는 새 문제가 생겼다(사용자 결정: 일정 시간
+        # 지나면 강제로 지운다). 이 딕셔너리는 어떤 thread_id가 언제부터
+        # 좀비로 판정됐는지(첫 발견 시각, epoch seconds)를 기록해, 다음
+        # stop_all_thread 호출 시점에 ZOMBIE_FORCE_CLEAR_SEC 넘게 방치된
+        # 좀비를 강제로 지울 수 있게 한다.
+        self.zombie_since = {}
         self.stop_event = threading.Event()
         self.lock = threading.Lock()
         self.lock_chat = threading.Lock()

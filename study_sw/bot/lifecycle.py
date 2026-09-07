@@ -345,26 +345,38 @@ def browser_watchdog(ctx):
                 raise Exception("크롬 탭 OOM 크래시(Aw, Snap!) 발생")
 
         except Exception as e:
-            # 상태 이상이 감지되었고, 현재 의도적인 재부팅 상태가 아니라면
-            if not ctx.is_browser_resetting:
-                # 🚨 [추가] 복구 함수를 부르기 전에 감시자 본인이 직접 플래그를 잠가버립니다.
-                ctx.is_browser_resetting = True
+            # 🔧 순환 임포트 방지: bot.gooroomee_room이 bot.lifecycle(kill_selenium_processes,
+            # build_chrome_options 등)을 임포트하므로, daily_browser_reset은 호출 시점에만 지역 임포트한다.
+            from bot.gooroomee_room import daily_browser_reset, try_acquire_browser_reset
 
+            # 🔧 [버그 수정] 원래는 이 지점에서 ctx.is_browser_resetting을
+            # 감시자가 직접(락 없이) True로 세팅한 뒤 daily_browser_reset을
+            # 호출했다 — daily_browser_reset은 자기 시작 부분에서
+            # try_acquire_browser_reset을 호출해 "이미 True인지"를 확인하는데,
+            # 감시자가 방금 직접 세팅해 둔 그 True를 보고 "이미 다른 곳에서
+            # 재시작이 진행 중"이라고 오판해 즉시 조기 종료했다(경고 로그만
+            # 남기고 return) — 이 조기 종료 경로는 finally 블록 밖이라
+            # is_browser_resetting이 True로 영구 고정되고, 실제 복구 작업
+            # (브라우저 재기동 등)은 전혀 실행되지 않았다. 그 결과 OOM
+            # 탭 크래시가 감지될 때마다 자가 복구 자체가 항상 스킵되고,
+            # 그 뒤로는 07:15 정기 리셋도 관리자 수동 재시작도 전부 "이미
+            # 진행 중"에 막혀 버렸다. 이제 감시자도 daily_browser_reset과
+            # 동일한 진입점(try_acquire_browser_reset)으로 원자적으로 확보한
+            # 뒤, 성공했을 때만 _already_acquired=True로 넘겨 중복 체크를
+            # 건너뛰게 한다 — 이미 다른 경로가 재시작 중이면(정기/수동)
+            # 감시자는 그냥 이번 순회를 건너뛰고 다음 5초 뒤 다시 확인한다.
+            if try_acquire_browser_reset(ctx):
                 err_msg = (
                     f"🚨 [비상] 브라우저 상태 이상 감지: {e}. 자가 복구를 시작합니다."
                 )
                 ctx.logger.error(f"browser_watchdog() : {err_msg}")
                 send_chat_telegram(ctx, ["emergency", [err_msg]])
 
-                # 🔧 순환 임포트 방지: bot.gooroomee_room이 bot.lifecycle(kill_selenium_processes,
-                # build_chrome_options 등)을 임포트하므로, daily_browser_reset은 호출 시점에만 지역 임포트한다.
-                from bot.gooroomee_room import daily_browser_reset
-
                 # 🚨 비상 상황이므로 is_emergency=True를 전달하여 quit() 무한대기 생략 유도
                 threading.Thread(
                     target=daily_browser_reset,
                     args=(ctx,),
-                    kwargs={"is_emergency": True},
+                    kwargs={"is_emergency": True, "_already_acquired": True},
                     daemon=True,
                 ).start()
 
