@@ -16,6 +16,7 @@ from bot import capture_manifest
 from bot.telegram import send_chat_telegram
 from bot.threads import (
     clear_inflight_snapshot,
+    is_current_thread,
     remove_thread_id,
     save_inflight_snapshot,
     save_task_to_disk,
@@ -366,7 +367,7 @@ def tracking_capture(
     while (
         current_session_capture_count < track_total
         and not ctx.stop_event.is_set()
-        and thread_id in ctx.current_threads
+        and is_current_thread(ctx, thread_id)
     ):
         importlib.reload(tracking_list)
 
@@ -466,11 +467,11 @@ def tracking_capture(
             if (
                 current_session_capture_count < track_total
                 and not ctx.stop_event.is_set()
-                and thread_id in ctx.current_threads
+                and is_current_thread(ctx, thread_id)
             ):
                 remaining = sleep_time
                 while remaining > 0:
-                    if ctx.stop_event.is_set() or thread_id not in ctx.current_threads:
+                    if ctx.stop_event.is_set() or not is_current_thread(ctx, thread_id):
                         break
                     step = min(1.0, remaining)
                     time.sleep(step)
@@ -486,7 +487,7 @@ def tracking_capture(
 
     # 🛑 [중단 처리] 목표 횟수를 다 채우지 못했는데 루프가 깨진 경우 (외부 요인)
     if current_session_capture_count < track_total and (
-        ctx.stop_event.is_set() or thread_id not in ctx.current_threads
+        ctx.stop_event.is_set() or not is_current_thread(ctx, thread_id)
     ):
         # 이 블록이 정상적인 재개 정보(STATE_FILE)를 새로 만들 것이므로,
         # 즉사 방어용 스냅샷은 먼저 지운다(정상 종료 경로이니 즉사 대비가
@@ -574,7 +575,7 @@ def tracking_capture_video(
     while (
         len(frames) < TOTAL_FRAMES
         and not ctx.stop_event.is_set()
-        and thread_id in ctx.current_threads
+        and is_current_thread(ctx, thread_id)
     ):
         if time.monotonic() - session_start_time > MAX_WALL_CLOCK_SEC:
             ctx.logger.warning(
@@ -621,7 +622,7 @@ def tracking_capture_video(
     # 재개 정보를 남긴다 — remaining_count/previous_temp_files 없이
     # mode:"video"만 표시해 재개 호출부가 tracking_capture_video를 다시
     # 그대로 부르게 한다.
-    was_interrupted = ctx.stop_event.is_set() or thread_id not in ctx.current_threads
+    was_interrupted = ctx.stop_event.is_set() or not is_current_thread(ctx, thread_id)
     if was_interrupted:
         resume_info = {
             "mode": "video",

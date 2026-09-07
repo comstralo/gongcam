@@ -150,6 +150,21 @@ def load_tasks_from_disk(ctx):
             return []
 
 
+# 🔧 [버그 방어] tracking_capture/tracking_capture_video의 메인 루프 조건이
+# 원래 "thread_id in ctx.current_threads"였다 — 이는 "이 thread_id로 등록된
+# *어떤* 스레드든 살아있으면 계속 돈다"는 뜻이라, 강제로 지워진 좀비 스레드
+# 자신도 이 조건을 그대로 검사한다. 좀비가 지워진 직후엔 이 조건이 False가
+# 되어 좀비도 다음 루프에서 스스로 멈추는 게 맞지만, 그 사이 같은 대상에
+# 대한 새 제보로 같은 thread_id의 새 스레드가 등록되면, 조건이 다시 True가
+# 되어 좀비가 계속 살아서 새로 재기동된 ctx.driver/ctx.lock_element를 붙잡고
+# 도는 상태가 됐다(그러면 두 스레드가 같은 대상에 대해 동시에 파일을 쓰고
+# 텔레그램을 보내는 등 중복 처리가 생긴다). 단순히 "존재하는지"가 아니라
+# "지금 이 키에 등록된 게 나 자신인지"를 확인해야 정확하다.
+def is_current_thread(ctx, thread_id):
+    with ctx.lock:
+        return ctx.current_threads.get(thread_id) is threading.current_thread()
+
+
 def set_thread(ctx, thread_id, target_func, args, kwargs=None):
     # 🔧 [ctx 리팩터] target_func는 모두 ctx를 첫 번째 인자로 받도록 통일했으므로,
     # 호출부에서 넘긴 args 튜플 앞에 ctx를 자동으로 붙여준다.
@@ -178,16 +193,38 @@ def set_thread(ctx, thread_id, target_func, args, kwargs=None):
 
 
 # [ETC] 작업이 완료된 스레드는 목록에서 삭제
+# 🔧 [버그 수정] 원래는 thread_id 문자열만 보고 지웠다 — ZOMBIE_FORCE_CLEAR_SEC
+# (stop_all_thread)가 좀비 스레드를 current_threads에서 강제로 지운 뒤, 같은
+# thread_id로 새 캡처 스레드가 정상적으로 등록될 수 있게 됐는데, 그 뒤늦게
+# 좀비가 스스로 깨어나(예: 지연됐던 Selenium 호출이 뒤늦게 반환/예외) 자기
+# 종료 처리로 remove_thread_id(ctx, thread_id)를 호출하면, 문자열만 같으면
+# 조건이 참이 되어 실제로는 좀비가 아니라 그 자리에 새로 등록된 정상
+# 스레드의 항목을 지워버렸다. tracking_capture/tracking_capture_video의
+# 메인 루프 조건 자체가 "thread_id in ctx.current_threads"라서, 이렇게
+# 지워지면 정상 진행 중이던 새 스레드가 다음 루프에서 "나 중단 요청받았네"
+# 로 착각해 아무 중단 신호도 없었는데 진행 중이던 캡처를 조용히 끊어버렸다.
+# threading.current_thread()로 "지금 이 함수를 부르는 스레드 자신"을 얻어,
+# current_threads[thread_id]에 저장된 Thread 객체가 정확히 나 자신일 때만
+# 지운다 — 좀비가 뒤늦게 이 함수를 불러도 그 키의 값이 이미 다른(새) Thread
+# 객체로 바뀌어 있으면 identity가 다르므로 무해한 no-op이 된다.
 def remove_thread_id(ctx, thread_id):
+    caller = threading.current_thread()
     with ctx.lock:
-        if thread_id in ctx.current_threads:
+        registered = ctx.current_threads.get(thread_id)
+        if registered is caller:
             del ctx.current_threads[thread_id]
             print(f"remove_thread_id() :  ⚙️  {thread_id} 완료 및 종료.  ⚙️")
-
             return True
-        else:
+        elif registered is None:
             print(
                 f"remove_thread_id() :  ⚙️ {thread_id} 삭제 실패. (current_threads에 없음)  ⚙️"
+            )
+            return False
+        else:
+            # 이 키는 이미 다른(새로 등록된) 스레드 소유다 — 나(좀비)는
+            # 조용히 물러난다. 남의 등록 정보를 지우지 않는다.
+            print(
+                f"remove_thread_id() :  ⚙️ {thread_id} 삭제 건너뜀. (이미 다른 스레드로 교체됨 — 좀비의 뒤늦은 종료로 추정)  ⚙️"
             )
             return False
 
