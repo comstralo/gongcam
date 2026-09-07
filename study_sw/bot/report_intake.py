@@ -64,12 +64,20 @@ def _start_capture_for_report(ctx, entry):
     mode = entry.get("mode", "screenshot")
     report_id = entry.get("id")
     self_check = bool(entry.get("selfCheck"))
+    is_admin = bool(entry.get("isAdmin"))
     if not nickname:
         return
 
     # thread_id는 모드와 무관하게 닉네임 기준으로 공유한다 — 같은 대상에 대해
     # 스크린샷/영상 제보가 동시에 두 개 진행되지 않도록(set_thread의 중복 방지에 위임).
-    thread_id = report_thread_id(nickname)
+    # 🔧 [관리자 중복 제보 허용] 관리자가 같은 대상을 짧은 간격으로 연달아
+    # 제보하면(예: 첫 캡처가 아직 진행 중인 150초 안에 두 번째 제보), 이
+    # 공유 thread_id 때문에 두 번째 요청이 조용히 무시돼 실제로 접수된
+    # 제보 하나가 통째로 사라졌다(사용자 보고). 관리자 제보는 report_id를
+    # 섞어 매번 다른 thread_id를 만들어, 같은 대상이라도 동시에 여러 건이
+    # 병행 진행될 수 있게 한다 — 일반 제보(20분 쿨다운으로 이미 중복이
+    # 걸러짐)는 기존처럼 닉네임 공유 thread_id를 그대로 쓴다.
+    thread_id = f"{report_thread_id(nickname)} / [{report_id}]" if is_admin and report_id else report_thread_id(nickname)
     # 🔧 순환 임포트 방지: bot.tracking은 이 모듈과 직접 순환하지 않지만,
     # bot.report_intake -> bot.dashboard_server -> bot.gooroomee_room으로
     # 이어지는 임포트 순서를 다른 지역 임포트들과 일관되게 유지하기 위해 지역 임포트한다.

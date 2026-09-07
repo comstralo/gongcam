@@ -148,7 +148,12 @@ def make_dashboard_handler(ctx):
                     self._unauthorized()
                     return
                 nickname = parse_qs(parsed.query).get("nickname", [""])[0]
-                in_progress = report_thread_id(nickname) in ctx.current_threads
+                # 🔧 [관리자 중복 제보 허용] 관리자 제보는 thread_id 뒤에
+                # report_id가 덧붙어 report_thread_id(nickname)과 정확히
+                # 일치하지 않을 수 있다(report_intake.py 참고) — startswith로
+                # 그 대상에 대한 진행 중인 스레드가 하나라도 있는지 확인한다.
+                base_thread_id = report_thread_id(nickname)
+                in_progress = any(tid.startswith(base_thread_id) for tid in ctx.current_threads)
                 self._send_json(
                     200,
                     {

@@ -2541,6 +2541,13 @@ async function handleReport(req, env, origin) {
     reporterName: session.memberName || session.email,
     ts,
     selfCheck: isSelfCheck,
+    // 🔧 [관리자 중복 제보 허용] 같은 대상에게 짧은 간격으로 두 번째 제보가
+    // 오면, 봇은 원래 thread_id(닉네임 기준)로 중복 실행을 막아 첫 캡처가
+    // 끝나기 전엔 두 번째를 조용히 무시했다(사용자 지시로 이제 관리자는
+    // 이 제한을 우회 — 관리자가 의도적으로 같은 대상을 연달아 제보하는
+    // 경우를 실제로 놓치지 않아야 하므로). 이 플래그를 봇이 보고 thread_id
+    // 자체를 요청마다 고유하게 만든다(report_intake.py 참고).
+    isAdmin,
   };
   await env.REPORTS_KV.put(`report:${id}`, JSON.stringify(entry), {
     expirationTtl: 60 * 60 * 6,
