@@ -429,12 +429,37 @@ def daily_browser_reset(ctx, is_emergency=False):
                 ctx.logger.info(
                     f"daily_browser_reset() : 💾 OOM으로 중단된 작업 {len(saved_tasks)}개를 즉시 재개합니다."
                 )
-                from bot.tracking import tracking_capture
+                from bot.tracking import tracking_capture, tracking_capture_video
 
                 for task in saved_tasks:
                     new_thread_id = (
                         f"[집중 관리 감독(재개)] / [대상자 : {task['target_name']}]"
                     )
+                    # 🔧 [버그 수정] 원래는 재개 대상을 무조건 tracking_capture
+                    # (스크린샷)로만 호출했다 — 영상 녹화 중 봇이 재시작되면
+                    # 재개 정보 자체가 안 남아 제보가 통째로 사라지거나(수정
+                    # 전), 만약 스크린샷용 인자 형식으로 잘못 넘겨졌다면
+                    # 완전히 엉뚱하게 동작했을 것이다. tracking_capture_video는
+                    # 프레임 단위 재개가 비디오 인코딩 특성상 비현실적이라
+                    # (사용자 결정), 같은 report_id로 처음부터 재녹화하도록
+                    # mode로 분기한다.
+                    if task.get("mode") == "video":
+                        set_thread(
+                            ctx,
+                            new_thread_id,
+                            tracking_capture_video,
+                            (
+                                task["target_name"],
+                                task["reason_txt"],
+                                task["sender_name"],
+                                new_thread_id,
+                            ),
+                            kwargs={
+                                "reporter_name": task.get("reporter_name"),
+                                "report_id": task.get("report_id"),
+                            },
+                        )
+                        continue
                     set_thread(
                         ctx,
                         new_thread_id,

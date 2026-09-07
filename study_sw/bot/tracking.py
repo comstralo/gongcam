@@ -607,6 +607,37 @@ def tracking_capture_video(
             ctx.logger.error(f"tracking_capture_video() : 오류 - {e}")
             time.sleep(1)
 
+    # 🔧 [버그 수정] 원래는 stop_event/current_threads로 중단된 경우도
+    # 그냥 "프레임 부족"과 똑같이 조용히 폐기했다(또는 10프레임을 넘겼으면
+    # 마치 정상 완료된 것처럼 그 시점까지의 프레임만으로 잘린 영상을
+    # 만들어 보냈다) — record_capture도, 텔레그램 알림도, 재시도도 전혀
+    # 없어 봇 재시작(관리자의 수동 "재시작", 매일 07:15 정기 리셋, OOM
+    # 비상 복구 세 경로 모두 stop_all_thread로 이 stop_event를 세운다)이
+    # 하필 영상 녹화 중(90~180초 창) 발생하면 그 제보가 아무 흔적 없이
+    # 영구 소실됐다. 스크린샷 모드(tracking_capture)는 이미 이 경우
+    # save_task_to_disk로 재개 정보를 남겨 재시작 후 이어서 진행하는데,
+    # 영상은 프레임 단위로 이어붙이는 재개가 비디오 인코딩 특성상 비현실적
+    # 이므로(사용자 결정), 같은 report_id로 "처음부터 재녹화"하도록
+    # 재개 정보를 남긴다 — remaining_count/previous_temp_files 없이
+    # mode:"video"만 표시해 재개 호출부가 tracking_capture_video를 다시
+    # 그대로 부르게 한다.
+    was_interrupted = ctx.stop_event.is_set() or thread_id not in ctx.current_threads
+    if was_interrupted:
+        resume_info = {
+            "mode": "video",
+            "target_name": target_name,
+            "reason_txt": reason_txt,
+            "sender_name": sender_name,
+            "report_id": report_id,
+            "reporter_name": reporter_name,
+        }
+        save_task_to_disk(ctx, resume_info)
+        ctx.logger.warning(
+            f"tracking_capture_video() : 💾 [{thread_id}] 중단됨({len(frames)}프레임 확보) — 재시작 후 처음부터 재녹화합니다."
+        )
+        remove_thread_id(ctx, thread_id)
+        return
+
     if len(frames) < MIN_FRAMES_TO_SEND:
         ctx.logger.warning(
             f"tracking_capture_video() : ⚠️ [{thread_id}] 프레임 부족({len(frames)}장)으로 영상 전송을 포기합니다."

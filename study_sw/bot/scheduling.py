@@ -16,7 +16,7 @@ from bot.threads import (
     set_thread,
     stop_all_thread,
 )
-from bot.tracking import tracking_capture
+from bot.tracking import tracking_capture, tracking_capture_video
 
 WORKER_BASE = "https://frame-checker-worker.comstralo.workers.dev"
 BOT_SECRET = os.getenv("BOT_SECRET")
@@ -230,6 +230,25 @@ def schedule_process(ctx, period_str, period_time, period_minute, schedule_kind)
                 new_thread_id = (
                     f"[집중 관리 감독(재개)] / [대상자 : {task['target_name']}]"
                 )
+
+                # 🔧 [버그 수정] gooroomee_room.py의 동일 재개 로직과 동일하게,
+                # 영상 녹화 중 중단된 작업은 mode:"video"로 구분해 처음부터
+                # 재녹화하도록 tracking_capture_video로 분기한다(사용자 결정 —
+                # 프레임 단위 재개는 비디오 인코딩 특성상 비현실적).
+                if task.get("mode") == "video":
+                    set_thread(
+                        ctx,
+                        new_thread_id,
+                        tracking_capture_video,
+                        (
+                            task["target_name"],
+                            task["reason_txt"],
+                            task["sender_name"],
+                            new_thread_id,
+                        ),
+                        kwargs={"report_id": task.get("report_id"), "reporter_name": task.get("reporter_name")},
+                    )
+                    continue
 
                 set_thread(
                     ctx,
