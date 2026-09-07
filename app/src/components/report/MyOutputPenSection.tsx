@@ -411,7 +411,7 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
                                           value={
                                             received!.targetRespondedAt
                                               ? new Date(received!.targetRespondedAt).toLocaleString("ko-KR")
-                                              : "-"
+                                              : "대상자 응답 대기 중"
                                           }
                                         />
                                         <SubRow
@@ -421,9 +421,7 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
                                             if (confirmed !== undefined && confirmed !== null) {
                                               return formatDeductedTime(confirmed);
                                             }
-                                            const expected = expectedDeductedMinutes(received!);
-                                            if (expected !== null) return formatDeductedTime(expected);
-                                            return "대상자 응답 대기 중";
+                                            return formatDeductedTime(expectedDeductedMinutes(received!) ?? 0);
                                           })()}
                                           valueClassName="text-destructive"
                                         />

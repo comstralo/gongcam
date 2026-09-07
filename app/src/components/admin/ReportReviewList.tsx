@@ -979,7 +979,11 @@ export function ReportReviewList({
                                     */}
                                     <SubRow
                                       label="응답일시"
-                                      value={item.targetRespondedAt ? new Date(item.targetRespondedAt).toLocaleString("ko-KR") : "-"}
+                                      value={
+                                        item.targetRespondedAt
+                                          ? new Date(item.targetRespondedAt).toLocaleString("ko-KR")
+                                          : "대상자 응답 대기 중"
+                                      }
                                     />
                                     <SubRow
                                       label="예상차감"
@@ -988,9 +992,7 @@ export function ReportReviewList({
                                         if (confirmed !== undefined && confirmed !== null) {
                                           return formatDeductedTime(confirmed);
                                         }
-                                        const expected = expectedDeductedMinutes(item);
-                                        if (expected !== null) return formatDeductedTime(expected);
-                                        return "대상자 응답 대기 중";
+                                        return formatDeductedTime(expectedDeductedMinutes(item) ?? 0);
                                       })()}
                                       valueClassName="text-destructive"
                                     />
