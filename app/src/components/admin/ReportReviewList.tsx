@@ -917,7 +917,18 @@ export function ReportReviewList({
                                   </div>
                                 </div>
 
-                                {!isApplied && !isRejected && (
+                                {/* 🔧 [버그 수정] 스터디장 쪽 ConsensusSection(위 hasDispute)은
+                                    "대상자가 이의제기한 건에서만" 합의 검토를 켤 수 있게
+                                    막아두는데, 부스터디장 본인이 자기 의견을 제출하는 이
+                                    화면은 그 조건을 전혀 확인하지 않고 미확정 건이면 항상
+                                    폼을 보여줬다(사용자 결정: 이의제기 건에서만 투표해야
+                                    함). 서버(handleAdminCaptureVote)도 reviewStatus만
+                                    확인할 뿐 targetResponse는 검사하지 않아, 대상자가
+                                    아직 응답하지 않았거나 스스로 위반을 인정한 건에도
+                                    부스터디장의 위반 O/X 판단이 KV에 기록될 수 있었다.
+                                    스터디장 쪽과 동일한 기준(targetResponse === "disputed")
+                                    을 여기도 적용한다. */}
+                                {!isApplied && !isRejected && item.targetResponse === "disputed" && (
                                   <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:gap-3.5 sm:p-5">
                                     <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
                                       <Users className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
@@ -951,6 +962,17 @@ export function ReportReviewList({
                                         </>
                                       );
                                     })()}
+                                  </div>
+                                )}
+                                {!isApplied && !isRejected && item.targetResponse !== "disputed" && (
+                                  <div className="flex flex-col gap-2 rounded-xl border bg-card p-4 sm:p-5">
+                                    <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                                      <Users className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
+                                      내 의견
+                                    </span>
+                                    <p className="text-xs text-muted-foreground sm:text-sm">
+                                      대상자가 이의제기한 건에서만 의견을 제출할 수 있습니다.
+                                    </p>
                                   </div>
                                 )}
                               </>

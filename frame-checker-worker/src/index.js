@@ -3541,6 +3541,15 @@ async function handleAdminCaptureVote(req, env, origin) {
     if (item.reviewStatus !== "pending") {
       return json({ error: "이미 처리가 완료된 제보에는 의견을 제출할 수 없습니다." }, 409, origin);
     }
+    // 🔧 [버그 수정] 관리자(스터디장) 쪽 ConsensusSection은 "대상자가
+    // 이의제기한 건에서만" 합의 검토를 켤 수 있게 막아두는데(사용자
+    // 결정), 부스터디장이 실제로 의견을 제출하는 이 엔드포인트는 그
+    // 조건을 전혀 검사하지 않았다 — 프론트에서만 막고 있어 API를 직접
+    // 호출하면 대상자가 아직 응답하지 않았거나 스스로 위반을 인정한
+    // 건에도 부스터디장의 위반 O/X 판단이 KV에 그대로 기록될 수 있었다.
+    if (item.targetResponse !== "disputed") {
+      return json({ error: "대상자가 이의제기한 건에서만 의견을 제출할 수 있습니다." }, 409, origin);
+    }
 
     const accessToken = await getServiceAccountAccessToken(env);
     const coReviewers = await getCurrentCoReviewers(env, accessToken, env.GOOGLE_SHEET_FILE_ID);
