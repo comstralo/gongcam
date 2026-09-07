@@ -2853,13 +2853,6 @@ async function attachNextOccurrence(env, items) {
   });
 }
 
-// 대기 중(pending)인 제보뿐 아니라, 최근에 승인/반려 처리된 제보도 함께
-// 보여준다 — 그러지 않으면 결정 즉시 목록에서 사라져서(봇 manifest의
-// reviewStatus가 pending을 벗어나는 순간 필터에서 빠짐), 관리자가 방금
-// 반려한 항목이 새로고침 한 번에 마치 없었던 일처럼 통째로 사라져 보인다
-// (반려는 시트에 아무것도 안 남기므로 더더욱 흔적이 없어 보임 — 사용자 지적).
-const RECENT_DECISION_WINDOW_MS = 24 * 60 * 60 * 1000;
-
 // "다른 관리자 의견 반영"(공동 검토) 실제 구현 — 부스터디장이 제출한 의견을
 // 캡처 id별로 저장한다. 캡처 자체(제보 원본)는 REPORTS_KV가 아니라 로컬
 // 봇의 capture_manifest.py(플랫 JSON 파일)에 있으므로, 의견은 여기 KV에
@@ -2955,26 +2948,20 @@ async function handleAdminCapturesList(req, env, origin, url) {
     return json({ items: [], coReviewers: [] }, 200, origin);
   }
   const allItems = await applyAutoRecognitionForExpired(env, data.items || []);
-  const now = Date.now();
   // 🔧 [3주 사이클 토글] cycle 쿼리 파라미터(백업 fileId, 없으면 현재 진행
-  // 중)가 있으면 그 주(월~일, KST)에 발생한 항목 전체를 reviewStatus
-  // 무관하게 노출한다("내 송출 P 제보 확인"과 동일한 패턴) — 없으면 기존과
-  // 동일하게 "대기 중이거나 24시간 이내 결정"만 노출한다. shouldDefer(당일
-  // 유예 판정, 아래)는 이 필터와 무관하게 항상 allItems 전체를 스캔해야
-  // 하므로 여기서 걸러내지 않는다. accessToken은 모듈 레벨 캐시가 있어
-  // 아래에서 다시 호출해도 비용이 거의 없다.
+  // 중인 이번 주)로 그 주(월~일, KST)에 발생한 항목만 reviewStatus 무관하게
+  // 노출한다("내 송출 P 제보 확인"과 동일한 패턴) — 예전에는 "이번 주"
+  // 탭에서도 발생 주차와 무관하게 "대기 중이거나 24시간 이내 결정"만
+  // 걸렀는데, 그 결과 지난 주 발생건이 여전히 대기 상태면 "이번 주"에도
+  // 계속 섞여 나와 혼란을 줬다(사용자 지적). 다만 미처리 건을 놓치지
+  // 않아야 한다는 원래 의도는 지난 사이클 토글로 대체된다 — 관리자가 지난
+  // 주차를 눌러보면 그때 미처리로 남아있던 건도 그대로 보인다. shouldDefer
+  // (당일 유예 판정, 아래)는 이 필터와 무관하게 항상 allItems 전체를
+  // 스캔해야 하므로 여기서 걸러내지 않는다.
   const accessToken = await getServiceAccountAccessToken(env);
   const cycleFileId = url ? url.searchParams.get("cycle") : null;
-  const baseItems = cycleFileId
-    ? await filterItemsByCycle(env, accessToken, allItems, cycleFileId)
-    : allItems;
-  const visible = baseItems.filter(
-    (item) =>
-      !item.selfCheck && // "내 화각 점검"은 벌점/페널티 판정 대상이 아니므로 관리자 목록에서 제외(사용자 요청).
-      (cycleFileId ||
-        item.reviewStatus === "pending" ||
-        (item.decidedAt && now - item.decidedAt < RECENT_DECISION_WINDOW_MS))
-  );
+  const baseItems = await filterItemsByCycle(env, accessToken, allItems, cycleFileId);
+  const visible = baseItems.filter((item) => !item.selfCheck);
   const withOccurrence = await attachNextOccurrence(env, visible);
 
   // 🔧 [유예 조건] "대상자가 당일 이미 1회 적용을 받았다면, 이후 최대 2건은
@@ -3122,8 +3109,7 @@ async function handleMyOutputPen(req, env, origin, url) {
     const allItems = await applyAutoRecognitionForExpired(env, data.items || []);
     // 🔧 [3주 사이클 토글] cycle 쿼리 파라미터(백업 fileId, 없으면 현재
     // 진행 중)로 그 주(월~일, KST)에 발생한 항목만 걸러 보여준다 — 예전
-    // 24시간 창(RECENT_DECISION_WINDOW_MS) 제한은 폐지, 선택된 주 전체를
-    // reviewStatus 무관하게 노출한다.
+    // 24시간 창 제한은 폐지, 선택된 주 전체를 reviewStatus 무관하게 노출한다.
     const cycleFileId = url ? url.searchParams.get("cycle") : null;
     const inCycle = await filterItemsByCycle(env, accessToken, allItems, cycleFileId);
     const visible = inCycle.filter((item) => !item.selfCheck && item.nickname === member.name);
