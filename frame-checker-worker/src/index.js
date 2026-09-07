@@ -4366,28 +4366,34 @@ async function handleAdminLeaveProofList(req, env, origin, url) {
   // 🔧 [PEN·MONEY 사이클 토글] cycle 쿼리 파라미터가 있으면 그 주(월~일,
   // KST)의 처리 이력(_appendLeaveHistory가 쌓은 leaveHistory:{weekOf})을
   // 대신 보여준다 — 대기 큐/봇 목록과 달리 이건 이미 처리 완료된 읽기
-  // 전용 기록이라 승인/반려 액션 없이 결과만 노출한다.
+  // 전용 기록이라 승인/반려 액션 없이 결과만 노출한다. 다른 사이클 지원
+  // 핸들러(handleAdminFinesUnpaid 등)와 동일하게 resolveTargetFileId 실패
+  // (사이클 범위를 벗어난 fileId 등)를 try/catch로 감싸 의미 있는 에러로 응답한다.
   const cycleFileId = url ? url.searchParams.get("cycle") : null;
   if (cycleFileId) {
-    const accessToken = await getServiceAccountAccessToken(env);
-    const { weekOf } = await resolveTargetFileId(env, accessToken, cycleFileId);
-    const history = weekOf ? await _readLeaveHistory(env, weekOf) : [];
-    const items = history
-      .map((h) => ({
-        id: h.id,
-        memberNumber: h.memberNumber,
-        memberName: h.memberName,
-        day: h.day,
-        reason: h.reason,
-        requesterEmail: null,
-        count: h.count || 1,
-        ts: h.decidedAt,
-        reviewStatus: h.decision,
-        rejectReason: h.rejectReason || null,
-        queued: false,
-      }))
-      .sort((a, b) => (b.ts || 0) - (a.ts || 0));
-    return json({ items, readOnly: true }, 200, origin);
+    try {
+      const accessToken = await getServiceAccountAccessToken(env);
+      const { weekOf } = await resolveTargetFileId(env, accessToken, cycleFileId);
+      const history = weekOf ? await _readLeaveHistory(env, weekOf) : [];
+      const items = history
+        .map((h) => ({
+          id: h.id,
+          memberNumber: h.memberNumber,
+          memberName: h.memberName,
+          day: h.day,
+          reason: h.reason,
+          requesterEmail: null,
+          count: h.count || 1,
+          ts: h.decidedAt,
+          reviewStatus: h.decision,
+          rejectReason: h.rejectReason || null,
+          queued: false,
+        }))
+        .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+      return json({ items, readOnly: true }, 200, origin);
+    } catch (err) {
+      return json({ error: "사유반휴 처리 이력 조회 실패: " + err.message }, 500, origin);
+    }
   }
 
   // 봇이 꺼져 있어도 관리자가 대기 중인 신청을 놓치지 않도록, 봇 목록과
@@ -4502,6 +4508,10 @@ async function handleAdminLeaveProofDecide(req, env, origin) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id, decision, rejectReason }),
         }).catch(() => null);
+        // 🔧 로그 기록 실패가 이미 완료된 처리(큐 삭제)를 실패로 되돌리면
+        // 안 되므로(관리자가 "실패"로 오해해 재시도하면 중복 처리 위험)
+        // 별도로 감싸 조용히 무시한다 — 이력 한 건이 안 쌓이는 것보다
+        // 처리 자체가 실패로 보이는 게 훨씬 나쁘다.
         await _appendLeaveHistory(env, {
           id,
           decision,
@@ -4511,7 +4521,7 @@ async function handleAdminLeaveProofDecide(req, env, origin) {
           reason: reason || null,
           rejectReason,
           decidedAt: Date.now(),
-        });
+        }).catch(() => null);
         return json({ ok: true }, 200, origin);
       }
       // 시트에는 아무것도 쓰지 않는다 — 반려된 신청은 처음부터 없었던 것과 같다.
@@ -4530,7 +4540,7 @@ async function handleAdminLeaveProofDecide(req, env, origin) {
         reason: reason || null,
         rejectReason,
         decidedAt: Date.now(),
-      });
+      }).catch(() => null);
       return json(data, 200, origin);
     }
 
@@ -4571,7 +4581,7 @@ async function handleAdminLeaveProofDecide(req, env, origin) {
         reason: reason || null,
         rejectReason: null,
         decidedAt: Date.now(),
-      });
+      }).catch(() => null);
       return json({ ok: true }, 200, origin);
     }
 
@@ -4591,7 +4601,7 @@ async function handleAdminLeaveProofDecide(req, env, origin) {
       reason: reason || null,
       rejectReason: null,
       decidedAt: Date.now(),
-    });
+    }).catch(() => null);
     if (!data) {
       return json({ ok: true, botSyncFailed: true }, 200, origin);
     }
