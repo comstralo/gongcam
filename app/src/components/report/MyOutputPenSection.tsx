@@ -21,6 +21,25 @@ import type {
 
 const STATUS_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
 
+// ReportPage.tsx의 REASON_OPTIONS(고정 사유 5개 + "기타")와 동일한 목록.
+// "기타"를 선택하면 그 문구 자체는 서버로 전송되지 않고 참여자가 직접 입력한
+// 자유 텍스트로 reason이 완전히 대체된다 — 즉 reason 문자열만으로는 "기타
+// 사유"였는지 구분할 고정 표식이 없다. 그래서 이 고정 사유 목록에 정확히
+// 일치하지 않으면 자유 기재(기타)로 간주한다(사용자 지시: 다른 참여자가
+// 직접 쓴 임의 문구를 그대로 노출하지 않기 위해).
+const FIXED_REASONS = new Set([
+  "격자 기준을 벗어난 근접 화각",
+  "손 또는 학습자료 확인 불가",
+  "전자기기 사용목적 확인 불가",
+  "얼굴, 정수리 등 노출",
+  "과도한 스티커 사용",
+]);
+
+function displayReason(reason: string): string {
+  if (!reason) return "-";
+  return FIXED_REASONS.has(reason) ? reason : "기타 (관리자 문의)";
+}
+
 // "송출 P 대상 처리"(관리자용 ReportReviewList)와 동일한 요일별 아코디언 →
 // 항목별 토글 → 캡처 미리보기 구조를 재활용한다(사용자 지시). 이 화면은
 // 두 가지 서로 다른 항목을 같은 섹션에 함께 보여준다(사용자 지시):
@@ -327,7 +346,7 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
                                           제보 정보
                                         </span>
                                         {/* 관리자 화면과 동일한 레이아웃이되, 제보자는 숨긴다(사용자 지시). */}
-                                        <SubRow label="사유" value={received!.reason || "-"} valueClassName="text-destructive" />
+                                        <SubRow label="사유" value={displayReason(received!.reason)} valueClassName="text-destructive" />
                                         <SubRow label="발생일시" value={new Date(item.ts).toLocaleString("ko-KR")} />
                                       </div>
 
