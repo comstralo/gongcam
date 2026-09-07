@@ -187,6 +187,30 @@ function isItemRejected(
   );
 }
 
+// 시간 차감 예상 분 — 관리자가 "적용" 버튼을 눌러 발신~회신 시각을 직접
+// 입력해야만 실제 penalty.deductedMinutes가 확정되지만(서버 applyTimeDeduction),
+// 그 전에도 "예상 차감"을 보여줘야 한다(사용자 지시: 적용 버튼을 누르지
+// 않아도 출력되어야 함). 접수 시각(item.ts)부터 대상자 응답 시각
+// (targetRespondedAt)까지의 경과에서 20분(서버 TIME_DEDUCT_GRACE_MINUTES와
+// 동일) 유예를 뺀 초과분을 예상값으로 계산한다 — 20분 이하로 응답했으면
+// 0을 반환한다(차감 없음, "-00:00"으로 표시). 아직 응답이 없으면
+// (targetRespondedAt이 null) 계산할 근거가 없어 null을 반환한다.
+const TIME_DEDUCT_GRACE_MINUTES = 20;
+
+function expectedDeductedMinutes(item: CaptureReviewItem): number | null {
+  if (!item.targetRespondedAt) return null;
+  const diffMinutes = Math.floor((item.targetRespondedAt - item.ts) / 60_000);
+  return Math.max(0, diffMinutes - TIME_DEDUCT_GRACE_MINUTES);
+}
+
+// 차감 분을 "-HH:MM" 형식으로 포맷한다(사용자 지시) — 대부분 1시간 미만이라
+// 시:분 표기가 "-25분" 같은 표기보다 한눈에 들어온다.
+function formatDeductedTime(minutes: number): string {
+  const hh = Math.floor(minutes / 60);
+  const mm = minutes % 60;
+  return `-${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
 // 요일 그룹 내부 표시 순서 — "처리 대기" → "처리 완료" → "유예" → "처리 반려".
 function statusRank(
   item: CaptureReviewItem,
@@ -946,26 +970,25 @@ export function ReportReviewList({
                                       시간 차감
                                     </span>
                                     {/* 🔧 [자동 계산으로 전환] 관리자가 발신/회신시각을 수동 입력하던
-                                        기존 방식을 대체 — 이제는 스크린샷·영상 저장 시점(item.ts)부터
-                                        대상자가 "위반인정"/"이의제기" 버튼을 누른 시점까지의 간격이
-                                        20분을 초과하면 자동으로 차감 대상이 된다(사용자 지시). 대상자
-                                        응답 시각을 기록하는 시스템이 아직 없어 지금은 예상값을 계산할
-                                        수 없다 — 이후 항목에서 그 시스템이 갖춰지면 여기서 실제 차감
-                                        예상 분을 보여주도록 이어서 구현한다. 실제 반영은 "적용" 버튼을
-                                        눌렀을 때 이루어진다(예상값만 표시, 사용자 지시).
+                                        기존 방식을 대체 — 스크린샷·영상 저장 시점(item.ts)부터 대상자가
+                                        "위반인정"/"이의제기" 버튼을 누른 시점(targetRespondedAt)까지의
+                                        간격에서 20분 유예를 뺀 초과분을 예상 차감으로 보여준다(사용자
+                                        지시: "적용" 버튼을 누르지 않아도 출력되어야 함). 실제 시트 반영은
+                                        여전히 "적용" 버튼을 눌렀을 때 확정값(penalty.deductedMinutes)으로
+                                        이루어진다 — 그 전까지는 이 예상값만 표시.
                                     */}
                                     <SubRow
                                       label="예상 차감"
-                                      value={
-                                        applied[item.id]?.penalty && applied[item.id]!.penalty!.deductedMinutes > 0
-                                          ? `-${applied[item.id]!.penalty!.deductedMinutes}분`
-                                          : "대상자 응답 대기 중"
-                                      }
-                                      valueClassName={
-                                        applied[item.id]?.penalty && applied[item.id]!.penalty!.deductedMinutes > 0
-                                          ? "text-destructive"
-                                          : undefined
-                                      }
+                                      value={(() => {
+                                        const confirmed = applied[item.id]?.penalty?.deductedMinutes;
+                                        if (confirmed !== undefined && confirmed !== null) {
+                                          return formatDeductedTime(confirmed);
+                                        }
+                                        const expected = expectedDeductedMinutes(item);
+                                        if (expected !== null) return formatDeductedTime(expected);
+                                        return "대상자 응답 대기 중";
+                                      })()}
+                                      valueClassName="text-destructive"
                                     />
                                   </div>
 

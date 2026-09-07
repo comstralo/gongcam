@@ -64,6 +64,29 @@ function statusLabel(item: MyOutputPenItem): string {
   return `${label} ${approvedByAdmin ? "승인" : "미승인"} (${outcome})`;
 }
 
+// 시간 차감 예상 분 — 관리자가 "적용" 버튼을 눌러 발신~회신 시각을 직접
+// 입력해야만 실제 penalty.deductedMinutes가 확정되지만(서버 applyTimeDeduction),
+// 그 전에도 "예상 차감"을 보여줘야 한다(사용자 지시: 적용 버튼을 누르지
+// 않아도 출력되어야 함). 접수 시각(item.ts)부터 대상자 응답 시각
+// (targetRespondedAt)까지의 경과에서 20분(서버 TIME_DEDUCT_GRACE_MINUTES와
+// 동일) 유예를 뺀 초과분을 예상값으로 계산한다 — 20분 이하로 응답했으면
+// 0을 반환한다(차감 없음, "-00:00"으로 표시). 아직 응답이 없으면
+// (targetRespondedAt이 null) 계산할 근거가 없어 null을 반환한다.
+const TIME_DEDUCT_GRACE_MINUTES = 20;
+
+function expectedDeductedMinutes(item: MyOutputPenItem): number | null {
+  if (!item.targetRespondedAt) return null;
+  const diffMinutes = Math.floor((item.targetRespondedAt - item.ts) / 60_000);
+  return Math.max(0, diffMinutes - TIME_DEDUCT_GRACE_MINUTES);
+}
+
+// 차감 분을 "-HH:MM" 형식으로 포맷한다(사용자 지시).
+function formatDeductedTime(minutes: number): string {
+  const hh = Math.floor(minutes / 60);
+  const mm = minutes % 60;
+  return `-${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
 // "송출 P 대상 처리"(관리자용 ReportReviewList)와 동일한 요일별 아코디언 →
 // 항목별 토글 → 캡처 미리보기 구조를 재활용한다(사용자 지시). 이 화면은
 // 두 가지 서로 다른 항목을 같은 섹션에 함께 보여준다(사용자 지시):
@@ -385,13 +408,15 @@ export function MyOutputPenSection({ refreshSignal }: { refreshSignal?: number }
                                         </span>
                                         <SubRow
                                           label="예상 차감"
-                                          value={
-                                            received!.penalty && received!.penalty.deductedMinutes > 0
-                                              ? `-${received!.penalty.deductedMinutes}분`
-                                              : received!.targetResponseAuto
-                                                ? "최대 90분"
-                                                : "대상자 응답 대기 중"
-                                          }
+                                          value={(() => {
+                                            const confirmed = received!.penalty?.deductedMinutes;
+                                            if (confirmed !== undefined && confirmed !== null) {
+                                              return formatDeductedTime(confirmed);
+                                            }
+                                            const expected = expectedDeductedMinutes(received!);
+                                            if (expected !== null) return formatDeductedTime(expected);
+                                            return "대상자 응답 대기 중";
+                                          })()}
                                           valueClassName="text-destructive"
                                         />
                                       </div>
