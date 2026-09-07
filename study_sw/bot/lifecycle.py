@@ -208,47 +208,68 @@ def cleanup_and_exit(ctx, signum=None, frame=None):
 
     print("\n🚨 [시스템] 프로그램 종료 신호 감지! 브라우저를 안전하게 닫습니다.")
 
-    # 🔧 [버그 수정] 원래는 이 함수가 stop_event/stop_all_thread를 전혀
-    # 거치지 않고 곧장 os._exit(0)으로 직행했다 — SIGTERM/SIGINT/SIGHUP은
-    # 모두 이 함수로 연결되므로(study_manager_260418.py), 관리자가 봇을
-    # "정상적으로" 재시작할 때마다(터미널 Ctrl+C, 배포 스크립트의 SIGTERM
-    # 등) 진행 중이던 모든 캡처 스레드가 tracking_capture의 정상 중단
-    # 처리(완전한 재개 정보를 남기는 경로, stop_event.is_set() 분기)를
-    # 타지 못한 채 즉시 죽었다. 즉사 방어(threads.py의 inflight snapshot)가
-    # 원래 대비하려던 건 "atexit/signal 핸들러조차 못 타는" OOM/kill -9/
-    # 정전 같은 진짜 예외 상황인데, 실제로는 정상 종료 신호를 받을 때마다
-    # 매번 그 예외 상황과 동일하게 취급됐다. stop_all_thread()를 먼저
-    # 호출해 각 스레드가 정상 중단 처리(재개 정보 저장, 시트 기록 완료
-    # 대기 등)를 마칠 시간을 준 뒤에 종료한다 — os._exit(0)로 최종
-    # 종료하는 것 자체는 그대로 유지한다(데몬 스레드가 종료를 막는 것을
-    # 방지하려는 기존 의도).
+    # 🔧 [버그 수정] 재진입 가드(_cleanup_in_progress)는 이 함수가 os._exit로
+    # 끝나는 것을 전제로 "두 번째 호출은 항상 재진입"이라고 판단한다 —
+    # 그런데 원래는 kill_selenium_processes() 호출(맨 아래)에 예외 처리가
+    # 없었다. 만약 이 호출이나 그 내부 루프가 예상 못 한 예외를 던지면
+    # cleanup_and_exit가 os._exit에 끝내 도달하지 못한 채 예외로 중간
+    # 이탈했다 — 그러면 _cleanup_in_progress는 True로 영구 고정된 채
+    # 프로세스는 계속 살아있을 수 있고(시그널 핸들러 밖으로 예외가 새면
+    # 인터프리터가 죽지 않는다), 그 이후 관리자가 보내는 모든 정상적인
+    # 재종료 신호가 stop_all_thread의 정리 작업 없이 곧장 os._exit(1)
+    # 강제종료로 처리됐다 — 이 가드가 막으려던 "정리 도중 끊김"을 가드
+    # 자신이 만들어내는 자기모순이었다. try/finally로 함수 본문 전체를
+    # 감싸, 어떤 단계에서 무슨 예외가 나든 finally에서 반드시 os._exit이
+    # 실행되게 한다(각 정리 단계의 개별 try/except는 "그 단계가 실패해도
+    # 다음 단계는 계속 시도한다"는 의미로 그대로 유지 — 이 finally는
+    # "혹시 그 방어망까지 뚫는 완전히 예상 못 한 예외"에 대한 마지막
+    # 안전망이다).
     try:
-        stop_all_thread(ctx)
-    except Exception:
-        pass
+        # 🔧 [버그 수정] 원래는 이 함수가 stop_event/stop_all_thread를 전혀
+        # 거치지 않고 곧장 os._exit(0)으로 직행했다 — SIGTERM/SIGINT/SIGHUP은
+        # 모두 이 함수로 연결되므로(study_manager_260418.py), 관리자가 봇을
+        # "정상적으로" 재시작할 때마다(터미널 Ctrl+C, 배포 스크립트의 SIGTERM
+        # 등) 진행 중이던 모든 캡처 스레드가 tracking_capture의 정상 중단
+        # 처리(완전한 재개 정보를 남기는 경로, stop_event.is_set() 분기)를
+        # 타지 못한 채 즉시 죽었다. 즉사 방어(threads.py의 inflight snapshot)가
+        # 원래 대비하려던 건 "atexit/signal 핸들러조차 못 타는" OOM/kill -9/
+        # 정전 같은 진짜 예외 상황인데, 실제로는 정상 종료 신호를 받을 때마다
+        # 매번 그 예외 상황과 동일하게 취급됐다. stop_all_thread()를 먼저
+        # 호출해 각 스레드가 정상 중단 처리(재개 정보 저장, 시트 기록 완료
+        # 대기 등)를 마칠 시간을 준 뒤에 종료한다.
+        try:
+            stop_all_thread(ctx)
+        except Exception:
+            pass
 
-    # 추가: 서브프로세스 종료
-    try:
-        if ctx.cam_process is not None:
-            ctx.cam_process.terminate()
-            print("✅ [시스템] 캠 매니저 서브프로세스 종료 완료.")
-    except Exception:
-        pass
+        # 추가: 서브프로세스 종료
+        try:
+            if ctx.cam_process is not None:
+                ctx.cam_process.terminate()
+                print("✅ [시스템] 캠 매니저 서브프로세스 종료 완료.")
+        except Exception:
+            pass
 
-    try:
-        if ctx.driver is not None:
-            ctx.driver.quit()  # 크롬 브라우저 정상 종료
-            print("✅ [시스템] 크롬 브라우저 종료 완료.")
-    except Exception as e:
-        pass
+        try:
+            if ctx.driver is not None:
+                ctx.driver.quit()  # 크롬 브라우저 정상 종료
+                print("✅ [시스템] 크롬 브라우저 종료 완료.")
+        except Exception:
+            pass
 
-    # 프로세스 잔해 완전 박살 (Windows 기준)
-    # 주의: 이 명령어는 사용자가 개인적으로 띄워둔 다른 모든 크롬창도 닫아버릴 수 있습니다.
-    kill_selenium_processes()
-    print("✅ [시스템] 파이썬 프로그램을 완전히 종료합니다.")
-
-    # sys.exit() 대신 os._exit()을 사용하여 대기 중인 다른 스레드 무시하고 즉시 종료
-    os._exit(0)
+        # 프로세스 잔해 완전 박살 (Windows 기준)
+        # 주의: 이 명령어는 사용자가 개인적으로 띄워둔 다른 모든 크롬창도 닫아버릴 수 있습니다.
+        try:
+            kill_selenium_processes()
+        except Exception:
+            pass
+        print("✅ [시스템] 파이썬 프로그램을 완전히 종료합니다.")
+    finally:
+        # sys.exit() 대신 os._exit()을 사용하여 대기 중인 다른 스레드 무시하고 즉시 종료.
+        # try 블록 안에서 무슨 일이 있었든(정상 완료든 예상 못 한 예외든)
+        # 이 지점에는 반드시 도달한다 — _cleanup_in_progress가 True로 남은 채
+        # 프로세스만 계속 살아있는 상태를 만들지 않는다.
+        os._exit(0)
 
 
 # (Windows 콘솔 X 버튼 감지용 핸들러)
