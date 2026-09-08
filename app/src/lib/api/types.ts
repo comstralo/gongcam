@@ -803,6 +803,11 @@ export type CaptureReviewItem = {
   // "취소"가 이미 부여된 제보상점을 되돌릴 수 있어야 한다. 실패 기록이면
   // { error: string }.
   merit: ReportMeritResult | { error: string } | null;
+  // "유예" 결정에서만 채워진다 — 벌점 슬롯(penalty)은 면제해도 화각 요청
+  // 응답 지연에 대한 시간 차감은 별도로 적용되므로(사용자 지시: "유예도
+  // 적용만 안 됐을 뿐 확정으로 표시"), 그 확정값을 "확정 차감시간"에
+  // 보여주기 위해 필요하다. 지연이 없었거나(20분 이하) 유예가 아니면 null.
+  timeDeduction: TimeDeductionResult | null;
 };
 
 // "내 화각 점검" 기록 — GET /my-captures가 내려주는 항목. 관리자 목록
@@ -850,6 +855,9 @@ export type MyOutputPenItem = {
   // 대신 확정값을 보여주는 것과 동일한 패턴).
   penalty: OutputPenaltyResult | null;
   merit: ReportMeritResult | { error: string } | null;
+  // "유예" 결정에서만 채워지는 시간 차감 확정값(관리자 화면과 동일 — 벌점은
+  // 면제돼도 응답 지연 시간 차감은 별도 적용됨).
+  timeDeduction: TimeDeductionResult | null;
 };
 
 export type MyOutputPenResponse = {
@@ -902,6 +910,15 @@ export type ReportMeritResult = {
   col: string;
 };
 
+// "유예" 결정에서 벌점 슬롯(OutputPenaltyResult)과 별개로 응답 지연 시간
+// 차감만 적용됐을 때의 확정값(사용자 지시: 유예도 확인이 늦으면 시간
+// 차감은 그대로 받아야 함 — 벌점 면제와 시간 차감은 별개).
+export type TimeDeductionResult = {
+  number: string;
+  deductedMinutes: number;
+  dayCol: string | null;
+};
+
 export type CaptureDecideResponse = {
   ok: boolean;
   penalty?: OutputPenaltyResult | null;
@@ -909,6 +926,8 @@ export type CaptureDecideResponse = {
   // { error: string } 형태로 온다 — 대상자 페널티는 이미 반영됐을 수 있어
   // 자동 롤백하지 않고 관리자에게 알리기만 한다.
   merit?: ReportMeritResult | { error: string } | null;
+  // decision === "deferred"일 때만 채워진다(응답 지연 시간 차감).
+  timeDeduction?: TimeDeductionResult | null;
 };
 
 export type CaptureDeleteResponse = {

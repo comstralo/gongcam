@@ -22,6 +22,7 @@ import type {
   CaptureVoteResponse,
   OutputPenaltyResult,
   ReportMeritResult,
+  TimeDeductionResult,
 } from "@/lib/api/types";
 
 // "적용"/"송출 P 적용 (불가)"/"유예" 결정 한 건의 화면 상태 — 대상자 페널티
@@ -33,6 +34,9 @@ type AppliedResult = {
   decision: "approved" | "rejected_recognized" | "deferred";
   penalty: OutputPenaltyResult | null;
   merit: ReportMeritResult | { error: string } | null;
+  // "유예" 결정에서만 채워지는 응답 지연 시간 차감 확정값(벌점과 별개로
+  // 적용됨).
+  timeDeduction: TimeDeductionResult | null;
 };
 
 const STATUS_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
@@ -481,7 +485,12 @@ export function ReportReviewList({
         } else {
           setApplied((prev) => ({
             ...prev,
-            [item.id]: { decision, penalty: data.penalty ?? null, merit: data.merit ?? null },
+            [item.id]: {
+              decision,
+              penalty: data.penalty ?? null,
+              merit: data.merit ?? null,
+              timeDeduction: data.timeDeduction ?? null,
+            },
           }));
         }
         // 🔧 [버그 수정] "적용"/"유예" 결정은 같은 대상자의 다른 대기 항목의
@@ -1092,9 +1101,21 @@ export function ReportReviewList({
                                       // 실제 확정값 대신 나왔다. 서버가 함께 내려주는 item.penalty
                                       // (봇 manifest 스냅샷)를 폴백으로 사용해, 새로고침 여부와
                                       // 무관하게 항상 정확한 확정값을 보여준다.
-                                      const confirmed =
-                                        applied[item.id]?.penalty?.deductedMinutes ?? item.penalty?.deductedMinutes;
-                                      const isConfirmed = confirmed !== undefined && confirmed !== null;
+                                      // 🔧 [유예도 확정으로 표시] "유예"는 벌점만 면제될 뿐 응답
+                                      // 지연 시간 차감은 별도로 적용되므로(사용자 지시), penalty가
+                                      // 아니라 reviewStatus가 pending을 벗어났는지로 확정 여부를
+                                      // 판단한다 — 유예 건은 item.timeDeduction(있으면 실제 차감,
+                                      // 없으면 지연이 20분 이하였다는 확정된 0)을 쓴다.
+                                      const localApplied = applied[item.id];
+                                      const isDecided = !!localApplied || item.reviewStatus !== "pending";
+                                      const confirmed = isDecided
+                                        ? (localApplied?.penalty?.deductedMinutes ??
+                                            item.penalty?.deductedMinutes ??
+                                            localApplied?.timeDeduction?.deductedMinutes ??
+                                            item.timeDeduction?.deductedMinutes ??
+                                            0)
+                                        : undefined;
+                                      const isConfirmed = confirmed !== undefined;
                                       const deductedMinutes = isConfirmed ? confirmed : expectedDeductedMinutes(item) ?? 0;
                                       return (
                                         <SubRow

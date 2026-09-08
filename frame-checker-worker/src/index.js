@@ -3492,6 +3492,9 @@ async function handleMyOutputPen(req, env, origin, url) {
       // 저장되어 있다 — "예상 차감"/"적용 시"에 확정값을 보여줄 수 있게 전달.
       penalty: item.penalty || null,
       merit: item.merit || null,
+      // "유예" 결정에서만 채워지는 시간 차감 확정값(사용자 지시: 유예도
+      // 확정으로 표시).
+      timeDeduction: item.timeDeduction || null,
     }));
     return json({ items }, 200, origin);
   } catch (err) {
@@ -4014,6 +4017,20 @@ async function applyReportMerit(env, accessToken, fileId, reporterEmail, reason,
 // col은 승인 응답에 포함된 실제 기록 열(F~K)을 그대로 넘겨받아 사용한다.
 // deductedMinutes/dayCol이 있으면(회신 지연으로 시간 차감이 함께 기록됐던
 // 경우) 27행의 그 요일 칸에서도 동일한 분만큼 되돌린다.
+// applyTimeDeduction()이 개인 탭 27행에 기록한 지연 차감분을 되돌린다
+// (cancelOutputPenalty의 시간 차감 되돌림 부분과 동일 로직 — "유예 취소"
+// (revert)처럼 슬롯 자체는 없이 시간 차감만 되돌려야 하는 경우를 위해
+// 분리했다).
+async function cancelTimeDeduction(env, accessToken, fileId, memberNumber, deductedMinutes, dayCol) {
+  if (!(deductedMinutes > 0) || !dayCol) return;
+  const cell = `${memberNumber}!${dayCol}${TIME_DEDUCT_ROW}`;
+  const existingRows = await getSheetValues(env, accessToken, fileId, cell);
+  const existingMinutes = parseSignedHHMM(existingRows[0] && existingRows[0][0]);
+  const restoredMinutes = existingMinutes + deductedMinutes;
+  const newValue = restoredMinutes === 0 ? "" : formatSignedHHMM(Math.abs(restoredMinutes), restoredMinutes < 0 ? "-" : "+");
+  await writeSheetValues(env, accessToken, fileId, [{ range: cell, values: [[newValue]] }]);
+}
+
 async function cancelOutputPenalty(env, accessToken, fileId, memberNumber, col, deductedMinutes, dayCol) {
   if (!OUTPUT_PEN_SLOT_COLUMNS.includes(col)) {
     throw new Error(`유효하지 않은 열입니다: ${col}`);
@@ -4027,19 +4044,7 @@ async function cancelOutputPenalty(env, accessToken, fileId, memberNumber, col, 
   if (sheetId !== null) {
     writes.push(writeCellNote(env, accessToken, fileId, sheetId, row - 1, col, null));
   }
-  if (deductedMinutes > 0 && dayCol) {
-    const cell = `${memberNumber}!${dayCol}${TIME_DEDUCT_ROW}`;
-    writes.push(
-      (async () => {
-        const existingRows = await getSheetValues(env, accessToken, fileId, cell);
-        const existingMinutes = parseSignedHHMM(existingRows[0] && existingRows[0][0]);
-        const restoredMinutes = existingMinutes + deductedMinutes;
-        const newValue =
-          restoredMinutes === 0 ? "" : formatSignedHHMM(Math.abs(restoredMinutes), restoredMinutes < 0 ? "-" : "+");
-        await writeSheetValues(env, accessToken, fileId, [{ range: cell, values: [[newValue]] }]);
-      })()
-    );
-  }
+  writes.push(cancelTimeDeduction(env, accessToken, fileId, memberNumber, deductedMinutes, dayCol));
   await Promise.all(writes);
 }
 
@@ -4171,6 +4176,7 @@ async function handleAdminCaptureDecide(req, env, origin) {
 
   let penaltyResult = null;
   let meritResult = null;
+  let timeDeductionResult = null;
   if (decision === "approved" || decision === "rejected_recognized" || decision === "deferred") {
     try {
       const accessToken = await getServiceAccountAccessToken(env);
@@ -4179,6 +4185,30 @@ async function handleAdminCaptureDecide(req, env, origin) {
       if (decision === "approved") {
         if (!nickname) return json({ error: "nickname이 필요합니다." }, 400, origin);
         penaltyResult = await applyOutputPenalty(env, accessToken, fileId, nickname, reason, ts, sendTime, replyTime, id);
+      } else if (decision === "deferred") {
+        // 🔧 [유예도 응답 지연 시간 차감] "유예"는 당일 이미 1회 적용을 받아
+        // 벌점/송출P 슬롯만 면제될 뿐, 화각 요청에 늦게 응답한 사실 자체는
+        // 그대로 남는다(사용자 지시: "제보 확인 자체를 늦게 해서 엉망인
+        // 화각으로 다른 사람에게 피해를 끼치는" 문제와 벌점 면제는 별개).
+        // applyOutputPenalty(슬롯 채우기)는 건너뛰되, 그 안에서만 호출되던
+        // applyTimeDeduction을 여기서 독립적으로 호출해 20분 초과 지연분을
+        // 그대로 개인 탭 27행에서 차감한다. "송출 P 적용 (불가)"
+        // (rejected_recognized, 잔여 슬롯 없음)는 이번 지시 범위 밖이라
+        // 그대로 둔다(사용자 확인).
+        if (nickname) {
+          const accessTokenForMember = accessToken;
+          const member = (await listAllMembers(env, accessTokenForMember, fileId)).find((m) => m.name === nickname);
+          if (member) {
+            const timeDeduction = await applyTimeDeduction(env, accessTokenForMember, fileId, member.number, ts, sendTime, replyTime);
+            if (timeDeduction.deductedMinutes > 0) {
+              timeDeductionResult = {
+                number: member.number,
+                deductedMinutes: timeDeduction.deductedMinutes,
+                dayCol: timeDeduction.dayCol,
+              };
+            }
+          }
+        }
       }
       const alreadyReceivedToday = await hasReporterAlreadyReceivedMeritToday(env, reporterEmail, Date.now());
       if (alreadyReceivedToday) {
@@ -4204,14 +4234,14 @@ async function handleAdminCaptureDecide(req, env, origin) {
     }
   }
 
-  // penalty/merit을 봇 manifest에도 함께 저장해 둔다 — 관리자가 새로고침한
-  // 뒤에도 "반려 취소"/"폐기"가 무엇을 되돌려야 하는지 프론트 로컬 state
-  // 없이 이 기록만으로 알 수 있게 하기 위함(GET /admin/captures가 그대로
-  // 다시 내려준다).
+  // penalty/merit/timeDeduction을 봇 manifest에도 함께 저장해 둔다 —
+  // 관리자가 새로고침한 뒤에도 "반려 취소"/"폐기"가 무엇을 되돌려야
+  // 하는지 프론트 로컬 state 없이 이 기록만으로 알 수 있게 하기 위함
+  // (GET /admin/captures가 그대로 다시 내려준다).
   const data = await proxyToBotDashboard(env, "/captures/decide", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id, decision, penalty: penaltyResult, merit: meritResult }),
+    body: JSON.stringify({ id, decision, penalty: penaltyResult, merit: meritResult, timeDeduction: timeDeductionResult }),
   });
   if (!data) {
     // 🔧 [버그 수정] 원래는 여기서 502만 반환했다 — 그런데 위에서 이미
@@ -4256,12 +4286,31 @@ async function handleAdminCaptureDecide(req, env, origin) {
         );
       }
     }
-    if (penaltyResult || meritResult) {
+    if (timeDeductionResult && timeDeductionResult.number) {
+      try {
+        const accessToken = await getServiceAccountAccessToken(env);
+        await cancelTimeDeduction(
+          env,
+          accessToken,
+          env.GOOGLE_SHEET_FILE_ID,
+          timeDeductionResult.number,
+          timeDeductionResult.deductedMinutes || 0,
+          timeDeductionResult.dayCol || null
+        );
+      } catch (rollbackErr) {
+        return json(
+          { error: `봇에 연결할 수 없고, 시간 차감 롤백도 실패했습니다(수동 확인 필요: ${rollbackErr.message}).` },
+          502,
+          origin
+        );
+      }
+    }
+    if (penaltyResult || meritResult || timeDeductionResult) {
       await invalidateMemberCache(env);
     }
     return json({ error: "봇에 연결할 수 없습니다. 시트 반영은 자동으로 되돌렸으니 다시 시도해주세요." }, 502, origin);
   }
-  return json({ ...data, penalty: penaltyResult, merit: meritResult }, 200, origin);
+  return json({ ...data, penalty: penaltyResult, merit: meritResult, timeDeduction: timeDeductionResult }, 200, origin);
 }
 
 // 특정 캡처 id에 저장된 penalty/merit을 찾는다 — 관리자가 새로고침해
@@ -4279,7 +4328,7 @@ async function handleAdminCaptureDecide(req, env, origin) {
 async function findStoredPenaltyMerit(env, id) {
   const data = await proxyToBotDashboard(env, `/captures/one?id=${encodeURIComponent(id)}`);
   const item = data && data.item;
-  return { penalty: item?.penalty || null, merit: item?.merit || null };
+  return { penalty: item?.penalty || null, merit: item?.merit || null, timeDeduction: item?.timeDeduction || null };
 }
 
 // capture id의 봇 manifest상 현재 reviewStatus만 가볍게 조회한다
@@ -4358,8 +4407,9 @@ async function handleAdminCaptureRevert(req, env, origin) {
   // cancelReportMerit을 중복 호출하게 된다(이미 빈 슬롯을 또 지우거나,
   // 그 사이 다른 제보가 같은 슬롯을 채웠다면 잘못 지울 위험) — 호출자가
   // "직접 이미 처리했다"고 명시하면 폴백을 건너뛴다.
+  let timeDeduction = null;
   if (!merit && !skipMeritLookup) {
-    ({ merit } = await findStoredPenaltyMerit(env, id));
+    ({ merit, timeDeduction } = await findStoredPenaltyMerit(env, id));
   }
 
   if (merit && merit.number && merit.col) {
@@ -4369,6 +4419,26 @@ async function handleAdminCaptureRevert(req, env, origin) {
       await invalidateMemberCache(env); // 제보상점 슬롯이 바뀌었으므로 exitStatus 캐시 무효화.
     } catch (err) {
       return json({ error: "제보상점 회수 실패: " + err.message }, 500, origin);
+    }
+  }
+  // 🔧 [유예 취소 시 시간 차감도 되돌림] "유예" 결정에서 별도로 적용된
+  // 응답 지연 시간 차감(timeDeduction)이 있으면, 재검토를 위해 되돌릴 때
+  // 함께 되돌린다(사용자 지시) — merit과 달리 이 값은 프론트가 로컬
+  // state로 들고 있지 않으므로(applied에 없음) 항상 manifest 폴백 조회
+  // 결과만 사용한다.
+  if (timeDeduction && timeDeduction.number) {
+    try {
+      const accessToken = await getServiceAccountAccessToken(env);
+      await cancelTimeDeduction(
+        env,
+        accessToken,
+        env.GOOGLE_SHEET_FILE_ID,
+        timeDeduction.number,
+        timeDeduction.deductedMinutes || 0,
+        timeDeduction.dayCol || null
+      );
+    } catch (err) {
+      return json({ error: "시간 차감 회수 실패: " + err.message }, 500, origin);
     }
   }
 

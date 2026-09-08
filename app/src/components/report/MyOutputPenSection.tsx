@@ -456,8 +456,16 @@ export function MyOutputPenSection({
                                           }
                                         />
                                         {(() => {
-                                          const confirmed = received!.penalty?.deductedMinutes;
-                                          const isConfirmed = confirmed !== undefined && confirmed !== null;
+                                          // 🔧 [유예도 확정으로 표시] "유예"는 벌점만 면제될 뿐 응답
+                                          // 지연 시간 차감은 별도로 적용되므로(사용자 지시), penalty가
+                                          // 아니라 reviewStatus가 pending을 벗어났는지로 확정 여부를
+                                          // 판단한다 — 유예 건은 timeDeduction(있으면 실제 차감, 없으면
+                                          // 지연이 20분 이하였다는 확정된 0)을 쓴다.
+                                          const isDecided = received!.reviewStatus !== "pending";
+                                          const confirmed = isDecided
+                                            ? received!.penalty?.deductedMinutes ?? received!.timeDeduction?.deductedMinutes ?? 0
+                                            : undefined;
+                                          const isConfirmed = confirmed !== undefined;
                                           const deductedMinutes = isConfirmed ? confirmed : expectedDeductedMinutes(received!) ?? 0;
                                           return (
                                             <SubRow

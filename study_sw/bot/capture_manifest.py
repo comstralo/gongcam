@@ -89,7 +89,11 @@ def get_capture(capture_id):
 # 동일 구조). manifest 자체에 저장해 두어야, 관리자가 새로고침한 뒤에도
 # "반려 취소"/"삭제"가 어느 슬롯을 되돌려야 하는지 알 수 있다(프론트 로컬
 # state는 새로고침하면 사라지므로 이 기록에 의존할 수 없다).
-def set_decision(capture_id, decision, penalty=None, merit=None):
+# timeDeduction: "유예" 결정에서만 쓰인다 — 벌점 슬롯(penalty)은 면제해도
+# 화각 요청 응답 지연에 대한 시간 차감은 별도로 적용되므로(index.js의
+# TimeDeductionResult, {number, deductedMinutes, dayCol}), "유예 취소" 시
+# 이 기록으로 무엇을 되돌려야 하는지 알 수 있게 함께 저장한다.
+def set_decision(capture_id, decision, penalty=None, merit=None, time_deduction=None):
     with _manifest_lock:
         data = _load()
         if capture_id not in data:
@@ -98,6 +102,7 @@ def set_decision(capture_id, decision, penalty=None, merit=None):
         data[capture_id]["decidedAt"] = int(time.time() * 1000)
         data[capture_id]["penalty"] = penalty
         data[capture_id]["merit"] = merit
+        data[capture_id]["timeDeduction"] = time_deduction
         _save(data)
     return True
 
@@ -105,9 +110,9 @@ def set_decision(capture_id, decision, penalty=None, merit=None):
 # "반려 취소" — 이미 내린 결정(approved/rejected/rejected_recognized)을 되돌려
 # 다시 관리자가 판단할 수 있는 "처리 대기" 상태로 되돌린다. decidedAt도 함께
 # 지워야 RECENT_DECISION_WINDOW_MS 창이 끝난 뒤 이 항목이 다시 사라지지 않는다.
-# penalty/merit 기록도 함께 지운다 — 시트 반영분은 호출자(웹 index.js)가
-# 이 함수를 부르기 전에 이미 cancelOutputPenalty/cancelReportMerit로
-# 되돌렸다는 전제다.
+# penalty/merit/timeDeduction 기록도 함께 지운다 — 시트 반영분은 호출자
+# (웹 index.js)가 이 함수를 부르기 전에 이미 cancelOutputPenalty/
+# cancelReportMerit/cancelTimeDeduction으로 되돌렸다는 전제다.
 # 🔧 [버그 수정] targetResponse(대상자의 위반인정/이의제기)는 절대 지우지
 # 않는다(사용자 지시: "사용자가 이의제기나 위반인정을 하면 다시 응답
 # 대기로 돌아가는 일은 없어야 한다"). 한때는 재검토 시 대상자가 다시
@@ -138,6 +143,7 @@ def revert_decision(capture_id):
         data[capture_id].pop("decidedAt", None)
         data[capture_id].pop("penalty", None)
         data[capture_id].pop("merit", None)
+        data[capture_id].pop("timeDeduction", None)
         _save(data, target_path)
     return True
 
