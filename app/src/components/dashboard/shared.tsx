@@ -229,9 +229,11 @@ export function SubRow({
 }
 
 // 세션 카드/알림 설정 등 여러 페이지에서 반복되는 옅은 배경의 정보 카드.
+// 🔧 [여백 확보, 2026-09] SectionCard와 동일한 이유로 내부 패딩을 한
+// 단계씩 키웠다(p-3.5→p-4, sm:p-4.5→sm:p-5).
 export function InfoCard({ className, children, ...props }: React.ComponentProps<"div">) {
   return (
-    <div className={cn("rounded-lg border bg-muted p-3.5 shadow-xs sm:p-4.5", className)} {...props}>
+    <div className={cn("rounded-lg border bg-muted p-4 shadow-xs sm:p-5", className)} {...props}>
       {children}
     </div>
   );

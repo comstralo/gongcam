@@ -32,15 +32,19 @@
   }
 }
 
-/* 라벨/캡션 전용 마이크로 타이포 — text-xs(12px)보다 한 단계 작은 두 단계.
-   기존에 text-[10px]/text-[11px] 임의값으로 흩어져 있던 것을 이름 붙은 토큰으로 승격. */
+/* 라벨/캡션 전용 마이크로 타이포. 🔧 [가독성 조정, 2026-09] 원래
+   10px/11px(text-xs 12px보다 한 단계 작게)였는데, 대시보드 핵심 정보를
+   보여주는 SubRow 등 50개 파일에서 널리 쓰이다 보니 모바일 최소 가독
+   기준(12px)보다 작아 답답하다는 피드백(사용자 지시: "가독성을
+   최우선으로")으로 두 단계 모두 12px대로 올렸다 — 여전히 text-xs보다
+   살짝 작은 두 단계를 유지하되, 모바일에서도 무리 없이 읽히는 하한선. */
 @utility text-micro {
-  font-size: 0.625rem; /* 10px */
-  line-height: 0.875rem; /* 14px */
+  font-size: 0.75rem; /* 12px */
+  line-height: 1rem; /* 16px */
 }
 @utility text-micro-lg {
-  font-size: 0.6875rem; /* 11px */
-  line-height: 1rem; /* 16px */
+  font-size: 0.78125rem; /* 12.5px */
+  line-height: 1.125rem; /* 18px */
 }
 
 /* 화면 하단에 고정된 요소(탭바)용 상향 그림자 — 일반 box-shadow는 아래로만 떨어지므로

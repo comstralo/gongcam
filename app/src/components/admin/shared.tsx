@@ -62,8 +62,11 @@ export function AdminListSkeleton({ rows = 3 }: { rows?: number }) {
 // 관리자 탭에서 접이식 섹션 하나를 감싸는 카드. 회색 배경(bg-muted)을 쓰면
 // 내용물이 흐리게 보여 비활성화된 것처럼 착시가 생기므로, 배경은 부모
 // Card와 같은 흰 바탕(bg-card)을 유지하고 테두리로만 섹션 경계를 드러낸다.
+// 🔧 [여백 확보, 2026-09] AppShell 좌우 여백을 모바일에서 줄여 폭을
+// 넓힌 뒤(사용자 지시), 그만큼 카드 안쪽이 상대적으로 답답해 보인다는
+// 피드백으로 내부 패딩을 한 단계씩 키웠다(p-3.5→p-4, sm:p-4→sm:p-5).
 export function SectionCard({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("rounded-xl border border-border bg-card p-3.5 sm:p-4", className)}>{children}</div>;
+  return <div className={cn("rounded-xl border border-border bg-card p-4 sm:p-5", className)}>{children}</div>;
 }
 
 // 새로고침 버튼(size-7 = 28px 정사각형) 테두리 바로 바깥을 도는 원형

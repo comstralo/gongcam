@@ -28,7 +28,14 @@ export function AppShell({ children, title, titleIcon: TitleIcon, hideEyebrow, f
   return (
     <div
       className={cn(
-        "flex w-full flex-col items-center gap-4.5 p-4",
+        // 🔧 [모바일 가독성] 좌우 여백이 AppShell(여기)+SectionCard(내부
+        // p-3.5)+개별 카드(p-3)로 세 겹 겹쳐, 375px 화면에서 실제 텍스트
+        // 폭이 300px 아래로 줄어들며 폰트/뱃지 가독성이 떨어졌다(사용자
+        // 지적, Playwright MCP 모바일 점검에서 실측). 카드 내부 여백은
+        // 시각적 구분을 위해 그대로 두고, 가장 바깥 여백만 모바일에서
+        // 좁혀 실사용 폭을 확보한다 — sm 이상(태블릿/데스크톱)은 기존
+        // p-4 그대로 유지.
+        "flex w-full flex-col items-center gap-4.5 p-2.5 sm:p-4",
         fitToScreen ? "h-dvh overflow-hidden mobile-landscape:gap-2 mobile-landscape:p-2" : "min-h-dvh",
         session && !fitToScreen && "pb-[calc(32px+64px+env(safe-area-inset-bottom,0px))]",
         session &&
