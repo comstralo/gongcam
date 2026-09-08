@@ -86,47 +86,21 @@ export function SectionCard({ children, className }: { children: ReactNode; clas
   );
 }
 
-// 새로고침 버튼(size-7 = 28px 정사각형) 테두리 바로 바깥을 도는 원형
-// 진행률 게이지 — 다음 자동 폴링(usePollingRefresh)까지 남은 시간을
-// 보여준다(사용자 지시: "버튼 테두리에 맞춰서 테두리가 차는 방향으로,
-// 만땅이 되면 새로고침되도록"). progress는 0(방금 갱신, 링이 비어있음)
-// 에서 1(다음 갱신 직전, 링이 가득 참)로 늘어난다 — usePollingRefresh가
-// 반환하는 값(1→0, 남은 비율)을 여기서 1에서 빼 "채워지는 방향"으로
-// 뒤집어 쓴다. 순수 표시용 SVG라 렌더링 자체는 네트워크 요청과 무관하다.
-// 🔧 [버그 수정] 처음엔 버튼과 완전히 같은 28px 크기로 그려 넣었는데,
-// 버튼(variant="outline")이 불투명 배경(bg-background)을 채우고 있어
-// 뒤에 겹친 링이 완전히 가려져 전혀 안 보였다(사용자 발견) — 링을
-// 버튼보다 조금 더 큰 원(버튼 바로 바깥)으로 그려 테두리 밖으로 삐져
-// 나오게 하고, 감싸는 컨테이너 크기도 그만큼 키운다.
-function RefreshProgressRing({ progress }: { progress: number }) {
-  const size = 34;
-  const strokeWidth = 2;
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const filled = Math.max(0, Math.min(1, progress));
-  const offset = circumference * (1 - filled);
+// 🔧 [사용자 지시, 되돌림] 새로고침 버튼 테두리를 도는 원형 게이지였는데,
+// "배경색이 끝나는 지점에 가로 게이지로" 표현하길 원해 SectionHeader
+// 탭 배경 맨 아래(하단 경계선 자리)에 까는 얇은 가로 바로 바꿨다.
+// progress는 0(방금 갱신, 비어있음)에서 1(다음 갱신 직전, 가득 참)로
+// 늘어난다 — usePollingRefresh가 반환하는 값(1→0, 남은 비율)을
+// SectionHeader에서 1에서 빼 "채워지는 방향"으로 뒤집어 전달한다.
+function RefreshProgressBar({ progress }: { progress: number }) {
+  const filled = Math.max(0, Math.min(1, progress)) * 100;
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox={`0 0 ${size} ${size}`}
-      className="pointer-events-none absolute inset-0"
-      aria-hidden="true"
-    >
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={strokeWidth}
-        className="text-primary/70"
-        strokeDasharray={circumference}
-        strokeDashoffset={offset}
-        transform={`rotate(-90 ${size / 2} ${size / 2})`}
-        style={{ transition: "stroke-dashoffset 1s linear" }}
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[3px] overflow-hidden bg-black/5 dark:bg-white/10">
+      <div
+        className="h-full bg-primary/70"
+        style={{ width: `${filled}%`, transition: "width 1s linear" }}
       />
-    </svg>
+    </div>
   );
 }
 
@@ -153,7 +127,7 @@ export function SectionHeader({
   refreshProgress?: number;
 }) {
   // 🔧 [사용자 지시] 제목-본문 경계를 hr 구분선 대신 "카드 안의 탭"처럼
-  // 보이게 한다 — 헤더 영역에 은은한 배경(bg-muted/60)을 입히되, SectionCard가
+  // 보이게 한다 — 헤더 영역에 은은한 배경을 입히되, SectionCard가
   // 자체 패딩(p-2.5 sm:p-3.5)을 유지하므로 이 배경이 그 패딩 안쪽에만
   // 칠해지면 카드 가장자리까지 닿지 않아 탭처럼 안 보인다 — 음수 마진으로
   // 배경을 부모 패딩 바깥(카드 가장자리)까지 넓히고, 넓힌 만큼 자체 패딩을
@@ -163,8 +137,14 @@ export function SectionHeader({
   // (flex flex-col) 배치되다 보니, 탭 배경이 끝나는 지점에 바로 본문이
   // 붙어버려 여백 없이 딱 붙은 것처럼 보였다(사용자 지적) — mb로 헤더
   // 자신이 하단 여백을 갖게 해 모든 사용처(16곳)에서 한 번에 해결한다.
+  // 🔧 [사용자 지시] 배경을 회색(bg-muted)에서 아이보리 톤의 따뜻한
+  // 색(bg-section-header — index.css 전용 토큰, 낮은 채도 크림/브라운)
+  // 으로 변경. 기존 --accent는 primary와 같은 코랄 계열이라 채도가 높아
+  // "주황색"으로 보였다(사용자 지적) — 뱃지 등과 공유하는 --accent 대신
+  // 이 헤더 전용 토큰을 쓴다. relative를 추가해 아래 RefreshProgressBar
+  // (절대 위치)가 이 배경 하단 경계선에 정확히 깔리도록 한다.
   return (
-    <div className="-mx-2.5 -mt-2.5 mb-3.5 flex items-center justify-between gap-2 bg-muted/60 px-2.5 py-2 sm:-mx-3.5 sm:-mt-3.5 sm:mb-4 sm:px-3.5 sm:py-2.5">
+    <div className="relative -mx-2.5 -mt-2.5 mb-3.5 flex items-center justify-between gap-2 bg-section-header px-2.5 py-2 sm:-mx-3.5 sm:-mt-3.5 sm:mb-4 sm:px-3.5 sm:py-2.5">
       <CollapsibleTrigger className="flex-1">
         <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
           <Icon className="size-4 shrink-0 text-primary sm:size-5" strokeWidth={ICON_STROKE.default} />
@@ -172,20 +152,15 @@ export function SectionHeader({
         </span>
       </CollapsibleTrigger>
       {onRefresh ? (
-        <div
-          className={cn(
-            "relative flex shrink-0 items-center justify-center",
-            refreshProgress !== undefined ? "size-[34px]" : "size-7"
-          )}
-        >
-          {refreshProgress !== undefined && !loading && <RefreshProgressRing progress={1 - refreshProgress} />}
-          <Button variant="outline" size="icon-sm" onClick={onRefresh} disabled={loading} aria-label="새로고침">
-            <RotateCw className={cn("size-3.5", loading && "animate-spin")} strokeWidth={ICON_STROKE.default} />
-          </Button>
-        </div>
+        <Button variant="outline" size="icon-sm" className="shrink-0" onClick={onRefresh} disabled={loading} aria-label="새로고침">
+          <RotateCw className={cn("size-3.5", loading && "animate-spin")} strokeWidth={ICON_STROKE.default} />
+        </Button>
       ) : (
         <span className="size-7 shrink-0" aria-hidden="true" />
       )}
+      {/* 🔧 [사용자 지시] 새로고침 진행률을 버튼 테두리 원형 게이지 대신
+          "배경색이 끝나는 지점"인 탭 하단 경계선에 가로 바로 표현한다. */}
+      {refreshProgress !== undefined && !loading && <RefreshProgressBar progress={1 - refreshProgress} />}
     </div>
   );
 }

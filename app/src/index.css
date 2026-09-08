@@ -102,6 +102,7 @@
     --color-sidebar-primary: var(--sidebar-primary);
     --color-sidebar-foreground: var(--sidebar-foreground);
     --color-sidebar: var(--sidebar);
+    --color-section-header: var(--section-header);
     --color-ok: var(--ok);
     --color-ring: var(--ring);
     --color-input: var(--input);
@@ -148,6 +149,14 @@
     --border: #e7e5e3;
     --input: #e7e5e3;
     --ring: #ff5a36;
+    /* 섹션 헤더(SectionHeader) 탭 배경 전용 — 파스텔 톤의 부드러운
+       아이보리(사용자 지시: "파스텔 톤을 좋아해, 파스텔톤 아이보리로").
+       기존 --accent(#fff1ec)는 primary와 같은 코랄 계열이라 채도가
+       높아 "주황색"으로 보였고, 그다음 시도(#f5f0e6)는 명도가 낮아
+       탁해 보였다(사용자 지적) — 채도를 낮추고 명도를 올린 파스텔
+       크림톤으로 재조정. 뱃지 등과 공유하는 --accent를 바꾸면 영향
+       범위가 넓어지므로 전용 토큰을 쓴다. */
+    --section-header: #fbf8ef;
     --radius: 0.75rem;
     --sidebar: #ffffff;
     --sidebar-foreground: #1c1917;
@@ -179,6 +188,10 @@
     --border: #3a3532;
     --input: #3a3532;
     --ring: #ff7a5c;
+    /* 라이트와 동일한 역할 — 다크에서는 짙은 배경 위에 살짝 밝은
+       따뜻한 브라운 톤으로 "탭이 떠 보이는" 느낌을 낸다(파스텔 대비는
+       라이트 모드 전용 감성이라 다크는 명도차 위주로 유지). */
+    --section-header: #362d24;
     --sidebar: #292524;
     --sidebar-foreground: #fafaf9;
     --sidebar-primary: #ff7a5c;
