@@ -114,7 +114,7 @@ function applyButtonLabel(occurrence: number | null): string {
 // 실제로 계산해 보여준다(weeklyMinorPenaltyCount — attachNextOccurrence가
 // 미리 계산해 붙여준 값, 사용자 지시).
 function weeklyImpactLabel(occurrence: number | null, weeklyMinorPenaltyCount: number): string {
-  if (occurrence === 1) return "주간 총 상점 변동 없음";
+  if (occurrence === 1) return "없음";
   if (occurrence === 2 || occurrence === 3 || occurrence === 5) {
     const deduction = Math.round(weeklyMinorPenaltyCount * 0.1 * 10) / 10;
     return `주간 총 상점에서 -${deduction}점`;
@@ -1109,7 +1109,7 @@ export function ReportReviewList({
                                       label="이번 주 영향"
                                       value={
                                         !(applied[item.id]?.penalty ?? item.penalty) && item.shouldDefer
-                                          ? "주간 총 상점 변동 없음 (유예)"
+                                          ? "없음"
                                           : weeklyImpactLabel(
                                               (applied[item.id]?.penalty ?? item.penalty)?.occurrence ?? item.nextOccurrence,
                                               item.weeklyMinorPenaltyCount
