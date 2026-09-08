@@ -378,10 +378,17 @@ export function MyOutputPenSection({
                           const canRespond =
                             isReceived && received!.reviewStatus === "pending" && !received!.targetResponse;
                           return (
-                            <div
+                            // 🔧 [사용자 지시] 상세 펼치기/접기가 조건부 렌더링(즉시 나타남/
+                            // 사라짐)이라 "뚝뚝 끊기는" 느낌이 있었다 — 기존에 섹션 전체
+                            // 접기(위 Collapsible)에 이미 쓰던 base-ui Collapsible을 항목별로도
+                            // 적용해 높이가 부드럽게 펼쳐지도록 한다. open/onOpenChange로
+                            // controlled해 기존 expandedId(한 번에 하나만 펼침) 로직은 그대로 둔다.
+                            <Collapsible
                               key={item.id}
+                              open={isItemExpanded}
+                              onOpenChange={(open) => setExpandedId(open ? item.id : null)}
                               className={cn(
-                                "flex flex-col gap-2.5 rounded-lg border bg-card p-3",
+                                "flex flex-col gap-2.5 rounded-lg border bg-card p-2",
                                 // 아직 응답하지 않은 건은 대상자가 놓치기 쉬우므로(90분
                                 // 시한이 지나면 자동으로 위반인정 처리됨) 벌금 미납
                                 // 강조와 동일한 글로우 효과로 눈에 띄게 한다(사용자 지시).
@@ -477,8 +484,9 @@ export function MyOutputPenSection({
                                 </div>
                               </div>
 
-                              {isItemExpanded && (
-                                <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:gap-3.5 sm:p-5">
+                              <CollapsiblePanel className="flex flex-col">
+                                <div className="flex flex-col gap-3 pt-2.5 sm:gap-3.5">
+                                  <div className="h-px w-full bg-border" />
                                   <div className="flex flex-col gap-1.5">
                                     <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
                                       <ImageIcon className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
@@ -674,8 +682,8 @@ export function MyOutputPenSection({
                                     </>
                                   )}
                                 </div>
-                              )}
-                            </div>
+                              </CollapsiblePanel>
+                            </Collapsible>
                           );
                         })}
                       </div>

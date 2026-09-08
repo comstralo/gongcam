@@ -64,9 +64,12 @@ export function AdminListSkeleton({ rows = 3 }: { rows?: number }) {
 // Card와 같은 흰 바탕(bg-card)을 유지하고 테두리로만 섹션 경계를 드러낸다.
 // 🔧 [여백 확보, 2026-09] AppShell 좌우 여백을 모바일에서 줄여 폭을
 // 넓힌 뒤(사용자 지시), 그만큼 카드 안쪽이 상대적으로 답답해 보인다는
-// 피드백으로 내부 패딩을 한 단계씩 키웠다(p-3.5→p-4, sm:p-4→sm:p-5).
+// 🔧 [여백 재조정, 2026-09] 가독성을 위해 한 단계 키웠던 패딩(p-3.5→p-4,
+// sm:p-4→sm:p-5)이, 그 안에 다시 패딩을 갖는 개별 항목 카드와 겹쳐 좌우
+// 실사용 폭 손실이 크다는 피드백(사용자 지시: "쓸데없이 여백이 너무 크다")
+// 으로 원래 값의 2/3 수준(사용자 지시)으로 되돌렸다.
 export function SectionCard({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("rounded-xl border border-border bg-card p-4 sm:p-5", className)}>{children}</div>;
+  return <div className={cn("rounded-xl border border-border bg-card p-2.5 sm:p-3.5", className)}>{children}</div>;
 }
 
 // 새로고침 버튼(size-7 = 28px 정사각형) 테두리 바로 바깥을 도는 원형
