@@ -833,44 +833,65 @@ async function _readLeaveHistory(env, weekOf) {
   }
 }
 
+// fileId당 키가 하나뿐이라 무조건 KV .delete() 대상이 되는 6종(회원별로
+// 갈라지는 outputPenSlots:/reportScore:는 별도 처리 — 아래 함수의 prefix
+// 루프에서 인메모리에 존재하는 것만 지운다).
+const MEMBER_CACHE_UNCONDITIONAL_KEYS = ["members", "meta", "exitStatus", "memberRows", "meritRank", "penSlotGrid", "weeklyPaidFine"];
+
+// 🔧 [불필요한 KV 삭제 절감, 2026-09] 호출부가 실제로 건드린 시트 범위에
+// 맞는 그룹만 넘기면, 무관한 캐시까지 매번 함께 지우는 낭비를 피할 수 있다
+// — 특히 가장 빈번한 제보 처리(penalty)가 회원 명단/시트 메타/상점 순위/
+// 개인 탭 배치처럼 무관한 4종까지 매번 함께 지우고 있었다
+// (docs/CACHING_POLICY.md §11 실측 근거).
+const MEMBER_CACHE_GROUPS = {
+  // 회원 명단/시트 구조 자체가 바뀌는 저빈도 조작(신규등록/퇴실/번호이동)
+  // 전용 — 9종 전부와 관련 있으므로 groups를 생략(=전체)했을 때와 동일하다.
+  roster: [...MEMBER_CACHE_UNCONDITIONAL_KEYS, "reportScore", "outputPenSlots"],
+  // 제보 승인/취소/반려·유예 — 벌점(outputPenSlots)·제보상점(reportScore)
+  // 슬롯만 바뀐다. 다음 슬롯 미리보기(penSlotGrid)와 퇴실 후보 판정
+  // (exitStatus)도 이 슬롯을 입력으로 쓰므로 함께 포함한다.
+  penalty: ["exitStatus", "penSlotGrid", "outputPenSlots", "reportScore"],
+  // 벌금 납부 상태 변경 — 개인 탭 31행(납부확인)만 바뀐다.
+  fine: ["exitStatus", "memberRows", "weeklyPaidFine"],
+  // 퇴실 신청/동의/취소(KV) — exitStatus 계산의 입력값(EXIT_REQUEST_KV_PREFIX)만 바뀐다.
+  exitRequest: ["exitStatus"],
+  // 참여상태(부스터디장 임명 등, 개인 탭 L3) 변경.
+  partiStatus: ["exitStatus"],
+};
+
 // 시트 구조(권한관리·데이터 D~V 등)를 바꾸는 쓰기 작업 뒤에 호출해 캐시가
 // 오래된 명단/메타를 계속 돌려주지 않게 한다. 인메모리는 즉시 지우고,
 // KV는 비동기로 지운다(호출부가 await하지 않아도 되도록 fire-and-forget).
-function invalidateMemberCache(env) {
-  // outputPenSlots:/reportScore:는 회원별로 키가 갈라져 있어(예: "outputPenSlots:{fileId}:{number}")
-  // 특정 회원 키를 KV에서 콕 집어 지울 수 없다 — 인메모리는 prefix 매칭으로
-  // 전부 지우고, KV 쪽은 TTL(5분/30분, 🔧 이전 주석의 "60초/30분"은 outputPenSlots:의
-  // 실제 TTL과 어긋난 오기였음)이 짧아 자연 만료를 기다려도 신선도 손실이
-  // 작다는 전제로 그냥 둔다.
-  // 🔧 [경쟁 조건 수정] 이 그룹 전체는 늘 함께 무효화되므로 세대 카운터도
-  // 한 번만 올린다 — 지금 진행 중인 계산(_inFlight, 아직 _sheetCache에
+// groups를 생략하면 기존과 동일하게 9종 전부를 무효화한다(안전한 기본값) —
+// 호출부가 실제로 어떤 시트 범위를 바꿨는지 확실할 때만 좁은 그룹을 넘겨
+// 무관한 KV 삭제를 줄인다(docs/CACHING_POLICY.md §11).
+function invalidateMemberCache(env, groups) {
+  const activeKeys = groups ? [...new Set(groups.flatMap((g) => MEMBER_CACHE_GROUPS[g]))] : MEMBER_CACHE_GROUPS.roster;
+  const activePrefixes = activeKeys.map((name) => `${name}:`);
+  // 인메모리는 그룹 전체를 늘 세대 카운터 하나로 무효화한다(공짜 — 좁혀도
+  // KV 삭제 횟수가 줄지 않으므로 아낄 이유가 없고, 좁히면 오히려 "이번엔
+  // 무효화 안 된 인메모리 키가 남아있는" gap이 생길 위험만 커진다).
+  // 🔧 [경쟁 조건 수정] 지금 진행 중인 계산(_inFlight, 아직 _sheetCache에
   // 없어 아래 루프에 안 걸리는 것들 포함)이 있다면, 그 계산이 끝나도
   // _cachedCompute가 세대 불일치를 감지해 캐시에 쓰지 않는다.
   _bumpMemberCacheGeneration();
   const kvDeletes = [];
   for (const key of _sheetCache.keys()) {
-    if (MEMBER_CACHE_PREFIXES.some((p) => key.startsWith(p))) {
+    if (activePrefixes.some((p) => key.startsWith(p))) {
       _sheetCache.delete(key);
       if (env) kvDeletes.push(env.REPORTS_KV.delete(`${KV_CACHE_PREFIX}${key}`).catch(() => {}));
     }
   }
-  // exitStatus/memberRows/meritRank/members/meta는 fileId별로 키가 하나뿐이라
-  // 인메모리에 아직 없어도(다른 isolate가 채운 KV 항목일 수 있음) KV 쪽은
-  // 무조건 지운다. 🔧 [무효화 누락 수정] members:/meta:는 원래 이 무조건
-  // 삭제 목록에서 빠져 있었다 — 회원별로 갈라지는 outputPenSlots:/reportScore:와
-  // 달리 이 둘도 파일당 1개 키뿐이라 exitStatus:와 똑같이 다뤄야 하는데,
-  // 실수로 위 prefix 루프(인메모리에 있을 때만 KV도 지움)에만 의존하고
-  // 있었다 — 무효화를 호출한 isolate의 인메모리에 그 순간 항목이 없으면
-  // (흔함, TTL 60초/5분으로 짧아 자주 비어있음) 다른 isolate가 채워둔 KV의
-  // 신규 회원 누락/구정보가 최대 60초~5분 동안 그대로 남는 문제가 있었다.
+  // exitStatus/memberRows/meritRank/members/meta/penSlotGrid/weeklyPaidFine은
+  // fileId별로 키가 하나뿐이라 인메모리에 아직 없어도(다른 isolate가 채운
+  // KV 항목일 수 있음) KV 쪽은 무조건 지운다 — 이번 호출이 실제로 건드린
+  // 그룹에 속하는 것만.
   if (env) {
-    kvDeletes.push(env.REPORTS_KV.delete(`${KV_CACHE_PREFIX}members:${env.GOOGLE_SHEET_FILE_ID}`).catch(() => {}));
-    kvDeletes.push(env.REPORTS_KV.delete(`${KV_CACHE_PREFIX}meta:${env.GOOGLE_SHEET_FILE_ID}`).catch(() => {}));
-    kvDeletes.push(env.REPORTS_KV.delete(`${KV_CACHE_PREFIX}exitStatus:${env.GOOGLE_SHEET_FILE_ID}`).catch(() => {}));
-    kvDeletes.push(env.REPORTS_KV.delete(`${KV_CACHE_PREFIX}memberRows:${env.GOOGLE_SHEET_FILE_ID}`).catch(() => {}));
-    kvDeletes.push(env.REPORTS_KV.delete(`${KV_CACHE_PREFIX}meritRank:${env.GOOGLE_SHEET_FILE_ID}`).catch(() => {}));
-    kvDeletes.push(env.REPORTS_KV.delete(`${KV_CACHE_PREFIX}penSlotGrid:${env.GOOGLE_SHEET_FILE_ID}`).catch(() => {}));
-    kvDeletes.push(env.REPORTS_KV.delete(`${KV_CACHE_PREFIX}weeklyPaidFine:${env.GOOGLE_SHEET_FILE_ID}`).catch(() => {}));
+    for (const name of MEMBER_CACHE_UNCONDITIONAL_KEYS) {
+      if (activeKeys.includes(name)) {
+        kvDeletes.push(env.REPORTS_KV.delete(`${KV_CACHE_PREFIX}${name}:${env.GOOGLE_SHEET_FILE_ID}`).catch(() => {}));
+      }
+    }
   }
   return Promise.all(kvDeletes);
 }
@@ -4148,7 +4169,7 @@ async function handleAdminCaptureCancel(req, env, origin) {
   try {
     const accessToken = await getServiceAccountAccessToken(env);
     await cancelOutputPenalty(env, accessToken, env.GOOGLE_SHEET_FILE_ID, number, col, deductedMinutes || 0, dayCol || null);
-    await invalidateMemberCache(env); // 페널티 슬롯이 바뀌었으므로 exitStatus 캐시 무효화.
+    await invalidateMemberCache(env, ["penalty"]); // 페널티 슬롯이 바뀌었으므로 관련 캐시만 무효화.
     return json({ ok: true }, 200, origin);
   } catch (err) {
     return json({ error: "취소 실패: " + err.message }, 500, origin);
@@ -4170,7 +4191,7 @@ async function handleAdminCaptureCancelMerit(req, env, origin) {
   try {
     const accessToken = await getServiceAccountAccessToken(env);
     await cancelReportMerit(env, accessToken, env.GOOGLE_SHEET_FILE_ID, number, col);
-    await invalidateMemberCache(env); // 제보상점 슬롯이 바뀌었으므로 exitStatus 캐시 무효화.
+    await invalidateMemberCache(env, ["penalty"]); // 제보상점 슬롯이 바뀌었으므로 관련 캐시만 무효화.
     return json({ ok: true }, 200, origin);
   } catch (err) {
     return json({ error: "취소 실패: " + err.message }, 500, origin);
@@ -4321,7 +4342,7 @@ async function handleAdminCaptureDecide(req, env, origin) {
           meritResult = { error: meritErr.message };
         }
       }
-      await invalidateMemberCache(env); // 페널티/제보상점 슬롯이 바뀌었으므로 exitStatus 캐시 무효화.
+      await invalidateMemberCache(env, ["penalty"]); // 페널티/제보상점 슬롯이 바뀌었으므로 관련 캐시만 무효화.
     } catch (err) {
       return json({ error: "시트 반영 실패: " + err.message }, 500, origin);
     }
@@ -4418,7 +4439,7 @@ async function handleAdminCaptureDecide(req, env, origin) {
       }
     }
     if (penaltyResult || meritResult || timeDeductionResult) {
-      await invalidateMemberCache(env);
+      await invalidateMemberCache(env, ["penalty"]);
     }
     return json({ error: "봇에 연결할 수 없습니다. 시트 반영은 자동으로 되돌렸으니 다시 시도해주세요." }, 502, origin);
   }
@@ -4480,7 +4501,7 @@ async function handleAdminCaptureDelete(req, env, origin) {
       if (merit && merit.number && merit.col) {
         await cancelReportMerit(env, accessToken, fileId, merit.number, merit.col);
       }
-      await invalidateMemberCache(env); // 페널티/제보상점 슬롯이 바뀌었으므로 exitStatus 캐시 무효화.
+      await invalidateMemberCache(env, ["penalty"]); // 페널티/제보상점 슬롯이 바뀌었으므로 관련 캐시만 무효화.
     } catch (err) {
       return json({ error: "시트 반영 취소 실패: " + err.message }, 500, origin);
     }
@@ -4528,7 +4549,7 @@ async function handleAdminCaptureRevert(req, env, origin) {
     try {
       const accessToken = await getServiceAccountAccessToken(env);
       await cancelReportMerit(env, accessToken, env.GOOGLE_SHEET_FILE_ID, merit.number, merit.col);
-      await invalidateMemberCache(env); // 제보상점 슬롯이 바뀌었으므로 exitStatus 캐시 무효화.
+      await invalidateMemberCache(env, ["penalty"]); // 제보상점 슬롯이 바뀌었으므로 관련 캐시만 무효화.
     } catch (err) {
       return json({ error: "제보상점 회수 실패: " + err.message }, 500, origin);
     }
@@ -5743,7 +5764,7 @@ async function handleAdminFineStatus(req, env, origin) {
     await writeSheetValues(env, accessToken, fileId, [
       { range: `${sheetNum}!${col}${ROW_PAYMENT_CHECK + 1}`, values: [[status]] },
     ]);
-    await invalidateMemberCache(env); // 납부확인 값이 바뀌었으므로 paymentRows 캐시 무효화.
+    await invalidateMemberCache(env, ["fine"]); // 납부확인 값이 바뀌었으므로 관련 캐시만 무효화.
     return json({ ok: true, number: String(sheetNum), day, status }, 200, origin);
   } catch (err) {
     return json({ error: "납부 상태 변경 실패: " + err.message }, 500, origin);
@@ -5945,7 +5966,7 @@ async function handleSetExitRequest(req, env, origin) {
     // 않도록 함께 무효화한다.
     await Promise.all([
       invalidatePersonalStatusCache(env, env.GOOGLE_SHEET_FILE_ID, memberNumber),
-      invalidateMemberCache(env),
+      invalidateMemberCache(env, ["exitRequest"]),
     ]);
     return json({ ok: true }, 200, origin);
   } catch (err) {
@@ -6063,7 +6084,7 @@ async function handleAgreeExitRequest(req, env, origin) {
     await _setExitRequestIndexEntry(env, memberNumber, existing.exitDate, existing.ts, agreedAt);
     await Promise.all([
       invalidatePersonalStatusCache(env, env.GOOGLE_SHEET_FILE_ID, memberNumber),
-      invalidateMemberCache(env),
+      invalidateMemberCache(env, ["exitRequest"]),
     ]);
     return json({ ok: true, agreedAt }, 200, origin);
   } catch (err) {
@@ -6093,7 +6114,7 @@ async function handleCancelExitRequest(req, env, origin) {
     await _removeExitRequestIndexEntry(env, memberNumber);
     await Promise.all([
       invalidatePersonalStatusCache(env, env.GOOGLE_SHEET_FILE_ID, memberNumber),
-      invalidateMemberCache(env),
+      invalidateMemberCache(env, ["exitRequest"]),
     ]);
     return json({ ok: true }, 200, origin);
   } catch (err) {
@@ -6346,7 +6367,7 @@ async function handleAdminSetPartiStatus(req, env, origin) {
 
     const nextStatus = appoint ? "부스터디장" : "스터디원";
     await writeSheetValues(env, accessToken, fileId, [{ range: `${member.number}!L3`, values: [[nextStatus]] }]);
-    await invalidateMemberCache(env); // 참여상태(L3)가 바뀌었으므로 exitStatus 캐시 무효화.
+    await invalidateMemberCache(env, ["partiStatus"]); // 참여상태(L3)가 바뀌었으므로 관련 캐시만 무효화.
     return json({ ok: true, partiStatus: nextStatus }, 200, origin);
   } catch (err) {
     return json({ error: "참여상태 변경 실패: " + err.message }, 500, origin);
@@ -6712,7 +6733,7 @@ async function performExitReset(env, accessToken, fileId, member, resultMsg, kin
   ]);
   await revokeSheetAccess(env, fileId, memberEmail);
   await protectSheetForOwnerAndService(env, accessToken, fileId, newSheetId, ownerEmail);
-  await invalidateMemberCache(env); // 이메일이 비워져 명단이 바뀌었으므로 캐시 무효화.
+  await invalidateMemberCache(env, ["roster"]); // 이메일이 비워져 명단이 바뀌었으므로 전체 무효화.
   // 이 번호가 곧바로 다른 신규 회원에게 재배정될 수 있으므로, 퇴실한 회원의
   // 벌점/제보상점 KV 캐시가 새 회원에게 노출되지 않도록 함께 지운다.
   await invalidateMemberSlotCache(env, member.number);
@@ -6780,7 +6801,7 @@ async function performDepositAgainReset(env, accessToken, fileId, member, result
     { range: `데이터!F${rowNumber}:V${rowNumber}`, values: [Array(17).fill(0)] },
   ]);
   await protectSheetForOwnerAndService(env, accessToken, fileId, newSheetId, ownerEmail);
-  await invalidateMemberCache(env); // 시트가 재생성되어 sheetId(meta)가 바뀌었으므로 캐시 무효화.
+  await invalidateMemberCache(env, ["roster"]); // 시트가 재생성되어 sheetId(meta)가 바뀌었으므로 전체 무효화.
 }
 
 async function handleAdminExitConfirm(req, env, origin) {
@@ -6896,7 +6917,7 @@ async function handleAdminExitConfirm(req, env, origin) {
     // 이미 초기화된 회원 번호에 예약 뱃지만 남아있으면 혼동을 준다.
     await env.REPORTS_KV.delete(`${EXIT_REQUEST_KV_PREFIX}${member.number}`);
     await _removeExitRequestIndexEntry(env, member.number);
-    await invalidateMemberCache(env); // 참여상태(L3)/페널티 슬롯이 바뀌었으므로 exitStatus 캐시 무효화.
+    await invalidateMemberCache(env, ["roster"]); // 참여상태/페널티 슬롯/시트 구조가 모두 바뀌었으므로 전체 무효화.
 
     return json({ ok: true, number: member.number, name: member.name, resultMsg: result.resultMsg }, 200, origin);
   } catch (err) {
@@ -7168,7 +7189,7 @@ async function moveMemberSlot(env, accessToken, fileId, ownerEmail, from, to, on
     { range: `데이터!D${fromRow}:E${fromRow}`, values: [["", ""]] },
     { range: `데이터!F${fromRow}:V${fromRow}`, values: [Array(17).fill(0)] },
   ]);
-  await invalidateMemberCache(env); // 번호별 이메일이 이동/재생성되어 명단과 sheetId가 바뀌었으므로 캐시 무효화.
+  await invalidateMemberCache(env, ["roster"]); // 번호별 이메일이 이동/재생성되어 명단과 sheetId가 바뀌었으므로 전체 무효화.
   // to는 from의 벌점/제보상점 값을 새로 물려받았고 from은 곧 신규 회원에게
   // 재배정될 수 있으므로, 두 번호 모두 옛 캐시가 남지 않도록 함께 지운다.
   await Promise.all([invalidateMemberSlotCache(env, from), invalidateMemberSlotCache(env, to)]);
@@ -7295,7 +7316,7 @@ async function handleAdminCreateMember(req, env, origin) {
       { range: `데이터!D${rowNumber}`, values: [[dCellValue]] },
       { range: `데이터!E${rowNumber}`, values: [[examKind || ""]] },
     ]);
-    await invalidateMemberCache(env); // 신규 이메일이 명단에 추가되었으므로 캐시 무효화.
+    await invalidateMemberCache(env, ["roster"]); // 신규 이메일이 명단에 추가되었으므로 전체 무효화.
     // 이 번호가 과거 퇴실한 회원의 것이었다면, 그 회원의 벌점/제보상점 KV
     // 캐시가 아직 안 지워진 채 남아있을 수 있으므로 신규 등록 시점에도
     // 한 번 더 방어적으로 지운다.
