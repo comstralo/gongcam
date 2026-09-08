@@ -165,7 +165,7 @@ function occurrenceLabel(occurrence: number | null): string {
 }
 
 function weeklyImpactLabel(occurrence: number | null, weeklyMinorPenaltyCount: number): string {
-  if (occurrence === 1) return "주간 총 상점 변동 없음";
+  if (occurrence === 1) return "없음";
   if (occurrence === 2 || occurrence === 3 || occurrence === 5) {
     const deduction = Math.round(weeklyMinorPenaltyCount * 0.1 * 10) / 10;
     return `주간 총 상점에서 -${deduction}점`;
