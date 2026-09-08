@@ -393,6 +393,12 @@ export function MyOutputPenSection({
                                           {received!.deferOccurrence ? `유예 ${received!.deferOccurrence}차` : "유예"}
                                         </TintedPill>
                                         <TintedPill tone="muted">{occurrenceLabel(received!.nextOccurrence)}</TintedPill>
+                                        {/* 🔧 [차감시간 뱃지 추가] 유예도 벌점과 별개로 응답 지연
+                                            시간 차감이 확정되므로(사용자 지시) 세 번째 뱃지로
+                                            함께 노출한다. */}
+                                        <TintedPill tone="muted">
+                                          {formatDeductedTime(received!.timeDeduction?.deductedMinutes ?? 0)}
+                                        </TintedPill>
                                       </>
                                     ) : received!.reviewStatus === "approved" ? (
                                       // 🔧 [차수 뱃지 추가] "확정" 뱃지 옆에도 유예와 동일하게
@@ -405,6 +411,13 @@ export function MyOutputPenSection({
                                           className="bg-yellow-500/15 text-yellow-600 dark:bg-yellow-400/15 dark:text-yellow-400"
                                         >
                                           {occurrenceLabel(received!.penalty?.occurrence ?? received!.nextOccurrence)}
+                                        </TintedPill>
+                                        {/* 🔧 [차감시간 뱃지 추가] "확정 차감시간" 값도 세 번째
+                                            뱃지로 함께 노출한다(사용자 지시). */}
+                                        <TintedPill tone="muted">
+                                          {formatDeductedTime(
+                                            received!.penalty?.deductedMinutes ?? received!.timeDeduction?.deductedMinutes ?? 0
+                                          )}
                                         </TintedPill>
                                       </>
                                     ) : (

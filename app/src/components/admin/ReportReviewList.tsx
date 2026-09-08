@@ -906,6 +906,17 @@ export function ReportReviewList({
                                     >
                                       {occurrenceLabel((applied[item.id]?.penalty ?? item.penalty)?.occurrence ?? item.nextOccurrence)}
                                     </TintedPill>
+                                    {/* 🔧 [차감시간 뱃지 추가] "학습시간 차감"의 "확정 차감시간"
+                                        값도 세 번째 뱃지로 함께 노출한다(사용자 지시) — 유예도
+                                        벌점과 별개로 시간 차감이 확정되므로 penalty/timeDeduction
+                                        둘 다 확인한다. */}
+                                    <TintedPill tone="muted">
+                                      {formatDeductedTime(
+                                        (applied[item.id]?.penalty ?? item.penalty)?.deductedMinutes ??
+                                          (applied[item.id]?.timeDeduction ?? item.timeDeduction)?.deductedMinutes ??
+                                          0
+                                      )}
+                                    </TintedPill>
                                   </>
                                 ) : isItemDeferred(item, applied) ? (
                                   <>
@@ -916,6 +927,12 @@ export function ReportReviewList({
                                         등)에는 순번 없이 "유예"만 표시. */}
                                     <TintedPill tone="muted">{item.deferOccurrence ? `유예 ${item.deferOccurrence}차` : "유예"}</TintedPill>
                                     <TintedPill tone="muted">{occurrenceLabel(item.nextOccurrence)}</TintedPill>
+                                    {/* 🔧 [차감시간 뱃지 추가] 유예도 벌점과 별개로 응답 지연
+                                        시간 차감이 확정되므로(사용자 지시) 세 번째 뱃지로 함께
+                                        노출한다. */}
+                                    <TintedPill tone="muted">
+                                      {formatDeductedTime((applied[item.id]?.timeDeduction ?? item.timeDeduction)?.deductedMinutes ?? 0)}
+                                    </TintedPill>
                                   </>
                                 ) : isRejected ? (
                                   <TintedPill tone="muted">
