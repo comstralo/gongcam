@@ -322,7 +322,17 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
                           <Lightbulb className="size-3 shrink-0 text-muted-foreground sm:size-3.5" />
                           상태 메시지
                         </Label>
-                        <InfoCard className="flex h-8 items-center bg-card py-0 sm:h-12">
+                        {/* 🔧 [순차 활성화] 대상자 미선택 시 나머지 영역과 동일하게
+                            비활성화된 것처럼 회색으로 보여준다(사용자 지시) — 이
+                            카드 자체는 입력 요소가 아니라 disabled 속성을 못 쓰므로
+                            배경·테두리·텍스트 색을 무채색 톤으로 낮춰 시각적으로
+                            표현한다. */}
+                        <InfoCard
+                          className={cn(
+                            "flex h-8 items-center py-0 sm:h-12",
+                            nickname ? "bg-card" : "bg-muted/40 opacity-60"
+                          )}
+                        >
                           <span
                             className={cn(
                               "truncate text-sm sm:text-base",
