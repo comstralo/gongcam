@@ -281,16 +281,10 @@ function ConsensusSection({
         </span>
       </Label>
 
-      {noCoReviewers ? (
+      {noCoReviewers && (
         <p className="pl-5 text-micro-lg text-muted-foreground sm:pl-5.5 sm:text-xs">
           현재 임명된 부스터디장이 없습니다.
         </p>
-      ) : (
-        !hasDispute && (
-          <p className="pl-5 text-micro-lg text-muted-foreground sm:pl-5.5 sm:text-xs">
-            제보 대상자가 이의제기한 건에서만 켤 수 있습니다.
-          </p>
-        )
       )}
 
       {isConsensus && !disabled && (
@@ -1396,11 +1390,6 @@ export function ReportReviewList({
                                           반려
                                         </Button>
                                       </div>
-                                      {!canProcess(item) && (
-                                        <p className="text-center text-micro-lg text-muted-foreground sm:text-xs">
-                                          대상자 응답 대기 중 — 접수 후 90분이 지나야 처리할 수 있습니다.
-                                        </p>
-                                      )}
                                     </div>
                                   )}
                                   {/* 🔧 [버그 수정] 폐기(삭제) 버튼은 확정/유예/반려로 이미
