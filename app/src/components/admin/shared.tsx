@@ -68,19 +68,23 @@ export function AdminListSkeleton({ rows = 3 }: { rows?: number }) {
 // sm:p-4→sm:p-5)이, 그 안에 다시 패딩을 갖는 개별 항목 카드와 겹쳐 좌우
 // 실사용 폭 손실이 크다는 피드백(사용자 지시: "쓸데없이 여백이 너무 크다")
 // 으로 원래 값의 2/3 수준(사용자 지시)으로 되돌렸다.
-// 🔧 [사용자 지시] 제목-본문 경계를 단순 구분선(hr)이 아니라 "카드 안의
-// 탭"처럼 세련되게 보이길 원해, 카드 자체의 패딩을 없애고 SectionHeader가
-// 스스로 배경(탭 영역)과 패딩을 갖도록 역할을 옮겼다 — 아래 SectionHeader
-// 참고. 본문(CollapsiblePanel)은 이 카드 바깥 여백 없이 시작하므로, 이
-// 컴포넌트를 쓰는 20여 곳 모두 CollapsiblePanel 쪽에 자체 패딩이 필요하다.
+// 🔧 [사용자 지시, 되돌림] 제목-본문 경계를 단순 구분선(hr) 대신 "카드
+// 안의 탭"처럼 보이게 하려고 한때 이 카드의 패딩 자체를 없앤 적이 있는데,
+// SectionCard는 SectionHeader와 항상 짝을 이루는 게 아니라 단독 콘텐츠
+// 박스로도 널리 쓰인다(예: ReportPage의 "제보 대상자" 폼,
+// ActiveReportsSection의 "최근 진행된 제보") — 그런 곳들은 헤더가 없어
+// 패딩을 보정할 데가 없어 카드가 완전히 납작해졌다(사용자 지적: "제보
+// 대상자를 감싸는 박스가 비정상"). 패딩은 이 카드에 그대로 두고, 대신
+// SectionHeader 쪽에서 음수 마진으로 자기 배경만 이 패딩 바깥까지
+// 넓혀 탭처럼 보이게 한다 — 그러면 헤더 없는 단순 콘텐츠 카드는 영향을
+// 받지 않는다.
 export function SectionCard({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("overflow-hidden rounded-xl border border-border bg-card", className)}>{children}</div>;
+  return (
+    <div className={cn("overflow-hidden rounded-xl border border-border bg-card p-2.5 sm:p-3.5", className)}>
+      {children}
+    </div>
+  );
 }
-
-// SectionCard 본문(CollapsiblePanel 등)에 주는 좌우/하단 패딩 — 헤더가
-// 자체 패딩을 가지므로 본문도 동일한 크기를 맞춰 좌우가 어긋나 보이지
-// 않게 한다.
-export const SECTION_BODY_PADDING = "px-2.5 pb-2.5 sm:px-3.5 sm:pb-3.5";
 
 // 새로고침 버튼(size-7 = 28px 정사각형) 테두리 바로 바깥을 도는 원형
 // 진행률 게이지 — 다음 자동 폴링(usePollingRefresh)까지 남은 시간을
@@ -149,12 +153,18 @@ export function SectionHeader({
   refreshProgress?: number;
 }) {
   // 🔧 [사용자 지시] 제목-본문 경계를 hr 구분선 대신 "카드 안의 탭"처럼
-  // 보이게 한다 — 헤더 영역에 은은한 배경(bg-muted/60)을 입히고 카드
-  // 위쪽 모서리 둥글기를 그대로 이어받아(SectionCard가 overflow-hidden이라
-  // 이 배경도 카드 모서리에 맞춰 자동으로 잘린다), 시각적으로 탭처럼
-  // 도드라지게 한다. 패딩은 SectionCard에서 이쪽으로 옮겨왔다.
+  // 보이게 한다 — 헤더 영역에 은은한 배경(bg-muted/60)을 입히되, SectionCard가
+  // 자체 패딩(p-2.5 sm:p-3.5)을 유지하므로 이 배경이 그 패딩 안쪽에만
+  // 칠해지면 카드 가장자리까지 닿지 않아 탭처럼 안 보인다 — 음수 마진으로
+  // 배경을 부모 패딩 바깥(카드 가장자리)까지 넓히고, 넓힌 만큼 자체 패딩을
+  // 다시 줘 안쪽 콘텐츠 위치는 그대로 유지한다. SectionCard가
+  // overflow-hidden이라 이 배경도 카드 위쪽 모서리 둥글기에 맞춰 자동으로
+  // 잘린다. 🔧 [버그 수정] 이 헤더를 담는 Collapsible이 gap 없이
+  // (flex flex-col) 배치되다 보니, 탭 배경이 끝나는 지점에 바로 본문이
+  // 붙어버려 여백 없이 딱 붙은 것처럼 보였다(사용자 지적) — mb로 헤더
+  // 자신이 하단 여백을 갖게 해 모든 사용처(16곳)에서 한 번에 해결한다.
   return (
-    <div className="flex items-center justify-between gap-2 bg-muted/60 px-2.5 py-2 sm:px-3.5 sm:py-2.5">
+    <div className="-mx-2.5 -mt-2.5 mb-3.5 flex items-center justify-between gap-2 bg-muted/60 px-2.5 py-2 sm:-mx-3.5 sm:-mt-3.5 sm:mb-4 sm:px-3.5 sm:py-2.5">
       <CollapsibleTrigger className="flex-1">
         <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
           <Icon className="size-4 shrink-0 text-primary sm:size-5" strokeWidth={ICON_STROKE.default} />

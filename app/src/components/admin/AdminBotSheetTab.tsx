@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard } from "@/components/dashboard/shared";
-import { SectionHeader, SectionCard, SECTION_BODY_PADDING, ItemTitle, FieldLabel, FieldValue } from "@/components/admin/shared";
+import { SectionHeader, SectionCard, ItemTitle, FieldLabel, FieldValue } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { usePollingRefresh } from "@/hooks/usePollingRefresh";
@@ -112,7 +112,7 @@ function UsageMonitorSection({ visible }: { visible: boolean }) {
     <SectionCard>
       <Collapsible defaultOpen className="flex flex-col">
         <SectionHeader icon={Gauge} title="사용량 모니터링" loading={loading} onRefresh={load} />
-        <CollapsiblePanel className={cn("flex flex-col gap-4 pt-4", SECTION_BODY_PADDING)}>
+        <CollapsiblePanel className="flex flex-col gap-4">
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
@@ -331,7 +331,7 @@ function BotStatusSection({ visible }: { visible: boolean }) {
     <SectionCard>
       <Collapsible defaultOpen className="flex flex-col">
         <SectionHeader icon={Bot} title="도움봇 오퍼레이터" loading={loading} onRefresh={load} refreshProgress={refreshProgress} />
-        <CollapsiblePanel className={cn("flex flex-col gap-4 pt-4", SECTION_BODY_PADDING)}>
+        <CollapsiblePanel className="flex flex-col gap-4">
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
@@ -444,7 +444,7 @@ function MemberReorderSection() {
   return (
     <Collapsible defaultOpen className="flex flex-col">
       <SectionHeader icon={ArrowRightLeft} title="번호 정렬" />
-      <CollapsiblePanel className={cn("flex flex-col gap-4 pt-4", SECTION_BODY_PADDING)}>
+      <CollapsiblePanel className="flex flex-col gap-4">
         <p className="text-xs text-muted-foreground sm:text-sm">
           퇴실 등으로 비워진 번호를 앞으로 당겨 채웁니다. 진행 중인 교시가 없을 때 실행하는 것을 권장합니다.
         </p>
@@ -554,7 +554,7 @@ function NotifyTestSendSection() {
     <SectionCard>
       <Collapsible defaultOpen className="flex flex-col">
         <SectionHeader icon={Bell} title="알림 발송 테스트" />
-        <CollapsiblePanel className={cn("flex flex-col gap-3 pt-4", SECTION_BODY_PADDING)}>
+        <CollapsiblePanel className="flex flex-col gap-3">
           <p className="text-xs text-muted-foreground sm:text-sm">
             특정 회원이 카테고리별 알림을 실제로 받는지(꺼둔 종류는 차단되는지) 확인합니다.
           </p>
@@ -619,14 +619,15 @@ function SpreadsheetOperatorSection() {
     <SectionCard>
       {/* 🔧 [사용자 지시] SectionHeader와 동일한 "카드 안의 탭" 스타일을
           직접 그린다 — 이 섹션은 SectionHeader(펼침 트리거 겸용)를 못
-          쓰는 특수 케이스라 배경/패딩을 여기서 그대로 맞춘다. */}
-      <div className="flex items-center bg-muted/60 px-2.5 py-2 sm:px-3.5 sm:py-2.5">
+          쓰는 특수 케이스라, SectionHeader와 동일하게 음수 마진으로 배경을
+          부모 SectionCard 패딩 바깥(카드 가장자리)까지 넓힌다. */}
+      <div className="-mx-2.5 -mt-2.5 mb-3.5 flex items-center bg-muted/60 px-2.5 py-2 sm:-mx-3.5 sm:-mt-3.5 sm:mb-4 sm:px-3.5 sm:py-2.5">
         <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
           <Database className="size-4 shrink-0 text-primary sm:size-5" strokeWidth={ICON_STROKE.default} />
           스프레드시트 오퍼레이터
         </span>
       </div>
-      <div className={cn("flex flex-col gap-4 pt-4", SECTION_BODY_PADDING)}>
+      <div className="flex flex-col gap-4">
         <MemberReorderSection />
       </div>
     </SectionCard>

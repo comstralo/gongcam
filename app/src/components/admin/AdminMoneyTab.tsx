@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, DayDetailCard, TintedPill, ItemTitle, DividedValue } from "@/components/dashboard/shared";
-import { SectionHeader, FieldLabel, SectionCard, SECTION_BODY_PADDING, AdminListSkeleton } from "@/components/admin/shared";
+import { SectionHeader, FieldLabel, SectionCard, AdminListSkeleton } from "@/components/admin/shared";
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
 import { ReportReviewList } from "@/components/admin/ReportReviewList";
 import { PenaltyCandidateList } from "@/components/admin/PenaltyCandidateList";
@@ -235,7 +235,7 @@ function PaidFineList({
   return (
     <Collapsible defaultOpen className="flex flex-col">
       <SectionHeader icon={CircleDollarSign} title="벌금 납부 처리" loading={loading} onRefresh={load} refreshProgress={refreshProgress} />
-      <CollapsiblePanel className={cn("flex flex-col gap-4 pt-4", SECTION_BODY_PADDING)}>
+      <CollapsiblePanel className="flex flex-col gap-4">
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
@@ -491,7 +491,7 @@ function PrizeRecipientList({
   return (
     <Collapsible defaultOpen className="flex flex-col">
       <SectionHeader icon={Trophy} title="상금 수령 처리" loading={loading} onRefresh={load} />
-      <CollapsiblePanel className={cn("flex flex-col gap-4 pt-4", SECTION_BODY_PADDING)}>
+      <CollapsiblePanel className="flex flex-col gap-4">
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>

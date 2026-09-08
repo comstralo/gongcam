@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { InfoCard, SubRow, TintedPill, buildDepositCauseItems } from "@/components/dashboard/shared";
 import type { DepositCauseItem } from "@/components/dashboard/shared";
-import { SectionHeader, SECTION_BODY_PADDING, displayExitedName as displayName, AdminListSkeleton } from "@/components/admin/shared";
+import { SectionHeader, displayExitedName as displayName, AdminListSkeleton } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { usePullRefreshListener } from "@/hooks/usePullToRefresh";
 import { ApiError } from "@/lib/api/client";
@@ -325,7 +325,7 @@ export function ExitedMemberList() {
   return (
     <Collapsible defaultOpen className="flex flex-col">
       <SectionHeader icon={UserX} title="퇴실 스터디원 목록" loading={loading} onRefresh={load} />
-      <CollapsiblePanel className={cn("flex flex-col gap-4 pt-4", SECTION_BODY_PADDING)}>
+      <CollapsiblePanel className="flex flex-col gap-4">
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>

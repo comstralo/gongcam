@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { DividedValue, InfoCard, SubRow, TintedPill } from "@/components/dashboard/shared";
 import { CycleSwitcher } from "@/components/dashboard/CycleSwitcher";
-import { SectionHeader, SECTION_BODY_PADDING, CapturePreview, AdminListSkeleton } from "@/components/admin/shared";
+import { SectionHeader, CapturePreview, AdminListSkeleton } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { usePollingRefresh } from "@/hooks/usePollingRefresh";
@@ -786,7 +786,7 @@ export function ReportReviewList({
   return (
     <Collapsible defaultOpen className="flex flex-col">
       <SectionHeader icon={Flag} title="화각 불량 제보 처리" loading={loading} onRefresh={load} refreshProgress={refreshProgress} />
-      <CollapsiblePanel className={cn("flex flex-col gap-4 pt-4", SECTION_BODY_PADDING)}>
+      <CollapsiblePanel className="flex flex-col gap-4">
         {cycleFileIdProp === undefined && (
           <>
             <CycleSwitcher selectedFileId={cycleFileId} onSelect={setCycleFileId} />

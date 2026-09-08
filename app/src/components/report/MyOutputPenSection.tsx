@@ -4,7 +4,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, SubRow, TintedPill } from "@/components/dashboard/shared";
-import { SectionHeader, SectionCard, SECTION_BODY_PADDING, CapturePreview, AdminListSkeleton } from "@/components/admin/shared";
+import { SectionHeader, SectionCard, CapturePreview, AdminListSkeleton } from "@/components/admin/shared";
 import { CycleSwitcher } from "@/components/dashboard/CycleSwitcher";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
@@ -316,7 +316,7 @@ export function MyOutputPenSection({
     <SectionCard>
       <Collapsible defaultOpen className="flex flex-col">
         <SectionHeader icon={ListChecks} title="내 화각 불량 제보" loading={loading} onRefresh={load} refreshProgress={refreshProgress} />
-        <CollapsiblePanel className={cn("flex flex-col gap-4 pt-4", SECTION_BODY_PADDING)}>
+        <CollapsiblePanel className="flex flex-col gap-4">
           <CycleSwitcher selectedFileId={cycleFileId} onSelect={setCycleFileId} memberNumber="self" />
           {error && (
             <Alert variant="destructive">

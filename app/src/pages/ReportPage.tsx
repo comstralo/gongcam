@@ -274,14 +274,16 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
           <>
             <Card className="w-full overflow-hidden">
               <CardContent>
-                <Collapsible defaultOpen className="flex flex-col gap-4">
+                <Collapsible defaultOpen className="flex flex-col">
                   {/* 🔧 [사용자 지시] SectionHeader가 이제 자체 배경(탭 모양)과
                       좌우 패딩을 갖는데, 여기서는 SectionCard가 아니라
                       Card+CardContent(이미 좌우 패딩 보유) 조합이라 이중
                       패딩이 생긴다 — 음수 마진으로 SectionHeader의 배경을
                       CardContent 바깥(카드 가장자리)까지 확장해 탭처럼
                       보이게 하고, 본문은 CardContent의 기존 패딩을 그대로
-                      쓴다. */}
+                      쓴다. 부모 Collapsible의 gap-4를 없애 SectionHeader
+                      자체의 하단 여백(mb-3.5/4)만 적용되게 한다(중복 간격
+                      방지). */}
                   <div className="-mx-4 -mt-4">
                     <SectionHeader icon={Flag} title="화각 불량 제보" onRefresh={refresh} />
                   </div>
@@ -470,7 +472,7 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
         {everOpened.current.notice && (
           <Card className="w-full overflow-hidden">
             <CardContent>
-              <Collapsible defaultOpen className="flex flex-col gap-4">
+              <Collapsible defaultOpen className="flex flex-col">
                 <div className="-mx-4 -mt-4">
                   <SectionHeader icon={Bell} title="PUSH 알림" onRefresh={refresh} />
                 </div>

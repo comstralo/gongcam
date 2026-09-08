@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, SubRow, TintedPill } from "@/components/dashboard/shared";
-import { SectionHeader, SECTION_BODY_PADDING, CapturePreview, AdminListSkeleton } from "@/components/admin/shared";
+import { SectionHeader, CapturePreview, AdminListSkeleton } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { useAuth } from "@/lib/auth/useAuth";
@@ -144,7 +144,7 @@ export function ReasonLeaveReviewList({
   return (
     <Collapsible defaultOpen className="flex flex-col">
       <SectionHeader icon={BedDouble} title="사유 반휴 신청 처리" loading={loading} onRefresh={load} />
-      <CollapsiblePanel className={cn("flex flex-col gap-4 pt-4", SECTION_BODY_PADDING)}>
+      <CollapsiblePanel className="flex flex-col gap-4">
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
