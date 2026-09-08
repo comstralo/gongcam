@@ -1618,11 +1618,13 @@ async function findMemberNumberByEmail(env, accessToken, fileId, email) {
 }
 
 // 🔧 [429 방지] "Penalty" 탭처럼 여러 컴포넌트가 한 페이지에서 동시에 마운트돼
-// 각자 listAllMembers()를 부르는 상황이 잦아, 60초 TTL 캐시(인메모리+KV)로
-// 중복 호출을 흡수한다. 신규등록/퇴실/재납/이동 등 명단을 바꾸는 쓰기 뒤에는
-// invalidateMemberCache()로 반드시 무효화한다.
+// 각자 listAllMembers()를 부르는 상황이 잦아, 캐시(인메모리+KV)로 중복 호출을
+// 흡수한다. 신규등록/퇴실/재납/이동 등 명단을 바꾸는 쓰기 뒤에는
+// invalidateMemberCache()로 반드시 무효화하므로, TTL은 "무효화가 놓친 경우의
+// 안전망"일 뿐이다 — meta:(5분)와 같은 이유로 5분으로 늘려 KV 읽기 빈도를
+// 줄인다(docs/CACHING_POLICY.md §5, 2026-09).
 async function listAllMembers(env, accessToken, fileId) {
-  return _cachedCompute(env, `members:${fileId}`, 60_000, async () => {
+  return _cachedCompute(env, `members:${fileId}`, 5 * 60_000, async () => {
     const rows = await getSheetValues(env, accessToken, fileId, "데이터!A1:V50");
     const members = [];
     for (const row of rows) {
@@ -1647,10 +1649,13 @@ async function listAllMembers(env, accessToken, fileId) {
 // 집계!B4:F18은 회원 15명 전체의 상점/순위를 한 범위에 담고 있어, 회원
 // 개인 조회(/status)마다 이 전체 범위를 다시 읽을 필요가 없다 — 파일당
 // 1개 키로 캐싱해 getPersonalTabRows(30분)와 비슷한 원리로 공유한다.
-// 순위는 다른 회원의 상점이 바뀌어야 변하는 값이라 짧게(60초)만 캐싱해도
-// "관리자 혼자 여러 번 조회"로 인한 중복 호출을 대부분 없앨 수 있다.
+// 순위는 다른 회원의 상점이 바뀌어야 변하는 값이라 "관리자 혼자 여러 번
+// 조회"로 인한 중복 호출을 캐싱으로 대부분 없앨 수 있다. 상점을 바꾸는 쓰기
+// (제보 승인/취소 등)는 invalidateMemberCache()가 항상 짝으로 따라붙으므로,
+// TTL은 무효화가 놓친 경우의 안전망일 뿐 — 5분으로 늘려 KV 읽기 빈도를
+// 줄인다(docs/CACHING_POLICY.md §5, 2026-09).
 async function getMeritRank(env, accessToken, fileId, memberNumber) {
-  const rows = await _cachedCompute(env, `meritRank:${fileId}`, 60_000, () =>
+  const rows = await _cachedCompute(env, `meritRank:${fileId}`, 5 * 60_000, () =>
     getSheetValues(env, accessToken, fileId, "집계!B4:F18")
   );
   const row = rows.find((r) => (r[0] || "").toString().trim() === String(memberNumber));
@@ -2372,11 +2377,13 @@ async function listPaidFines(env, accessToken, fileId) {
 }
 
 // 집계 탭 D22(주간 벌금 = 15명의 "납부" 처리된 일간 벌금 합산)를 읽는다.
-// "Money" 탭의 "납부" 목록을 열 때마다 다시 읽을 필요가 없는 값이라 짧게
-// (60초) 캐싱한다 — 벌금 상태 변경(handleAdminFineStatus)이 이미
-// invalidateMemberCache를 호출하므로 그 무효화 대상에 포함시킨다.
+// "Money" 탭의 "납부" 목록을 열 때마다 다시 읽을 필요가 없는 값이라
+// 캐싱한다 — 벌금 상태 변경(handleAdminFineStatus)이 이미
+// invalidateMemberCache를 호출하므로 그 무효화 대상에 포함시킨다. TTL은
+// 무효화가 놓친 경우의 안전망일 뿐이라 5분으로 늘려 KV 읽기 빈도를 줄인다
+// (docs/CACHING_POLICY.md §5, 2026-09).
 async function getWeeklyPaidFineTotal(env, accessToken, fileId) {
-  return _cachedCompute(env, `weeklyPaidFine:${fileId}`, 60_000, async () => {
+  return _cachedCompute(env, `weeklyPaidFine:${fileId}`, 5 * 60_000, async () => {
     const rows = await getSheetValues(env, accessToken, fileId, "집계!D22");
     return safeNumber((rows && rows[0] && rows[0][0]) || 0);
   });
