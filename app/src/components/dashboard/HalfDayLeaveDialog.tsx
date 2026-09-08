@@ -275,10 +275,16 @@ export function HalfDayLeaveDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger className="w-full rounded-xl text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
-        <Button variant="outline" className="w-full sm:h-11 sm:text-base">
-          반일 휴무 신청
-        </Button>
+      {/* 🔧 [버그 수정] DialogTrigger가 기본적으로 <button>을 렌더링하는데
+          자식으로 또 <Button>(<button>)을 두면 button 안에 button이 중첩돼
+          "In HTML, button cannot be a descendant of button" hydration
+          에러가 났다(Playwright MCP 콘솔 점검으로 발견) — render prop으로
+          DialogTrigger가 직접 이 Button 엘리먼트에 트리거 역할을 위임하게
+          한다(base-ui 표준 패턴, 이중 <button> 없이 동일하게 동작). */}
+      <DialogTrigger
+        render={<Button variant="outline" className="w-full sm:h-11 sm:text-base" />}
+      >
+        반일 휴무 신청
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>

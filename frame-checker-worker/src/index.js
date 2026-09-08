@@ -2446,17 +2446,12 @@ async function listExemptFines(env, accessToken, fileId) {
 
 // --- 핸들러 ---
 
-async function handleVerify(req, env, origin) {
-  const { credential } = await req.json();
-  if (!credential) return json({ error: "credential 누락" }, 400, origin);
-
-  let googleUser;
-  try {
-    googleUser = await verifyGoogleIdToken(credential, env.GOOGLE_CLIENT_ID);
-  } catch (err) {
-    return json({ error: "구글 인증 실패: " + err.message }, 401, origin);
-  }
-
+// googleUser({email, name})가 확보된 뒤(구글 credential 검증이든, 아래
+// handleDevLogin의 시크릿 검증이든) 공통으로 거치는 로그인 완료 절차 —
+// 명단 확인, 회원번호 조회, 최근 접속 기록, 세션 토큰 발급. recordLastLogin
+// 을 false로 넘기면 lastLogin 기록을 건너뛴다(개발용 로그인이 실제 접속
+// 이력을 오염시키지 않도록 — handleDevLogin 전용).
+async function completeLogin(req, env, origin, googleUser, { recordLastLogin = true } = {}) {
   let viewerEmails;
   try {
     viewerEmails = await getSheetViewerEmails(env);
@@ -2483,7 +2478,7 @@ async function handleVerify(req, env, origin) {
   // 실패해도 조용히 넘어간다. CF-Connecting-IP는 Cloudflare가 프록시 체인을
   // 거쳐도 실제 클라이언트 IP로 신뢰하는 헤더다(X-Forwarded-For처럼 클라이언트가
   // 임의로 위조해 넣을 수 없다).
-  if (member) {
+  if (member && recordLastLogin) {
     const ip = req.headers.get("CF-Connecting-IP") || "";
     await env.REPORTS_KV
       .put(`lastLogin:${member.number}`, JSON.stringify({ ts: Date.now(), ip }))
@@ -2502,6 +2497,41 @@ async function handleVerify(req, env, origin) {
   );
 
   return json({ token, name: googleUser.name, email: googleUser.email }, 200, origin);
+}
+
+async function handleVerify(req, env, origin) {
+  const { credential } = await req.json();
+  if (!credential) return json({ error: "credential 누락" }, 400, origin);
+
+  let googleUser;
+  try {
+    googleUser = await verifyGoogleIdToken(credential, env.GOOGLE_CLIENT_ID);
+  } catch (err) {
+    return json({ error: "구글 인증 실패: " + err.message }, 401, origin);
+  }
+
+  return completeLogin(req, env, origin, googleUser);
+}
+
+// 🔧 [Playwright 점검용 로그인 우회, 2026-09] 구글 OAuth 팝업을 자동화
+// 도구가 통과할 수 없어, 실제 화면 점검(로그인 이후 화면들)을 스크립트로
+// 확인할 방법이 없었다. env.DEV_LOGIN_SECRET이 등록돼 있을 때만(=이
+// 시크릿을 명시적으로 wrangler secret put한 경우에만) 존재하는 라우트 —
+// 등록하지 않으면 이 함수가 항상 404를 반환해 프로덕션에서는 이 경로가
+// 있는지조차 알 수 없다. 구글 credential 검증만 건너뛸 뿐, 이후 절차
+// (참여자 명단 확인 등)는 완전히 동일해 명단에 없는 이메일로는 여전히
+// 로그인할 수 없다 — "실명 확인을 생략"하는 것이지 "권한 검사를
+// 생략"하는 게 아니다.
+async function handleDevLogin(req, env, origin) {
+  if (!env.DEV_LOGIN_SECRET) return json({ error: "not found" }, 404, origin);
+  const secret = req.headers.get("X-Dev-Login-Secret");
+  if (!secret || secret !== env.DEV_LOGIN_SECRET) {
+    return json({ error: "unauthorized" }, 401, origin);
+  }
+  const { email, name } = await req.json().catch(() => ({}));
+  if (!email) return json({ error: "email 누락" }, 400, origin);
+
+  return completeLogin(req, env, origin, { email: email.toLowerCase(), name: name || email }, { recordLastLogin: false });
 }
 
 const REPORT_COOLDOWN_SEC = 20 * 60;
@@ -8548,6 +8578,9 @@ export default {
     try {
       if (url.pathname === "/verify" && req.method === "POST") {
         return await handleVerify(req, env, origin);
+      }
+      if (url.pathname === "/dev/login" && req.method === "POST") {
+        return await handleDevLogin(req, env, origin);
       }
       if (url.pathname === "/report" && req.method === "POST") {
         return await handleReport(req, env, origin);

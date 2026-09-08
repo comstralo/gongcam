@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 import { DoorOpen, TriangleAlert, CircleCheck, Circle, MessageSquareWarning, Eye, PiggyBank, TrendingDown, ArrowRightLeft, ClipboardList } from "lucide-react";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -81,7 +81,10 @@ export function ExitProcessDialog({
   // "직권 P"는 항상 "벌금 시한 내 미납자") 입력란을 그 값으로 고정하고
   // 편집을 막는다. 없으면 기존처럼 관리자가 자유롭게 입력한다.
   lockForcedReason?: string;
-  children: ReactNode;
+  // 🔧 [버그 수정] DialogTrigger에 render prop으로 위임하려면 단일
+  // ReactElement가 필요하다 — 호출부 5곳 전부 항상 <Button>...</Button>
+  // 하나만 넘기므로(위 주석 참고) ReactNode보다 좁혀 타입으로도 강제한다.
+  children: ReactElement;
 }) {
   const { call } = useApi();
   const [open, setOpen] = useState(false);
@@ -198,14 +201,14 @@ export function ExitProcessDialog({
         }
       }}
     >
-      <DialogTrigger
-        className={cn(
-          "w-full rounded-xl text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-          triggerClassName
-        )}
-      >
-        {children}
-      </DialogTrigger>
+      {/* 🔧 [버그 수정] DialogTrigger가 기본적으로 <button>을 렌더링하는데
+          호출부가 넘기는 children이 전부 <Button>(<button>)이라 button
+          안에 button이 중첩돼 hydration 에러가 났다(Playwright MCP 콘솔
+          점검으로 발견) — render prop으로 children 엘리먼트에 트리거
+          역할을 직접 위임한다(이중 <button> 없이 동일하게 동작).
+          className은 base-ui의 mergeProps가 자동으로 병합해주므로
+          triggerClassName(w-full/flex-1 등 레이아웃용)은 그대로 유지한다. */}
+      <DialogTrigger className={triggerClassName} render={children} />
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-1.5">
