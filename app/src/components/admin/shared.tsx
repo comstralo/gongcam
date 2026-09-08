@@ -66,17 +66,20 @@ export function SectionCard({ children, className }: { children: ReactNode; clas
   return <div className={cn("rounded-xl border border-border bg-card p-3.5 sm:p-4", className)}>{children}</div>;
 }
 
-// 새로고침 버튼 테두리를 따라 도는 원형 진행률 게이지 — 다음 자동 폴링
-// (usePollingRefresh)까지 남은 시간을 시계 방향으로 채워지는 링으로
-// 보여준다(사용자 지시: "버튼에 원형 진행률 표시"). progress는 1(방금
-// 갱신, 링이 가득 참)에서 0(다음 갱신 직전, 링이 비어감)으로 줄어든다.
-// 순수 표시용 SVG라 렌더링 자체는 네트워크 요청과 무관하다.
+// 새로고침 버튼(size-7 = 28px 정사각형) 테두리에 정확히 밀착된 원형
+// 진행률 게이지 — 다음 자동 폴링(usePollingRefresh)까지 남은 시간을
+// 보여준다(사용자 지시: "버튼 테두리에 맞춰서 테두리가 차는 방향으로,
+// 만땅이 되면 새로고침되도록"). progress는 0(방금 갱신, 링이 비어있음)
+// 에서 1(다음 갱신 직전, 링이 가득 참)로 늘어난다 — usePollingRefresh가
+// 반환하는 값(1→0, 남은 비율)을 여기서 1에서 빼 "채워지는 방향"으로
+// 뒤집어 쓴다. 순수 표시용 SVG라 렌더링 자체는 네트워크 요청과 무관하다.
 function RefreshProgressRing({ progress }: { progress: number }) {
   const size = 28;
   const strokeWidth = 2;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
-  const offset = circumference * (1 - Math.max(0, Math.min(1, progress)));
+  const filled = Math.max(0, Math.min(1, progress));
+  const offset = circumference * (1 - filled);
   return (
     <svg
       width={size}
@@ -93,7 +96,6 @@ function RefreshProgressRing({ progress }: { progress: number }) {
         stroke="currentColor"
         strokeWidth={strokeWidth}
         className="text-primary/70"
-        strokeLinecap="round"
         strokeDasharray={circumference}
         strokeDashoffset={offset}
         transform={`rotate(-90 ${size / 2} ${size / 2})`}
@@ -108,8 +110,10 @@ function RefreshProgressRing({ progress }: { progress: number }) {
 // onRefresh가 없는 섹션(예: 신규 등록 폼처럼 서버에서 다시 불러올 목록이 없는
 // 경우)은 버튼 자리를 비워두고 chevron만 우측에 남긴다 — 다른 섹션과 chevron
 // 위치를 맞추기 위해 버튼 크기(size-7)만큼의 빈 공간을 유지한다.
-// refreshProgress(0~1)를 넘기면 자동 폴링(usePollingRefresh)까지 남은 시간을
-// 버튼 테두리에 원형 게이지로 함께 보여준다 — 폴링을 쓰지 않는 섹션은 생략.
+// refreshProgress(usePollingRefresh가 반환하는 "다음 갱신까지 남은 비율",
+// 1=방금 갱신~0=갱신 직전)를 넘기면 자동 폴링까지 남은 시간을 버튼 테두리에
+// 원형 게이지로 함께 보여준다 — 폴링을 쓰지 않는 섹션은 생략. 게이지 자체는
+// 반대 방향(0=비어있음~1=가득 참)으로 채워지므로 여기서 뒤집어 전달한다.
 export function SectionHeader({
   icon: Icon,
   title,
@@ -133,7 +137,7 @@ export function SectionHeader({
       </CollapsibleTrigger>
       {onRefresh ? (
         <div className="relative flex size-7 shrink-0 items-center justify-center">
-          {refreshProgress !== undefined && !loading && <RefreshProgressRing progress={refreshProgress} />}
+          {refreshProgress !== undefined && !loading && <RefreshProgressRing progress={1 - refreshProgress} />}
           <Button variant="outline" size="icon-sm" onClick={onRefresh} disabled={loading} aria-label="새로고침">
             <RotateCw className={cn("size-3.5", loading && "animate-spin")} strokeWidth={ICON_STROKE.default} />
           </Button>
