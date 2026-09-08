@@ -1032,17 +1032,17 @@ export function ReportReviewList({
                                           : "대상자 응답 대기 중"
                                       }
                                     />
-                                    <SubRow
-                                      label="예상차감"
-                                      value={(() => {
-                                        const confirmed = applied[item.id]?.penalty?.deductedMinutes;
-                                        if (confirmed !== undefined && confirmed !== null) {
-                                          return formatDeductedTime(confirmed);
-                                        }
-                                        return formatDeductedTime(expectedDeductedMinutes(item) ?? 0);
-                                      })()}
-                                      valueClassName="text-destructive"
-                                    />
+                                    {(() => {
+                                      const confirmed = applied[item.id]?.penalty?.deductedMinutes;
+                                      const isConfirmed = confirmed !== undefined && confirmed !== null;
+                                      return (
+                                        <SubRow
+                                          label={isConfirmed ? "확정 차감시간" : "예상 차감시간"}
+                                          value={formatDeductedTime(isConfirmed ? confirmed : expectedDeductedMinutes(item) ?? 0)}
+                                          valueClassName="text-destructive"
+                                        />
+                                      );
+                                    })()}
                                   </div>
 
                                   <div className="h-px w-full bg-border" />
@@ -1053,7 +1053,7 @@ export function ReportReviewList({
                                       벌점 · 페널티 변동
                                     </span>
                                     <SubRow
-                                      label="적용 시"
+                                      label={applied[item.id]?.penalty ? "확정 적용" : "예상 적용"}
                                       value={
                                         applied[item.id]?.penalty
                                           ? occurrenceLabel(applied[item.id]!.penalty!.occurrence)
