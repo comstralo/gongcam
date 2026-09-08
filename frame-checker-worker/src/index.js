@@ -4108,6 +4108,31 @@ async function handleAdminCaptureCancelMerit(req, env, origin) {
 // 그대로 재사용한다(사용자 확정) — 여기서는 다루지 않는다.
 const CAPTURE_DECISIONS = ["approved", "rejected_recognized", "deferred", "rejected"];
 
+// 🔧 [제보상점 1일 1회 제한] 제보자는 하루에 최대 1회만 제보상점을 받을 수
+// 있다(주간 5회 상한과 별개, 사용자 지시). "당일"은 실제로 시트에 상점이
+// 반영된 시각(decidedAt) 기준 KST 날짜로 판정한다 — 제보 접수 시각(ts)
+// 기준으로 하면, 예를 들어 어제 접수됐지만 오늘 관리자가 처리한 건이
+// "어제 이미 받음"으로 잘못 카운트되는 문제가 있다(사용자 지적: "실제로
+// 유예나 적용을 통해 시트에 적용된 경우에만 당일 1회를 받은 걸로 인식").
+// 봇 manifest 전체(당일 판정이라 archive까지 볼 필요는 없음)에서 같은
+// 제보자(reporterEmail)·같은 결정일(decidedAt의 KST 날짜)에 이미 성공한
+// (merit이 error가 아닌) 건이 있는지 확인한다.
+async function hasReporterAlreadyReceivedMeritToday(env, reporterEmail, nowTs) {
+  const email = (reporterEmail || "").toLowerCase();
+  if (!email) return false;
+  const data = await proxyToBotDashboard(env, "/captures");
+  const items = (data && data.items) || [];
+  const todayKey = kstDateKey(nowTs);
+  return items.some(
+    (it) =>
+      (it.reporterEmail || "").toLowerCase() === email &&
+      it.merit &&
+      !("error" in it.merit) &&
+      it.decidedAt &&
+      kstDateKey(it.decidedAt) === todayKey
+  );
+}
+
 async function handleAdminCaptureDecide(req, env, origin) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
@@ -4141,15 +4166,23 @@ async function handleAdminCaptureDecide(req, env, origin) {
         if (!nickname) return json({ error: "nickname이 필요합니다." }, 400, origin);
         penaltyResult = await applyOutputPenalty(env, accessToken, fileId, nickname, reason, ts, sendTime, replyTime, id);
       }
-      try {
-        meritResult = await applyReportMerit(env, accessToken, fileId, reporterEmail, reason, ts, id);
-      } catch (meritErr) {
-        // 제보자 상점 부여는 대상자 페널티와 별개 실패 지점이다(예: 제보자가
-        // 회원 명단에 없거나 5칸이 이미 다 찼을 때) — 이미 시트에 반영된
-        // 대상자 페널티까지 되돌리지 않고, 그 사실을 응답에 담아 관리자가
-        // 알 수 있게만 한다(자동 롤백은 하지 않음 — applyOutputPenalty와
-        // 동일하게 "조용히 넘기지 않는다" 원칙).
-        meritResult = { error: meritErr.message };
+      const alreadyReceivedToday = await hasReporterAlreadyReceivedMeritToday(env, reporterEmail, Date.now());
+      if (alreadyReceivedToday) {
+        // 1일 1회 상한 — 대상자 페널티(있었다면)는 이미 반영됐으니 그대로
+        // 두고, 제보상점만 조용히 건너뛴다(applyOutputPenalty와 동일하게
+        // "조용히 넘기지 않는다" 원칙 — meritResult에 사유를 남긴다).
+        meritResult = { error: "제보자가 오늘 이미 제보상점을 받아 1일 1회 상한으로 부여하지 않았습니다." };
+      } else {
+        try {
+          meritResult = await applyReportMerit(env, accessToken, fileId, reporterEmail, reason, ts, id);
+        } catch (meritErr) {
+          // 제보자 상점 부여는 대상자 페널티와 별개 실패 지점이다(예: 제보자가
+          // 회원 명단에 없거나 5칸이 이미 다 찼을 때) — 이미 시트에 반영된
+          // 대상자 페널티까지 되돌리지 않고, 그 사실을 응답에 담아 관리자가
+          // 알 수 있게만 한다(자동 롤백은 하지 않음 — applyOutputPenalty와
+          // 동일하게 "조용히 넘기지 않는다" 원칙).
+          meritResult = { error: meritErr.message };
+        }
       }
       await invalidateMemberCache(env); // 페널티/제보상점 슬롯이 바뀌었으므로 exitStatus 캐시 무효화.
     } catch (err) {
