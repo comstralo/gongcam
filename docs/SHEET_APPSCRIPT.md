@@ -1,6 +1,6 @@
 # 공부합시당 캠스터디 — Google Apps Script 구조 문서
 
-원본: `study_sw/resource/appscript.js` (1680줄)
+원본: `study_sw/assets/appscript.js` — 실제 Google Apps Script 편집기에 붙여넣어 반영해야 하는 사본. 이 저장소의 파일은 참고용이며, 수정 후에는 스프레드시트의 확장 프로그램 → Apps Script에서 수동으로 코드를 교체·저장해야 실제로 반영된다.
 스프레드시트 ID: `1jjIo-SulFyonrv2dSFYO4SVsejKgbfogCJLVLbA-0Ao` (`SHEET_STRUCTURE.md`와 동일)
 서비스 계정: `id-630@crack-decorator-450006-g9.iam.gserviceaccount.com`
 
@@ -58,12 +58,12 @@
 
 | 함수 | 주기 | 권장 시각 | 역할 |
 |---|---|---|---|
-| `daily_calc()` | 일 단위 | 자정~오전 1시 | **일간집계**: 미입력 교시를 `ERR`/`00:00`으로 채우고, 구루미 오류 보정 가산시간 적용, 벌금 발생 시 미입력 납부확인 칸을 "미납"으로, 페널티 누적 2 이상이면 예치금 재납(R3)을 "미납"으로 자동 설정. 🔧 2026-09: 루프 진입 전 `_fetchExitDates()`로 Worker의 `GET /bot/exit-requests`를 1회 조회해 "회원번호→exitDate" 맵을 가져오고, 그 회원의 마지막 참여일(exitDate)이 지난 시트는 이 모든 처리를 통째로 건너뛴다(§"마지막 참여일 이후 집계 차단" 참고) |
+| `daily_calc()` | 일 단위 | 자정~오전 1시 | **일간집계**: 미입력 교시를 `ERR`/`00:00`으로 채우고, 구루미 오류 보정 가산시간 적용, 벌금 발생 시 미입력 납부확인 칸을 "미납"으로, 페널티 누적 2 이상이면 예치금 재납(R3)을 "미납"으로 자동 설정. 🔧 2026-09: 루프 진입 전 `_fetchExitDates()`로 Worker의 `GET /bot/exit-requests`를 1회 조회해 "회원번호→exitDate" 맵을 가져오고, 그 회원의 마지막 참여일(exitDate)이 지난 시트는 이 모든 처리를 통째로 건너뛴다(§"마지막 참여일 이후 집계 차단" 참고). **일요일 실행분**에 한해 목표시간/참여율 미달을 판정해 "데이터" 시트 L/M열(주간 P 슬롯)에 관리자 개입 없이 직접 벌점을 기록하기도 한다 — 실제로 기록한 경우에만 함수 끝에서 `_notifyWorkerCacheInvalidate({groups:["penalty"]})`를 호출해 Worker의 `outputPenSlots:`/`reportScore:`/`penSlotGrid:`/`exitStatus:` 캐시를 즉시 무효화한다(§"Worker 캐시 무효화 알림" 참고) |
 | `sheet_reset()` | 주 단위(월) | 오전 5~6시 | **주간 전체 초기화**: Drive에 전체 시트 백업 복사본 생성 → 이월상금/퇴실벌금/퇴실예치 리셋 → 페널티 사이클에 따라 누적치 초기화 또는 갱신 → 개인 탭 C6:W23 내용 삭제 → 제보상점 초기화 → "퇴실"/"재납" 백업 탭 전체 삭제 |
 | `grant_editor_column_n()` | 주 단위(월) | 오전 7~8시 | 집계 탭 N열(목표시간 변경 신청)에 회원별 편집 권한 부여(스마트 diff로 필요한 경우만 API 호출) |
-| `revoke_editor_column_n()` | 주 단위(월) | 오후 2~3시 | N열 입력값을 검증해 유효하면 해당 개인 탭 O3(목표시간)에 반영하고, N열 편집 권한을 관리자만으로 회수 — **웹앱의 `/goal-schedule` 마감 시각(매주 월 14:00)과 정확히 일치** |
+| `revoke_editor_column_n()` | 주 단위(월) | 오후 2~3시 | N열 입력값을 검증해 유효하면 해당 개인 탭 O3(목표시간)에 반영하고, N열 편집 권한을 관리자만으로 회수 — **웹앱의 `/goal-schedule` 마감 시각(매주 월 14:00)과 정확히 일치**. 🔧 2026-09: 실제로 목표시간을 반영한 회원 번호를 모아 함수 끝에서 `_notifyWorkerCacheInvalidate({memberNumbers:[...]})`를 호출해 그 회원들의 `personalStatus:` 캐시를 즉시 지운다 — 마감 직후 본인이 확인하려는 시점과 겹치는 gap 대응 |
 | `grant_editor_column_o()` | 일 단위 | 오전 7~8시 | 집계 탭 O열(일반반휴 신청)에 회원별 편집 권한 부여 |
-| `revoke_editor_column_o()` | 일 단위 | 밤 11시~12시 | O열 입력값("1장"/"2장")을 검증해 개인 탭 20행(일반반휴 사용)에 반영, 중복/초과 시 "오류" 문구 기록, O열 권한 회수 — **일반반휴 신청 마감 매일 23:00과 일치** |
+| `revoke_editor_column_o()` | 일 단위 | 밤 11시~12시 | O열 입력값("1장"/"2장")을 검증해 개인 탭 20행(일반반휴 사용)에 반영, 중복/초과 시 "오류" 문구 기록, O열 권한 회수 — **일반반휴 신청 마감 매일 23:00과 일치**. 🔧 2026-09: `revoke_editor_column_n()`과 동일하게 실제로 반영한 회원 번호의 `personalStatus:` 캐시를 즉시 지운다 |
 
 ## 커스텀 메뉴 함수 (수동, 관리자 트리거)
 
@@ -162,6 +162,36 @@
   시트를 백업 탭으로 옮기고 나면 그 회원 번호는 다시 빈 슬롯이 되어
   `check_no_member_sheet`에서 이미 걸러지므로, 이 exitDate 스킵 로직 자체가
   필요 없어진다(정상적인 다음 단계로 자연스럽게 넘어감).
+
+## Worker 캐시 무효화 알림 (`_notifyWorkerCacheInvalidate`, 2026-09 추가)
+
+앱스크립트는 Worker API(`writeSheetValues`)를 거치지 않고 시트에 직접
+쓴다 — 그래서 Worker가 회원 조회를 캐싱하는 데 쓰는 `personalStatus:`/
+`outputPenSlots:`/`reportScore:`/`penSlotGrid:`/`exitStatus:` 등은 앱스크립트가
+값을 바꿔도 그 사실을 전혀 모른다. TTL이 지나야 자연스럽게 새로 고쳐지므로
+평소엔 문제가 없지만, 몇몇 트리거는 **회원이 결과를 확인하려는 시점과 정확히
+겹치는 시각**에 실행돼(`docs/CACHING_POLICY.md` §12) 화면이 잠깐 낡아 보일
+수 있었다. 세 지점에서 실제로 값을 쓴 경우에만 Worker에 알려 즉시 지운다.
+
+- **`_notifyWorkerCacheInvalidate(body)`**: `_fetchExitDates()`와 동일한
+  인증(`BOT_SECRET` 스크립트 속성)·방어(`muteHttpExceptions`, try/catch로
+  실패해도 조용히 로그만 남김) 패턴으로 `POST /bot/invalidate-cache`
+  (`handleBotInvalidateCache`, `frame-checker-worker/src/index.js`)를 호출한다.
+  `body`는 `{groups: [...]}`(그룹 단위 무효화, `invalidateMemberCache(env,
+  groups)`에 그대로 전달) 또는 `{memberNumbers: [...]}`(회원별
+  `personalStatus:` 캐시를 개별 무효화) 중 하나.
+- **`daily_calc()`**: 일요일 실행분에서 "데이터" 시트 L/M열(주간 P)을 실제로
+  채운 경우에만 `{groups:["penalty"]}`로 호출 — 관리자가 자정 직후 관리
+  화면을 열어두고 있어도 최신 페널티 개수가 바로 보인다.
+- **`revoke_editor_column_n()`**: 목표시간을 실제로 반영한 회원 번호를 모아
+  `{memberNumbers:[...]}`로 호출 — 웹앱 마감(매주 월 14:00)과 정확히
+  겹치는 확인 시점에 최신 목표시간이 바로 보인다.
+- **`revoke_editor_column_o()`**: 반휴 사용을 실제로 반영한 회원 번호를 모아
+  동일하게 호출 — `personalStatus:`가 이미 10분 TTL(도움봇 교시 리듬에
+  맞춤)이라 영향은 크지 않지만, 비용이 거의 없어 함께 처리했다.
+- 실패해도(시크릿 미설정, 네트워크 오류 등) 본 작업(시트 반영) 자체는
+  이미 끝난 뒤라 안전하다 — 이 알림은 "캐시가 몇 분 더 일찍 갱신되느냐"의
+  문제일 뿐, 실패해도 TTL 만료로 결국 저절로 정확해진다.
 
 ## 웹앱(frame-checker-worker)과의 관계 요약
 

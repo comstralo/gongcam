@@ -6154,6 +6154,40 @@ async function handleBotExitRequests(req, env, origin) {
   return json({ exitDates }, 200, origin);
 }
 
+// 🔧 [앱스크립트 직접 쓰기 캐시 정합성, 2026-09] 앱스크립트(daily_calc/
+// revoke_editor_column_n/o)는 Worker API를 거치지 않고 gspread와 마찬가지로
+// 시트에 직접 쓴다 — writeSheetValues의 내장 무효화도, invalidateMemberCache
+// 호출도 전혀 트리거되지 않는다. 지금까지는 personalStatus:(10분)/
+// outputPenSlots:(5분) 등 TTL이 자연 만료될 때까지 기다리는 수밖에 없었는데,
+// 특히 매주 월요일 목표시간 마감(회원이 마감 직후 확인하려는 시점과 겹침)과
+// 일요일 자정 자동 벌점 기록(관리자 화면이 그 시각 열려 있으면 노출)에서
+// 화면이 잠깐 낡아 보일 수 있었다(docs/CACHING_POLICY.md §12). 앱스크립트가
+// 쓰기를 마친 직후 이 엔드포인트를 한 번 호출해 관련 캐시만 즉시 지운다 —
+// 15명을 순회하는 함수 하나가 끝날 때 1회만 호출하면 되므로 KV 예산에
+// 미치는 영향은 미미하다. groups는 invalidateMemberCache(env, groups)에
+// 그대로 전달하고(생략 시 전체 무효화), memberNumbers가 있으면 그 각각의
+// personalStatus: 캐시도 함께 지운다(개인 탭 값 — 목표시간/반휴 등은 이
+// 그룹 밖이라 별도 처리 필요).
+async function handleBotInvalidateCache(req, env, origin) {
+  const botSecret = req.headers.get("X-Bot-Secret");
+  if (!botSecret || botSecret !== env.BOT_SECRET) {
+    return json({ error: "unauthorized" }, 401, origin);
+  }
+  const { groups, memberNumbers } = await req.json().catch(() => ({}));
+  const validGroupNames = Object.keys(MEMBER_CACHE_GROUPS);
+  if (groups && (!Array.isArray(groups) || groups.some((g) => !validGroupNames.includes(g)))) {
+    return json({ error: "groups는 " + validGroupNames.join("/") + " 중 하나여야 합니다." }, 400, origin);
+  }
+  if (memberNumbers && !Array.isArray(memberNumbers)) {
+    return json({ error: "memberNumbers는 배열이어야 합니다." }, 400, origin);
+  }
+  await Promise.all([
+    groups || !memberNumbers ? invalidateMemberCache(env, groups) : Promise.resolve(),
+    ...((memberNumbers || []).map((n) => invalidatePersonalStatusCache(env, env.GOOGLE_SHEET_FILE_ID, String(n)))),
+  ]);
+  return json({ ok: true }, 200, origin);
+}
+
 async function listActiveMembersWithExitInfo(env, accessToken, fileId) {
   const [members, exitRequests] = await Promise.all([
     listAllMembers(env, accessToken, fileId),
@@ -8544,6 +8578,9 @@ export default {
       }
       if (url.pathname === "/bot/exit-requests" && req.method === "GET") {
         return await handleBotExitRequests(req, env, origin);
+      }
+      if (url.pathname === "/bot/invalidate-cache" && req.method === "POST") {
+        return await handleBotInvalidateCache(req, env, origin);
       }
       if (url.pathname === "/admin/bot/status" && req.method === "GET") {
         return await handleAdminBotStatus(req, env, origin);

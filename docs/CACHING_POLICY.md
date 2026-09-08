@@ -390,7 +390,63 @@ isolate 분산과 KV 히트율에 달려 있어 정적 코드 조사만으로는
 건드리는 range를 코드로 직접 대조해 그룹을 매겼고, 무관한 캐시를 빼는
 것뿐이라 오히려 기존의 "과잉 무효화"보다 정확한 매핑이다.
 
-## 11. 관련 문서
+## 12. 앱스크립트 트리거의 시트 직접 쓰기 — 매주 반복되는 흔한 흐름 기준 재검토 (2026-09-09)
+
+§7이 다룬 "Worker를 거치지 않는 직접 쓰기"는 도움봇(`study_sw/bot/`)만
+조사했다. 이번엔 시트에 내장된 **앱스크립트**(`study_sw/assets/appscript.js`)
+트리거도 같은 성격의 쓰기를 하는지 전수조사했다 — "극단적 경쟁 조건"이
+아니라 "매주 실제로 반복되는 흔한 흐름에서 체감되는 지연이 있는지" 기준으로.
+
+### 12.1 발견
+
+- **`daily_calc()`(매일 자정~1시, 일요일 실행분만)** — 그 주 목표시간/참여율
+  미달을 판정해 "데이터" 시트 L/M열(주간 P 슬롯, `outputPenSlots:`/
+  `reportScore:`/`penSlotGrid:` 캐시가 담는 값)에 관리자 개입 없이 직접
+  벌점을 기록한다. 지금까지 이 세 캐시는 "관리자 조작(제보 승인/취소)으로만
+  바뀌고, 그건 항상 `invalidateMemberCache`가 무효화한다"는 전제였는데
+  이 전제가 정확하지 않았다.
+- **`revoke_editor_column_n()`(매주 월 14~15시, 목표시간 마감)** — 개인 탭
+  O3(목표시간)에 직접 쓴다. 이 마감 시각이 **웹앱의 신청 마감(매주 월
+  14:00)과 정확히 일치**해, 회원이 마감 직후 반영 여부를 확인하려는
+  시점과 정확히 겹치는 매주 반복 시나리오였다.
+- **`revoke_editor_column_o()`(매일 밤 11시~12시, 반휴 마감)** — 개인 탭
+  20행(반휴 사용)에 직접 쓴다. `personalStatus:`가 §7에서 이미 봇의 교시
+  리듬(10분)에 맞춰져 있어 영향은 크지 않지만 같은 성격의 gap.
+
+셋 다 **정합성(시트에 잘못된 값이 쓰이는 것) 문제는 아니다** — 표시가
+최대 5~30분 낡아 보일 수 있는 사용성 문제였고, 활동이 적은 시간대(자정,
+밤 11시)이거나 짧은 순간(마감 직후)이라 심각도는 낮았다.
+
+### 12.2 대응 — 앱스크립트→Worker 무효화 알림
+
+`invalidateMemberCache`를 여러 번 반복 호출하는 게 아니라, **15명을
+순회하는 트리거 함수 하나가 끝날 때 딱 1번**만 Worker에 "방금 이만큼
+바꿨다"고 알리는 방식이라 KV 예산에 미치는 영향은 미미하다(주당 최대
+2~3회 추가, 각각 §10의 좁은 그룹 기준 2~4개 삭제 — 하루 1,000개 한도에
+비해 무시할 수준).
+
+- **새 엔드포인트**: `POST /bot/invalidate-cache`(`handleBotInvalidateCache`,
+  index.js:6171-6189)가 `X-Bot-Secret` 인증 후 `{groups: [...]}` 또는
+  `{memberNumbers: [...]}`를 받아 `invalidateMemberCache(env, groups)`
+  또는 회원별 `invalidatePersonalStatusCache`를 호출한다.
+- **`daily_calc()`**: 주간 P 슬롯을 실제로 채운 경우에만 함수 끝에서
+  `_notifyWorkerCacheInvalidate({groups:["penalty"]})`.
+- **`revoke_editor_column_n()`/`revoke_editor_column_o()`**: 실제로 값을
+  반영한 회원 번호만 모아 `_notifyWorkerCacheInvalidate({memberNumbers:[...]})`.
+- **방어**: `_fetchExitDates()`(§ "마지막 참여일 이후 집계 차단")와 동일한
+  패턴 — `BOT_SECRET` 스크립트 속성 미설정이거나 호출 실패해도 조용히
+  로그만 남기고 넘어간다. 본 작업(시트 반영)은 이미 끝난 뒤라 이 알림의
+  실패가 daily_calc/revoke_editor_column_n·o 자체를 막지 않으며, 실패해도
+  TTL 만료로 결국 저절로 정확해진다.
+
+상세 코드 위치와 트리거별 설명은 `docs/SHEET_APPSCRIPT.md`
+"Worker 캐시 무효화 알림" 절 참고.
+
+**반영 시 주의**: `study_sw/assets/appscript.js`는 참고용 사본이며, 실제
+동작하려면 Google Sheets의 확장 프로그램 → Apps Script 편집기에 이 코드를
+수동으로 복사해 저장해야 한다.
+
+## 13. 관련 문서
 
 - `docs/WEB_ADMIN.md` §3.1 — `applyOutputPenalty`/`applyReportMerit`/
   `applyTimeDeduction`가 실제로 호출되는 관리자 제보 처리 화면·플로우.

@@ -847,6 +847,12 @@ function daily_calc() {
   // 사전식 비교할 수 있게 한다.
   var exit_dates = _fetchExitDates();
   var today_str = get_formatted_date();
+  // 🔧 [Worker 캐시 정합성, 2026-09] 일요일 실행분에서 아래 "주간 P" 슬롯을
+  // 실제로 채운 적이 있으면(관리자 개입 없이 앱스크립트가 직접 기록),
+  // 그 값을 담는 Worker의 outputPenSlots:/reportScore:/penSlotGrid: 캐시가
+  // 이 변경을 전혀 모른 채 최대 5~30분 낡은 값을 돌려줄 수 있다 — 함수
+  // 끝에서 실제로 채운 경우에만 한 번 무효화 요청을 보낸다.
+  var wrote_weekly_pen = false;
 
   // 0. '1~15' 시트를 순회
   for (var sheet_number = 1; sheet_number <= 15; sheet_number++) {
@@ -1020,8 +1026,10 @@ function daily_calc() {
         var time_pen_note = get_formatted_date() + " · " + reason_parts.join(" · ");
         if ((Number(lm_vals[0]) || 0) === 0) {
           cycle_sheet.getRange(`L${cycle_row}`).setValue(current_cycle).setNote(time_pen_note);
+          wrote_weekly_pen = true;
         } else if ((Number(lm_vals[1]) || 0) === 0) {
           cycle_sheet.getRange(`M${cycle_row}`).setValue(current_cycle).setNote(time_pen_note);
+          wrote_weekly_pen = true;
         }
       }
     }
@@ -1031,6 +1039,44 @@ function daily_calc() {
   // '집계' 시트 정리 (마무리 작업)
   total_sheet.getRange(period_omission_cell).setValue("0");
   total_sheet.getRange("K4:L18").setValue("");
+
+  // 🔧 [Worker 캐시 정합성, 2026-09] 위에서 실제로 주간 P 슬롯을 채운
+  // 경우에만, 관련 캐시(outputPenSlots:/reportScore:/penSlotGrid:/
+  // exitStatus:)를 즉시 무효화하도록 Worker에 알린다 — _fetchExitDates()와
+  // 동일하게 실패해도 조용히 넘어간다(이 알림은 "화면이 몇 분 빨리
+  // 갱신되느냐"의 문제일 뿐, 실패해도 daily_calc 본연의 집계 결과에는
+  // 영향이 없고 TTL 만료로 결국 저절로 해결된다).
+  if (wrote_weekly_pen) {
+    _notifyWorkerCacheInvalidate({ groups: ["penalty"] });
+  }
+}
+
+// ⚙️ [캐시 무효화 알림] 앱스크립트가 Worker API를 거치지 않고 시트에 직접
+// 쓴 뒤, 그 값을 캐싱하는 Worker의 인메모리/KV 캐시를 즉시 지우도록
+// 요청한다 — _fetchExitDates()와 동일한 인증/방어 패턴(BOT_SECRET 스크립트
+// 속성, muteHttpExceptions로 실패해도 예외를 던지지 않음). 실패해도 조용히
+// 로그만 남긴다 — 캐시는 TTL이 지나면 어차피 저절로 정확해지므로, 이
+// 알림 실패가 앱스크립트의 본 작업(시트 반영)을 막을 이유는 아니다.
+function _notifyWorkerCacheInvalidate(body) {
+  try {
+    var secret = PropertiesService.getScriptProperties().getProperty("BOT_SECRET");
+    if (!secret) {
+      Logger.log("[캐시 무효화 알림] BOT_SECRET 스크립트 속성이 설정되지 않아 건너뜁니다.");
+      return;
+    }
+    var res = UrlFetchApp.fetch(worker_base_url + "/bot/invalidate-cache", {
+      method: "post",
+      contentType: "application/json",
+      headers: { "X-Bot-Secret": secret },
+      payload: JSON.stringify(body || {}),
+      muteHttpExceptions: true,
+    });
+    if (res.getResponseCode() !== 200) {
+      Logger.log("[캐시 무효화 알림] 실패(HTTP " + res.getResponseCode() + "): " + res.getContentText());
+    }
+  } catch (e) {
+    Logger.log("[캐시 무효화 알림] 예외 발생, 건너뜀: " + e);
+  }
 }
 
 // ⚙️ [트리거] 전체 시트 초기화 함수.
@@ -1270,14 +1316,19 @@ function revoke_editor_column_n() {
 
   let output_values = [];
   const valid_values = ["8H (교시제)", "8H (달성제)", "9H (교시제)", "9H (달성제)", "10H (교시제)", "10H (달성제)"];
+  // 🔧 [Worker 캐시 정합성, 2026-09] 실제로 목표시간을 반영한 회원 번호만
+  // 모아둔다 — 이 함수 끝에서 그 번호들의 personalStatus: 캐시를 즉시
+  // 지워야, 마감 직후(웹앱 신청 마감 시각과 정확히 일치) 본인이 확인할 때
+  // 최대 10분 낡은 값을 보는 일이 없다.
+  const updated_member_numbers = [];
 
   // ==========================================
   // STEP 1: 개별 시트 업데이트 및 K열 결과값 계산
   // ==========================================
   for (let i = 0; i < values_n.length; i++) {
     const row_number = i + 4;
-    const n_value = values_n[i][0]; 
-    let process_result = n_value; 
+    const n_value = values_n[i][0];
+    let process_result = n_value;
 
     try {
       if (valid_values.includes(n_value)) {
@@ -1287,12 +1338,13 @@ function revoke_editor_column_n() {
         if (dest_sheet) {
           dest_sheet.getRange(target_time_cell).setValue(n_value);
           process_result = `등록 (${n_value.replace(/(\d+H) \((.)(.*)/, '$1$2')})`;
+          updated_member_numbers.push(dest_sheet_name);
         }
       }
       output_values.push([process_result]);
     } catch (e) {
       console.error(`${row_number}행 처리 중 오류 발생: ${e.toString()}`);
-      output_values.push([n_value]); 
+      output_values.push([n_value]);
     }
   }
 
@@ -1339,6 +1391,14 @@ function revoke_editor_column_n() {
   }
 
   console.log("전체 작업 및 권한 회수가 완료되었습니다.");
+
+  // 🔧 [Worker 캐시 정합성, 2026-09] 이 마감 시각(월 14:00)은 웹앱의
+  // /goal-schedule 마감과 정확히 일치해, 회원이 마감 직후 자기 목표시간이
+  // 반영됐는지 확인하려는 시점과 겹친다 — 실제로 반영한 회원 번호만
+  // Worker에 알려 즉시 지운다.
+  if (updated_member_numbers.length > 0) {
+    _notifyWorkerCacheInvalidate({ memberNumbers: updated_member_numbers });
+  }
 }
 
 // ⚙️ [트리거] '집계' 시트의 반일휴무 신청 (L열) 의 행 단위로 스터디원에게 수정 권한 부여 함수.
@@ -1444,60 +1504,66 @@ function revoke_editor_column_o() {
   const values_o = range_o.getValues(); 
   const all_protections = total_sheet.getProtections(SpreadsheetApp.ProtectionType.RANGE);
   
-  let output_values = []; 
+  let output_values = [];
+  // 🔧 [Worker 캐시 정합성, 2026-09] 실제로 반휴 사용을 반영한 회원 번호만
+  // 모아, 함수 끝에서 personalStatus: 캐시를 즉시 지운다.
+  const updated_member_numbers = [];
 
   // ==========================================
   // STEP 1: 타겟 시트 호출 최소화 연산
   // ==========================================
   for (let i = 0; i < values_o.length; i++) {
-    const row_number = i + 4; 
-    const o_value = values_o[i][0]; 
-    let result_txt = o_value; 
-    
+    const row_number = i + 4;
+    const o_value = values_o[i][0];
+    let result_txt = o_value;
+
     try {
       if (o_value === "1장" || o_value === "2장") {
         const dest_sheet_name = (row_number - 3).toString();
         const dest_sheet = spread_sheet.getSheetByName(dest_sheet_name);
-        
+
         if (dest_sheet) {
           // [최적화 1] 20행과 21행을 개별 getValue가 아닌 범위(getValues)로 한 번에 읽기
-          const target_col = ranges.start; 
+          const target_col = ranges.start;
           const today_vals = dest_sheet.getRange(`${target_col}20:${target_col}21`).getValues();
-          
+
           var holiday_use_remain = dest_sheet.getRange(holiday_normal_use_thiskweek_cell).getValue();
           var holiday_normal_today = today_vals[0][0] || 0; // 20행 값
           var holiday_reason_today = today_vals[1][0] || 0; // 21행 값
           var holiday_total_today = holiday_normal_today + holiday_reason_today;
-          result_txt = ""; 
+          result_txt = "";
 
           if (o_value == "1장") {
-            if (holiday_normal_today == 1) { result_txt = "오류 (중복)"; } 
+            if (holiday_normal_today == 1) { result_txt = "오류 (중복)"; }
             else if (holiday_total_today == 2) { result_txt = "오류 (초과)"; }
             else if (holiday_use_remain == 0) { result_txt = "오류 (초과)"; }
-            else if (holiday_use_remain >= 1) { 
-              result_txt = "등록 (1장)"; 
-              dest_sheet.getRange(`${target_col}20`).setValue(1); 
+            else if (holiday_use_remain >= 1) {
+              result_txt = "등록 (1장)";
+              dest_sheet.getRange(`${target_col}20`).setValue(1);
+              updated_member_numbers.push(dest_sheet_name);
             }
           }
           if (o_value == "2장") {
             if (holiday_normal_today == 2) { result_txt = "오류 (중복)"; }
             else if(holiday_total_today == 2) { result_txt = "오류 (초과)"; }
             else if (holiday_use_remain == 0) { result_txt = "오류 (초과)"; }
-            else if (holiday_normal_today == 1) { 
-              result_txt = "등록 (확장)"; 
-              dest_sheet.getRange(`${target_col}20`).setValue(2); 
+            else if (holiday_normal_today == 1) {
+              result_txt = "등록 (확장)";
+              dest_sheet.getRange(`${target_col}20`).setValue(2);
+              updated_member_numbers.push(dest_sheet_name);
             }
-            else if (holiday_use_remain == 2) { 
-              result_txt = "등록 (2장)"; 
-              dest_sheet.getRange(`${target_col}20`).setValue(2); 
+            else if (holiday_use_remain == 2) {
+              result_txt = "등록 (2장)";
+              dest_sheet.getRange(`${target_col}20`).setValue(2);
+              updated_member_numbers.push(dest_sheet_name);
             }
           }
         }
       }
-      output_values.push([result_txt]); 
+      output_values.push([result_txt]);
     } catch (e) {
       console.error(`${row_number}행 데이터 처리 오류: ${e.toString()}`);
-      output_values.push([o_value]); 
+      output_values.push([o_value]);
     }
   }
   
@@ -1548,6 +1614,14 @@ function revoke_editor_column_o() {
   }
 
   console.log("모든 데이터 처리 및 개인 권한 회수가 최단 시간으로 완료되었습니다.");
+
+  // 🔧 [Worker 캐시 정합성, 2026-09] 반휴 마감 직후 본인이 확인하려는
+  // 흐름과 겹칠 수 있어, 실제로 반영한 회원 번호만 Worker에 알려 즉시
+  // 지운다(personalStatus:는 이미 10분 TTL로 낮춰져 있어 영향은 크지
+  // 않지만, 비용이 거의 없으므로 함께 처리해 gap을 완전히 없앤다).
+  if (updated_member_numbers.length > 0) {
+    _notifyWorkerCacheInvalidate({ memberNumbers: updated_member_numbers });
+  }
 }
 
 // ⚙️ [권한] 시트에 접근할 수 있는 권한 설정.
