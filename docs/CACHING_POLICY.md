@@ -491,6 +491,18 @@ isolate 분산과 KV 히트율에 달려 있어 정적 코드 조사만으로는
 `ExitedMemberList`(퇴실 스터디원 목록)는 현재 실제 API 대신 더미 데이터를
 표시 중인 미완성 상태(사용자 확인, 별도 과제로 보류)라 제외했다.
 
+**`BotStatusSection`("도움봇 오퍼레이터", 스크린샷 포함)은 별도로 1분
+고정 주기 폴링을 추가했다** — `handleAdminBotStatus`(index.js:3071-3080)는
+KV 캐시가 아니라 매 요청마다 `proxyToBotDashboard(env, "/status")`로 봇에
+직접 프록시하는 무캐시 경로라 위 "TTL의 3배" 원칙 자체가 적용되지 않는다.
+대신 봇이 요청마다 Selenium(`ctx.driver.get_screenshot_as_base64()`,
+`dashboard_server.py`)으로 화면을 실시간 캡처하며, 이 캡처가
+`ctx.lock_element` 락 안에서 실행돼 제보 캡처·교시 기록 등 봇의 다른
+작업과 자원을 공유한다 — 주기를 너무 짧게 잡으면(예: 30초, 하루 2,880회)
+락 경합과 대역폭(스크린샷 1건당 대략 100~300KB, 하루 수백MB) 부담이
+커진다. KV 예산과는 무관하지만 "봇 부하"라는 별개의 제약이라, 사용자가
+1분을 "부하는 낮게 유지하면서 꽤 실시간"인 절충점으로 확정했다.
+
 ### 12.3 부수 수정 — `AdminMemberPenaltyTab`의 무시되던 `visible`
 
 `MemberRosterList`에 폴링을 걸려고 보니 `AdminMemberPenaltyTab`(Account
