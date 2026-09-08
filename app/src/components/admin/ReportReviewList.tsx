@@ -815,28 +815,29 @@ export function ReportReviewList({
                           색상도 의미에 맞게 재정리: 대기=노랑(amber), 이의=옅은
                           빨강, 인정=초록(ok), 확정=진한 빨강(destructive), 유예/
                           반려=회색(muted). */}
-                      <span className="flex flex-col items-end gap-1">
-                        <span className="flex flex-wrap items-center justify-end gap-1">
-                          <span className="rounded-full bg-amber-600/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-amber-600 dark:bg-amber-400/15 dark:text-amber-400">
-                            대기 : {pendingCount}건
-                          </span>
-                          <span className="rounded-full bg-destructive/8 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-destructive">
-                            이의 : {disputedCount}건
-                          </span>
-                          <span className="rounded-full bg-ok/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-ok">
-                            인정 : {recognizedCount}건
-                          </span>
+                      {/* grid-cols-3(각 열 폭은 그 열에서 가장 넓은 뱃지에 맞춰
+                          자동 통일)로 바꿔, 1행(대기/이의/인정)과 2행(확정/유예/
+                          반려)의 뱃지 개수는 같아도 텍스트 폭이 달라 두 행의
+                          좌측 시작 위치가 서로 어긋나 보이던 것을 열 단위로
+                          맞춘다(사용자 지적: "대기가 확정보다 더 좌측으로 길다"). */}
+                      <span className="grid grid-cols-3 gap-1 justify-items-end">
+                        <span className="rounded-full bg-amber-600/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-amber-600 dark:bg-amber-400/15 dark:text-amber-400">
+                          대기 : {pendingCount}건
                         </span>
-                        <span className="flex flex-wrap items-center justify-end gap-1">
-                          <span className="rounded-full bg-destructive/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-destructive">
-                            확정 : {appliedCount}건
-                          </span>
-                          <span className="rounded-full bg-foreground/8 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-muted-foreground">
-                            유예 : {deferredCount}건
-                          </span>
-                          <span className="rounded-full bg-foreground/8 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-muted-foreground">
-                            반려 : {rejectedCount}건
-                          </span>
+                        <span className="rounded-full bg-destructive/8 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-destructive">
+                          이의 : {disputedCount}건
+                        </span>
+                        <span className="rounded-full bg-ok/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-ok">
+                          인정 : {recognizedCount}건
+                        </span>
+                        <span className="rounded-full bg-destructive/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-destructive">
+                          확정 : {appliedCount}건
+                        </span>
+                        <span className="rounded-full bg-foreground/8 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-muted-foreground">
+                          유예 : {deferredCount}건
+                        </span>
+                        <span className="rounded-full bg-foreground/8 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-muted-foreground">
+                          반려 : {rejectedCount}건
                         </span>
                       </span>
                       <ChevronDown
