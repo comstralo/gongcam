@@ -326,7 +326,11 @@ export function MyOutputPenSection({
 
                     {isDayExpanded && (
                       <div className="flex flex-col gap-2.5">
-                        {group.items.map((item) => {
+                        {/* 발생 시각(item.ts) 오름차순(오래된 게 위) — 관리자 화면
+                            (ReportReviewList)과 동일한 정렬 기준(사용자 지시). */}
+                        {[...group.items]
+                          .sort((a, b) => a.ts - b.ts)
+                          .map((item) => {
                           const isItemExpanded = expandedId === item.id;
                           const isReceived = item.kind === "received";
                           const received = isReceived ? (item.data as MyOutputPenItem) : null;
