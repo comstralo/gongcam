@@ -3175,56 +3175,73 @@ async function attachNextOccurrence(env, items) {
 
 // 🔧 [유예 조건] "대상자가 당일 이미 1회 적용을 받았다면, 이후 최대 2건은
 // '적용' 대신 '유예'를 노출 → 그 2건을 다 쓰면 다시 '적용'으로 돌아간다"
-// (사용자 지시: "1회 적용 → 2회 유예 → 다음 1회 적용" 순환). "당일"은
-// 접수 시각(ts) 기준 KST 날짜 — 봇 manifest 전체(24시간 노출 창을 벗어난
-// 것도 포함, allItems)에서 "같은 날, 같은 대상자" 기준으로 두 가지를 센다:
-// (a) 실제로 대상자 penalty가 기록된(=approved && penalty 있음) 건수,
-// (b) 유예(deferred) 처리된 건수. 관리자 목록(handleAdminCapturesList)과
-// 대상자 본인 목록(handleMyOutputPen)이 동일한 shouldDefer/deferOccurrence
-// 값을 봐야 두 화면이 일치하므로(사용자 지시: "내 화각 불량 제보"를 관리자
-// 화면 기준으로 맞춤) 공용 함수로 분리해 둘 다 재사용한다.
+// (사용자 지시: "1회 적용 → 2회 유예 → 다음 1회 적용" 순환 — 하루 동안
+// 여러 번 반복될 수 있다). "당일"은 접수 시각(ts) 기준 KST 날짜 — 봇
+// manifest 전체(24시간 노출 창을 벗어난 것도 포함, allItems)에서 "같은
+// 날, 같은 대상자"의 승인(penalty 있는 approved)·유예(deferred) 이벤트를
+// 접수 시각 순으로 순회하며, 승인이 나올 때마다 유예 카운터를 리셋한다
+// (사이클마다 다시 2건까지 유예 가능 — "당일 누적 2건" 한도가 아니다).
+// 🔧 [버그 수정, 2026-09] 원래는 "당일 누적 유예 건수 < 2"로 판정해,
+// 하루 동안 1적용→2유예 사이클이 한 번 다 돌고 나면(예: 적용→유예→유예→
+// 적용) 그 이후의 모든 pending 건이 영원히 "적용"으로만 표시되고 다시는
+// 유예가 나오지 않는 버그가 있었다(사용자 실사례로 재현 확인 — 2차 벌점이
+// 이미 확정된 뒤에도 다음 건이 "3차 적용"으로만 뜨고 유예로 전환되지
+// 않음). 관리자 목록(handleAdminCapturesList)과 대상자 본인 목록
+// (handleMyOutputPen)이 동일한 shouldDefer/deferOccurrence 값을 봐야
+// 두 화면이 일치하므로(사용자 지시: "내 화각 불량 제보"를 관리자 화면
+// 기준으로 맞춤) 공용 함수로 분리해 둘 다 재사용한다.
 // items: shouldDefer/deferOccurrence를 붙여 반환할 대상(사이클/닉네임 등으로
 // 이미 필터링된 목록) — allItems: 당일 집계용 전체 원본(필터링 전).
 function attachDeferralInfo(items, allItems) {
-  const appliedTodayCountByKey = new Map();
-  const deferredTodayCountByKey = new Map();
-  // 🔧 [유예 N차 표시] "이 건이 당일 몇 번째 유예인지"를 프론트에 보여주기
-  // 위해(사용자 지시: "예상 적용"에 "2차 (벌점) 유예 1차" 형태로 표시),
-  // 같은 대상자·같은 날짜의 유예 건들을 접수 시각(ts) 순으로 정렬해 순번을
-  // 매긴다. 이미 확정(deferred)된 건은 실제로 유예된 순서 그대로, pending
-  // 예상 건은 위 deferredTodayCount(지금까지 확정된 유예 개수)를 그대로
-  // "지금 유예하면 몇 번째가 될지"로 재사용한다.
-  const deferredItemsByKey = new Map();
+  const MAX_DEFER_PER_CYCLE = 2;
+  // 대상자별로 당일 이벤트(승인/유예)를 접수 시각 순으로 순회해, "가장
+  // 최근 적용 이후 몇 번째 유예인지"를 센다. 승인이 나오면 카운터가
+  // 0으로 리셋되어 다음 적용까지 다시 최대 2건을 유예할 수 있다.
+  const eventsByKey = new Map();
   for (const it of allItems) {
     if (it.selfCheck) continue;
+    if (!(it.reviewStatus === "deferred" || (it.reviewStatus === "approved" && it.penalty))) continue;
     const key = `${it.nickname}::${kstDateKey(it.ts)}`;
-    if (it.reviewStatus === "approved" && it.penalty) {
-      appliedTodayCountByKey.set(key, (appliedTodayCountByKey.get(key) || 0) + 1);
-    } else if (it.reviewStatus === "deferred") {
-      deferredTodayCountByKey.set(key, (deferredTodayCountByKey.get(key) || 0) + 1);
-      const list = deferredItemsByKey.get(key) || [];
-      list.push(it);
-      deferredItemsByKey.set(key, list);
-    }
+    const list = eventsByKey.get(key) || [];
+    list.push(it);
+    eventsByKey.set(key, list);
   }
+  // 각 대상자의 이벤트열을 훑어, "이 pending 건 직전까지의 사이클 내
+  // 유예 순번"(deferredSinceLastApply)과 "직전까지 최소 1회 적용이
+  // 있었는지"(hasAppliedBefore)를 시간순으로 누적한다.
   const deferOccurrenceById = new Map();
-  for (const list of deferredItemsByKey.values()) {
+  const cycleStateByKey = new Map(); // key -> { deferredSinceLastApply, hasApplied }
+  for (const [key, list] of eventsByKey) {
     list.sort((a, b) => a.ts - b.ts);
-    list.forEach((it, idx) => deferOccurrenceById.set(it.id, idx + 1));
+    let deferredSinceLastApply = 0;
+    let hasApplied = false;
+    for (const it of list) {
+      if (it.reviewStatus === "deferred") {
+        deferredSinceLastApply += 1;
+        deferOccurrenceById.set(it.id, deferredSinceLastApply);
+      } else {
+        hasApplied = true;
+        deferredSinceLastApply = 0;
+      }
+    }
+    cycleStateByKey.set(key, { deferredSinceLastApply, hasApplied });
   }
-  const MAX_DEFER_PER_DAY = 2;
   return items.map((item) => {
     const key = `${item.nickname}::${kstDateKey(item.ts)}`;
-    const appliedTodayCount = appliedTodayCountByKey.get(key) || 0;
-    const deferredTodayCount = deferredTodayCountByKey.get(key) || 0;
+    const state = cycleStateByKey.get(key) || { deferredSinceLastApply: 0, hasApplied: false };
     // 이 항목 자신이 이미 처리(적용/반려/유예 등)되었으면 재판정할 필요가
-    // 없다 — pending인 항목에만 "당일 1회 적용 이후, 아직 유예 2건을 다
-    // 쓰지 않았을 때만" 유예 대상을 매긴다. 2건을 다 쓴 다음 pending
-    // 건부터는 shouldDefer가 false로 돌아가 다시 "적용" 옵션이 나온다.
+    // 없다 — pending인 항목에만 "직전 적용 이후, 아직 이번 사이클의 유예
+    // 2건을 다 쓰지 않았을 때만" 유예 대상을 매긴다. 2건을 다 쓴 다음
+    // pending 건부터는 shouldDefer가 false로 돌아가 다시 "적용"이
+    // 나오고, 그 적용이 처리되면 사이클이 리셋되어 다시 유예가 가능해진다.
     const shouldDefer =
-      item.reviewStatus === "pending" && appliedTodayCount >= 1 && deferredTodayCount < MAX_DEFER_PER_DAY;
+      item.reviewStatus === "pending" && state.hasApplied && state.deferredSinceLastApply < MAX_DEFER_PER_CYCLE;
     const deferOccurrence =
-      item.reviewStatus === "deferred" ? deferOccurrenceById.get(item.id) ?? null : shouldDefer ? deferredTodayCount + 1 : null;
+      item.reviewStatus === "deferred"
+        ? deferOccurrenceById.get(item.id) ?? null
+        : shouldDefer
+          ? state.deferredSinceLastApply + 1
+          : null;
     return { ...item, shouldDefer, deferOccurrence };
   });
 }

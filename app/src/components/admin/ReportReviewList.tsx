@@ -220,13 +220,19 @@ function isItemRejected(
 // 않아도 출력되어야 함). 접수 시각(item.ts)부터 대상자 응답 시각
 // (targetRespondedAt)까지의 경과에서 20분(서버 TIME_DEDUCT_GRACE_MINUTES와
 // 동일) 유예를 뺀 초과분을 예상값으로 계산한다 — 20분 이하로 응답했으면
-// 0을 반환한다(차감 없음, "-00:00"으로 표시). 아직 응답이 없으면
-// (targetRespondedAt이 null) 계산할 근거가 없어 null을 반환한다.
+// 0을 반환한다(차감 없음, "-00:00"으로 표시).
+// 🔧 [버그 수정, 2026-09] 아직 응답이 없으면(targetRespondedAt이 null)
+// "계산할 근거가 없다"며 null을 반환해 항상 "-00:00"으로 고정 표시되고
+// 있었다 — 하지만 미응답 자체가 계속 시간이 흐르는 중이라는 뜻이므로,
+// 응답 전에는 현재 시각(now)까지의 경과로 실시간 예상값을 보여줘야
+// 한다(사용자 실사례: 미응답 60분째에도 예상 차감시간이 -00:00으로
+// 보임). 호출부가 1분 간격 nowTick으로 리렌더링되므로 이 값도 자연히
+// 갱신된다.
 const TIME_DEDUCT_GRACE_MINUTES = 20;
 
-function expectedDeductedMinutes(item: CaptureReviewItem): number | null {
-  if (!item.targetRespondedAt) return null;
-  const diffMinutes = Math.floor((item.targetRespondedAt - item.ts) / 60_000);
+function expectedDeductedMinutes(item: CaptureReviewItem, now: number = Date.now()): number | null {
+  const respondedAt = item.targetRespondedAt || now;
+  const diffMinutes = Math.floor((respondedAt - item.ts) / 60_000);
   return Math.max(0, diffMinutes - TIME_DEDUCT_GRACE_MINUTES);
 }
 

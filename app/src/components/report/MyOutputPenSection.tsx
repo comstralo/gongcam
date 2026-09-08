@@ -102,9 +102,9 @@ function statusLabel(item: MyOutputPenItem): string {
 // (targetRespondedAt이 null) 계산할 근거가 없어 null을 반환한다.
 const TIME_DEDUCT_GRACE_MINUTES = 20;
 
-function expectedDeductedMinutes(item: MyOutputPenItem): number | null {
-  if (!item.targetRespondedAt) return null;
-  const diffMinutes = Math.floor((item.targetRespondedAt - item.ts) / 60_000);
+function expectedDeductedMinutes(item: MyOutputPenItem, now: number = Date.now()): number | null {
+  const respondedAt = item.targetRespondedAt || now;
+  const diffMinutes = Math.floor((respondedAt - item.ts) / 60_000);
   return Math.max(0, diffMinutes - TIME_DEDUCT_GRACE_MINUTES);
 }
 
@@ -148,9 +148,10 @@ function dateLabel(dateKey: string): string {
 }
 
 // 아래 3개 함수는 관리자 화면(ReportReviewList)의 동명 함수와 동일한
-// 로직이다 — "받은 제보" 상세를 관리자 화면과 완전히 동일하게 보여달라는
-// 사용자 지시에 맞춰, 별도 공용 유틸로 옮기는 대신 이 파일에도 필요한
-// 만큼만 복제했다(다른 파일 변경을 최소화하려는 이 세션의 기존 패턴).
+// 로직이다(§ expectedDeductedMinutes의 미응답 실시간 계산 수정 포함) —
+// "받은 제보" 상세를 관리자 화면과 완전히 동일하게 보여달라는 사용자
+// 지시에 맞춰, 별도 공용 유틸로 옮기는 대신 이 파일에도 필요한 만큼만
+// 복제했다(다른 파일 변경을 최소화하려는 이 세션의 기존 패턴).
 function actionLabel(occurrence: number | null): string {
   if (occurrence === 1) return "구두경고";
   if (occurrence === 2 || occurrence === 3 || occurrence === 5) return "벌점";
@@ -211,6 +212,14 @@ export function MyOutputPenSection({
   // 볼지 — null이면 현재(실시간), 아니면 CycleSwitcher가 넘긴 백업 fileId.
   // 사이클 밖(4주 이상 전)은 기존 CycleSwitcher와 마찬가지로 조회 대상이 아니다.
   const [cycleFileId, setCycleFileId] = useState<string | null>(null);
+  // 관리자 화면(ReportReviewList)과 동일한 이유로, "예상 차감시간"이
+  // 미응답 상태에서도 현재 시각 기준으로 계속 늘어나는 걸 보여주려면
+  // 1분마다 다시 렌더링해야 한다.
+  const [, setNowTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setNowTick((n) => n + 1), 60_000);
+    return () => clearInterval(timer);
+  }, []);
 
   // 🔧 [버그 대응] 두 요청(/my-captures, /my-output-pen)을 동시에 보내다
   // 보니, 순간적인 네트워크 요동(브라우저 fetch 자체가 거부되는 "Failed to
