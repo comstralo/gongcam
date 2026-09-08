@@ -10,6 +10,7 @@ import { CycleSwitcher } from "@/components/dashboard/CycleSwitcher";
 import { SectionHeader, CapturePreview, AdminListSkeleton } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
+import { usePollingRefresh } from "@/hooks/usePollingRefresh";
 import { usePullRefreshListener } from "@/hooks/usePullToRefresh";
 import { useAuth } from "@/lib/auth/useAuth";
 import { ICON_STROKE, cn } from "@/lib/utils";
@@ -472,6 +473,10 @@ export function ReportReviewList({
   // 관리자가 이 탭으로 돌아올 때마다 새로 불러와야 방금 들어온 제보를 놓치지 않는다.
   useRefreshOnVisible(visible, load);
   usePullRefreshListener(visible, load);
+  // 탭을 벗어나지 않고 계속 띄워둔 채로도(다른 관리자가 처리한 결과 등)
+  // 몇 분 안에 자동으로 최신 값을 받도록 폴링한다 — 관련 캐시(penSlotGrid:
+  // 60초)의 3배 이상으로 주기를 잡아 캐시 절감 효과를 거의 그대로 유지한다.
+  usePollingRefresh(visible, load, 3 * 60_000);
 
   // 부스터디장(공동 검토자) 본인이 위반 수준 의견을 제출한다 — 성공하면
   // 서버에 실제 저장된 값을 다시 불러와 반영한다(다른 회원 임명 변경과

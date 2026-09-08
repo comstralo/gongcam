@@ -8,6 +8,7 @@ import { SectionHeader, PenaltyHistorySection, AdminListSkeleton } from "@/compo
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
+import { usePollingRefresh } from "@/hooks/usePollingRefresh";
 import { useAuth } from "@/lib/auth/useAuth";
 import { ICON_STROKE, cn } from "@/lib/utils";
 import type { AdminExitCandidatesResponse, ExitCandidate, ExitKind } from "@/lib/api/types";
@@ -114,6 +115,9 @@ export function PenaltyCandidateList({
   // 다른 회원의 페널티 누적이 탭을 벗어난 사이에도 바뀔 수 있어, 돌아올
   // 때마다 새로 불러와야 최신 대상자를 놓치지 않는다.
   useRefreshOnVisible(visible, load);
+  // 관련 캐시(exitStatus:/memberRows: 60초)의 3배 이상 주기로 폴링해,
+  // 탭을 벗어나지 않아도 몇 분 안에 자동으로 최신 값을 받는다.
+  usePollingRefresh(visible, load, 3 * 60_000);
 
   return (
     <Collapsible defaultOpen className="flex flex-col gap-4">

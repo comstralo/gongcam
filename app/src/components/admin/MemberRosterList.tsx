@@ -8,6 +8,8 @@ import { SectionHeader, AdminListSkeleton } from "@/components/admin/shared";
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
 import { useApi } from "@/hooks/useApi";
 import { usePullRefreshListener } from "@/hooks/usePullToRefresh";
+import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
+import { usePollingRefresh } from "@/hooks/usePollingRefresh";
 import { ICON_STROKE, cn } from "@/lib/utils";
 import type {
   AdminMembersRosterResponse,
@@ -23,7 +25,7 @@ function formatGoalType(raw: string): string {
   return raw.replace(/[()]/g, "").replace(/\s+/g, " ").trim();
 }
 
-export function MemberRosterList() {
+export function MemberRosterList({ visible = true }: { visible?: boolean }) {
   const { call } = useApi();
 
   const [members, setMembers] = useState<MemberRosterEntry[] | null>(null);
@@ -75,6 +77,11 @@ export function MemberRosterList() {
 
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
   usePullRefreshListener(true, load);
+  // 이 탭으로 돌아올 때마다 다시 불러오고(신규등록/퇴실/번호이동은 다른
+  // 화면에서 처리되므로), 계속 띄워둔 채로도 관련 캐시(members:/meta: 5분)
+  // 의 3배 이상 주기로 폴링해 자동 갱신되게 한다.
+  useRefreshOnVisible(visible, load);
+  usePollingRefresh(visible, load, 15 * 60_000);
 
   return (
     <Collapsible defaultOpen className="flex flex-col gap-4">

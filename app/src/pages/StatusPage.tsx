@@ -5,6 +5,7 @@ import { StatusView } from "@/components/dashboard/StatusView";
 import { CycleSwitcher } from "@/components/dashboard/CycleSwitcher";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
+import { usePollingRefresh } from "@/hooks/usePollingRefresh";
 import { useAuth } from "@/lib/auth/useAuth";
 import { useMyStatus } from "@/lib/status/useMyStatus";
 import type { AdminMember, AdminMembersResponse, StatusResponse } from "@/lib/api/types";
@@ -92,6 +93,9 @@ export function StatusPage({
   // 관리자가 다른 곳에서 처리한 벌금/반휴/페널티 결과가 이 화면을 벗어난
   // 사이에도 바뀔 수 있어, 돌아올 때마다 새로 불러온다.
   useRefreshOnVisible(visible, reload);
+  // buildPersonalStatus가 조합하는 캐시 중 가장 짧은 것(members: 5분)의
+  // 3배 이상 주기로 폴링해, 화면을 계속 띄워둔 채로도 자동 갱신되게 한다.
+  usePollingRefresh(visible, reload, 15 * 60_000);
 
   return (
     // 🔧 2026-09: 이 화면을 감싸던 바깥 Card/CardContent를 제거했다(사용자

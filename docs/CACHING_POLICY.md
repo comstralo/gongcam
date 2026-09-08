@@ -390,14 +390,14 @@ isolate 분산과 KV 히트율에 달려 있어 정적 코드 조사만으로는
 건드리는 range를 코드로 직접 대조해 그룹을 매겼고, 무관한 캐시를 빼는
 것뿐이라 오히려 기존의 "과잉 무효화"보다 정확한 매핑이다.
 
-## 12. 앱스크립트 트리거의 시트 직접 쓰기 — 매주 반복되는 흔한 흐름 기준 재검토 (2026-09-09)
+## 11. 앱스크립트 트리거의 시트 직접 쓰기 — 매주 반복되는 흔한 흐름 기준 재검토 (2026-09-09)
 
 §7이 다룬 "Worker를 거치지 않는 직접 쓰기"는 도움봇(`study_sw/bot/`)만
 조사했다. 이번엔 시트에 내장된 **앱스크립트**(`study_sw/assets/appscript.js`)
 트리거도 같은 성격의 쓰기를 하는지 전수조사했다 — "극단적 경쟁 조건"이
 아니라 "매주 실제로 반복되는 흔한 흐름에서 체감되는 지연이 있는지" 기준으로.
 
-### 12.1 발견
+### 11.1 발견
 
 - **`daily_calc()`(매일 자정~1시, 일요일 실행분만)** — 그 주 목표시간/참여율
   미달을 판정해 "데이터" 시트 L/M열(주간 P 슬롯, `outputPenSlots:`/
@@ -417,7 +417,7 @@ isolate 분산과 KV 히트율에 달려 있어 정적 코드 조사만으로는
 최대 5~30분 낡아 보일 수 있는 사용성 문제였고, 활동이 적은 시간대(자정,
 밤 11시)이거나 짧은 순간(마감 직후)이라 심각도는 낮았다.
 
-### 12.2 대응 — 앱스크립트→Worker 무효화 알림
+### 11.2 대응 — 앱스크립트→Worker 무효화 알림
 
 `invalidateMemberCache`를 여러 번 반복 호출하는 게 아니라, **15명을
 순회하는 트리거 함수 하나가 끝날 때 딱 1번**만 Worker에 "방금 이만큼
@@ -445,6 +445,60 @@ isolate 분산과 KV 히트율에 달려 있어 정적 코드 조사만으로는
 **반영 시 주의**: `study_sw/assets/appscript.js`는 참고용 사본이며, 실제
 동작하려면 Google Sheets의 확장 프로그램 → Apps Script 편집기에 이 코드를
 수동으로 복사해 저장해야 한다.
+
+## 12. 프론트 자동 폴링 — "새로고침 버튼도 캐시를 그대로 반환한다" 문제 대응 (2026-09-09)
+
+새로고침 버튼(`SectionHeader`의 `onRefresh`)을 눌러도 결국 같은 API를
+다시 부를 뿐이라, 서버 캐시 TTL이 안 지났으면 버튼을 눌러도 낡은 값을
+그대로 받는다는 걸 사용자가 지적했다. "캐시를 무시하고 강제로 다시
+읽기" 옵션은 사용자가 한도 개념 없이 연타하면 KV 예산을 오히려 압박할
+위험이 있어 채택하지 않았다 — 대신 **TTL이 자연 만료될 때쯤 화면이
+알아서 다시 불러오는 폴링**을 택했다(사용자 지시: "즉시는 아니어도 큰
+부하 없는 선에서 자동 새로고침").
+
+### 12.1 설계 원칙
+
+새 훅 `usePollingRefresh(visible, load, intervalMs)`
+(`app/src/hooks/usePollingRefresh.ts`)를 `useRefreshOnVisible`(탭 재방문
+시 재조회)과 짝으로 둔다. 핵심 규칙: **폴링 주기는 관련 캐시 TTL의
+3배 이상으로 잡는다.** 폴링 주기를 TTL과 비슷하게 잡으면 폴링이 도착할
+때마다 캐시가 아직 안 만료된 상태라 매번 캐시를 그대로 반환받게 되어
+사실상 의미가 없고, 반대로 TTL과 같거나 짧게 잡으면 폴링 자체가 캐시를
+계속 강제로 재계산시키는 것과 같아져 캐시를 무력화한다(§1의 캐시 목적
+자체를 해침). 3배 이상으로 잡으면 대부분의 폴링 시점에 캐시가 이미
+자연 만료돼 있어, 캐시가 절감해온 KV 예산은 거의 그대로 유지하면서
+"몇 분 안에 자동 반영"이라는 효과만 얻는다. `visible`이 false인 동안
+(다른 탭에 가려짐)에는 타이머 자체를 돌리지 않아, 보이지 않는 화면이
+백그라운드에서 계속 요청을 쌓는 것도 막는다.
+
+### 12.2 적용한 화면과 주기
+
+| 화면 | 관련 캐시(TTL) | 폴링 주기 |
+|---|---|---|
+| `ReportReviewList`(제보 확인) | `penSlotGrid:` 60초 | 3분 |
+| `PenaltyCandidateList`(예치금 재납 대상자) | `exitStatus:`/`memberRows:` 60초 | 3분 |
+| `AdminMoneyTab`의 `PaidFineList`(벌금 납부 처리) | `memberRows:` 60초/`weeklyPaidFine:` 5분 | 3분(더 짧은 쪽 기준) |
+| `MyOutputPenSection`(내 송출 P 제보 확인) | `penSlotGrid:` 60초 | 3분 |
+| `StatusPage`(다른 회원/과거 사이클 조회) | `members:`/`meritRank:`/`outputPenSlots:`/`penCycle:` 5분, `reportScore:` 30분 | 15분(가장 짧은 쪽 기준) |
+| `MemberRosterList`(참여 스터디원 목록) | `members:`/`meta:` 5분 | 15분 |
+| `MyStatusContext`(내 대시보드, 앱 전역 Provider) | `personalStatus:` 10분 등 §12.1 상동 | 15분, `visible` 대신 세션 존재 기준 |
+
+`AdminMoneyTab`의 `PrizeRecipientList`(`/roster-status`)는 `buildRosterStatus`
+가 `_cachedCompute` 없이 매번 직접 시트를 조회하는 무캐시 경로라(§3
+"관련 문서" 참고) 폴링을 걸 캐시 자체가 없어 대상에서 제외했다.
+`ReasonLeaveReviewList`(사유 반휴 신청 처리)는 11종 캐시가 아니라 KV
+기반(`leaveHistory:`)이라 이번 TTL 기준 폴링 설계와 무관해 손대지 않았다.
+`ExitedMemberList`(퇴실 스터디원 목록)는 현재 실제 API 대신 더미 데이터를
+표시 중인 미완성 상태(사용자 확인, 별도 과제로 보류)라 제외했다.
+
+### 12.3 부수 수정 — `AdminMemberPenaltyTab`의 무시되던 `visible`
+
+`MemberRosterList`에 폴링을 걸려고 보니 `AdminMemberPenaltyTab`(Account
+탭)이 `visible` prop을 받고도 `{ visible: _visible }`로 이름 붙여 명시적으로
+버리고 있었다 — 즉 이 탭은 폴링 이전부터도 탭을 벗어났다 돌아와도 자동
+재조회가 안 되는 상태였다(다른 탭들과의 불일치). `visible`을
+`MemberRosterList`까지 실제로 전달하도록 고치고, `useRefreshOnVisible`도
+함께 추가했다 — 폴링 설계 과정에서 발견한 부수적 버그 수정.
 
 ## 13. 관련 문서
 

@@ -13,6 +13,7 @@ import { CycleSwitcher } from "@/components/dashboard/CycleSwitcher";
 import { RankBadge, achievedTime } from "@/components/dashboard/RosterView";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
+import { usePollingRefresh } from "@/hooks/usePollingRefresh";
 import { usePullRefreshListener } from "@/hooks/usePullToRefresh";
 import { useTodayIndex } from "@/hooks/useTodayIndex";
 import { ApiError } from "@/lib/api/client";
@@ -178,6 +179,9 @@ function PaidFineList({
   // Money 탭으로 돌아올 때마다 새로 불러온다.
   useRefreshOnVisible(isVisible, load);
   usePullRefreshListener(isVisible, load);
+  // 관련 캐시(memberRows: 60초, weeklyPaidFine: 5분)의 3배 이상 주기로
+  // 폴링해, 탭을 벗어나지 않아도 몇 분 안에 자동으로 최신 값을 받는다.
+  usePollingRefresh(isVisible, load, 3 * 60_000);
 
   async function handleSetStatus(f: FineRecord, status: FineStatus) {
     const key = fineKey(f);

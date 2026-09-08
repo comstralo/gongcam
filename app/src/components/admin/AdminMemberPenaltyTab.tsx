@@ -9,11 +9,11 @@ import { ExitedMemberList } from "@/components/admin/ExitedMemberList";
 // 퇴실스터디원목록(🔧 2026-09: 사용자 지시로 순서 변경, 이전엔 신규등록이
 // 맨 위였다). (제보확인/예치금재납대상자/사유반휴신청/벌금·상금 처리는
 // PEN · MONEY 탭으로 이동)
-export function AdminMemberPenaltyTab({ visible: _visible }: { visible: boolean }) {
+export function AdminMemberPenaltyTab({ visible }: { visible: boolean }) {
   return (
     <div className="flex flex-col gap-4">
       <SectionCard>
-        <MemberRosterList />
+        <MemberRosterList visible={visible} />
       </SectionCard>
 
       <SectionCard>

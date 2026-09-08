@@ -70,6 +70,16 @@ export function MyStatusProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(PULL_REFRESH_EVENT, refresh);
   }, [refresh]);
 
+  // 이 Provider는 페이지 단위 visible 개념이 없는 앱 전역 캐시라 탭 재방문
+  // 감지 대신 세션이 있는 동안 계속 타이머를 돌린다 — /status가 조합하는
+  // 캐시 중 가장 짧은 것(5분)의 3배 이상 주기로 폴링해, 앱을 계속 띄워둔
+  // 채로도 자동 갱신되게 한다(docs/CACHING_POLICY.md §14).
+  useEffect(() => {
+    if (!session) return;
+    const timer = setInterval(refresh, 15 * 60_000);
+    return () => clearInterval(timer);
+  }, [session, refresh]);
+
   function setStatus(updater: StatusResponse | ((prev: StatusResponse | null) => StatusResponse | null)) {
     // 낙관적 업데이트(예: 반휴 신청 성공 직후 잔여량 즉시 감소)도 하나의
     // "최신 이벤트"로 취급해 순번을 올린다 — 이렇게 해야 그보다 먼저
