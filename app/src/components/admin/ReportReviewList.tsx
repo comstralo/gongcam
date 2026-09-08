@@ -1217,7 +1217,14 @@ export function ReportReviewList({
                                       // 않은 조치이므로 값 자체에 취소선을 그어 구분한다.
                                       const isRejectedDecided =
                                         !confirmedPenalty && !deferOccurrence && isRejected;
-                                      const isDecided = !!confirmedPenalty || !!deferOccurrence || isRejectedDecided;
+                                      // 🔧 [버그 수정] deferOccurrence는 위 주석대로 이미 확정된
+                                      // 유예(reviewStatus: "deferred")뿐 아니라 아직 pending인
+                                      // 항목의 예상값에도 채워진다 — 있기만 하면 무조건 확정으로
+                                      // 취급하면, 대상자 응답을 기다리는 중인 건도 "확정 적용"으로
+                                      // 잘못 표시된다(사용자 실사례). reviewStatus로 실제 확정
+                                      // 여부를 가른다.
+                                      const isDecided =
+                                        !!confirmedPenalty || item.reviewStatus === "deferred" || isRejectedDecided;
                                       return (
                                         <SubRow
                                           label={isDecided ? "확정 적용" : "예상 적용"}

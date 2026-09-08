@@ -549,7 +549,15 @@ export function MyOutputPenSection({
                                             !received!.deferOccurrence &&
                                             (received!.reviewStatus === "rejected" ||
                                               received!.reviewStatus === "rejected_recognized");
-                                          const isDecided = !!received!.penalty || !!received!.deferOccurrence || isRejectedDecided;
+                                          // 🔧 [버그 수정] deferOccurrence는 이미 확정된 유예
+                                          // (reviewStatus: "deferred")뿐 아니라 아직 pending인
+                                          // 항목의 "지금 처리하면 유예 대상"이라는 예상값에도
+                                          // 채워진다 — 있기만 하면 무조건 확정으로 취급하면,
+                                          // 대상자 응답을 기다리는 중인 건도 "확정 적용"으로
+                                          // 잘못 표시된다(사용자 실사례). reviewStatus로 실제
+                                          // 확정 여부를 가른다.
+                                          const isDecided =
+                                            !!received!.penalty || received!.reviewStatus === "deferred" || isRejectedDecided;
                                           return (
                                             <SubRow
                                               label={isDecided ? "확정 적용" : "예상 적용"}
