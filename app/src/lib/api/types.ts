@@ -787,6 +787,17 @@ export type CaptureReviewItem = {
   targetResponse: "disputed" | "recognized" | null;
   targetRespondedAt: number | null;
   votes: Record<string, CaptureVote>;
+  // 이 건이 이미 "적용"으로 확정됐다면(reviewStatus === "approved") 그때
+  // 실제 시트에 반영된 값(봇 manifest에 저장된 스냅샷) — 새로고침 등으로
+  // 이 세션의 로컬 상태(applied[item.id])를 잃은 뒤에도 "확정 차감시간"을
+  // 정확히 보여주고 "취소" 버튼이 다시 나타나게 하기 위해 필요하다. 아직
+  // 미확정이거나 대상자 페널티 없이 처리된 건(rejected_recognized/deferred)
+  // 이면 null.
+  penalty: OutputPenaltyResult | null;
+  // penalty와 동일한 이유로 함께 내려주는 제보자 상점 스냅샷 — applied 없이도
+  // "취소"가 이미 부여된 제보상점을 되돌릴 수 있어야 한다. 실패 기록이면
+  // { error: string }.
+  merit: ReportMeritResult | { error: string } | null;
 };
 
 // "내 화각 점검" 기록 — GET /my-captures가 내려주는 항목. 관리자 목록

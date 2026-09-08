@@ -603,10 +603,17 @@ export function ReportReviewList({
   // 되돌린 뒤, revertReject와 동일하게 /admin/captures/revert를 호출해
   // 서버 reviewStatus도 "pending"으로 되돌린다 — merit은 이미 위에서
   // 회수했으므로 여기서는 null을 보내 중복 회수를 막는다.
+  // 🔧 [버그 수정] applied[item.id](이 세션에서 방금 "적용"을 눌렀을 때만
+  // 채워지는 로컬 상태)가 없으면 곧바로 return해, 새로고침 후 이미 확정된
+  // 건은 "취소" 버튼 자체가 렌더링되지 않고 "이미 처리된 제보입니다."만
+  // 보였다. 서버가 함께 내려주는 item.penalty/item.merit(봇 manifest
+  // 스냅샷)을 폴백으로 사용해, 새로고침 여부와 무관하게 항상 취소할 수
+  // 있게 한다.
   function cancel(item: CaptureReviewItem) {
-    const result = applied[item.id];
-    if (!result) return;
-    const meritToCancel = result.merit && !("error" in result.merit) ? result.merit : null;
+    const penalty = applied[item.id]?.penalty ?? item.penalty;
+    const merit = applied[item.id]?.merit ?? item.merit;
+    if (!penalty && !merit) return;
+    const meritToCancel = merit && !("error" in merit) ? merit : null;
     // 🔧 [부분 실패 대응] 시트 취소(cancel-penalty/cancel-merit)까지는 이미
     // 끝났는데 마지막 /admin/captures/revert(서버 reviewStatus 되돌리기)만
     // 네트워크 오류 등으로 실패하면, 시트는 깨끗한데 봇 manifest만
@@ -616,20 +623,20 @@ export function ReportReviewList({
     // 않고 revert만 재시도한다(deductedMinutes 등 복원 연산이 멱등이
     // 아닐 수 있어 중복 호출 자체를 피하는 게 안전하다).
     const alreadyCleared = cancelSheetCleared[item.id];
-    if (!result.penalty && !meritToCancel && !alreadyCleared) return;
+    if (!penalty && !meritToCancel && !alreadyCleared) return;
     setDecidingId(item.id);
     setError(null);
     const sheetStep = alreadyCleared
       ? Promise.resolve()
       : Promise.all([
-          result.penalty
+          penalty
             ? call<{ ok: boolean }>("/admin/captures/cancel-penalty", {
                 method: "POST",
                 body: {
-                  number: result.penalty.number,
-                  col: result.penalty.col,
-                  deductedMinutes: result.penalty.deductedMinutes,
-                  dayCol: result.penalty.dayCol,
+                  number: penalty.number,
+                  col: penalty.col,
+                  deductedMinutes: penalty.deductedMinutes,
+                  dayCol: penalty.dayCol,
                 },
               })
             : Promise.resolve(),
@@ -1033,7 +1040,15 @@ export function ReportReviewList({
                                       }
                                     />
                                     {(() => {
-                                      const confirmed = applied[item.id]?.penalty?.deductedMinutes;
+                                      // 🔧 [버그 수정] 로컬 세션 상태(applied[item.id])만 보면
+                                      // 새로고침한 뒤 이미 확정된 건을 열어도 그 사실을 몰라
+                                      // "예상 차감시간"으로 잘못 표시되고, 값도 현재 시각 기준
+                                      // 재계산된(응답 시각이 지날수록 계속 달라지는) 예상치가
+                                      // 실제 확정값 대신 나왔다. 서버가 함께 내려주는 item.penalty
+                                      // (봇 manifest 스냅샷)를 폴백으로 사용해, 새로고침 여부와
+                                      // 무관하게 항상 정확한 확정값을 보여준다.
+                                      const confirmed =
+                                        applied[item.id]?.penalty?.deductedMinutes ?? item.penalty?.deductedMinutes;
                                       const isConfirmed = confirmed !== undefined && confirmed !== null;
                                       return (
                                         <SubRow
@@ -1052,19 +1067,29 @@ export function ReportReviewList({
                                       <Gavel className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                       벌점 · 페널티 변동
                                     </span>
-                                    <SubRow
-                                      label={applied[item.id]?.penalty ? "확정 적용" : "예상 적용"}
-                                      value={
-                                        applied[item.id]?.penalty
-                                          ? occurrenceLabel(applied[item.id]!.penalty!.occurrence)
-                                          : occurrenceLabel(item.nextOccurrence)
-                                      }
-                                      valueClassName="font-semibold text-destructive"
-                                    />
+                                    {/* 🔧 [버그 수정] 위 학습시간 차감과 동일한 이유로,
+                                        applied[item.id](로컬 세션)만 보면 새로고침 후 이미
+                                        확정된 건이 "예상 적용" + 재계산된 nextOccurrence로
+                                        잘못 표시됐다. 서버가 내려주는 item.penalty(확정
+                                        스냅샷)를 폴백으로 함께 사용한다. */}
+                                    {(() => {
+                                      const confirmedPenalty = applied[item.id]?.penalty ?? item.penalty;
+                                      return (
+                                        <SubRow
+                                          label={confirmedPenalty ? "확정 적용" : "예상 적용"}
+                                          value={
+                                            confirmedPenalty
+                                              ? occurrenceLabel(confirmedPenalty.occurrence)
+                                              : occurrenceLabel(item.nextOccurrence)
+                                          }
+                                          valueClassName="font-semibold text-destructive"
+                                        />
+                                      );
+                                    })()}
                                     <SubRow
                                       label="이번 주 영향"
                                       value={weeklyImpactLabel(
-                                        applied[item.id]?.penalty ? applied[item.id]!.penalty!.occurrence : item.nextOccurrence,
+                                        (applied[item.id]?.penalty ?? item.penalty)?.occurrence ?? item.nextOccurrence,
                                         item.weeklyMinorPenaltyCount
                                       )}
                                     />
@@ -1111,19 +1136,28 @@ export function ReportReviewList({
 
                                 <div className="grid grid-cols-[1fr_auto] gap-2">
                                   {isApplied ? (
-                                    applied[item.id]?.penalty ? (
+                                    // 🔧 [버그 수정] applied[item.id](로컬 세션 상태)만 보면
+                                    // 새로고침 후 이미 확정된 건은 취소에 필요한 정보를 잃어
+                                    // 버튼 자체가 사라지고 "이미 처리된 제보입니다."만 보였다 —
+                                    // 서버가 함께 내려주는 item.penalty(봇 manifest 스냅샷)를
+                                    // 폴백으로 사용한다. isApplied === true인 건은 항상
+                                    // reviewStatus === "approved"이고, 이는 penalty가 실제로
+                                    // 기록된 경우에만 set_decision이 남기는 상태이므로(잔여
+                                    // 슬롯이 없어 penalty 없이 제보상점만 부여된 건은
+                                    // "rejected_recognized"로 별도 분류됨) penalty는 항상 존재한다.
+                                    (applied[item.id]?.penalty ?? item.penalty) ? (
                                       <Button
                                         variant="outline"
                                         className="sm:h-12 sm:text-base"
                                         disabled={decidingId === item.id}
                                         onClick={() => cancel(item)}
                                       >
-                                        {cancelButtonLabel(applied[item.id]!.penalty!.occurrence)}
+                                        {cancelButtonLabel((applied[item.id]?.penalty ?? item.penalty)!.occurrence)}
                                       </Button>
                                     ) : (
-                                      // 새로고침 등으로 이 세션이 승인 상세 정보(penalty col 등)를
-                                      // 들고 있지 않은 경우 — 취소에 필요한 정보가 없어 버튼 자체를
-                                      // 숨긴다(잘못 눌러도 동작하지 않는 것보다 안전).
+                                      // 그래도 penalty를 못 찾은 경우(예: 아주 오래된 데이터) —
+                                      // 취소에 필요한 정보가 없어 버튼 자체를 숨긴다(잘못 눌러도
+                                      // 동작하지 않는 것보다 안전).
                                       <p className="flex items-center justify-center text-center text-xs text-muted-foreground sm:text-sm">
                                         이미 처리된 제보입니다.
                                       </p>
