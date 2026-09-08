@@ -40,36 +40,33 @@ function displayReason(reason: string): string {
   return FIXED_REASONS.has(reason) ? reason : "기타 (관리자 문의)";
 }
 
-// "처리현황" — 대상자 응답(targetResponse)과 관리자 최종 처리(reviewStatus)를
-// 조합한 문구. 코드상 "이의제기 승인/미승인"이라는 값이 별도로 저장되지
-// 않고(관리자는 대상자 응답과 무관하게 approved/rejected_recognized/rejected/
-// deferred 중 자유롭게 고른다 — 대상자가 "위반인정"을 눌러도 관리자가 검토 후
-// 위반이 아니라고 판단해 반려할 수 있다), 최종 reviewStatus로부터 역산한다:
-// approved/deferred(대상자에게 결국 적용된 처리) → "확정", rejected/
-// rejected_recognized(대상자에게 적용되지 않은 처리) → "반려". "승인"은 대상자
-// 응답과 관리자 최종 처리가 같은 방향(이의제기→반려, 위반인정→확정)일 때다.
-function statusLabel(item: MyOutputPenItem): string {
-  // 🔧 [버그 수정] 관리자가 대상자 응답(targetResponse) 없이도 처리할 수
-  // 있는 구조적 여지는 있지만(canProcess가 프론트에서만 90분 경과/응답
-  // 여부를 확인하고, 90분이 지나면 조회 시점에 자동으로 targetResponse가
-  // 채워지므로) 실제 운영에서는 도달하지 않는 경로다(사용자 확인) — 만약의
-  // 경우에도 별도 문구 없이 기존과 동일하게 "대상자 응답 대기 중"으로
-  // 폴백한다.
+// "처리현황" 뱃지 — 사용자 확정 매핑(2026-09):
+// - targetResponse 없음 → "응답 대기 중"
+// - 응답했지만 reviewStatus === "pending"(검토 중) → "이의제기 (검토 중)"/
+//   "위반인정 (검토 중)"(90분 시한 초과로 자동 제출된 경우도 "위반인정
+//   (검토 중)"으로 동일하게 표시 — 자동 제출 여부는 더 이상 문구로
+//   구분하지 않는다).
+// - 관리자가 최종 처리했으면(pending이 아님) reviewStatus만으로 결정한다
+//   — approved→"확정", deferred→"유예", rejected/rejected_recognized→
+//   "반려". targetResponse(이의제기/위반인정)와 무관하다: 예를 들어
+//   "이의제기"했어도 관리자가 검토 후 실제 위반이라고 판단해 approved로
+//   처리하면 "확정"이 되고(이의제기가 받아들여지지 않음), "위반인정"했어도
+//   관리자가 위반이 아니라고 판단해 rejected로 처리하면 "반려"가 된다
+//   (사용자 확인) — 결국 이 관리자 최종 결정 자체가 대상자에게 실질적으로
+//   중요한 정보이므로, 어떤 응답을 냈었는지보다 결과(확정/유예/반려)를
+//   우선 보여준다.
+type StatusTone = "warn" | "primary" | "ok" | "muted";
+function statusInfo(item: MyOutputPenItem): { label: string; tone: StatusTone } {
   if (!item.targetResponse) {
-    return "대상자 응답 대기 중";
+    return { label: "응답 대기 중", tone: "warn" };
   }
-  const isDisputed = item.targetResponse === "disputed";
-  const label = isDisputed ? "이의제기" : "위반인정";
   if (item.reviewStatus === "pending") {
-    // 90분 내 응답이 없으면 자동으로 위반인정 처리된다 — 본인이 직접
-    // 누른 것과 구분해 보여준다(사용자 지시).
-    if (item.targetResponseAuto) return "시한 (90분) 초과로 위반인정 자동 제출 (검토 중)";
-    return `${label} 제출 (검토 중)`;
+    const label = item.targetResponse === "disputed" ? "이의제기 (검토 중)" : "위반인정 (검토 중)";
+    return { label, tone: "primary" };
   }
-  const wasApplied = item.reviewStatus === "approved" || item.reviewStatus === "deferred";
-  const approvedByAdmin = isDisputed ? !wasApplied : wasApplied;
-  const outcome = isDisputed ? (approvedByAdmin ? "반려" : "확정") : (approvedByAdmin ? "확정" : "반려");
-  return `${label} ${approvedByAdmin ? "승인" : "미승인"} (${outcome})`;
+  if (item.reviewStatus === "approved") return { label: "확정", tone: "warn" };
+  if (item.reviewStatus === "deferred") return { label: "유예", tone: "muted" };
+  return { label: "반려", tone: "muted" };
 }
 
 // 시간 차감 예상 분 — 관리자가 "적용" 버튼을 눌러 발신~회신 시각을 직접
@@ -404,7 +401,13 @@ export function MyOutputPenSection({
                                         {/* 관리자 화면과 동일한 레이아웃이되, 제보자는 숨긴다(사용자 지시). */}
                                         <SubRow label="사유" value={displayReason(received!.reason)} valueClassName="text-destructive" />
                                         <SubRow label="발생일시" value={new Date(item.ts).toLocaleString("ko-KR")} />
-                                        <SubRow label="처리현황" value={statusLabel(received!)} />
+                                        <SubRow
+                                          label="처리현황"
+                                          value={(() => {
+                                            const { label, tone } = statusInfo(received!);
+                                            return <TintedPill tone={tone}>{label}</TintedPill>;
+                                          })()}
+                                        />
                                       </div>
 
                                       <div className="h-px w-full bg-border" />
