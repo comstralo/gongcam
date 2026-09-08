@@ -220,7 +220,7 @@ function PaidFineList({
 
   return (
     <Collapsible defaultOpen className="flex flex-col gap-4">
-      <SectionHeader icon={CircleDollarSign} title="벌금 납부 대상 처리" loading={loading} onRefresh={load} />
+      <SectionHeader icon={CircleDollarSign} title="벌금 납부 처리" loading={loading} onRefresh={load} />
       <CollapsiblePanel className="flex flex-col gap-4">
       <div className="h-px w-full bg-border" />
       {error && (
@@ -477,7 +477,7 @@ function PrizeRecipientList({
 
   return (
     <Collapsible defaultOpen className="flex flex-col gap-4">
-      <SectionHeader icon={Trophy} title="상금 수령 대상 처리" loading={loading} onRefresh={load} />
+      <SectionHeader icon={Trophy} title="상금 수령 처리" loading={loading} onRefresh={load} />
       <CollapsiblePanel className="flex flex-col gap-4">
         <div className="h-px w-full bg-border" />
         {error && (

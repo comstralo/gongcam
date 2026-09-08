@@ -117,7 +117,7 @@ export function PenaltyCandidateList({
 
   return (
     <Collapsible defaultOpen className="flex flex-col gap-4">
-      <SectionHeader icon={ShieldAlert} title="예치금 재납 대상 처리" loading={loading} onRefresh={load} />
+      <SectionHeader icon={ShieldAlert} title="예치금 재납 처리" loading={loading} onRefresh={load} />
       <CollapsiblePanel className="flex flex-col gap-4">
         <div className="h-px w-full bg-border" />
         {error && (

@@ -143,7 +143,7 @@ export function ReasonLeaveReviewList({
 
   return (
     <Collapsible defaultOpen className="flex flex-col gap-4">
-      <SectionHeader icon={BedDouble} title="사유 반휴 신청 대상 처리" loading={loading} onRefresh={load} />
+      <SectionHeader icon={BedDouble} title="사유 반휴 신청 처리" loading={loading} onRefresh={load} />
       <CollapsiblePanel className="flex flex-col gap-4">
         {/* 🔧 2026-09: 이 구분선을 SectionHeader와 CollapsiblePanel 사이(항상
             보이는 위치)가 아니라 패널 안(접히면 함께 사라짐)으로 옮겼다 —
