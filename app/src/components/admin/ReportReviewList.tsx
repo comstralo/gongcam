@@ -801,46 +801,48 @@ export function ReportReviewList({
                   <button
                     type="button"
                     onClick={() => setExpandedDay(isDayExpanded ? null : group.dateKey)}
-                    className="flex flex-col gap-1.5 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded"
+                    className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded"
                   >
-                    <span className="flex items-center justify-between gap-2">
-                      <span className="inline-flex shrink-0 items-center gap-1.25 text-xs font-semibold sm:text-sm">
-                        <CalendarDays className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
-                        {dateLabel(group.dateKey)}
+                    <span className="inline-flex shrink-0 items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                      <CalendarDays className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                      {dateLabel(group.dateKey)}
+                    </span>
+                    <span className="ml-auto flex items-center gap-1.5">
+                      {/* 🔧 [뱃지 2행 재배치] 대기/이의/인정(당사자 응답 단계)을 1행,
+                          확정/유예/반려(관리자 최종 처리 단계)를 2행으로 나눠 처리
+                          진행 흐름이 한눈에 구분되게 한다(사용자 지시: 날짜 라벨
+                          아래로 밀리지 않고 우측에 그대로 위치한 채 2행으로).
+                          색상도 의미에 맞게 재정리: 대기=노랑(amber), 이의=옅은
+                          빨강, 인정=초록(ok), 확정=진한 빨강(destructive), 유예/
+                          반려=회색(muted). */}
+                      <span className="flex flex-col items-end gap-1">
+                        <span className="flex flex-wrap items-center justify-end gap-1">
+                          <span className="rounded-full bg-amber-600/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-amber-600 dark:bg-amber-400/15 dark:text-amber-400">
+                            대기 : {pendingCount}건
+                          </span>
+                          <span className="rounded-full bg-destructive/8 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-destructive">
+                            이의 : {disputedCount}건
+                          </span>
+                          <span className="rounded-full bg-ok/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-ok">
+                            인정 : {recognizedCount}건
+                          </span>
+                        </span>
+                        <span className="flex flex-wrap items-center justify-end gap-1">
+                          <span className="rounded-full bg-destructive/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-destructive">
+                            확정 : {appliedCount}건
+                          </span>
+                          <span className="rounded-full bg-foreground/8 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-muted-foreground">
+                            유예 : {deferredCount}건
+                          </span>
+                          <span className="rounded-full bg-foreground/8 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-muted-foreground">
+                            반려 : {rejectedCount}건
+                          </span>
+                        </span>
                       </span>
                       <ChevronDown
                         className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", isDayExpanded && "rotate-180")}
                         strokeWidth={ICON_STROKE.default}
                       />
-                    </span>
-                    {/* 🔧 [뱃지 2행 재배치] 대기/이의/인정(당사자 응답 단계)을 1행,
-                        확정/유예/반려(관리자 최종 처리 단계)를 2행으로 나눠 처리
-                        진행 흐름이 한눈에 구분되게 한다(사용자 지시). 색상도
-                        의미에 맞게 재정리: 대기=노랑(amber), 이의=옅은 빨강,
-                        인정=초록(ok), 확정=진한 빨강(destructive), 유예/반려=회색
-                        (muted) — "확정"과 "반려"를 더 이상 같은 초록/주황으로
-                        헷갈리지 않게 구분한다. */}
-                    <span className="flex flex-wrap items-center gap-1">
-                      <span className="rounded-full bg-amber-600/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-amber-600 dark:bg-amber-400/15 dark:text-amber-400">
-                        대기 : {pendingCount}건
-                      </span>
-                      <span className="rounded-full bg-destructive/8 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-destructive">
-                        이의 : {disputedCount}건
-                      </span>
-                      <span className="rounded-full bg-ok/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-ok">
-                        인정 : {recognizedCount}건
-                      </span>
-                    </span>
-                    <span className="flex flex-wrap items-center gap-1">
-                      <span className="rounded-full bg-destructive/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-destructive">
-                        확정 : {appliedCount}건
-                      </span>
-                      <span className="rounded-full bg-foreground/8 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-muted-foreground">
-                        유예 : {deferredCount}건
-                      </span>
-                      <span className="rounded-full bg-foreground/8 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-muted-foreground">
-                        반려 : {rejectedCount}건
-                      </span>
                     </span>
                   </button>
 
