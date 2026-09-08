@@ -1171,17 +1171,28 @@ export function ReportReviewList({
                                         />
                                       );
                                     })()}
-                                    <SubRow
-                                      label="이번 주 영향"
-                                      value={
-                                        item.deferOccurrence
-                                          ? "없음"
-                                          : weeklyImpactLabel(
-                                              (applied[item.id]?.penalty ?? item.penalty)?.occurrence ?? item.nextOccurrence,
-                                              item.weeklyMinorPenaltyCount
-                                            )
-                                      }
-                                    />
+                                    {(() => {
+                                      // 🔧 [버그 수정] "이번 주 영향"이 확정된 뒤에도 item.
+                                      // weeklyMinorPenaltyCount(GET 시점마다 "다음 pending 건을
+                                      // 지금 적용하면"이라는 가정으로 매번 재계산되는 값)를 그대로
+                                      // 써서, 같은 대상자의 다른 건이 나중에 처리되면 이미 확정된
+                                      // 건의 "이번 주 영향"까지 덩달아 바뀌어 보였다(사용자 지적:
+                                      // "-0.1점에서 -0.2점으로 바뀐다"). 확정된 건은 penalty에 함께
+                                      // 저장해 둔 확정 시점 스냅샷(weeklyMinorPenaltyCount)을 우선
+                                      // 쓴다.
+                                      const confirmedPenalty = applied[item.id]?.penalty ?? item.penalty;
+                                      const minorCount = confirmedPenalty?.weeklyMinorPenaltyCount ?? item.weeklyMinorPenaltyCount;
+                                      return (
+                                        <SubRow
+                                          label="이번 주 영향"
+                                          value={
+                                            item.deferOccurrence
+                                              ? "없음"
+                                              : weeklyImpactLabel(confirmedPenalty?.occurrence ?? item.nextOccurrence, minorCount)
+                                          }
+                                        />
+                                      );
+                                    })()}
                                     {/* 🔧 [버그 수정] "없음 (잔여 슬롯 없어 미등록)"은 "적용"을
                                         시도했는데 대상자 잔여 슬롯이 없어 페널티 등록만 못 한
                                         경우(rejected_recognized)를 위한 문구다 — "유예"

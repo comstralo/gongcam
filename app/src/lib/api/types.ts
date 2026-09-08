@@ -900,6 +900,11 @@ export type OutputPenaltyResult = {
   deductedMinutes: number;
   // 차감이 기록된 요일 열 문자(A1 표기). deductedMinutes가 0이면 null.
   dayCol: string | null;
+  // 🔧 [이번 주 영향 스냅샷] 확정 시점의 weeklyMinorPenaltyCount(그 사이클
+  // 2/3/5차 슬롯 개수 — 이 건 자신 포함) — "이번 주 영향"이 이후 같은
+  // 대상자의 다른 건 처리로 계속 재계산돼 바뀌어 보이지 않도록, 확정된
+  // 값을 그대로 고정 표시하는 데 쓴다.
+  weeklyMinorPenaltyCount: number;
 };
 
 export type ReportMeritResult = {

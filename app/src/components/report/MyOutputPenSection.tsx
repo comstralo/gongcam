@@ -525,6 +525,10 @@ export function MyOutputPenSection({
                                           }
                                           valueClassName="font-semibold text-destructive"
                                         />
+                                        {/* 🔧 [버그 수정] 관리자 화면과 동일한 이유로, 확정된 건은
+                                            penalty에 저장된 확정 시점 스냅샷(weeklyMinorPenaltyCount)을
+                                            우선 사용해 "이번 주 영향"이 이후 다른 건 처리로 계속
+                                            바뀌어 보이지 않게 한다. */}
                                         <SubRow
                                           label="이번 주 영향"
                                           value={
@@ -532,7 +536,7 @@ export function MyOutputPenSection({
                                               ? "없음"
                                               : weeklyImpactLabel(
                                                   received!.penalty ? received!.penalty.occurrence : received!.nextOccurrence,
-                                                  received!.weeklyMinorPenaltyCount
+                                                  received!.penalty?.weeklyMinorPenaltyCount ?? received!.weeklyMinorPenaltyCount
                                                 )
                                           }
                                         />

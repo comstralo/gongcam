@@ -3946,6 +3946,19 @@ async function applyOutputPenalty(env, accessToken, fileId, nickname, reason, ts
 
     const timeDeduction = await applyTimeDeduction(env, accessToken, fileId, member.number, ts, sendTime, replyTime);
 
+    // 🔧 [이번 주 영향 스냅샷] "이번 주 영향"(weeklyMinorPenaltyCount ×
+    // 0.1점)은 attachNextOccurrence가 GET 시점마다 다시 계산하는 값이라,
+    // 이 건이 확정된 뒤 같은 대상자의 다른 건이 추가로 처리되면 계속
+    // 달라진다(사용자 지적: "적용하고 나니까 -0.1점에서 -0.2점으로 바뀐다"
+    // — 다음 pending 건 기준으로 재계산된 예측값을 계속 보여준 것이 원인).
+    // 이 건이 실제로 확정된 시점의 값을 여기서 직접 계산해 응답에 실어
+    // manifest에 저장해 두면, 이후 몇 번을 다시 조회하든 그 시점 값 그대로
+    // 고정 표시할 수 있다. slotValues는 방금 쓴 슬롯이 반영되기 전 상태이므로
+    // 이 건 자신의 슬롯(occurrence)도 2/3/5차면 카운트에 더한다.
+    const isMinorSlot = occurrence === 2 || occurrence === 3 || occurrence === 5;
+    const weeklyMinorPenaltyCount =
+      [1, 2, 4].filter((idx) => slotValues[idx] === currentD25).length + (isMinorSlot ? 1 : 0);
+
     return {
       number: member.number,
       name: member.name,
@@ -3954,6 +3967,7 @@ async function applyOutputPenalty(env, accessToken, fileId, nickname, reason, ts
       col,
       deductedMinutes: timeDeduction.deductedMinutes,
       dayCol: timeDeduction.dayCol,
+      weeklyMinorPenaltyCount,
     };
   });
 }
