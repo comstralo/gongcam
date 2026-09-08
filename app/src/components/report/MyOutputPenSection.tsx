@@ -344,18 +344,10 @@ export function MyOutputPenSection({
                                 </span>
                                 <div className="flex items-center gap-1.5">
                                   {isReceived ? (
-                                    received!.targetResponse === "disputed" ? (
-                                      <TintedPill tone="primary">이의제기함</TintedPill>
-                                    ) : received!.targetResponse === "recognized" ? (
-                                      <TintedPill
-                                        tone="primary"
-                                        className="bg-violet-600/15 text-violet-600 dark:bg-violet-400/15 dark:text-violet-400"
-                                      >
-                                        위반인정함
-                                      </TintedPill>
-                                    ) : (
-                                      <TintedPill tone="warn">응답 대기 중</TintedPill>
-                                    )
+                                    (() => {
+                                      const { label, tone } = statusInfo(received!);
+                                      return <TintedPill tone={tone}>{label}</TintedPill>;
+                                    })()
                                   ) : (
                                     <TintedPill tone="ok">화각 점검</TintedPill>
                                   )}
@@ -401,13 +393,7 @@ export function MyOutputPenSection({
                                         {/* 관리자 화면과 동일한 레이아웃이되, 제보자는 숨긴다(사용자 지시). */}
                                         <SubRow label="사유" value={displayReason(received!.reason)} valueClassName="text-destructive" />
                                         <SubRow label="발생일시" value={new Date(item.ts).toLocaleString("ko-KR")} />
-                                        <SubRow
-                                          label="처리현황"
-                                          value={(() => {
-                                            const { label, tone } = statusInfo(received!);
-                                            return <TintedPill tone={tone}>{label}</TintedPill>;
-                                          })()}
-                                        />
+                                        <SubRow label="처리현황" value={statusInfo(received!).label} />
                                       </div>
 
                                       <div className="h-px w-full bg-border" />
