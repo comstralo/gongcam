@@ -40,7 +40,8 @@ function displayReason(reason: string): string {
   return FIXED_REASONS.has(reason) ? reason : "기타 (관리자 문의)";
 }
 
-// "처리현황" 뱃지 — 사용자 확정 매핑(2026-09):
+// 카드 헤더 뱃지(단순화 버전, "처리현황" 상세 텍스트와는 별도) — 사용자
+// 확정 매핑(2026-09):
 // - targetResponse 없음 → "응답 대기 중"
 // - 응답했지만 reviewStatus === "pending"(검토 중) → "이의제기 (검토 중)"/
 //   "위반인정 (검토 중)"(90분 시한 초과로 자동 제출된 경우도 "위반인정
@@ -67,6 +68,28 @@ function statusInfo(item: MyOutputPenItem): { label: string; tone: StatusTone } 
   if (item.reviewStatus === "approved") return { label: "확정", tone: "warn" };
   if (item.reviewStatus === "deferred") return { label: "유예", tone: "muted" };
   return { label: "반려", tone: "muted" };
+}
+
+// "처리현황" SubRow에 쓰는 상세 텍스트 — statusInfo(카드 헤더 뱃지, 단순화된
+// 6종)와 달리 대상자가 실제로 어떤 응답을 제출했는지·90분 시한 초과로 자동
+// 제출됐는지·관리자 결정이 그 응답을 승인했는지 미승인했는지까지 그대로
+// 풀어서 보여준다(사용자 지시: "처리현황"은 텍스트, 카드 헤더는 뱃지로
+// 역할을 분리). "무응답 (관리자 확정/반려)"는 실제 운영에서 도달하지 않는
+// 경로라 제외하고 "대상자 응답 대기 중"으로 폴백한다(이전 확인 사항).
+function statusLabel(item: MyOutputPenItem): string {
+  if (!item.targetResponse) {
+    return "대상자 응답 대기 중";
+  }
+  const isDisputed = item.targetResponse === "disputed";
+  const label = isDisputed ? "이의제기" : "위반인정";
+  if (item.reviewStatus === "pending") {
+    if (item.targetResponseAuto) return "90분 내 무응답으로 위반인정 자동 제출 (검토 중)";
+    return `${label} 제출 (검토 중)`;
+  }
+  const wasApplied = item.reviewStatus === "approved" || item.reviewStatus === "deferred";
+  const approvedByAdmin = isDisputed ? !wasApplied : wasApplied;
+  const outcome = item.reviewStatus === "approved" ? "확정" : item.reviewStatus === "deferred" ? "유예" : "반려";
+  return `${label} ${approvedByAdmin ? "승인" : "미승인"} (${outcome})`;
 }
 
 // 시간 차감 예상 분 — 관리자가 "적용" 버튼을 눌러 발신~회신 시각을 직접
@@ -393,7 +416,7 @@ export function MyOutputPenSection({
                                         {/* 관리자 화면과 동일한 레이아웃이되, 제보자는 숨긴다(사용자 지시). */}
                                         <SubRow label="사유" value={displayReason(received!.reason)} valueClassName="text-destructive" />
                                         <SubRow label="발생일시" value={new Date(item.ts).toLocaleString("ko-KR")} />
-                                        <SubRow label="처리현황" value={statusInfo(received!).label} />
+                                        <SubRow label="처리현황" value={statusLabel(received!)} />
                                       </div>
 
                                       <div className="h-px w-full bg-border" />
