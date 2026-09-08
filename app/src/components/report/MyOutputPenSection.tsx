@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ListChecks, ChevronDown, CalendarDays, User, Image as ImageIcon, Trash2, FileText, Clock, Gavel } from "lucide-react";
+import { ListChecks, ChevronDown, CalendarDays, Image as ImageIcon, Trash2, FileText, Clock, Gavel } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
@@ -343,8 +343,10 @@ export function MyOutputPenSection({
                             <div key={item.id} className="flex flex-col gap-2.5 rounded-lg border bg-card p-3">
                               <div className="flex items-center justify-between gap-2">
                                 <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
-                                  <User className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
-                                  {new Date(item.ts).toLocaleString("ko-KR")}
+                                  <Clock className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                                  {/* 이미 날짜별로 묶여 있으므로(그룹 헤더에 날짜 표시) 여기서는
+                                      시각만 보여준다(사용자 지시: 날짜는 빼고, 아이콘도 시계로). */}
+                                  {new Date(item.ts).toLocaleTimeString("ko-KR")}
                                 </span>
                                 <div className="flex items-center gap-1.5">
                                   {isReceived ? (
