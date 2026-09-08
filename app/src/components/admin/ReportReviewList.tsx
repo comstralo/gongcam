@@ -885,9 +885,21 @@ export function ReportReviewList({
                                     지시): 대기=회색, 이의=주황, 인정=초록, 확정=빨강, 유예/
                                     반려=회색. */}
                                 {isApplied ? (
-                                  <TintedPill tone="warn">확정</TintedPill>
+                                  <>
+                                    <TintedPill tone="warn">확정</TintedPill>
+                                    {/* 🔧 [차수 뱃지 추가] "벌점·페널티 변동"의 "확정 적용" 값과
+                                        동일한 정보(몇 차 · 어떤 조치)를 카드를 펼치지 않아도
+                                        바로 보이도록 헤더에 별도 뱃지로 함께 노출한다(사용자
+                                        지시). */}
+                                    <TintedPill tone="muted">
+                                      {occurrenceLabel((applied[item.id]?.penalty ?? item.penalty)?.occurrence ?? item.nextOccurrence)}
+                                    </TintedPill>
+                                  </>
                                 ) : isItemDeferred(item, applied) ? (
-                                  <TintedPill tone="muted">유예</TintedPill>
+                                  <>
+                                    <TintedPill tone="muted">유예</TintedPill>
+                                    {item.deferOccurrence && <TintedPill tone="muted">유예 {item.deferOccurrence}차</TintedPill>}
+                                  </>
                                 ) : isRejected ? (
                                   <TintedPill tone="muted">
                                     {applied[item.id]?.decision === "rejected_recognized" ||
