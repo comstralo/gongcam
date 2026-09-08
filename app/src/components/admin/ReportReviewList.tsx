@@ -1079,13 +1079,27 @@ export function ReportReviewList({
                                         스냅샷)를 폴백으로 함께 사용한다. */}
                                     {(() => {
                                       const confirmedPenalty = applied[item.id]?.penalty ?? item.penalty;
+                                      // 🔧 [유예 표시] shouldDefer(당일 유예 상한 내 대기 건)면
+                                      // 실제로는 "적용"이 아니라 "유예"로 처리될 예정이다(사용자
+                                      // 지시) — 원래 차수 라벨("2차 (벌점)")에 취소선을 긋고
+                                      // "유예"를 덧붙여, 지금 눌러도 대상자 페널티가 아니라
+                                      // 제보자 상점만 부여됨을 명확히 보여준다. 이미 확정된
+                                      // 건이거나 애초에 유예 대상이 아니면 기존과 동일.
+                                      const isDeferCandidate = !confirmedPenalty && item.shouldDefer;
                                       return (
                                         <SubRow
                                           label={confirmedPenalty ? "확정 적용" : "예상 적용"}
                                           value={
-                                            confirmedPenalty
-                                              ? occurrenceLabel(confirmedPenalty.occurrence)
-                                              : occurrenceLabel(item.nextOccurrence)
+                                            isDeferCandidate ? (
+                                              <>
+                                                <span className="line-through">{occurrenceLabel(item.nextOccurrence)}</span>{" "}
+                                                유예
+                                              </>
+                                            ) : confirmedPenalty ? (
+                                              occurrenceLabel(confirmedPenalty.occurrence)
+                                            ) : (
+                                              occurrenceLabel(item.nextOccurrence)
+                                            )
                                           }
                                           valueClassName="font-semibold text-destructive"
                                         />
@@ -1093,10 +1107,14 @@ export function ReportReviewList({
                                     })()}
                                     <SubRow
                                       label="이번 주 영향"
-                                      value={weeklyImpactLabel(
-                                        (applied[item.id]?.penalty ?? item.penalty)?.occurrence ?? item.nextOccurrence,
-                                        item.weeklyMinorPenaltyCount
-                                      )}
+                                      value={
+                                        !(applied[item.id]?.penalty ?? item.penalty) && item.shouldDefer
+                                          ? "주간 총 상점 변동 없음 (유예)"
+                                          : weeklyImpactLabel(
+                                              (applied[item.id]?.penalty ?? item.penalty)?.occurrence ?? item.nextOccurrence,
+                                              item.weeklyMinorPenaltyCount
+                                            )
+                                      }
                                     />
                                     {applied[item.id] && !applied[item.id]!.penalty && (
                                       <SubRow label="대상자 처리" value="없음 (잔여 슬롯 없어 미등록)" />
