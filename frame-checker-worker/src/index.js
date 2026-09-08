@@ -875,6 +875,28 @@ function invalidateMemberCache(env) {
   return Promise.all(kvDeletes);
 }
 
+// 🔧 [번호 재사용 대비, 2026-09] outputPenSlots:/reportScore:는 회원별 키라
+// invalidateMemberCache가 KV를 콕 집어 못 지운다(위 주석 참고) — 대부분의
+// 경로(제보 승인/취소 등)는 같은 회원이 계속 그 번호를 쓰므로 자연 TTL
+// 만료(5분/30분)를 기다려도 무해하다. 다만 퇴실/번호이동으로 어떤 번호가
+// "비워진 뒤 곧바로 다른 사람에게 재배정"되면, 그 사이 다른 isolate가
+// 캐시해둔 옛 회원의 벌점/제보상점 값이 신규 회원에게 그대로 노출될 수
+// 있다 — performExitReset/moveMemberSlot/handleAdminCreateMember처럼
+// "번호 1개당 1회"만 실행되는 저빈도 관리자 조작에서만 호출해, 그 번호에
+// 한해 KV까지 명시적으로 지운다(회원 수만큼 반복되는 게 아니라 KV 예산에
+// 미치는 영향은 미미하다 — docs/CACHING_POLICY.md §9 참고).
+function invalidateMemberSlotCache(env, memberNumber) {
+  if (!env) return Promise.resolve();
+  const fileId = env.GOOGLE_SHEET_FILE_ID;
+  const reportRow = parseInt(memberNumber, 10) + 3;
+  _sheetCache.delete(`outputPenSlots:${fileId}:${memberNumber}`);
+  _sheetCache.delete(`reportScore:${fileId}:${reportRow}`);
+  return Promise.all([
+    env.REPORTS_KV.delete(`${KV_CACHE_PREFIX}outputPenSlots:${fileId}:${memberNumber}`).catch(() => {}),
+    env.REPORTS_KV.delete(`${KV_CACHE_PREFIX}reportScore:${fileId}:${reportRow}`).catch(() => {}),
+  ]);
+}
+
 // 스프레드시트 메타(모든 탭의 sheetId/title)를 가져온다. 시트 복사/삭제/서식
 // 지정은 이름이 아니라 숫자 sheetId를 요구하므로, 이름→sheetId 매핑에 쓰인다.
 // sheetId는 시트를 삭제·재생성(회원 등록/퇴실 시)해야만 바뀌고 그때마다
@@ -6674,6 +6696,9 @@ async function performExitReset(env, accessToken, fileId, member, resultMsg, kin
   await revokeSheetAccess(env, fileId, memberEmail);
   await protectSheetForOwnerAndService(env, accessToken, fileId, newSheetId, ownerEmail);
   await invalidateMemberCache(env); // 이메일이 비워져 명단이 바뀌었으므로 캐시 무효화.
+  // 이 번호가 곧바로 다른 신규 회원에게 재배정될 수 있으므로, 퇴실한 회원의
+  // 벌점/제보상점 KV 캐시가 새 회원에게 노출되지 않도록 함께 지운다.
+  await invalidateMemberSlotCache(env, member.number);
 
   // 🔧 [블랙리스트 계정 저장] 확정 처리(handleAdminExitConfirm)가 이 값을
   // EXIT_RESULT_KV_PREFIX 결과에 함께 담아, "신규 스터디원 등록" 화면이
@@ -7127,6 +7152,9 @@ async function moveMemberSlot(env, accessToken, fileId, ownerEmail, from, to, on
     { range: `데이터!F${fromRow}:V${fromRow}`, values: [Array(17).fill(0)] },
   ]);
   await invalidateMemberCache(env); // 번호별 이메일이 이동/재생성되어 명단과 sheetId가 바뀌었으므로 캐시 무효화.
+  // to는 from의 벌점/제보상점 값을 새로 물려받았고 from은 곧 신규 회원에게
+  // 재배정될 수 있으므로, 두 번호 모두 옛 캐시가 남지 않도록 함께 지운다.
+  await Promise.all([invalidateMemberSlotCache(env, from), invalidateMemberSlotCache(env, to)]);
 }
 
 async function handleAdminMemberReorder(req, env, origin) {
@@ -7251,6 +7279,10 @@ async function handleAdminCreateMember(req, env, origin) {
       { range: `데이터!E${rowNumber}`, values: [[examKind || ""]] },
     ]);
     await invalidateMemberCache(env); // 신규 이메일이 명단에 추가되었으므로 캐시 무효화.
+    // 이 번호가 과거 퇴실한 회원의 것이었다면, 그 회원의 벌점/제보상점 KV
+    // 캐시가 아직 안 지워진 채 남아있을 수 있으므로 신규 등록 시점에도
+    // 한 번 더 방어적으로 지운다.
+    await invalidateMemberSlotCache(env, sheetName);
 
     // 시트 값 기입까지는 성공했으므로, 여기서 Drive 권한 부여만 실패해도
     // "등록 실패"로 되돌리지 않는다 — 프론트가 needsReauth를 보고 연동
