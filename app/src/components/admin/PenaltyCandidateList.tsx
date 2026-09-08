@@ -117,11 +117,11 @@ export function PenaltyCandidateList({
   useRefreshOnVisible(visible, load);
   // 관련 캐시(exitStatus:/memberRows: 60초)의 3배 이상 주기로 폴링해,
   // 탭을 벗어나지 않아도 몇 분 안에 자동으로 최신 값을 받는다.
-  usePollingRefresh(visible, load, 3 * 60_000);
+  const refreshProgress = usePollingRefresh(visible, load, 3 * 60_000);
 
   return (
     <Collapsible defaultOpen className="flex flex-col gap-4">
-      <SectionHeader icon={ShieldAlert} title="예치금 재납 처리" loading={loading} onRefresh={load} />
+      <SectionHeader icon={ShieldAlert} title="예치금 재납 처리" loading={loading} onRefresh={load} refreshProgress={refreshProgress} />
       <CollapsiblePanel className="flex flex-col gap-4">
         <div className="h-px w-full bg-border" />
         {error && (

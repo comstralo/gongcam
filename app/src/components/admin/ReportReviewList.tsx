@@ -476,7 +476,7 @@ export function ReportReviewList({
   // 탭을 벗어나지 않고 계속 띄워둔 채로도(다른 관리자가 처리한 결과 등)
   // 몇 분 안에 자동으로 최신 값을 받도록 폴링한다 — 관련 캐시(penSlotGrid:
   // 60초)의 3배 이상으로 주기를 잡아 캐시 절감 효과를 거의 그대로 유지한다.
-  usePollingRefresh(visible, load, 3 * 60_000);
+  const refreshProgress = usePollingRefresh(visible, load, 3 * 60_000);
 
   // 부스터디장(공동 검토자) 본인이 위반 수준 의견을 제출한다 — 성공하면
   // 서버에 실제 저장된 값을 다시 불러와 반영한다(다른 회원 임명 변경과
@@ -785,7 +785,7 @@ export function ReportReviewList({
 
   return (
     <Collapsible defaultOpen className="flex flex-col gap-4">
-      <SectionHeader icon={Flag} title="화각 불량 제보 처리" loading={loading} onRefresh={load} />
+      <SectionHeader icon={Flag} title="화각 불량 제보 처리" loading={loading} onRefresh={load} refreshProgress={refreshProgress} />
       <CollapsiblePanel className="flex flex-col gap-4">
         <div className="h-px w-full bg-border" />
         {cycleFileIdProp === undefined && (

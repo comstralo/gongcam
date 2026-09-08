@@ -262,7 +262,7 @@ export function MyOutputPenSection({
   useRefreshOnVisible(visible, load);
   // 관련 캐시(penSlotGrid: 60초)의 3배 이상 주기로 폴링해, 화면을 계속
   // 띄워둔 채로도 관리자가 방금 처리한 결과가 몇 분 안에 자동 반영된다.
-  usePollingRefresh(visible, load, 3 * 60_000);
+  const refreshProgress = usePollingRefresh(visible, load, 3 * 60_000);
   useEffect(() => {
     if (refreshSignal) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -315,7 +315,7 @@ export function MyOutputPenSection({
   return (
     <SectionCard>
       <Collapsible defaultOpen className="flex flex-col gap-4">
-        <SectionHeader icon={ListChecks} title="내 화각 불량 제보" loading={loading} onRefresh={load} />
+        <SectionHeader icon={ListChecks} title="내 화각 불량 제보" loading={loading} onRefresh={load} refreshProgress={refreshProgress} />
         <CollapsiblePanel className="flex flex-col gap-4">
           <div className="h-px w-full bg-border" />
           <CycleSwitcher selectedFileId={cycleFileId} onSelect={setCycleFileId} memberNumber="self" />

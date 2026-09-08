@@ -81,11 +81,11 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
   // 화면에서 처리되므로), 계속 띄워둔 채로도 관련 캐시(members:/meta: 5분)
   // 의 3배 이상 주기로 폴링해 자동 갱신되게 한다.
   useRefreshOnVisible(visible, load);
-  usePollingRefresh(visible, load, 15 * 60_000);
+  const refreshProgress = usePollingRefresh(visible, load, 15 * 60_000);
 
   return (
     <Collapsible defaultOpen className="flex flex-col gap-4">
-      <SectionHeader icon={Users} title="참여 스터디원 목록" loading={loading} onRefresh={load} />
+      <SectionHeader icon={Users} title="참여 스터디원 목록" loading={loading} onRefresh={load} refreshProgress={refreshProgress} />
       <CollapsiblePanel className="flex flex-col gap-4">
         <div className="h-px w-full bg-border" />
         {error && (

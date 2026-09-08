@@ -181,7 +181,7 @@ function PaidFineList({
   usePullRefreshListener(isVisible, load);
   // 관련 캐시(memberRows: 60초, weeklyPaidFine: 5분)의 3배 이상 주기로
   // 폴링해, 탭을 벗어나지 않아도 몇 분 안에 자동으로 최신 값을 받는다.
-  usePollingRefresh(isVisible, load, 3 * 60_000);
+  const refreshProgress = usePollingRefresh(isVisible, load, 3 * 60_000);
 
   async function handleSetStatus(f: FineRecord, status: FineStatus) {
     const key = fineKey(f);
@@ -234,7 +234,7 @@ function PaidFineList({
 
   return (
     <Collapsible defaultOpen className="flex flex-col gap-4">
-      <SectionHeader icon={CircleDollarSign} title="벌금 납부 처리" loading={loading} onRefresh={load} />
+      <SectionHeader icon={CircleDollarSign} title="벌금 납부 처리" loading={loading} onRefresh={load} refreshProgress={refreshProgress} />
       <CollapsiblePanel className="flex flex-col gap-4">
       <div className="h-px w-full bg-border" />
       {error && (
