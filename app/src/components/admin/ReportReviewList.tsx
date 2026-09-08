@@ -211,18 +211,6 @@ function formatDeductedTime(minutes: number): string {
   return `-${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
 }
 
-// 요일 그룹 내부 표시 순서 — "처리 대기" → "처리 완료" → "유예" → "처리 반려".
-function statusRank(
-  item: CaptureReviewItem,
-  applied: Record<string, AppliedResult>,
-  rejected: Record<string, unknown>
-) {
-  if (isItemApplied(item, applied)) return 1;
-  if (isItemDeferred(item, applied)) return 2;
-  if (isItemRejected(item, applied, rejected)) return 3;
-  return 0;
-}
-
 // 다른 섹션(제보 정보/시간 차감/벌점·페널티 변동)과 같은 톤으로 맞춘 합의
 // 투표 섹션 — 아이콘+제목 헤더, SubRow 들여쓰기, 얇은 필셋 버튼만 사용하고
 // 별도 배경 박스는 두지 않는다. 스터디장(주 관리자)은 본인 판단과 실제
@@ -852,8 +840,13 @@ export function ReportReviewList({
 
                   {isDayExpanded && (
                     <div className="flex flex-col gap-2.5">
+                      {/* 🔧 [정렬 기준 변경] 원래 처리 상태(대기→확정→유예→반려)
+                          우선으로 정렬해, 같은 시각에 발생한 여러 건이 상태만
+                          다르면 시간 순서와 무관하게 뒤섞여 보였다(사용자 지적).
+                          발생 시각(item.ts) 오름차순(오래된 게 위, 사용자
+                          지시)으로 바꿈. */}
                       {[...group.items]
-                        .sort((a, b) => statusRank(a, applied, rejected) - statusRank(b, applied, rejected))
+                        .sort((a, b) => a.ts - b.ts)
                         .map((item) => {
                         const isMemberExpanded = expandedId === item.id;
                         const isApplied = isItemApplied(item, applied);
