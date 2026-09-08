@@ -388,26 +388,39 @@ export function MyOutputPenSection({
                                 canRespond && "border-destructive/60 animate-unpaid-glow"
                               )}
                             >
-                              {/* 🔧 [버그 수정] 원래 항상 가로 배치(justify-between)였는데,
-                                  유예/확정 건은 뱃지가 3개(예: "유예 1차"/"3차 (벌점)"/
-                                  "-00:00")까지 붙어 좁은 모바일 폭에서 각 뱃지 안 텍스트가
-                                  눌려 줄바꿈되며 깨져 보였다(Playwright MCP 모바일 뷰포트
-                                  점검으로 발견). 시간과 뱃지를 같은 줄에 유지하고 싶다는
-                                  사용자 지시로 세로 분리 대신, 뱃지 각각에 whitespace-nowrap
-                                  으로 내부 줄바꿈을 막고 뱃지 그룹만 min-w-0 + overflow-x-auto
-                                  로 감싸 — 화면 폭을 넘는 드문 경우(뱃지 3개 겹침)에만 그
-                                  줄만 가로로 살짝 스크롤되게 한다. 펼치기 버튼은 항상 눌러야
-                                  하는 요소라 이 스크롤 영역 밖(shrink-0)에 고정해 절대
-                                  화면 밖으로 밀려나지 않게 한다. */}
-                              <div className="flex items-center justify-between gap-1.5">
-                                <span className="inline-flex shrink-0 items-center gap-1.25 text-xs font-semibold sm:text-sm">
-                                  <Clock className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
-                                  {/* 이미 날짜별로 묶여 있으므로(그룹 헤더에 날짜 표시) 여기서는
-                                      시각만 보여준다(사용자 지시: 날짜는 빼고, 아이콘도 시계로). */}
-                                  {new Date(item.ts).toLocaleTimeString("ko-KR")}
-                                </span>
-                                <div className="flex min-w-0 items-center gap-1">
-                                <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto [&_span]:shrink-0 [&_span]:whitespace-nowrap">
+                              {/* 🔧 [버그 수정] 원래 시간+뱃지가 항상 한 가로줄(justify-between)
+                                  이었는데, 유예/확정 건은 뱃지가 3개(예: "유예 1차"/"3차 (벌점)"/
+                                  "-00:00")까지 붙어 좁은 모바일 폭에서 잘리거나 눌려 깨져
+                                  보였다(Playwright MCP 모바일 뷰포트 점검 + 사용자 재확인).
+                                  가로 스크롤·flex-wrap 개행 모두 시도했으나, 시간과 뱃지가
+                                  같은 줄을 나눠 써야 해 뱃지 쪽 가용 폭이 좁은 게 근본
+                                  원인이었다. 뱃지 줄을 시간 아래 별도 줄로 분리하면 카드
+                                  전체 폭을 뱃지에 온전히 쓸 수 있어 잘림 없이 한 줄로
+                                  들어간다(사용자 지시: "시간 아래에" 표시). */}
+                              <div className="flex flex-col gap-1.5">
+                                <div className="flex items-center justify-between gap-1.5">
+                                  <span className="inline-flex shrink-0 items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                                    <Clock className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                                    {/* 이미 날짜별로 묶여 있으므로(그룹 헤더에 날짜 표시) 여기서는
+                                        시각만 보여준다(사용자 지시: 날짜는 빼고, 아이콘도 시계로). */}
+                                    {new Date(item.ts).toLocaleTimeString("ko-KR")}
+                                  </span>
+                                  {/* 🔧 [사용자 지시] 펼치기 버튼은 테두리 있는 버튼 대신 아이콘
+                                      모양만 남긴다(variant="ghost"). */}
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    className="shrink-0"
+                                    onClick={() => setExpandedId(isItemExpanded ? null : item.id)}
+                                    aria-label={isItemExpanded ? "상세 접기" : "상세 펼치기"}
+                                  >
+                                    <ChevronDown
+                                      className={cn("size-3.5 transition-transform", isItemExpanded && "rotate-180")}
+                                      strokeWidth={ICON_STROKE.default}
+                                    />
+                                  </Button>
+                                </div>
+                                <div className="flex items-center gap-1.5 [&_span]:shrink-0 [&_span]:whitespace-nowrap">
                                   {isReceived ? (
                                     received!.reviewStatus === "deferred" ? (
                                       // 🔧 [관리자 화면과 동일화] 관리자 화면(ReportReviewList)은
@@ -462,22 +475,6 @@ export function MyOutputPenSection({
                                     <TintedPill tone="ok">화각 점검</TintedPill>
                                   )}
                                 </div>
-                                {/* 🔧 [사용자 지시] 펼치기 버튼은 테두리 있는 버튼 대신 아이콘
-                                    모양만 남긴다(variant="ghost") — 스크롤 컨테이너 밖에 둬
-                                    뱃지가 아무리 넘쳐도 항상 클릭 가능한 위치에 고정된다. */}
-                                <Button
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  className="shrink-0"
-                                  onClick={() => setExpandedId(isItemExpanded ? null : item.id)}
-                                  aria-label={isItemExpanded ? "상세 접기" : "상세 펼치기"}
-                                >
-                                  <ChevronDown
-                                    className={cn("size-3.5 transition-transform", isItemExpanded && "rotate-180")}
-                                    strokeWidth={ICON_STROKE.default}
-                                  />
-                                </Button>
-                              </div>
                               </div>
 
                               {isItemExpanded && (
