@@ -1061,11 +1061,12 @@ export function ReportReviewList({
                                       const confirmed =
                                         applied[item.id]?.penalty?.deductedMinutes ?? item.penalty?.deductedMinutes;
                                       const isConfirmed = confirmed !== undefined && confirmed !== null;
+                                      const deductedMinutes = isConfirmed ? confirmed : expectedDeductedMinutes(item) ?? 0;
                                       return (
                                         <SubRow
                                           label={isConfirmed ? "확정 차감시간" : "예상 차감시간"}
-                                          value={formatDeductedTime(isConfirmed ? confirmed : expectedDeductedMinutes(item) ?? 0)}
-                                          valueClassName="text-destructive"
+                                          value={formatDeductedTime(deductedMinutes)}
+                                          valueClassName={deductedMinutes === 0 ? undefined : "text-destructive"}
                                         />
                                       );
                                     })()}
@@ -1136,8 +1137,12 @@ export function ReportReviewList({
                                     {/* 🔧 [버그 수정] applied[item.id](로컬 세션)만 보면
                                         새로고침 후에는 이미 확정된 건의 제보자 상점 부여
                                         여부가 안 보였다 — item.merit(서버 스냅샷)을 폴백으로
-                                        함께 사용한다. */}
+                                        함께 사용한다. 유예(deferred) 확정 건은 제보자 상점이
+                                        실제로 부여되긴 하지만(사용자 지시로 이 줄 자체를
+                                        노출하지 않기로 함) item.deferOccurrence로 걸러 숨긴다
+                                        — "예상 적용"에 이미 "유예 N차"로 표시되므로 중복 정보다. */}
                                     {(() => {
+                                      if (item.deferOccurrence) return null;
                                       const merit = applied[item.id]?.merit ?? item.merit;
                                       if (!merit) return null;
                                       return (
