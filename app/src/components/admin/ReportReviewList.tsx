@@ -738,7 +738,7 @@ export function ReportReviewList({
 
   return (
     <Collapsible defaultOpen className="flex flex-col gap-4">
-      <SectionHeader icon={Flag} title="송출 P 대상 처리" loading={loading} onRefresh={load} />
+      <SectionHeader icon={Flag} title="화각 불량 제보 처리" loading={loading} onRefresh={load} />
       <CollapsiblePanel className="flex flex-col gap-4">
         <div className="h-px w-full bg-border" />
         {cycleFileIdProp === undefined && (
@@ -880,29 +880,27 @@ export function ReportReviewList({
                                     "이의"/"인정"은 당사자가 [내 송출 P 제보 확인]에서 제출한
                                     targetResponse를 그대로 보여준다 — 아직 관리자가 최종
                                     처리(적용/유예/반려)하지 않은 건에서만 의미가 있으므로
-                                    isApplied/isItemDeferred/isRejected보다 아래에서 판정한다. */}
+                                    isApplied/isItemDeferred/isRejected보다 아래에서 판정한다.
+                                    색상은 날짜 그룹 헤더의 6종 뱃지와 동일하게 통일(사용자
+                                    지시): 대기=회색, 이의=주황, 인정=초록, 확정=빨강, 유예/
+                                    반려=회색. */}
                                 {isApplied ? (
-                                  <TintedPill tone="ok">확정</TintedPill>
+                                  <TintedPill tone="warn">확정</TintedPill>
                                 ) : isItemDeferred(item, applied) ? (
                                   <TintedPill tone="muted">유예</TintedPill>
                                 ) : isRejected ? (
-                                  <TintedPill tone="amber">
+                                  <TintedPill tone="muted">
                                     {applied[item.id]?.decision === "rejected_recognized" ||
                                     item.reviewStatus === "rejected_recognized"
                                       ? "반려 (인정)"
                                       : "반려"}
                                   </TintedPill>
                                 ) : item.targetResponse === "disputed" ? (
-                                  <TintedPill tone="primary">이의</TintedPill>
+                                  <TintedPill tone="amber">이의</TintedPill>
                                 ) : item.targetResponse === "recognized" ? (
-                                  <TintedPill
-                                    tone="primary"
-                                    className="bg-violet-600/15 text-violet-600 dark:bg-violet-400/15 dark:text-violet-400"
-                                  >
-                                    인정
-                                  </TintedPill>
+                                  <TintedPill tone="ok">인정</TintedPill>
                                 ) : (
-                                  <TintedPill tone="warn">대기</TintedPill>
+                                  <TintedPill tone="muted">대기</TintedPill>
                                 )}
                                 <Button
                                   variant="outline"
