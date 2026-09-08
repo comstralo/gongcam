@@ -324,6 +324,9 @@ export function MyOutputPenSection({
             <div className="flex flex-col gap-2 sm:gap-2.5">
               {groupByDay(items).map((group) => {
                 const isDayExpanded = expandedDay === group.dateKey;
+                // "내 화각 점검"(kind: "selfCheck")은 벌점/페널티 판정 대상이
+                // 아닌 자가 점검용 기록이라 건수에서 제외한다(사용자 지시).
+                const receivedCount = group.items.filter((item) => item.kind === "received").length;
                 return (
                   <InfoCard key={group.dateKey} className="flex flex-col gap-2.5 bg-card">
                     <button
@@ -335,10 +338,15 @@ export function MyOutputPenSection({
                         <CalendarDays className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
                         {dateLabel(group.dateKey)}
                       </span>
-                      <ChevronDown
-                        className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", isDayExpanded && "rotate-180")}
-                        strokeWidth={ICON_STROKE.default}
-                      />
+                      <span className="ml-auto flex items-center gap-1.5">
+                        <span className="rounded-full bg-amber-600/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-amber-600 dark:bg-amber-400/15 dark:text-amber-400">
+                          {receivedCount}건
+                        </span>
+                        <ChevronDown
+                          className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", isDayExpanded && "rotate-180")}
+                          strokeWidth={ICON_STROKE.default}
+                        />
+                      </span>
                     </button>
 
                     {isDayExpanded && (
@@ -392,7 +400,10 @@ export function MyOutputPenSection({
                                       // 상세를 펼치지 않아도 바로 볼 수 있게 한다(사용자 지시).
                                       <>
                                         <TintedPill tone="warn">확정</TintedPill>
-                                        <TintedPill tone="muted">
+                                        <TintedPill
+                                          tone="muted"
+                                          className="bg-yellow-500/15 text-yellow-600 dark:bg-yellow-400/15 dark:text-yellow-400"
+                                        >
                                           {occurrenceLabel(received!.penalty?.occurrence ?? received!.nextOccurrence)}
                                         </TintedPill>
                                       </>
