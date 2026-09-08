@@ -386,6 +386,16 @@ export function MyOutputPenSection({
                                         </TintedPill>
                                         <TintedPill tone="muted">{occurrenceLabel(received!.nextOccurrence)}</TintedPill>
                                       </>
+                                    ) : received!.reviewStatus === "approved" ? (
+                                      // 🔧 [차수 뱃지 추가] "확정" 뱃지 옆에도 유예와 동일하게
+                                      // "확정 적용" 값(몇 차 · 어떤 조치)을 별도 뱃지로 붙여
+                                      // 상세를 펼치지 않아도 바로 볼 수 있게 한다(사용자 지시).
+                                      <>
+                                        <TintedPill tone="warn">확정</TintedPill>
+                                        <TintedPill tone="muted">
+                                          {occurrenceLabel(received!.penalty?.occurrence ?? received!.nextOccurrence)}
+                                        </TintedPill>
+                                      </>
                                     ) : (
                                       (() => {
                                         const { label, tone } = statusInfo(received!);
