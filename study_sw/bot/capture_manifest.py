@@ -108,15 +108,16 @@ def set_decision(capture_id, decision, penalty=None, merit=None):
 # penalty/merit 기록도 함께 지운다 — 시트 반영분은 호출자(웹 index.js)가
 # 이 함수를 부르기 전에 이미 cancelOutputPenalty/cancelReportMerit로
 # 되돌렸다는 전제다.
-# 🔧 [버그 수정] 원래는 targetResponse(대상자의 위반인정/이의제기)를 지우지
-# 않았다 — 관리자가 "재검토"를 위해 되돌렸는데도 이미 응답한 대상자는
-# set_target_response의 "이미 응답 있으면 거부" 조건에 걸려 영원히 다시
-# 응답을 제출할 수 없었다. 완전히 처음(통보 직후) 상태로 되돌리는 게
-# "재검토"의 자연스러운 의미이므로 당사자 응답도 함께 초기화한다 — 그
-# 결과 접수 시각(ts)이 이미 90분을 넘긴 건은 다음 조회 시 자동 위반인정이
-# 다시 평가되는데, 이는 "대상자가 아직 응답하지 않은 건"이라는 전제가
-# 그대로 참이므로(관리자가 재검토를 시작했다고 해서 대상자 응답 기한이
-# 유예되는 것은 아님) 의도된 동작이다.
+# 🔧 [버그 수정] targetResponse(대상자의 위반인정/이의제기)는 절대 지우지
+# 않는다(사용자 지시: "사용자가 이의제기나 위반인정을 하면 다시 응답
+# 대기로 돌아가는 일은 없어야 한다"). 한때는 재검토 시 대상자가 다시
+# 응답을 제출할 수 있어야 한다는 이유로 이 필드를 함께 초기화했었으나,
+# set_target_response는 이미 응답이 있으면 애초에 재제출 자체를 거부하므로
+# (대상자 응답과 관리자 결정은 독립된 절차 — 관리자는 이미 낸 의견을
+# 참고해 직접 재판단하면 되고, 대상자가 새로 응답할 필요가 없다) 그
+# 초기화는 불필요했을 뿐 아니라, 대상자가 이미 응답한 건도 화면상
+# "응답 대기 중"으로 되돌려 보여주는 부작용을 냈다. reviewStatus/결정
+# 관련 필드만 되돌리고 대상자 응답 기록은 항상 보존한다.
 # 🔧 [버그 수정] 원래는 원본 manifest만 확인했다 — archive_old_captures로
 # 이미 옮겨진(3주 이상 지난 확정) 캡처에 대해 관리자가 뒤늦게 "반려 취소"를
 # 누르면 capture_id가 원본 manifest에 없어 조용히 False(404)만 반환하고
@@ -137,9 +138,6 @@ def revert_decision(capture_id):
         data[capture_id].pop("decidedAt", None)
         data[capture_id].pop("penalty", None)
         data[capture_id].pop("merit", None)
-        data[capture_id].pop("targetResponse", None)
-        data[capture_id].pop("targetRespondedAt", None)
-        data[capture_id].pop("targetResponseAuto", None)
         _save(data, target_path)
     return True
 
