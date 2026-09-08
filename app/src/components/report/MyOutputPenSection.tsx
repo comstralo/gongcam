@@ -434,17 +434,18 @@ export function MyOutputPenSection({
                                               : "대상자 응답 대기 중"
                                           }
                                         />
-                                        <SubRow
-                                          label="예상차감"
-                                          value={(() => {
-                                            const confirmed = received!.penalty?.deductedMinutes;
-                                            if (confirmed !== undefined && confirmed !== null) {
-                                              return formatDeductedTime(confirmed);
-                                            }
-                                            return formatDeductedTime(expectedDeductedMinutes(received!) ?? 0);
-                                          })()}
-                                          valueClassName="text-destructive"
-                                        />
+                                        {(() => {
+                                          const confirmed = received!.penalty?.deductedMinutes;
+                                          const isConfirmed = confirmed !== undefined && confirmed !== null;
+                                          const deductedMinutes = isConfirmed ? confirmed : expectedDeductedMinutes(received!) ?? 0;
+                                          return (
+                                            <SubRow
+                                              label={isConfirmed ? "확정 차감시간" : "예상 차감시간"}
+                                              value={formatDeductedTime(deductedMinutes)}
+                                              valueClassName={deductedMinutes === 0 ? undefined : "text-destructive"}
+                                            />
+                                          );
+                                        })()}
                                       </div>
 
                                       <div className="h-px w-full bg-border" />
@@ -455,7 +456,7 @@ export function MyOutputPenSection({
                                           벌점 · 페널티 변동
                                         </span>
                                         <SubRow
-                                          label="적용 시"
+                                          label={received!.penalty ? "확정 적용" : "예상 적용"}
                                           value={
                                             received!.penalty
                                               ? occurrenceLabel(received!.penalty.occurrence)
