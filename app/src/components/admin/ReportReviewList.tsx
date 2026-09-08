@@ -1151,25 +1151,10 @@ export function ReportReviewList({
                                     {applied[item.id]?.decision === "rejected_recognized" && !applied[item.id]!.penalty && (
                                       <SubRow label="대상자 처리" value="없음 (잔여 슬롯 없어 미등록)" />
                                     )}
-                                    {/* 🔧 [버그 수정] applied[item.id](로컬 세션)만 보면
-                                        새로고침 후에는 이미 확정된 건의 제보자 상점 부여
-                                        여부가 안 보였다 — item.merit(서버 스냅샷)을 폴백으로
-                                        함께 사용한다. 유예(deferred) 확정 건은 제보자 상점이
-                                        실제로 부여되긴 하지만(사용자 지시로 이 줄 자체를
-                                        노출하지 않기로 함) item.deferOccurrence로 걸러 숨긴다
-                                        — "예상 적용"에 이미 "유예 N차"로 표시되므로 중복 정보다. */}
-                                    {(() => {
-                                      if (item.deferOccurrence) return null;
-                                      const merit = applied[item.id]?.merit ?? item.merit;
-                                      if (!merit) return null;
-                                      return (
-                                        <SubRow
-                                          label="제보자 상점"
-                                          value={"error" in merit ? "부여 실패" : `${(merit as ReportMeritResult).occurrence}차 슬롯 부여`}
-                                          valueClassName={"error" in merit ? "text-destructive" : undefined}
-                                        />
-                                      );
-                                    })()}
+                                    {/* 🔧 [버그 수정] "제보자 상점" 줄은 사용자 지시로 완전히
+                                        제거 — 확정(approved)/유예(deferred)/반려(인정,
+                                        rejected_recognized) 어떤 결정이든 관리자 화면에서는
+                                        더 이상 노출하지 않는다(부여 실패 케이스도 포함). */}
                                   </div>
                                 </div>
 
