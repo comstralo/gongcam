@@ -343,12 +343,23 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
                           <MessageSquareWarning className="size-3 shrink-0 text-muted-foreground sm:size-3.5" />
                           제보 원인
                         </Label>
-                        <Select value={reason} onValueChange={(v) => setReason(v ?? "")} disabled={stale}>
+                        {/* 🔧 [순차 활성화] 대상자를 먼저 골라야 원인 선택·제출이
+                            의미가 있으므로("이 사람"의 어떤 문제를 제보할지), 대상자
+                            미선택 시 이 아래 영역을 비활성화한다(사용자 지시 —
+                            "내 화각 점검"은 대상자 자체가 필요 없는 셀프 체크라
+                            예외). */}
+                        <Select
+                          value={reason}
+                          onValueChange={(v) => setReason(v ?? "")}
+                          disabled={stale || !nickname}
+                        >
                           <SelectTrigger
                             id="reason"
                             className="w-full data-[size=default]:h-8 sm:data-[size=default]:h-12 pl-3.5 sm:pl-4.5 sm:text-base"
                           >
-                            <SelectValue placeholder="원인을 선택해 주세요." />
+                            <SelectValue
+                              placeholder={!nickname ? "제보 대상자를 먼저 선택해주세요." : "원인을 선택해 주세요."}
+                            />
                           </SelectTrigger>
                           <SelectContent>
                             {REASON_OPTIONS.map((opt) => (
@@ -363,7 +374,7 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
                             value={otherReason}
                             maxLength={REASON_OTHER_MAX_LENGTH}
                             placeholder="제보 원인을 입력해 주세요."
-                            disabled={stale}
+                            disabled={stale || !nickname}
                             onChange={(e) => setOtherReason(e.target.value)}
                             className="w-full pl-3.5 text-sm sm:h-12 sm:pl-4.5 sm:text-base md:text-base"
                           />
@@ -374,7 +385,7 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
                         <Button
                           className="w-full sm:h-12 sm:text-base"
                           variant="outline"
-                          disabled={submitting || stale || isWithinReconnectWindow(SCREENSHOT_LEAD_SEC)}
+                          disabled={submitting || stale || !nickname || isWithinReconnectWindow(SCREENSHOT_LEAD_SEC)}
                           onClick={() => handleSubmit("screenshot")}
                         >
                           스크린샷 제보
@@ -382,7 +393,7 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
                         <Button
                           className="w-full sm:h-12 sm:text-base"
                           variant="outline"
-                          disabled={submitting || stale || isWithinReconnectWindow(VIDEO_LEAD_SEC)}
+                          disabled={submitting || stale || !nickname || isWithinReconnectWindow(VIDEO_LEAD_SEC)}
                           onClick={() => handleSubmit("video")}
                         >
                           영상 제보
