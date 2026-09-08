@@ -858,12 +858,16 @@ export function ReportReviewList({
                                 <User className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
                                 {item.nickname}
                                 {/* 이미 날짜별로 묶여 있으므로(그룹 헤더에 날짜 표시) 여기서는
-                                    시:분만 덧붙여 같은 대상자의 여러 건을 시각으로 구분한다
-                                    (사용자 지시: 토글 제목 옆에 발생일시도 표시, 가운데점
-                                    구분자로 닉네임과 시각을 분리 — 이 파일 다른 곳(제보정보/
-                                    시간 차감/벌점·페널티 변동 등)과 동일한 " · " 표기). */}
+                                    시:분:초까지 덧붙여 같은 대상자의 여러 건을 시각으로
+                                    구분한다(사용자 지시: 토글 제목 옆에 발생일시도 표시,
+                                    초 단위까지, 세로선 구분자로 닉네임과 시각을 분리). */}
                                 <span className="font-normal text-muted-foreground">
-                                  · {new Date(item.ts).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+                                  |{" "}
+                                  {new Date(item.ts).toLocaleTimeString("ko-KR", {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                    second: "2-digit",
+                                  })}
                                 </span>
                               </span>
                               <div className="flex items-center gap-1.5">
