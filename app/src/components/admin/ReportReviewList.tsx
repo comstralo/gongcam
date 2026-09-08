@@ -1349,16 +1349,24 @@ export function ReportReviewList({
                                       )}
                                     </div>
                                   )}
-                                  <Button
-                                    variant="outline"
-                                    size="icon"
-                                    className="sm:h-12 sm:w-12 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                    disabled={deletingId === item.id}
-                                    onClick={() => deleteCapture(item)}
-                                    aria-label="기록 삭제"
-                                  >
-                                    <Trash2 className="size-4" strokeWidth={ICON_STROKE.default} />
-                                  </Button>
+                                  {/* 🔧 [버그 수정] 폐기(삭제) 버튼은 확정/유예/반려로 이미
+                                      처리된 건에는 노출하지 않는다(사용자 지시: "관리자가
+                                      유예나 반려 적용 처리 하기 전 단계에만" 보이도록) —
+                                      처리 완료된 건은 각각 "취소"/"유예 취소"/"반려 취소"
+                                      버튼으로만 되돌리게 해, 시트에 이미 반영된 기록을
+                                      되돌리지 않은 채 통째로 지워버리는 실수를 막는다. */}
+                                  {!isApplied && !isItemDeferred(item, applied) && !isRejected && (
+                                    <Button
+                                      variant="outline"
+                                      size="icon"
+                                      className="sm:h-12 sm:w-12 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                      disabled={deletingId === item.id}
+                                      onClick={() => deleteCapture(item)}
+                                      aria-label="기록 삭제"
+                                    >
+                                      <Trash2 className="size-4" strokeWidth={ICON_STROKE.default} />
+                                    </Button>
+                                  )}
                                 </div>
                               </>
                             )}
