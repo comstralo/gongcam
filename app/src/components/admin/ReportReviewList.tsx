@@ -801,38 +801,47 @@ export function ReportReviewList({
                   <button
                     type="button"
                     onClick={() => setExpandedDay(isDayExpanded ? null : group.dateKey)}
-                    className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded"
+                    className="flex flex-col gap-1.5 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded"
                   >
-                    <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                    <span className="flex items-center justify-between gap-2">
                       <span className="inline-flex shrink-0 items-center gap-1.25 text-xs font-semibold sm:text-sm">
                         <CalendarDays className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
                         {dateLabel(group.dateKey)}
                       </span>
-                      <span className="ml-auto flex flex-wrap items-center justify-end gap-1">
-                        <span className="rounded-full bg-destructive/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-destructive">
-                          대기 : {pendingCount}건
-                        </span>
-                        <span className="rounded-full bg-primary/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-primary">
-                          이의 : {disputedCount}건
-                        </span>
-                        <span className="rounded-full bg-violet-600/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-violet-600 dark:bg-violet-400/15 dark:text-violet-400">
-                          인정 : {recognizedCount}건
-                        </span>
-                        <span className="rounded-full bg-ok/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-ok">
-                          확정 : {appliedCount}건
-                        </span>
-                        <span className="rounded-full bg-foreground/8 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-muted-foreground">
-                          유예 : {deferredCount}건
-                        </span>
-                        <span className="rounded-full bg-amber-600/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-amber-600 dark:bg-amber-400/15 dark:text-amber-400">
-                          반려 : {rejectedCount}건
-                        </span>
+                      <ChevronDown
+                        className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", isDayExpanded && "rotate-180")}
+                        strokeWidth={ICON_STROKE.default}
+                      />
+                    </span>
+                    {/* 🔧 [뱃지 2행 재배치] 대기/이의/인정(당사자 응답 단계)을 1행,
+                        확정/유예/반려(관리자 최종 처리 단계)를 2행으로 나눠 처리
+                        진행 흐름이 한눈에 구분되게 한다(사용자 지시). 색상도
+                        의미에 맞게 재정리: 대기=노랑(amber), 이의=옅은 빨강,
+                        인정=초록(ok), 확정=진한 빨강(destructive), 유예/반려=회색
+                        (muted) — "확정"과 "반려"를 더 이상 같은 초록/주황으로
+                        헷갈리지 않게 구분한다. */}
+                    <span className="flex flex-wrap items-center gap-1">
+                      <span className="rounded-full bg-amber-600/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-amber-600 dark:bg-amber-400/15 dark:text-amber-400">
+                        대기 : {pendingCount}건
+                      </span>
+                      <span className="rounded-full bg-destructive/8 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-destructive">
+                        이의 : {disputedCount}건
+                      </span>
+                      <span className="rounded-full bg-ok/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-ok">
+                        인정 : {recognizedCount}건
                       </span>
                     </span>
-                    <ChevronDown
-                      className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", isDayExpanded && "rotate-180")}
-                      strokeWidth={ICON_STROKE.default}
-                    />
+                    <span className="flex flex-wrap items-center gap-1">
+                      <span className="rounded-full bg-destructive/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-destructive">
+                        확정 : {appliedCount}건
+                      </span>
+                      <span className="rounded-full bg-foreground/8 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-muted-foreground">
+                        유예 : {deferredCount}건
+                      </span>
+                      <span className="rounded-full bg-foreground/8 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-muted-foreground">
+                        반려 : {rejectedCount}건
+                      </span>
+                    </span>
                   </button>
 
                   {isDayExpanded && (
@@ -851,9 +860,11 @@ export function ReportReviewList({
                                 {item.nickname}
                                 {/* 이미 날짜별로 묶여 있으므로(그룹 헤더에 날짜 표시) 여기서는
                                     시:분만 덧붙여 같은 대상자의 여러 건을 시각으로 구분한다
-                                    (사용자 지시: 토글 제목 옆에 발생일시도 표시). */}
+                                    (사용자 지시: 토글 제목 옆에 발생일시도 표시, 가운데점
+                                    구분자로 닉네임과 시각을 분리 — 이 파일 다른 곳(제보정보/
+                                    시간 차감/벌점·페널티 변동 등)과 동일한 " · " 표기). */}
                                 <span className="font-normal text-muted-foreground">
-                                  {new Date(item.ts).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+                                  · {new Date(item.ts).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
                                 </span>
                               </span>
                               <div className="flex items-center gap-1.5">
