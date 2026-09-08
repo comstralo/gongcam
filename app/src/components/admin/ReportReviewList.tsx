@@ -893,8 +893,18 @@ export function ReportReviewList({
                         const isMemberExpanded = expandedId === item.id;
                         const isApplied = isItemApplied(item, applied);
                         const isRejected = isItemRejected(item, applied, rejected);
+                        // 뱃지가 대기/이의/인정(=관리자가 아직 최종 처리하지 않은
+                        // 상태)인 항목만 빨간 글로우로 강조해 처리를 유도한다
+                        // (사용자 지시) — 적용/유예/반려로 이미 처리된 항목은 제외.
+                        const isUnprocessed = !isApplied && !isItemDeferred(item, applied) && !isRejected;
                         return (
-                          <div key={item.id} className="flex flex-col gap-2.5 rounded-lg border bg-card p-3">
+                          <div
+                            key={item.id}
+                            className={cn(
+                              "flex flex-col gap-2.5 rounded-lg border bg-card p-3",
+                              isUnprocessed && "animate-unpaid-glow border-destructive"
+                            )}
+                          >
                             <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
                               <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
                                 <User className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
