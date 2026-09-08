@@ -900,7 +900,10 @@ export function ReportReviewList({
                                         동일한 정보(몇 차 · 어떤 조치)를 카드를 펼치지 않아도
                                         바로 보이도록 헤더에 별도 뱃지로 함께 노출한다(사용자
                                         지시). */}
-                                    <TintedPill tone="muted">
+                                    <TintedPill
+                                      tone="muted"
+                                      className="bg-yellow-500/15 text-yellow-600 dark:bg-yellow-400/15 dark:text-yellow-400"
+                                    >
                                       {occurrenceLabel((applied[item.id]?.penalty ?? item.penalty)?.occurrence ?? item.nextOccurrence)}
                                     </TintedPill>
                                   </>
