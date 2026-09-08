@@ -357,7 +357,16 @@ export function MyOutputPenSection({
                           const canRespond =
                             isReceived && received!.reviewStatus === "pending" && !received!.targetResponse;
                           return (
-                            <div key={item.id} className="flex flex-col gap-2.5 rounded-lg border bg-card p-3">
+                            <div
+                              key={item.id}
+                              className={cn(
+                                "flex flex-col gap-2.5 rounded-lg border bg-card p-3",
+                                // 아직 응답하지 않은 건은 대상자가 놓치기 쉬우므로(90분
+                                // 시한이 지나면 자동으로 위반인정 처리됨) 벌금 미납
+                                // 강조와 동일한 글로우 효과로 눈에 띄게 한다(사용자 지시).
+                                canRespond && "border-destructive/60 animate-unpaid-glow"
+                              )}
+                            >
                               <div className="flex items-center justify-between gap-2">
                                 <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
                                   <Clock className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
