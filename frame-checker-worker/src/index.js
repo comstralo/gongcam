@@ -325,11 +325,13 @@ async function getSheetValues(env, accessToken, fileId, range) {
 // 하나를 조회할 때만도 buildPersonalStatus와 getReportScore가 각각 따로
 // 읽어 요청 1건에 이 셀만 2번 조회했다. 15명이 동시에 /status를 열면
 // 이 셀 하나 때문에 30회가 몰려 "분당 60회" 한도를 순식간에 갉아먹는다
-// (2026-08 실제로 RESOURCE_EXHAUSTED 발생) — 매주 1~3만 순환하는 값이라
-// 60초 캐싱해도 신선도 문제가 없다. KV에도 함께 저장해(_cacheSetAsync)
-// 다른 사용자·다른 isolate 간에도 이 값이 공유되게 한다.
+// (2026-08 실제로 RESOURCE_EXHAUSTED 발생) — 매주 1~3만 순환하는 값이고
+// Worker 쪽에서 이 셀에 쓰는 경로가 전혀 없어(앱스크립트 주간 트리거만
+// 갱신) 5분 캐싱해도 신선도 문제가 없다. KV에도 함께 저장해
+// (_cacheSetAsync) 다른 사용자·다른 isolate 간에도 이 값이 공유되게 한다
+// (docs/CACHING_POLICY.md §6, 2026-09).
 async function getCurrentPenCycle(env, accessToken, fileId) {
-  return _cachedCompute(env, `penCycle:${fileId}`, 60_000, async () => {
+  return _cachedCompute(env, `penCycle:${fileId}`, 5 * 60_000, async () => {
     const rows = await getSheetValues(env, accessToken, fileId, "집계!D25");
     return parseInt((rows[0] && rows[0][0]) || "1", 10) || 1;
   });

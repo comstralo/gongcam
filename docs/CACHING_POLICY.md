@@ -102,17 +102,17 @@ computeFn)` 형태로 각 파생 계산(주로 여러 셀을 모아 가공한 �
 
 | 캐시 키 prefix | 함수 | TTL | 무효화 경로 |
 |---|---|---|---|
-| `penCycle:` | `getCurrentPenCycle` | 60초 | **없음** — 의도적으로 무효화 그룹 밖 |
+| `penCycle:` | `getCurrentPenCycle` | 5분(2026-09 상향, 구 60초) | **없음** — Worker가 쓰는 경로가 전혀 없어 의도적으로 무효화 그룹 밖 |
 | `meta:` | `getSpreadsheetMeta` | 5분 | `invalidateMemberCache` |
-| `members:` | `listAllMembers` | 60초 | `invalidateMemberCache` |
-| `meritRank:` | `getMeritRank` | 60초 | `invalidateMemberCache` |
+| `members:` | `listAllMembers` | 5분(2026-09 상향, 구 60초) | `invalidateMemberCache` |
+| `meritRank:` | `getMeritRank` | 5분(2026-09 상향, 구 60초) | `invalidateMemberCache` |
 | `reportScore:` | `getReportScore` | 30분 | `invalidateMemberCache`(회원별 키 — KV는 자연 만료만) |
 | `outputPenSlots:` | `getOutputPenSlots` | 5분 | `invalidateMemberCache`(회원별 키 — KV는 자연 만료만) |
 | `personalStatus:` | `getPersonalTabRows` | 30분 | `writeSheetValues` 내장 정밀 무효화 |
-| `memberRows:` | `getSharedMemberRows` | 60초 | `invalidateMemberCache` |
-| `weeklyPaidFine:` | `getWeeklyPaidFineTotal` | 60초 | `invalidateMemberCache` |
-| `penSlotGrid:` | `attachNextOccurrence` | 60초 | `invalidateMemberCache` |
-| `exitStatus:` | `getAllExitRelevantStatus` | 60초 | `invalidateMemberCache` |
+| `memberRows:` | `getSharedMemberRows` | 60초(유지) | `invalidateMemberCache` |
+| `weeklyPaidFine:` | `getWeeklyPaidFineTotal` | 5분(2026-09 상향, 구 60초) | `invalidateMemberCache` |
+| `penSlotGrid:` | `attachNextOccurrence` | 60초(유지) | `invalidateMemberCache` |
+| `exitStatus:` | `getAllExitRelevantStatus` | 60초(유지) | `invalidateMemberCache` |
 
 `buildRosterStatus`, `buildPersonalStatus`(개인 탭 조합 계산 자체)는
 `_cachedCompute`를 쓰지 않습니다 — 전자는 매 호출 시트 직접 조회, 후자는
@@ -139,39 +139,48 @@ computeFn)` 형태로 각 파생 계산(주로 여러 셀을 모아 가공한 �
 
 ## 5. 낭비 후보 — TTL을 늘려도 정합성 손실 없는 지점
 
-아래 세 캐시는 **무효화가 이미 정확히 걸려 있는데도** TTL이 60초로 짧게
-잡혀 있어, 실제로는 안 바뀐 값을 매 분 KV에서 재조회(=KV 읽기 소진)하고
-있습니다. TTL은 원래 "무효화가 놓친 경우의 안전망"인데, 무효화가 이미
-완벽히 커버하는 키는 TTL을 늘려도 신선도 손실이 없습니다.
+아래 네 캐시는 **무효화가 이미 정확히 걸려 있거나, 애초에 Worker가 쓰는
+경로가 전혀 없는데도** TTL이 60초로 짧게 잡혀 있어, 실제로는 안 바뀐 값을
+매 분 KV에서 재조회(=KV 읽기 소진)하고 있었습니다. TTL은 원래 "무효화가
+놓친 경우의 안전망"인데, 무효화가 이미 완벽히 커버하거나 애초에 갱신
+이벤트 자체가 드문 키는 TTL을 늘려도 신선도 손실이 없습니다. 2026-09-09
+전수조사 직후 다음 4곳을 60초 → 5분으로 상향 적용했습니다(§3 표에 반영).
 
-- **`members:`(60초 → 후보: 5분)** — 회원 명단은 등록/퇴실/재납/번호이동
-  같은 관리자 조작 이벤트로만 바뀌며, 그 이벤트들은 전부 `invalidateMemberCache`
-  가 즉시 무효화합니다. 성격이 같은 `meta:`가 이미 5분으로 잡혀 있는 것과
-  대조적입니다.
-- **`meritRank:`(60초 → 후보: 5분)** — `집계!B4:F18`(상점/순위)은 앱스크립트
-  일간·주간 집계가 갱신하며, Worker의 쓰기 지점과는 별개 트리거입니다.
-  60초 TTL은 "곧 무효화될 캐시"가 아니라 사실상 폴링 주기로 기능하고
-  있습니다.
-- **`weeklyPaidFine:`(60초 → 후보: 5분)** — `집계!D22`(주간 벌금 합산)는
-  벌금 상태 변경(하루 수 회 이하로 추정되는 저빈도 관리자 조작)이나
-  앱스크립트 일간 집계로만 바뀌며, 무효화가 5695줄에서 정확히 걸려 있습니다.
+- **`members:`** — 회원 명단은 등록/퇴실/재납/번호이동 같은 관리자 조작
+  이벤트로만 바뀌며, 그 이벤트들은 전부 `invalidateMemberCache`가 즉시
+  무효화합니다. 성격이 같은 `meta:`가 이미 5분으로 잡혀 있던 것과
+  맞춥니다.
+- **`meritRank:`** — `집계!B4:F18`(상점/순위)은 앱스크립트 일간·주간
+  집계가 갱신하며, Worker의 쓰기 지점과는 별개 트리거입니다. 60초 TTL은
+  "곧 무효화될 캐시"가 아니라 사실상 폴링 주기로 기능하고 있었습니다.
+- **`weeklyPaidFine:`** — `집계!D22`(주간 벌금 합산)는 벌금 상태 변경(하루
+  수 회 이하로 추정되는 저빈도 관리자 조작)이나 앱스크립트 일간 집계로만
+  바뀌며, 무효화가 5695줄에서 정확히 걸려 있습니다.
+- **`penCycle:`** — `집계!D25`(1~3주차 순환)는 Worker 쪽에서 이 셀에 쓰는
+  경로가 아예 없고(앱스크립트 주간 트리거만 갱신) 주 1회 수준으로만
+  바뀝니다. 무효화 경로가 원래 없는 캐시라, TTL만이 유일한 신선도
+  파라미터인데도 60초로 잡혀 있던 것이 가장 명백한 낭비였습니다.
 
-`exitStatus:`/`memberRows:`(각 60초)도 같은 논리가 적용되지만, 회원 15명
-개인 탭을 batchGet하는 무거운 계산이라 원래 목적이 "동시 마운트 컴포넌트
-간 중복 요청 제거"였다는 점에서 더 보수적으로 접근했습니다 — TTL을 늘리는
-확장은 이번 조사에서 결론만 내리고 실제 코드 변경은 보류했습니다(아래
-"다음 단계" 참고).
+`exitStatus:`/`memberRows:`/`penSlotGrid:`(각 60초, 유지)는 같은 "무효화가
+이미 정확함" 논리가 적용되지만, 관리자가 실시간성을 기대하며 자주
+새로고침하는 목록/미리보기 화면(퇴실 후보 목록, 납부 상태, 제보 처리 화면의
+다음 슬롯 미리보기)이라 **사용성 관점에서 보수적으로 유지**했습니다 —
+방금 다른 관리자가 처리한 결과나 자신이 방금 처리한 다음 항목의 미리보기가
+1분보다 오래 지연되면 체감 지연이 생길 수 있는 화면들입니다. 데이터
+정합성만 보면 늘려도 안전하지만, "사용성을 해치지 않는 선"이라는 조건에서
+제외했습니다.
 
 ## 6. 다음 단계 (미착수)
 
-이 문서는 조사 결과 기록이며, 아직 다음 변경은 코드에 반영하지 않았습니다.
+이 문서는 조사 결과 기록이며, 아래는 아직 코드에 반영하지 않았습니다.
 
-- `members:`/`meritRank:`/`weeklyPaidFine:` TTL을 60초 → 5분 등으로 늘려
-  KV 읽기 빈도를 줄이는 안 (정합성 손실 없음, 순수 예산 절감).
-- `outputPenSlots:`/`reportScore:` 위험 지점은 별도 이슈로 인지만 하고,
-  당장은 그대로 유지(KV 삭제를 늘리는 방향은 예산을 오히려 압박하므로
-  우선순위 낮음).
-- `penCycle:`은 위험이 낮다고 판단해 이번 조사에서는 변경 대상에서 제외.
+- `outputPenSlots:`/`reportScore:` 위험 지점(회원별 키라 KV가 자연 TTL
+  만료에만 의존)은 별도 이슈로 인지만 하고, 당장은 그대로 유지(KV 삭제를
+  늘리는 방향은 예산을 오히려 압박하므로 우선순위 낮음).
+- `exitStatus:`/`memberRows:`/`penSlotGrid:`는 정합성만 보면 TTL을 늘릴
+  여지가 있지만, 관리자 화면의 체감 실시간성을 해치지 않기 위해 의도적으로
+  보류(§5 참고) — 사용 패턴이 바뀌어 이 화면들의 재조회 빈도가 문제가 되면
+  재검토.
 
 ## 7. 관련 문서
 
