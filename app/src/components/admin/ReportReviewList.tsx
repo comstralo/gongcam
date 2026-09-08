@@ -897,8 +897,13 @@ export function ReportReviewList({
                                   </>
                                 ) : isItemDeferred(item, applied) ? (
                                   <>
-                                    <TintedPill tone="muted">유예</TintedPill>
-                                    {item.deferOccurrence && <TintedPill tone="muted">유예 {item.deferOccurrence}차</TintedPill>}
+                                    {/* 🔧 [유예 뱃지 2개로 분리] 1번째는 "유예 N차"(당일 몇 번째
+                                        유예인지), 2번째는 "2차 (벌점)"처럼 유예되지 않았다면
+                                        원래 적용됐어야 할 조치를 그대로 보여준다(사용자 지시).
+                                        deferOccurrence가 없는 예외적인 경우(아주 오래된 데이터
+                                        등)에는 순번 없이 "유예"만 표시. */}
+                                    <TintedPill tone="muted">{item.deferOccurrence ? `유예 ${item.deferOccurrence}차` : "유예"}</TintedPill>
+                                    <TintedPill tone="muted">{occurrenceLabel(item.nextOccurrence)}</TintedPill>
                                   </>
                                 ) : isRejected ? (
                                   <TintedPill tone="muted">
