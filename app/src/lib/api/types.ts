@@ -791,6 +791,10 @@ export type CaptureReviewItem = {
   // 활성화 조건에 쓰인다).
   targetResponse: "disputed" | "recognized" | null;
   targetRespondedAt: number | null;
+  // 90분 타임아웃으로 자동 위반인정된 건인지 — 대상자가 직접 버튼을 눌러
+  // 응답한 것과 "처리현황" 문구를 다르게 보여주기 위함(MyOutputPenItem과
+  // 동일 필드).
+  targetResponseAuto: boolean;
   votes: Record<string, CaptureVote>;
   // 이 건이 이미 "적용"으로 확정됐다면(reviewStatus === "approved") 그때
   // 실제 시트에 반영된 값(봇 manifest에 저장된 스냅샷) — 새로고침 등으로

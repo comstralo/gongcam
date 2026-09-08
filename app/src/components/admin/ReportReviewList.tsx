@@ -73,6 +73,29 @@ function computeConsensus(myVote: string | undefined, coReviewers: CoReviewer[],
   return { allSubmitted: true, yesCount, willApprove: yesCount >= CONSENSUS_THRESHOLD };
 }
 
+// "처리현황" — "내 화각 불량 제보"(MyOutputPenSection)의 statusLabel과 동일한
+// 문구 체계를 관리자 화면 "제보정보"에도 노출한다(사용자 지시). 대상자 응답
+// (targetResponse)과 관리자 최종 처리(reviewStatus)를 조합한 상세 텍스트 —
+// 대상자가 어떤 응답을 냈고 관리자가 그걸 받아들였는지(승인/미승인)까지
+// 그대로 풀어서 보여준다. targetResponse가 없으면 관리자가 이미 처리했어도
+// (구조적으로는 가능하나 실제 운영에서는 도달하지 않는 경로) 항상 "대상자
+// 응답 대기 중"으로만 표시한다.
+function statusLabel(item: CaptureReviewItem): string {
+  if (!item.targetResponse) {
+    return "대상자 응답 대기 중";
+  }
+  const isDisputed = item.targetResponse === "disputed";
+  const label = isDisputed ? "이의제기" : "위반인정";
+  if (item.reviewStatus === "pending") {
+    if (item.targetResponseAuto) return "90분 내 무응답으로 위반인정 자동 제출 (검토 중)";
+    return `${label} 제출 (검토 중)`;
+  }
+  const wasApplied = item.reviewStatus === "approved" || item.reviewStatus === "deferred";
+  const approvedByAdmin = isDisputed ? !wasApplied : wasApplied;
+  const outcome = item.reviewStatus === "approved" ? "확정" : item.reviewStatus === "deferred" ? "유예" : "반려";
+  return `${label} ${approvedByAdmin ? "승인" : "미승인"} (${outcome})`;
+}
+
 // 송출 P 슬롯 차수(1~6차)별로 실제 적용되는 조치가 다르다 — 1차는 구두경고만,
 // 2/3/5차는 총 상점에서 벌점만 차감(개인 탭 C35 수식), 4/6차는 실제 송출 P가
 // 발생해 예치금 재납 등 페널티로 이어진다(OUTPUT_PEN_P_SLOTS와 동일 기준).
@@ -995,6 +1018,7 @@ export function ReportReviewList({
                                     <SubRow label="사유" value={item.reason || "-"} valueClassName="text-destructive" />
                                     <SubRow label="제보자" value={item.reporterName || item.reporterEmail || "-"} />
                                     <SubRow label="발생일시" value={new Date(item.ts).toLocaleString("ko-KR")} />
+                                    <SubRow label="처리현황" value={statusLabel(item)} />
                                   </div>
                                 </div>
 
@@ -1088,6 +1112,7 @@ export function ReportReviewList({
                                     <SubRow label="사유" value={item.reason || "-"} valueClassName="text-destructive" />
                                     <SubRow label="제보자" value={item.reporterName || item.reporterEmail || "-"} />
                                     <SubRow label="발생일시" value={new Date(item.ts).toLocaleString("ko-KR")} />
+                                    <SubRow label="처리현황" value={statusLabel(item)} />
                                   </div>
 
                                   <div className="h-px w-full bg-border" />
