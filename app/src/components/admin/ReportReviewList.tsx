@@ -1411,7 +1411,7 @@ export function ReportReviewList({
                                         {!canProcess(item) && (
                                           <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-1.25 rounded-md bg-background/70 text-micro-lg font-semibold text-muted-foreground backdrop-blur-[1px] sm:text-xs">
                                             <Clock className="size-3 shrink-0" strokeWidth={ICON_STROKE.default} />
-                                            자동 응답까지 {remainingUntilAutoRecognize(item)}
+                                            자동 응답까지 {remainingUntilAutoRecognize(item)} 남음
                                           </div>
                                         )}
                                       </div>
