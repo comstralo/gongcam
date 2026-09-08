@@ -842,6 +842,10 @@ export type MyOutputPenItem = {
   // 보여주기 위해 attachNextOccurrence가 계산해 함께 내려주는 필드.
   nextOccurrence: number | null;
   weeklyMinorPenaltyCount: number;
+  // 관리자 화면과 동일하게 attachDeferralInfo가 계산해 내려주는 필드 —
+  // 이 건이 당일 몇 번째 유예인지(확정된 deferred 건은 실제 순서, pending
+  // + 유예 대상 건은 "지금 유예하면 몇 번째가 될지"). 유예와 무관하면 null.
+  deferOccurrence: number | null;
   // 이미 확정된 항목이면 봇 manifest에 저장된 실제 값(관리자가 "예상 차감"
   // 대신 확정값을 보여주는 것과 동일한 패턴).
   penalty: OutputPenaltyResult | null;

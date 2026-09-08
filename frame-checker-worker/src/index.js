@@ -3139,6 +3139,62 @@ async function attachNextOccurrence(env, items) {
   });
 }
 
+// 🔧 [유예 조건] "대상자가 당일 이미 1회 적용을 받았다면, 이후 최대 2건은
+// '적용' 대신 '유예'를 노출 → 그 2건을 다 쓰면 다시 '적용'으로 돌아간다"
+// (사용자 지시: "1회 적용 → 2회 유예 → 다음 1회 적용" 순환). "당일"은
+// 접수 시각(ts) 기준 KST 날짜 — 봇 manifest 전체(24시간 노출 창을 벗어난
+// 것도 포함, allItems)에서 "같은 날, 같은 대상자" 기준으로 두 가지를 센다:
+// (a) 실제로 대상자 penalty가 기록된(=approved && penalty 있음) 건수,
+// (b) 유예(deferred) 처리된 건수. 관리자 목록(handleAdminCapturesList)과
+// 대상자 본인 목록(handleMyOutputPen)이 동일한 shouldDefer/deferOccurrence
+// 값을 봐야 두 화면이 일치하므로(사용자 지시: "내 화각 불량 제보"를 관리자
+// 화면 기준으로 맞춤) 공용 함수로 분리해 둘 다 재사용한다.
+// items: shouldDefer/deferOccurrence를 붙여 반환할 대상(사이클/닉네임 등으로
+// 이미 필터링된 목록) — allItems: 당일 집계용 전체 원본(필터링 전).
+function attachDeferralInfo(items, allItems) {
+  const appliedTodayCountByKey = new Map();
+  const deferredTodayCountByKey = new Map();
+  // 🔧 [유예 N차 표시] "이 건이 당일 몇 번째 유예인지"를 프론트에 보여주기
+  // 위해(사용자 지시: "예상 적용"에 "2차 (벌점) 유예 1차" 형태로 표시),
+  // 같은 대상자·같은 날짜의 유예 건들을 접수 시각(ts) 순으로 정렬해 순번을
+  // 매긴다. 이미 확정(deferred)된 건은 실제로 유예된 순서 그대로, pending
+  // 예상 건은 위 deferredTodayCount(지금까지 확정된 유예 개수)를 그대로
+  // "지금 유예하면 몇 번째가 될지"로 재사용한다.
+  const deferredItemsByKey = new Map();
+  for (const it of allItems) {
+    if (it.selfCheck) continue;
+    const key = `${it.nickname}::${kstDateKey(it.ts)}`;
+    if (it.reviewStatus === "approved" && it.penalty) {
+      appliedTodayCountByKey.set(key, (appliedTodayCountByKey.get(key) || 0) + 1);
+    } else if (it.reviewStatus === "deferred") {
+      deferredTodayCountByKey.set(key, (deferredTodayCountByKey.get(key) || 0) + 1);
+      const list = deferredItemsByKey.get(key) || [];
+      list.push(it);
+      deferredItemsByKey.set(key, list);
+    }
+  }
+  const deferOccurrenceById = new Map();
+  for (const list of deferredItemsByKey.values()) {
+    list.sort((a, b) => a.ts - b.ts);
+    list.forEach((it, idx) => deferOccurrenceById.set(it.id, idx + 1));
+  }
+  const MAX_DEFER_PER_DAY = 2;
+  return items.map((item) => {
+    const key = `${item.nickname}::${kstDateKey(item.ts)}`;
+    const appliedTodayCount = appliedTodayCountByKey.get(key) || 0;
+    const deferredTodayCount = deferredTodayCountByKey.get(key) || 0;
+    // 이 항목 자신이 이미 처리(적용/반려/유예 등)되었으면 재판정할 필요가
+    // 없다 — pending인 항목에만 "당일 1회 적용 이후, 아직 유예 2건을 다
+    // 쓰지 않았을 때만" 유예 대상을 매긴다. 2건을 다 쓴 다음 pending
+    // 건부터는 shouldDefer가 false로 돌아가 다시 "적용" 옵션이 나온다.
+    const shouldDefer =
+      item.reviewStatus === "pending" && appliedTodayCount >= 1 && deferredTodayCount < MAX_DEFER_PER_DAY;
+    const deferOccurrence =
+      item.reviewStatus === "deferred" ? deferOccurrenceById.get(item.id) ?? null : shouldDefer ? deferredTodayCount + 1 : null;
+    return { ...item, shouldDefer, deferOccurrence };
+  });
+}
+
 // "다른 관리자 의견 반영"(공동 검토) 실제 구현 — 부스터디장이 제출한 의견을
 // 캡처 id별로 저장한다. 캡처 자체(제보 원본)는 REPORTS_KV가 아니라 로컬
 // 봇의 capture_manifest.py(플랫 JSON 파일)에 있으므로, 의견은 여기 KV에
@@ -3275,57 +3331,7 @@ async function handleAdminCapturesList(req, env, origin, url) {
   const visible = baseItems.filter((item) => !item.selfCheck);
   const withOccurrence = await attachNextOccurrence(env, visible);
 
-  // 🔧 [유예 조건] "대상자가 당일 이미 1회 적용을 받았다면, 이후 최대 2건은
-  // '적용' 대신 '유예'를 노출 → 그 2건을 다 쓰면 다시 '적용'으로 돌아간다"
-  // (사용자 지시: "1회 적용 → 2회 유예 → 다음 1회 적용" 순환). "당일"은
-  // 접수 시각(ts) 기준 KST 날짜 — 봇 manifest 전체(24시간 노출 창을 벗어난
-  // 것도 포함)에서 "같은 날, 같은 대상자" 기준으로 두 가지를 센다:
-  // (a) 실제로 대상자 penalty가 기록된(=approved && penalty 있음) 건수,
-  // (b) 유예(deferred) 처리된 건수. 🔧 [버그 수정] 원래는 (b)를 전혀 세지
-  // 않아 "최대 2건"이라는 주석과 달리 당일 1회 적용 이후 들어오는 모든
-  // pending 건이 개수 제한 없이 계속 유예 대상으로 노출됐다 — 유예가
-  // 무한정 반복되고 재적용으로 돌아가지 않는 문제였다.
-  const appliedTodayCountByKey = new Map();
-  const deferredTodayCountByKey = new Map();
-  // 🔧 [유예 N차 표시] "이 건이 당일 몇 번째 유예인지"를 프론트에 보여주기
-  // 위해(사용자 지시: "예상 적용"에 "2차 (벌점) 유예 1차" 형태로 표시),
-  // 같은 대상자·같은 날짜의 유예 건들을 접수 시각(ts) 순으로 정렬해 순번을
-  // 매긴다. 이미 확정(deferred)된 건은 실제로 유예된 순서 그대로, pending
-  // 예상 건은 위 deferredTodayCount(지금까지 확정된 유예 개수)를 그대로
-  // "지금 유예하면 몇 번째가 될지"로 재사용한다.
-  const deferredItemsByKey = new Map();
-  for (const it of allItems) {
-    if (it.selfCheck) continue;
-    const key = `${it.nickname}::${kstDateKey(it.ts)}`;
-    if (it.reviewStatus === "approved" && it.penalty) {
-      appliedTodayCountByKey.set(key, (appliedTodayCountByKey.get(key) || 0) + 1);
-    } else if (it.reviewStatus === "deferred") {
-      deferredTodayCountByKey.set(key, (deferredTodayCountByKey.get(key) || 0) + 1);
-      const list = deferredItemsByKey.get(key) || [];
-      list.push(it);
-      deferredItemsByKey.set(key, list);
-    }
-  }
-  const deferOccurrenceById = new Map();
-  for (const list of deferredItemsByKey.values()) {
-    list.sort((a, b) => a.ts - b.ts);
-    list.forEach((it, idx) => deferOccurrenceById.set(it.id, idx + 1));
-  }
-  const MAX_DEFER_PER_DAY = 2;
-  const withOccurrenceAndDeferral = withOccurrence.map((item) => {
-    const key = `${item.nickname}::${kstDateKey(item.ts)}`;
-    const appliedTodayCount = appliedTodayCountByKey.get(key) || 0;
-    const deferredTodayCount = deferredTodayCountByKey.get(key) || 0;
-    // 이 항목 자신이 이미 처리(적용/반려/유예 등)되었으면 재판정할 필요가
-    // 없다 — pending인 항목에만 "당일 1회 적용 이후, 아직 유예 2건을 다
-    // 쓰지 않았을 때만" 유예 대상을 매긴다. 2건을 다 쓴 다음 pending
-    // 건부터는 shouldDefer가 false로 돌아가 다시 "적용" 옵션이 나온다.
-    const shouldDefer =
-      item.reviewStatus === "pending" && appliedTodayCount >= 1 && deferredTodayCount < MAX_DEFER_PER_DAY;
-    const deferOccurrence =
-      item.reviewStatus === "deferred" ? deferOccurrenceById.get(item.id) ?? null : shouldDefer ? deferredTodayCount + 1 : null;
-    return { ...item, shouldDefer, deferOccurrence };
-  });
+  const withOccurrenceAndDeferral = attachDeferralInfo(withOccurrence, allItems);
 
   const fileId = env.GOOGLE_SHEET_FILE_ID;
   const coReviewers = await getCurrentCoReviewers(env, accessToken, fileId);
@@ -3461,7 +3467,14 @@ async function handleMyOutputPen(req, env, origin, url) {
     // 함께 채워주지만, "제보자는 숨긴다"(사용자 지시)는 프론트에서 그냥
     // 안 보여주는 방식으로 처리하고 여기서는 굳이 제거하지 않는다.
     const withOccurrence = await attachNextOccurrence(env, visible);
-    const items = withOccurrence.map((item) => ({
+    // 🔧 [관리자 화면과 동일화] 유예(deferOccurrence, 당일 몇 번째 유예인지)
+    // 정보도 관리자 목록(handleAdminCapturesList)과 동일한 로직으로 계산해
+    // 함께 내려준다 — 대상자 본인 화면의 "예상/확정 적용"에도 관리자 화면과
+    // 똑같이 "2차 (벌점) 유예 1차" 형태의 취소선 표시가 가능해진다(사용자
+    // 지시: "내 화각 불량 제보"를 관리자 화면 기준으로 맞춤). 당일 집계는
+    // 사이클/닉네임으로 걸러지지 않은 allItems 전체를 봐야 한다.
+    const withDeferral = attachDeferralInfo(withOccurrence, allItems);
+    const items = withDeferral.map((item) => ({
       id: item.id,
       reason: item.reason,
       mode: item.mode,
@@ -3474,6 +3487,7 @@ async function handleMyOutputPen(req, env, origin, url) {
       targetResponseAuto: !!item.targetResponseAuto,
       nextOccurrence: item.nextOccurrence,
       weeklyMinorPenaltyCount: item.weeklyMinorPenaltyCount,
+      deferOccurrence: item.deferOccurrence,
       // 이미 확정(approved 등)된 항목이면 봇 manifest에 실제 penalty/merit이
       // 저장되어 있다 — "예상 차감"/"적용 시"에 확정값을 보여줄 수 있게 전달.
       penalty: item.penalty || null,

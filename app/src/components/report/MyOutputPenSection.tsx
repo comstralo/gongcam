@@ -376,10 +376,22 @@ export function MyOutputPenSection({
                                 </span>
                                 <div className="flex items-center gap-1.5">
                                   {isReceived ? (
-                                    (() => {
-                                      const { label, tone } = statusInfo(received!);
-                                      return <TintedPill tone={tone}>{label}</TintedPill>;
-                                    })()
+                                    received!.reviewStatus === "deferred" ? (
+                                      // 🔧 [관리자 화면과 동일화] 관리자 화면(ReportReviewList)은
+                                      // 유예 뱃지를 "유예 N차" + 원래 조치("2차 (벌점)" 등) 2개로
+                                      // 분리해 보여준다(사용자 지시로 여기도 통일).
+                                      <>
+                                        <TintedPill tone="muted">
+                                          {received!.deferOccurrence ? `유예 ${received!.deferOccurrence}차` : "유예"}
+                                        </TintedPill>
+                                        <TintedPill tone="muted">{occurrenceLabel(received!.nextOccurrence)}</TintedPill>
+                                      </>
+                                    ) : (
+                                      (() => {
+                                        const { label, tone } = statusInfo(received!);
+                                        return <TintedPill tone={tone}>{label}</TintedPill>;
+                                      })()
+                                    )
                                   ) : (
                                     <TintedPill tone="ok">화각 점검</TintedPill>
                                   )}
@@ -464,21 +476,36 @@ export function MyOutputPenSection({
                                           <Gavel className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                           벌점 · 페널티 변동
                                         </span>
+                                        {/* 🔧 [관리자 화면과 동일화] deferOccurrence(당일 몇 번째
+                                            유예인지)가 있으면 관리자 화면과 동일하게 원래 차수
+                                            라벨에 취소선을 긋고 "유예 N차"를 덧붙인다(사용자
+                                            지시). */}
                                         <SubRow
                                           label={received!.penalty ? "확정 적용" : "예상 적용"}
                                           value={
-                                            received!.penalty
-                                              ? occurrenceLabel(received!.penalty.occurrence)
-                                              : occurrenceLabel(received!.nextOccurrence)
+                                            received!.deferOccurrence ? (
+                                              <>
+                                                <span className="line-through">{occurrenceLabel(received!.nextOccurrence)}</span>{" "}
+                                                유예 {received!.deferOccurrence}차
+                                              </>
+                                            ) : received!.penalty ? (
+                                              occurrenceLabel(received!.penalty.occurrence)
+                                            ) : (
+                                              occurrenceLabel(received!.nextOccurrence)
+                                            )
                                           }
                                           valueClassName="font-semibold text-destructive"
                                         />
                                         <SubRow
                                           label="이번 주 영향"
-                                          value={weeklyImpactLabel(
-                                            received!.penalty ? received!.penalty.occurrence : received!.nextOccurrence,
-                                            received!.weeklyMinorPenaltyCount
-                                          )}
+                                          value={
+                                            received!.deferOccurrence
+                                              ? "없음"
+                                              : weeklyImpactLabel(
+                                                  received!.penalty ? received!.penalty.occurrence : received!.nextOccurrence,
+                                                  received!.weeklyMinorPenaltyCount
+                                                )
+                                          }
                                         />
                                       </div>
                                     </>
