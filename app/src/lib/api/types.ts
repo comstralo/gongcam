@@ -778,6 +778,11 @@ export type CaptureReviewItem = {
   // true — "적용" 버튼 대신 "유예"를 노출해야 한다(사용자 지시, pending
   // 항목에만 계산됨).
   shouldDefer: boolean;
+  // 이 건이 당일 몇 번째 유예인지(1 또는 2, MAX_DEFER_PER_DAY=2) —
+  // reviewStatus === "deferred"인 확정 건은 실제 유예된 순서, pending +
+  // shouldDefer인 예상 건은 "지금 유예하면 몇 번째가 될지"를 담는다.
+  // 유예와 무관한 건(아직 판정 전이거나 대상 아님)은 null.
+  deferOccurrence: number | null;
   // 제보자 이메일로 매칭한 이름. 등록 회원이 아니면 null.
   reporterName: string | null;
   // 🔧 [당사자 응답 시스템] 대상자 본인이 [내 송출 P 제보 확인]에서 제출한

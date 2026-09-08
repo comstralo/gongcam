@@ -3287,6 +3287,13 @@ async function handleAdminCapturesList(req, env, origin, url) {
   // 무한정 반복되고 재적용으로 돌아가지 않는 문제였다.
   const appliedTodayCountByKey = new Map();
   const deferredTodayCountByKey = new Map();
+  // 🔧 [유예 N차 표시] "이 건이 당일 몇 번째 유예인지"를 프론트에 보여주기
+  // 위해(사용자 지시: "예상 적용"에 "2차 (벌점) 유예 1차" 형태로 표시),
+  // 같은 대상자·같은 날짜의 유예 건들을 접수 시각(ts) 순으로 정렬해 순번을
+  // 매긴다. 이미 확정(deferred)된 건은 실제로 유예된 순서 그대로, pending
+  // 예상 건은 위 deferredTodayCount(지금까지 확정된 유예 개수)를 그대로
+  // "지금 유예하면 몇 번째가 될지"로 재사용한다.
+  const deferredItemsByKey = new Map();
   for (const it of allItems) {
     if (it.selfCheck) continue;
     const key = `${it.nickname}::${kstDateKey(it.ts)}`;
@@ -3294,7 +3301,15 @@ async function handleAdminCapturesList(req, env, origin, url) {
       appliedTodayCountByKey.set(key, (appliedTodayCountByKey.get(key) || 0) + 1);
     } else if (it.reviewStatus === "deferred") {
       deferredTodayCountByKey.set(key, (deferredTodayCountByKey.get(key) || 0) + 1);
+      const list = deferredItemsByKey.get(key) || [];
+      list.push(it);
+      deferredItemsByKey.set(key, list);
     }
+  }
+  const deferOccurrenceById = new Map();
+  for (const list of deferredItemsByKey.values()) {
+    list.sort((a, b) => a.ts - b.ts);
+    list.forEach((it, idx) => deferOccurrenceById.set(it.id, idx + 1));
   }
   const MAX_DEFER_PER_DAY = 2;
   const withOccurrenceAndDeferral = withOccurrence.map((item) => {
@@ -3307,7 +3322,9 @@ async function handleAdminCapturesList(req, env, origin, url) {
     // 건부터는 shouldDefer가 false로 돌아가 다시 "적용" 옵션이 나온다.
     const shouldDefer =
       item.reviewStatus === "pending" && appliedTodayCount >= 1 && deferredTodayCount < MAX_DEFER_PER_DAY;
-    return { ...item, shouldDefer };
+    const deferOccurrence =
+      item.reviewStatus === "deferred" ? deferOccurrenceById.get(item.id) ?? null : shouldDefer ? deferredTodayCount + 1 : null;
+    return { ...item, shouldDefer, deferOccurrence };
   });
 
   const fileId = env.GOOGLE_SHEET_FILE_ID;

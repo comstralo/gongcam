@@ -849,6 +849,12 @@ export function ReportReviewList({
                               <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
                                 <User className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
                                 {item.nickname}
+                                {/* 이미 날짜별로 묶여 있으므로(그룹 헤더에 날짜 표시) 여기서는
+                                    시:분만 덧붙여 같은 대상자의 여러 건을 시각으로 구분한다
+                                    (사용자 지시: 토글 제목 옆에 발생일시도 표시). */}
+                                <span className="font-normal text-muted-foreground">
+                                  {new Date(item.ts).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+                                </span>
                               </span>
                               <div className="flex items-center gap-1.5">
                                 {/* 🔧 [6종 뱃지 재설계] 대기/이의/인정/적용/유예/반려 순으로 확장.
@@ -1079,21 +1085,22 @@ export function ReportReviewList({
                                         스냅샷)를 폴백으로 함께 사용한다. */}
                                     {(() => {
                                       const confirmedPenalty = applied[item.id]?.penalty ?? item.penalty;
-                                      // 🔧 [유예 표시] shouldDefer(당일 유예 상한 내 대기 건)면
-                                      // 실제로는 "적용"이 아니라 "유예"로 처리될 예정이다(사용자
-                                      // 지시) — 원래 차수 라벨("2차 (벌점)")에 취소선을 긋고
-                                      // "유예"를 덧붙여, 지금 눌러도 대상자 페널티가 아니라
-                                      // 제보자 상점만 부여됨을 명확히 보여준다. 이미 확정된
-                                      // 건이거나 애초에 유예 대상이 아니면 기존과 동일.
-                                      const isDeferCandidate = !confirmedPenalty && item.shouldDefer;
+                                      // 🔧 [유예 표시] deferOccurrence(당일 몇 번째 유예인지, 서버가
+                                      // 계산)가 있으면 실제로는 "적용"이 아니라 "유예"로 처리됐거나
+                                      // 처리될 예정이다(사용자 지시: "2차 (벌점) 유예 1차"처럼 원래
+                                      // 차수 라벨에 취소선을 긋고 "유예 N차"를 덧붙여, 대상자
+                                      // 페널티가 아니라 제보자 상점만 부여(됐/될) 것임을 명확히
+                                      // 보여준다) — reviewStatus === "deferred"로 이미 확정된 건도,
+                                      // 아직 pending이라 shouldDefer로만 예고된 건도 동일하게 표시한다.
+                                      const deferOccurrence = item.deferOccurrence;
                                       return (
                                         <SubRow
                                           label={confirmedPenalty ? "확정 적용" : "예상 적용"}
                                           value={
-                                            isDeferCandidate ? (
+                                            deferOccurrence ? (
                                               <>
                                                 <span className="line-through">{occurrenceLabel(item.nextOccurrence)}</span>{" "}
-                                                유예
+                                                유예 {deferOccurrence}차
                                               </>
                                             ) : confirmedPenalty ? (
                                               occurrenceLabel(confirmedPenalty.occurrence)
@@ -1108,7 +1115,7 @@ export function ReportReviewList({
                                     <SubRow
                                       label="이번 주 영향"
                                       value={
-                                        !(applied[item.id]?.penalty ?? item.penalty) && item.shouldDefer
+                                        item.deferOccurrence
                                           ? "없음"
                                           : weeklyImpactLabel(
                                               (applied[item.id]?.penalty ?? item.penalty)?.occurrence ?? item.nextOccurrence,
