@@ -119,12 +119,17 @@ export function SectionHeader({
   loading,
   onRefresh,
   refreshProgress,
+  iconVariant = "plain",
 }: {
   icon: LucideIcon;
   title: string;
   loading?: boolean;
   onRefresh?: () => void;
   refreshProgress?: number;
+  /** "tint"면 아이콘을 원형 틴트 배지로 감싼다(사용자 지시: "디자인이
+   * 딱딱해 보인다" — 우선 제보 화면에서만 사용). 기본은 기존과 동일한
+   * 맨 아이콘(plain). */
+  iconVariant?: "plain" | "tint";
 }) {
   // 🔧 [사용자 지시] 제목-본문 경계를 hr 구분선 대신 "카드 안의 탭"처럼
   // 보이게 한다 — 헤더 영역에 은은한 배경을 입히되, SectionCard가
@@ -143,11 +148,20 @@ export function SectionHeader({
   // "주황색"으로 보였다(사용자 지적) — 뱃지 등과 공유하는 --accent 대신
   // 이 헤더 전용 토큰을 쓴다. relative를 추가해 아래 RefreshProgressBar
   // (절대 위치)가 이 배경 하단 경계선에 정확히 깔리도록 한다.
+  // 🔧 [사용자 지시] 시안처럼 상하 여백을 조금 더 넉넉하게 — 1차
+  // 조정(py-2→2.5, sm:py-2.5→3)이 시안 대비 아직 부족하다는 피드백으로
+  // 한 단계 더 키웠다(py-3, sm:py-3.5) — 앱 전체 20여 곳에 공통 적용.
   return (
-    <div className="relative -mx-2.5 -mt-2.5 mb-3.5 flex items-center justify-between gap-2 bg-section-header px-2.5 py-2 sm:-mx-3.5 sm:-mt-3.5 sm:mb-4 sm:px-3.5 sm:py-2.5">
+    <div className="relative -mx-2.5 -mt-2.5 mb-3.5 flex items-center justify-between gap-2 bg-section-header px-2.5 py-3 sm:-mx-3.5 sm:-mt-3.5 sm:mb-4 sm:px-3.5 sm:py-3.5">
       <CollapsibleTrigger className="flex-1">
-        <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
-          <Icon className="size-4 shrink-0 text-primary sm:size-5" strokeWidth={ICON_STROKE.default} />
+        <span className="flex items-center gap-2 text-sm font-bold sm:text-base">
+          {iconVariant === "tint" ? (
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary sm:size-7">
+              <Icon className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
+            </span>
+          ) : (
+            <Icon className="size-4 shrink-0 text-primary sm:size-5" strokeWidth={ICON_STROKE.default} />
+          )}
           {title}
         </span>
       </CollapsibleTrigger>

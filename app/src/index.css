@@ -128,78 +128,79 @@
     --radius-xl: calc(var(--radius) * 1.4);
 }
 
-/* 산뜻하고 활기찬 톤 — 밝은 웜그레이 배경 + 비비드 코랄 포인트 컬러 */
+/* 🔧 [사용자 지시] "회색톤의 차갑고 칙칙한 느낌"을 걷어내고 따뜻하고
+   안정감 있는 분위기로 — 웜 베이지 · 테라코타 팔레트. 배경/카드/보더/
+   muted 계열을 전부 웜그레이(예: #e7e5e3)에서 모래·아이보리 계열로,
+   primary를 비비드 코랄(#ff5a36)에서 톤을 살짝 낮춘 테라코타(#e4633f)
+   로 옮겼다 — 채도를 낮춰 자극적이지 않으면서도 따뜻함은 유지. */
 :root {
-    --background: #fafaf9;
-    --foreground: #1c1917;
-    --card: #ffffff;
-    --card-foreground: #1c1917;
-    --popover: #ffffff;
-    --popover-foreground: #1c1917;
-    --primary: #ff5a36;
-    --primary-foreground: #ffffff;
-    --secondary: #f5f4f2;
-    --secondary-foreground: #1c1917;
-    --muted: #f5f4f2;
-    --muted-foreground: #78716c;
-    --accent: #fff1ec;
-    --accent-foreground: #c83e1f;
-    --destructive: #dc2626;
-    --ok: #16a34a;
-    --border: #e7e5e3;
-    --input: #e7e5e3;
-    --ring: #ff5a36;
-    /* 섹션 헤더(SectionHeader) 탭 배경 전용 — 파스텔 톤의 부드러운
-       아이보리(사용자 지시: "파스텔 톤을 좋아해, 파스텔톤 아이보리로").
-       기존 --accent(#fff1ec)는 primary와 같은 코랄 계열이라 채도가
-       높아 "주황색"으로 보였고, 그다음 시도(#f5f0e6)는 명도가 낮아
-       탁해 보였다(사용자 지적) — 채도를 낮추고 명도를 올린 파스텔
-       크림톤으로 재조정. 뱃지 등과 공유하는 --accent를 바꾸면 영향
-       범위가 넓어지므로 전용 토큰을 쓴다. */
-    --section-header: #fbf8ef;
+    --background: #fdf9f2;
+    --foreground: #2c241c;
+    --card: #fffdf8;
+    --card-foreground: #2c241c;
+    --popover: #fffdf8;
+    --popover-foreground: #2c241c;
+    --primary: #e4633f;
+    --primary-foreground: #fff8f4;
+    --secondary: #f1e9da;
+    --secondary-foreground: #2c241c;
+    --muted: #f1e9da;
+    --muted-foreground: #8a7c68;
+    --accent: #fde3d6;
+    --accent-foreground: #c94f2e;
+    --destructive: #c94530;
+    --ok: #6b8f5c;
+    --border: #e8ddc8;
+    --input: #e8ddc8;
+    --ring: #e4633f;
+    /* 섹션 헤더(SectionHeader) 탭 배경 전용 — 살굿빛 아이보리. */
+    --section-header: #f7ebe3;
     --radius: 0.75rem;
-    --sidebar: #ffffff;
-    --sidebar-foreground: #1c1917;
-    --sidebar-primary: #ff5a36;
-    --sidebar-primary-foreground: #ffffff;
-    --sidebar-accent: #fff1ec;
-    --sidebar-accent-foreground: #c83e1f;
-    --sidebar-border: #e7e5e3;
-    --sidebar-ring: #ff5a36;
+    --sidebar: #fffdf8;
+    --sidebar-foreground: #2c241c;
+    --sidebar-primary: #e4633f;
+    --sidebar-primary-foreground: #fff8f4;
+    --sidebar-accent: #fde3d6;
+    --sidebar-accent-foreground: #c94f2e;
+    --sidebar-border: #e8ddc8;
+    --sidebar-ring: #e4633f;
 }
 
+/* 🔧 [사용자 지시, 되돌림] 웜 브라운 배경(#1e1b18)으로 조정했었는데
+   "너무 못생겼다"며 아예 순수 검정(OLED 블랙)을 요청 — 배터리 절약형
+   OLED 톤(#0a0a0a)으로 바꾸고, 그 위에서도 primary/accent가 튀지
+   않도록("엑스레이"/"네온" 지적 이후) 채도를 한 번 더 낮춰 차분하게
+   가라앉혔다. 카드/보더 등 표면 톤은 순검정 위에서 구분이 되도록
+   아주 옅은 웜그레이로 최소한의 명도차만 준다. */
 .dark {
-    --background: #1c1917;
-    --foreground: #fafaf9;
-    --card: #292524;
-    --card-foreground: #fafaf9;
-    --popover: #292524;
-    --popover-foreground: #fafaf9;
-    --primary: #ff7a5c;
-    --primary-foreground: #1c1917;
-    --secondary: #292524;
-    --secondary-foreground: #fafaf9;
-    --muted: #292524;
-    --muted-foreground: #a8a29e;
-    --accent: #3a241d;
-    --accent-foreground: #ff9478;
-    --destructive: #f87171;
-    --ok: #4ade80;
-    --border: #3a3532;
-    --input: #3a3532;
-    --ring: #ff7a5c;
-    /* 라이트와 동일한 역할 — 다크에서는 짙은 배경 위에 살짝 밝은
-       따뜻한 브라운 톤으로 "탭이 떠 보이는" 느낌을 낸다(파스텔 대비는
-       라이트 모드 전용 감성이라 다크는 명도차 위주로 유지). */
-    --section-header: #362d24;
-    --sidebar: #292524;
-    --sidebar-foreground: #fafaf9;
-    --sidebar-primary: #ff7a5c;
-    --sidebar-primary-foreground: #1c1917;
-    --sidebar-accent: #3a241d;
-    --sidebar-accent-foreground: #ff9478;
-    --sidebar-border: #3a3532;
-    --sidebar-ring: #ff7a5c;
+    --background: #0a0a0a;
+    --foreground: #ebe4d8;
+    --card: #161514;
+    --card-foreground: #ebe4d8;
+    --popover: #161514;
+    --popover-foreground: #ebe4d8;
+    --primary: #bd7157;
+    --primary-foreground: #0a0a0a;
+    --secondary: #1e1c1a;
+    --secondary-foreground: #ebe4d8;
+    --muted: #1e1c1a;
+    --muted-foreground: #9c9186;
+    --accent: #241f1a;
+    --accent-foreground: #cf9276;
+    --destructive: #b8735f;
+    --ok: #7c9a6c;
+    --border: #262421;
+    --input: #262421;
+    --ring: #bd7157;
+    --section-header: #201c17;
+    --sidebar: #161514;
+    --sidebar-foreground: #ebe4d8;
+    --sidebar-primary: #bd7157;
+    --sidebar-primary-foreground: #0a0a0a;
+    --sidebar-accent: #241f1a;
+    --sidebar-accent-foreground: #cf9276;
+    --sidebar-border: #262421;
+    --sidebar-ring: #bd7157;
 }
 
 @layer base {

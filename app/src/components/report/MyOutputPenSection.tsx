@@ -313,9 +313,16 @@ export function MyOutputPenSection({
   const loaded = selfCheckItems !== null && receivedItems !== null;
 
   return (
-    <SectionCard>
+    <SectionCard className="shadow-sm shadow-black/[0.03]">
       <Collapsible defaultOpen className="flex flex-col">
-        <SectionHeader icon={ListChecks} title="내 화각 불량 제보" loading={loading} onRefresh={load} refreshProgress={refreshProgress} />
+        <SectionHeader
+          icon={ListChecks}
+          title="내 화각 불량 제보"
+          loading={loading}
+          onRefresh={load}
+          refreshProgress={refreshProgress}
+          iconVariant="tint"
+        />
         <CollapsiblePanel className="flex flex-col gap-4">
           <CycleSwitcher selectedFileId={cycleFileId} onSelect={setCycleFileId} memberNumber="self" />
           {error && (

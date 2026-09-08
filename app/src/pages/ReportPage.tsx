@@ -257,12 +257,25 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
 
   return (
     <div className="flex w-full page-content flex-col gap-4">
+      {/* 🔧 [사용자 지시] "디자인이 딱딱해 보인다"는 피드백으로, 각진
+          필박스 탭을 알약형(rounded-full)으로 바꿔 더 부드러운 인상을
+          준다 — 공용 Tabs 컴포넌트 기본값(rounded-lg)은 다른 화면에도
+          쓰이므로 여기서만 className으로 오버라이드한다. 🔧 [사용자
+          지시] 시안처럼 "뚱뚱하게" — TabsList 기본 높이(h-8=32px 고정,
+          TabsTrigger가 그 안을 꽉 채우는 구조)를 오버라이드해야 커지므로
+          h-auto로 풀고 트리거 쪽에 상하 패딩을 직접 준다. */}
       <Tabs value={view} onValueChange={changeView} className="w-full">
-        <TabsList className="w-full">
-          <TabsTrigger value="capture" className="flex-1 font-mono text-xs tracking-wide uppercase">
+        <TabsList className="h-auto w-full rounded-full bg-secondary p-1">
+          <TabsTrigger
+            value="capture"
+            className="h-auto flex-1 rounded-full py-2.5 font-mono text-xs tracking-wide uppercase data-active:shadow-sm"
+          >
             화각 불량 제보
           </TabsTrigger>
-          <TabsTrigger value="notice" className="flex-1 font-mono text-xs tracking-wide uppercase">
+          <TabsTrigger
+            value="notice"
+            className="h-auto flex-1 rounded-full py-2.5 font-mono text-xs tracking-wide uppercase data-active:shadow-sm"
+          >
             PUSH 알림 전송
           </TabsTrigger>
         </TabsList>
@@ -279,9 +292,12 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
                 제보"와 비교해 모양이 이상함). MyOutputPenSection 등 다른
                 곳과 동일하게 SectionCard 하나로 통일해 이 이중 마진
                 자체를 없앤다. */}
-            <SectionCard>
+            {/* 🔧 [사용자 지시] "디자인이 딱딱해 보인다" — 그림자를 얇게
+                넣어 카드가 배경 위에 살짝 떠 보이도록 한다(제보 화면 한정,
+                공용 SectionCard 기본값은 그대로 둠). */}
+            <SectionCard className="shadow-sm shadow-black/[0.03]">
               <Collapsible defaultOpen className="flex flex-col">
-                <SectionHeader icon={Flag} title="화각 불량 제보" onRefresh={refresh} />
+                <SectionHeader icon={Flag} title="화각 불량 제보" onRefresh={refresh} iconVariant="tint" />
                 <CollapsiblePanel className="flex flex-col gap-4">
                     <SectionCard className="flex flex-col gap-3">
                       <div className="flex flex-col gap-1.5">
@@ -464,9 +480,9 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
 
       <div className="w-full" hidden={view !== "notice"}>
         {everOpened.current.notice && (
-          <SectionCard>
+          <SectionCard className="shadow-sm shadow-black/[0.03]">
             <Collapsible defaultOpen className="flex flex-col">
-              <SectionHeader icon={Bell} title="PUSH 알림" onRefresh={refresh} />
+              <SectionHeader icon={Bell} title="PUSH 알림" onRefresh={refresh} iconVariant="tint" />
               <CollapsiblePanel className="flex flex-col gap-4">
                 <SimpleNoticeSection members={members} noMembers={noMembers} stale={stale} />
               </CollapsiblePanel>
