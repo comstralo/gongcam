@@ -66,15 +66,20 @@ export function SectionCard({ children, className }: { children: ReactNode; clas
   return <div className={cn("rounded-xl border border-border bg-card p-3.5 sm:p-4", className)}>{children}</div>;
 }
 
-// 새로고침 버튼(size-7 = 28px 정사각형) 테두리에 정확히 밀착된 원형
+// 새로고침 버튼(size-7 = 28px 정사각형) 테두리 바로 바깥을 도는 원형
 // 진행률 게이지 — 다음 자동 폴링(usePollingRefresh)까지 남은 시간을
 // 보여준다(사용자 지시: "버튼 테두리에 맞춰서 테두리가 차는 방향으로,
 // 만땅이 되면 새로고침되도록"). progress는 0(방금 갱신, 링이 비어있음)
 // 에서 1(다음 갱신 직전, 링이 가득 참)로 늘어난다 — usePollingRefresh가
 // 반환하는 값(1→0, 남은 비율)을 여기서 1에서 빼 "채워지는 방향"으로
 // 뒤집어 쓴다. 순수 표시용 SVG라 렌더링 자체는 네트워크 요청과 무관하다.
+// 🔧 [버그 수정] 처음엔 버튼과 완전히 같은 28px 크기로 그려 넣었는데,
+// 버튼(variant="outline")이 불투명 배경(bg-background)을 채우고 있어
+// 뒤에 겹친 링이 완전히 가려져 전혀 안 보였다(사용자 발견) — 링을
+// 버튼보다 조금 더 큰 원(버튼 바로 바깥)으로 그려 테두리 밖으로 삐져
+// 나오게 하고, 감싸는 컨테이너 크기도 그만큼 키운다.
 function RefreshProgressRing({ progress }: { progress: number }) {
-  const size = 28;
+  const size = 34;
   const strokeWidth = 2;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -136,7 +141,12 @@ export function SectionHeader({
         </span>
       </CollapsibleTrigger>
       {onRefresh ? (
-        <div className="relative flex size-7 shrink-0 items-center justify-center">
+        <div
+          className={cn(
+            "relative flex shrink-0 items-center justify-center",
+            refreshProgress !== undefined ? "size-[34px]" : "size-7"
+          )}
+        >
           {refreshProgress !== undefined && !loading && <RefreshProgressRing progress={1 - refreshProgress} />}
           <Button variant="outline" size="icon-sm" onClick={onRefresh} disabled={loading} aria-label="새로고침">
             <RotateCw className={cn("size-3.5", loading && "animate-spin")} strokeWidth={ICON_STROKE.default} />
