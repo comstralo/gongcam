@@ -1,6 +1,7 @@
 import { UserPlus } from "lucide-react";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
-import { SectionCard, SectionHeader } from "@/components/admin/shared";
+import { SectionCard, SectionHeader, SECTION_BODY_PADDING } from "@/components/admin/shared";
+import { cn } from "@/lib/utils";
 import { NewMemberForm } from "@/components/admin/NewMemberForm";
 import { MemberRosterList } from "@/components/admin/MemberRosterList";
 import { ExitedMemberList } from "@/components/admin/ExitedMemberList";
@@ -17,10 +18,9 @@ export function AdminMemberPenaltyTab({ visible }: { visible: boolean }) {
       </SectionCard>
 
       <SectionCard>
-        <Collapsible defaultOpen={false} className="flex flex-col gap-3">
+        <Collapsible defaultOpen={false} className="flex flex-col">
           <SectionHeader icon={UserPlus} title="신규 스터디원 등록" />
-          <CollapsiblePanel className="flex flex-col gap-3">
-            <div className="h-px w-full bg-border" />
+          <CollapsiblePanel className={cn("flex flex-col gap-3 pt-4", SECTION_BODY_PADDING)}>
             <NewMemberForm />
           </CollapsiblePanel>
         </Collapsible>

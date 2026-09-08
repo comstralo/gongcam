@@ -1,7 +1,7 @@
 import { BellRing, DoorOpen, Palette, UserCog } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
-import { SectionHeader, SectionCard } from "@/components/admin/shared";
+import { SectionHeader, SectionCard, SECTION_BODY_PADDING } from "@/components/admin/shared";
 import { SessionCard } from "@/components/session/SessionCard";
 import { DividedValue, InfoCard } from "@/components/dashboard/shared";
 import { PeriodAlarmCard } from "@/components/dashboard/PeriodAlarmCard";
@@ -31,10 +31,9 @@ export function SettingsPage({ visible = true }: { visible?: boolean }) {
     // 것과 동일한 처리.
     <div className="flex w-full page-content flex-col gap-4">
       <SectionCard>
-        <Collapsible defaultOpen className="flex flex-col gap-4">
+        <Collapsible defaultOpen className="flex flex-col">
           <SectionHeader icon={UserCog} title="계정 관리" />
-          <CollapsiblePanel className="flex flex-col gap-4">
-            <div className="h-px w-full bg-border" />
+          <CollapsiblePanel className={cn("flex flex-col gap-4 pt-4", SECTION_BODY_PADDING)}>
             <SessionCard name={status?.name} />
             <InstallAppCard />
             <StatusMessageCard />
@@ -90,20 +89,18 @@ export function SettingsPage({ visible = true }: { visible?: boolean }) {
       </SectionCard>
 
       <SectionCard>
-        <Collapsible defaultOpen className="flex flex-col gap-4">
+        <Collapsible defaultOpen className="flex flex-col">
           <SectionHeader icon={Palette} title="화면 설정" />
-          <CollapsiblePanel className="flex flex-col gap-4">
-            <div className="h-px w-full bg-border" />
+          <CollapsiblePanel className={cn("flex flex-col gap-4 pt-4", SECTION_BODY_PADDING)}>
             <ThemeToggleCard />
           </CollapsiblePanel>
         </Collapsible>
       </SectionCard>
 
       <SectionCard>
-        <Collapsible defaultOpen className="flex flex-col gap-4">
+        <Collapsible defaultOpen className="flex flex-col">
           <SectionHeader icon={BellRing} title="알림 설정" />
-          <CollapsiblePanel className="flex flex-col gap-4">
-            <div className="h-px w-full bg-border" />
+          <CollapsiblePanel className={cn("flex flex-col gap-4 pt-4", SECTION_BODY_PADDING)}>
             <PeriodAlarmCard />
             <NotifyPrefsCard name={status?.name} />
           </CollapsiblePanel>

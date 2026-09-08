@@ -4,7 +4,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, TintedPill } from "@/components/dashboard/shared";
-import { SectionHeader, PenaltyHistorySection, AdminListSkeleton } from "@/components/admin/shared";
+import { SectionHeader, SECTION_BODY_PADDING, PenaltyHistorySection, AdminListSkeleton } from "@/components/admin/shared";
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
@@ -120,10 +120,9 @@ export function PenaltyCandidateList({
   const refreshProgress = usePollingRefresh(visible, load, 3 * 60_000);
 
   return (
-    <Collapsible defaultOpen className="flex flex-col gap-4">
+    <Collapsible defaultOpen className="flex flex-col">
       <SectionHeader icon={ShieldAlert} title="예치금 재납 처리" loading={loading} onRefresh={load} refreshProgress={refreshProgress} />
-      <CollapsiblePanel className="flex flex-col gap-4">
-        <div className="h-px w-full bg-border" />
+      <CollapsiblePanel className={cn("flex flex-col gap-4 pt-4", SECTION_BODY_PADDING)}>
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>

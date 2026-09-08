@@ -4,7 +4,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, SubRow, TintedPill } from "@/components/dashboard/shared";
-import { SectionHeader, SectionCard, CapturePreview, AdminListSkeleton } from "@/components/admin/shared";
+import { SectionHeader, SectionCard, SECTION_BODY_PADDING, CapturePreview, AdminListSkeleton } from "@/components/admin/shared";
 import { CycleSwitcher } from "@/components/dashboard/CycleSwitcher";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
@@ -314,10 +314,9 @@ export function MyOutputPenSection({
 
   return (
     <SectionCard>
-      <Collapsible defaultOpen className="flex flex-col gap-4">
+      <Collapsible defaultOpen className="flex flex-col">
         <SectionHeader icon={ListChecks} title="내 화각 불량 제보" loading={loading} onRefresh={load} refreshProgress={refreshProgress} />
-        <CollapsiblePanel className="flex flex-col gap-4">
-          <div className="h-px w-full bg-border" />
+        <CollapsiblePanel className={cn("flex flex-col gap-4 pt-4", SECTION_BODY_PADDING)}>
           <CycleSwitcher selectedFileId={cycleFileId} onSelect={setCycleFileId} memberNumber="self" />
           {error && (
             <Alert variant="destructive">
@@ -413,11 +412,16 @@ export function MyOutputPenSection({
                                     {new Date(item.ts).toLocaleTimeString("ko-KR")}
                                   </span>
                                   {/* 🔧 [사용자 지시] 펼치기 버튼은 테두리 있는 버튼 대신 아이콘
-                                      모양만 남긴다(variant="ghost"). */}
+                                      모양만 남긴다(variant="ghost"). icon-sm의 클릭 영역(28px)이
+                                      화살표 아이콘(14px)보다 두 배 커, 그 여유 공간(7px)이 카드
+                                      오른쪽 패딩에 더해져 왼쪽 시간 텍스트 여백보다 시각적으로
+                                      넓어 보였다(사용자 지적: "우측에 마우스 커서 거의 2개
+                                      들어간다"). 터치 타겟(클릭 영역)은 그대로 두고 -mr-1.5로
+                                      시각적 위치만 카드 가장자리에 맞춘다. */}
                                   <Button
                                     variant="ghost"
                                     size="icon-sm"
-                                    className="shrink-0"
+                                    className="-mr-1.5 shrink-0"
                                     onClick={() => setExpandedId(isItemExpanded ? null : item.id)}
                                     aria-label={isItemExpanded ? "상세 접기" : "상세 펼치기"}
                                   >

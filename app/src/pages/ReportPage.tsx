@@ -272,12 +272,20 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
       <div className="flex w-full flex-col gap-4" hidden={view !== "capture"}>
         {everOpened.current.capture && (
           <>
-            <Card className="w-full">
+            <Card className="w-full overflow-hidden">
               <CardContent>
                 <Collapsible defaultOpen className="flex flex-col gap-4">
-                  <SectionHeader icon={Flag} title="화각 불량 제보" onRefresh={refresh} />
+                  {/* 🔧 [사용자 지시] SectionHeader가 이제 자체 배경(탭 모양)과
+                      좌우 패딩을 갖는데, 여기서는 SectionCard가 아니라
+                      Card+CardContent(이미 좌우 패딩 보유) 조합이라 이중
+                      패딩이 생긴다 — 음수 마진으로 SectionHeader의 배경을
+                      CardContent 바깥(카드 가장자리)까지 확장해 탭처럼
+                      보이게 하고, 본문은 CardContent의 기존 패딩을 그대로
+                      쓴다. */}
+                  <div className="-mx-4 -mt-4">
+                    <SectionHeader icon={Flag} title="화각 불량 제보" onRefresh={refresh} />
+                  </div>
                   <CollapsiblePanel className="flex flex-col gap-4">
-                    <div className="h-px w-full bg-border" />
                     <SectionCard className="flex flex-col gap-3">
                       <div className="flex flex-col gap-1.5">
                         <Label className="flex items-center gap-1.25 text-sm font-bold sm:text-base">
@@ -460,12 +468,13 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
 
       <div className="w-full" hidden={view !== "notice"}>
         {everOpened.current.notice && (
-          <Card className="w-full">
+          <Card className="w-full overflow-hidden">
             <CardContent>
               <Collapsible defaultOpen className="flex flex-col gap-4">
-                <SectionHeader icon={Bell} title="PUSH 알림" onRefresh={refresh} />
+                <div className="-mx-4 -mt-4">
+                  <SectionHeader icon={Bell} title="PUSH 알림" onRefresh={refresh} />
+                </div>
                 <CollapsiblePanel className="flex flex-col gap-4">
-                  <div className="h-px w-full bg-border" />
                   <SimpleNoticeSection members={members} noMembers={noMembers} stale={stale} />
                 </CollapsiblePanel>
               </Collapsible>

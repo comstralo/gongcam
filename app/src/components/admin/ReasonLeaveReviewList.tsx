@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, SubRow, TintedPill } from "@/components/dashboard/shared";
-import { SectionHeader, CapturePreview, AdminListSkeleton } from "@/components/admin/shared";
+import { SectionHeader, SECTION_BODY_PADDING, CapturePreview, AdminListSkeleton } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { useAuth } from "@/lib/auth/useAuth";
@@ -142,14 +142,9 @@ export function ReasonLeaveReviewList({
   }
 
   return (
-    <Collapsible defaultOpen className="flex flex-col gap-4">
+    <Collapsible defaultOpen className="flex flex-col">
       <SectionHeader icon={BedDouble} title="사유 반휴 신청 처리" loading={loading} onRefresh={load} />
-      <CollapsiblePanel className="flex flex-col gap-4">
-        {/* 🔧 2026-09: 이 구분선을 SectionHeader와 CollapsiblePanel 사이(항상
-            보이는 위치)가 아니라 패널 안(접히면 함께 사라짐)으로 옮겼다 —
-            토글이 접혀있을 때도 구분선만 남아 보이던 문제(사용자 지적)를
-            같은 패턴을 쓰는 모든 접이식 섹션에서 일괄 수정. */}
-        <div className="h-px w-full bg-border" />
+      <CollapsiblePanel className={cn("flex flex-col gap-4 pt-4", SECTION_BODY_PADDING)}>
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>

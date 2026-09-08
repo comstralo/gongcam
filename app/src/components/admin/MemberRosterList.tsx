@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, SubRow, TintedPill } from "@/components/dashboard/shared";
-import { SectionHeader, AdminListSkeleton } from "@/components/admin/shared";
+import { SectionHeader, SECTION_BODY_PADDING, AdminListSkeleton } from "@/components/admin/shared";
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
 import { useApi } from "@/hooks/useApi";
 import { usePullRefreshListener } from "@/hooks/usePullToRefresh";
@@ -84,10 +84,9 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
   const refreshProgress = usePollingRefresh(visible, load, 15 * 60_000);
 
   return (
-    <Collapsible defaultOpen className="flex flex-col gap-4">
+    <Collapsible defaultOpen className="flex flex-col">
       <SectionHeader icon={Users} title="참여 스터디원 목록" loading={loading} onRefresh={load} refreshProgress={refreshProgress} />
-      <CollapsiblePanel className="flex flex-col gap-4">
-        <div className="h-px w-full bg-border" />
+      <CollapsiblePanel className={cn("flex flex-col gap-4 pt-4", SECTION_BODY_PADDING)}>
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>

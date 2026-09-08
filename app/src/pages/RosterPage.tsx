@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Trophy, PiggyBank, Receipt } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
-import { SectionHeader, SectionCard } from "@/components/admin/shared";
+import { SectionHeader, SectionCard, SECTION_BODY_PADDING } from "@/components/admin/shared";
 import { SubRow, ItemTitle, won } from "@/components/dashboard/shared";
 import { RosterView, RosterViewSkeleton, RANK_EMOJI } from "@/components/dashboard/RosterView";
 import { CycleSwitcher } from "@/components/dashboard/CycleSwitcher";
@@ -85,10 +85,9 @@ export function RosterPage({
       {onSelectCycle && <CycleSwitcher selectedFileId={cycleFileId ?? null} onSelect={onSelectCycle} />}
 
       <SectionCard>
-        <Collapsible defaultOpen className="flex flex-col gap-4">
+        <Collapsible defaultOpen className="flex flex-col">
           <SectionHeader icon={Trophy} title={`${weekPrefix}주간 랭킹`} loading={loading} onRefresh={load} />
-          <CollapsiblePanel className="flex flex-col gap-2 sm:gap-2.5">
-            <div className="h-px w-full bg-border" />
+          <CollapsiblePanel className={cn("flex flex-col gap-2 pt-4 sm:gap-2.5", SECTION_BODY_PADDING)}>
             {members ? <RosterView members={members} /> : !error && <RosterViewSkeleton />}
             {error && (
               <Alert variant="destructive">
@@ -100,10 +99,9 @@ export function RosterPage({
       </SectionCard>
 
       <SectionCard>
-        <Collapsible defaultOpen className="flex flex-col gap-4">
+        <Collapsible defaultOpen className="flex flex-col">
           <SectionHeader icon={PiggyBank} title={`${weekPrefix}주간 정산`} loading={loading} onRefresh={load} />
-          <CollapsiblePanel className="flex flex-col gap-4">
-            <div className="h-px w-full bg-border" />
+          <CollapsiblePanel className={cn("flex flex-col gap-4 pt-4", SECTION_BODY_PADDING)}>
             {money ? (
               <div className="flex flex-col gap-3 rounded-lg border bg-card p-3.5 shadow-xs sm:p-4.5">
                 <div className="flex flex-col gap-1.5">
