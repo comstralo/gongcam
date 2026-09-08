@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
-import { InfoCard, SubRow, TintedPill } from "@/components/dashboard/shared";
+import { DividedValue, InfoCard, SubRow, TintedPill } from "@/components/dashboard/shared";
 import { CycleSwitcher } from "@/components/dashboard/CycleSwitcher";
 import { SectionHeader, CapturePreview, AdminListSkeleton } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
@@ -812,7 +812,7 @@ export function ReportReviewList({
                           배치 — 뱃지 자체 순서(DOM 순서)로 행이 정해지므로
                           이 순서 그대로 나열한다. */}
                       <span className="grid grid-cols-3 gap-1">
-                        <span className="rounded-full bg-amber-600/15 px-2 py-1 text-center text-micro-lg leading-none sm:text-xs font-semibold text-amber-600 dark:bg-amber-400/15 dark:text-amber-400">
+                        <span className="rounded-full bg-foreground/8 px-2 py-1 text-center text-micro-lg leading-none sm:text-xs font-semibold text-muted-foreground">
                           대기 : {pendingCount}건
                         </span>
                         <span className="rounded-full bg-foreground/8 px-2 py-1 text-center text-micro-lg leading-none sm:text-xs font-semibold text-muted-foreground">
@@ -821,7 +821,7 @@ export function ReportReviewList({
                         <span className="rounded-full bg-foreground/8 px-2 py-1 text-center text-micro-lg leading-none sm:text-xs font-semibold text-muted-foreground">
                           반려 : {rejectedCount}건
                         </span>
-                        <span className="rounded-full bg-destructive/8 px-2 py-1 text-center text-micro-lg leading-none sm:text-xs font-semibold text-destructive">
+                        <span className="rounded-full bg-amber-600/15 px-2 py-1 text-center text-micro-lg leading-none sm:text-xs font-semibold text-amber-600 dark:bg-amber-400/15 dark:text-amber-400">
                           이의 : {disputedCount}건
                         </span>
                         <span className="rounded-full bg-ok/15 px-2 py-1 text-center text-micro-lg leading-none sm:text-xs font-semibold text-ok">
@@ -856,19 +856,24 @@ export function ReportReviewList({
                             <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
                               <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
                                 <User className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
-                                {item.nickname}
                                 {/* 이미 날짜별로 묶여 있으므로(그룹 헤더에 날짜 표시) 여기서는
                                     시:분:초까지 덧붙여 같은 대상자의 여러 건을 시각으로
                                     구분한다(사용자 지시: 토글 제목 옆에 발생일시도 표시,
-                                    초 단위까지, 세로선 구분자로 닉네임과 시각을 분리). */}
-                                <span className="font-normal text-muted-foreground">
-                                  |{" "}
-                                  {new Date(item.ts).toLocaleTimeString("ko-KR", {
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                    second: "2-digit",
-                                  })}
-                                </span>
+                                    초 단위까지). 구분자는 이 프로젝트 전반(대시보드 타일
+                                    등)에서 쓰는 DividedValue(텍스트 "|" 대신 은은한 세로선
+                                    요소)를 그대로 재사용한다. */}
+                                <DividedValue
+                                  items={[
+                                    item.nickname,
+                                    <span key="ts" className="font-normal text-muted-foreground">
+                                      {new Date(item.ts).toLocaleTimeString("ko-KR", {
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                        second: "2-digit",
+                                      })}
+                                    </span>,
+                                  ]}
+                                />
                               </span>
                               <div className="flex items-center gap-1.5">
                                 {/* 🔧 [6종 뱃지 재설계] 대기/이의/인정/적용/유예/반려 순으로 확장.
