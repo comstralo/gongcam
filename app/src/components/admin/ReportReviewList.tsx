@@ -1241,12 +1241,20 @@ export function ReportReviewList({
                                       // 건의 "이번 주 영향"까지 덩달아 바뀌어 보였다(사용자 지적:
                                       // "-0.1점에서 -0.2점으로 바뀐다"). 확정된 건은 penalty에 함께
                                       // 저장해 둔 확정 시점 스냅샷(weeklyMinorPenaltyCount)을 우선
-                                      // 쓴다.
+                                      // 쓴다. 🔧 [반려도 동일 적용] 반려(순수 rejected/
+                                      // rejected_recognized)는 애초에 대상자 페널티가 적용되지
+                                      // 않으므로 벌점 영향 자체가 없다 — penalty가 없어
+                                      // weeklyMinorPenaltyCount 스냅샷도 없는데, 그렇다고
+                                      // item.weeklyMinorPenaltyCount(재계산값)로 새면 위와 동일한
+                                      // 버그가 반려 건에서 재현된다(같은 대상자의 다른 건이 나중에
+                                      // 처리되면 이미 반려된 건의 "이번 주 영향"까지 바뀌어 보임).
+                                      // 유예와 마찬가지로 반려 건은 항상 "없음"으로 고정한다.
                                       const confirmedPenalty = applied[item.id]?.penalty ?? item.penalty;
                                       const minorCount = confirmedPenalty?.weeklyMinorPenaltyCount ?? item.weeklyMinorPenaltyCount;
-                                      const impact = item.deferOccurrence
-                                        ? "없음"
-                                        : weeklyImpactLabel(confirmedPenalty?.occurrence ?? item.nextOccurrence, minorCount);
+                                      const impact =
+                                        item.deferOccurrence || isRejected
+                                          ? "없음"
+                                          : weeklyImpactLabel(confirmedPenalty?.occurrence ?? item.nextOccurrence, minorCount);
                                       const hasImpact = impact !== "없음" && impact !== "-";
                                       return (
                                         <SubRow

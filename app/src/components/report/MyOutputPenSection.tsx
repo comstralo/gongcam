@@ -569,14 +569,24 @@ export function MyOutputPenSection({
                                         {/* 🔧 [버그 수정] 관리자 화면과 동일한 이유로, 확정된 건은
                                             penalty에 저장된 확정 시점 스냅샷(weeklyMinorPenaltyCount)을
                                             우선 사용해 "이번 주 영향"이 이후 다른 건 처리로 계속
-                                            바뀌어 보이지 않게 한다. */}
+                                            바뀌어 보이지 않게 한다. 반려(rejected/rejected_recognized)
+                                            도 애초에 벌점이 적용되지 않으므로 유예와 동일하게
+                                            "없음"으로 고정 — 재계산값(nextOccurrence/
+                                            weeklyMinorPenaltyCount)으로 새면 같은 대상자의 다른
+                                            건이 나중에 처리될 때 이미 반려된 건의 표시까지
+                                            바뀌어 보이는 버그가 재현된다. */}
                                         {(() => {
-                                          const impact = received!.deferOccurrence
-                                            ? "없음"
-                                            : weeklyImpactLabel(
-                                                received!.penalty ? received!.penalty.occurrence : received!.nextOccurrence,
-                                                received!.penalty?.weeklyMinorPenaltyCount ?? received!.weeklyMinorPenaltyCount
-                                              );
+                                          const isRejectedDecided =
+                                            !received!.penalty &&
+                                            (received!.reviewStatus === "rejected" ||
+                                              received!.reviewStatus === "rejected_recognized");
+                                          const impact =
+                                            received!.deferOccurrence || isRejectedDecided
+                                              ? "없음"
+                                              : weeklyImpactLabel(
+                                                  received!.penalty ? received!.penalty.occurrence : received!.nextOccurrence,
+                                                  received!.penalty?.weeklyMinorPenaltyCount ?? received!.weeklyMinorPenaltyCount
+                                                );
                                           const hasImpact = impact !== "없음" && impact !== "-";
                                           return (
                                             <SubRow
