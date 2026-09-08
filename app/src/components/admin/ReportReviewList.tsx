@@ -582,6 +582,16 @@ export function ReportReviewList({
     return Date.now() - item.ts >= TARGET_RESPONSE_TIMEOUT_MS;
   }
 
+  // 대상자가 아직 응답하지 않은 건이 90분 자동 위반인정까지 남은 시간을
+  // "N분" 형태로 보여준다(사용자 지시: 적용/반려 버튼을 덮는 오버레이에
+  // 표시). canProcess가 이미 true(응답했거나 90분 경과)면 null.
+  function remainingUntilAutoRecognize(item: CaptureReviewItem): string | null {
+    if (canProcess(item)) return null;
+    const remainingMs = TARGET_RESPONSE_TIMEOUT_MS - (Date.now() - item.ts);
+    const remainingMinutes = Math.max(1, Math.ceil(remainingMs / 60_000));
+    return `${remainingMinutes}분`;
+  }
+
   // 🔧 [버그 수정] "합의는 항상 선택 사항"(부스터디장이 있어도 스터디장
   // 독단으로 처리 가능, 사용자 확정)이므로 consensusEnabled가 꺼져 있으면
   // 즉시 처리 가능한 것 자체는 의도된 동작이다. 다만 체크박스가 부스터디장
@@ -1355,40 +1365,55 @@ export function ReportReviewList({
                                     </Button>
                                   ) : (
                                     <div className="flex flex-col gap-1.5">
-                                      <div className="grid grid-cols-2 gap-2">
-                                        {/* 🔧 [유예 조건] 대상자가 오늘 이미 1회 적용을 받았으면
-                                            "적용" 대신 "유예"를 노출한다(사용자 지시) — 클릭 시
-                                            decision: "deferred"로, 대상자 페널티 없이 제보자
-                                            상점만 부여된다(applyReportMerit 재사용). */}
-                                        {item.shouldDefer ? (
+                                      {/* 🔧 [응답 대기 오버레이] 대상자가 아직 응답하지 않아
+                                          "적용"/"반려" 버튼이 비활성화된 동안, 두 버튼 전체를
+                                          반투명 레이어로 덮고 90분 자동 위반인정까지 남은 시간을
+                                          표시한다(사용자 지시 — 폐기 버튼은 별도 영역이라 덮지
+                                          않음). 버튼 자체는 disabled로 이미 막혀 있으므로 이
+                                          오버레이는 순수 시각적 안내이고 pointer-events는 그대로
+                                          버튼에 남겨 둔다(막힌 버튼을 눌러도 disabled라 무해). */}
+                                      <div className="relative">
+                                        <div className="grid grid-cols-2 gap-2">
+                                          {/* 🔧 [유예 조건] 대상자가 오늘 이미 1회 적용을 받았으면
+                                              "적용" 대신 "유예"를 노출한다(사용자 지시) — 클릭 시
+                                              decision: "deferred"로, 대상자 페널티 없이 제보자
+                                              상점만 부여된다(applyReportMerit 재사용). */}
+                                          {item.shouldDefer ? (
+                                            <Button
+                                              variant="destructive"
+                                              className="sm:h-12 sm:text-base"
+                                              disabled={decidingId === item.id || !canApply(item)}
+                                              onClick={() => decide(item, "deferred")}
+                                            >
+                                              유예
+                                            </Button>
+                                          ) : (
+                                            <Button
+                                              variant="destructive"
+                                              className="sm:h-12 sm:text-base"
+                                              disabled={decidingId === item.id || !canApply(item)}
+                                              onClick={() =>
+                                                decide(item, item.nextOccurrence === null ? "rejected_recognized" : "approved")
+                                              }
+                                            >
+                                              {applyButtonLabel(item.nextOccurrence)}
+                                            </Button>
+                                          )}
                                           <Button
-                                            variant="destructive"
+                                            variant="outline"
                                             className="sm:h-12 sm:text-base"
-                                            disabled={decidingId === item.id || !canApply(item)}
-                                            onClick={() => decide(item, "deferred")}
+                                            disabled={decidingId === item.id || !canReject(item)}
+                                            onClick={() => decide(item, "rejected")}
                                           >
-                                            유예
+                                            반려
                                           </Button>
-                                        ) : (
-                                          <Button
-                                            variant="destructive"
-                                            className="sm:h-12 sm:text-base"
-                                            disabled={decidingId === item.id || !canApply(item)}
-                                            onClick={() =>
-                                              decide(item, item.nextOccurrence === null ? "rejected_recognized" : "approved")
-                                            }
-                                          >
-                                            {applyButtonLabel(item.nextOccurrence)}
-                                          </Button>
+                                        </div>
+                                        {!canProcess(item) && (
+                                          <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-1.25 rounded-md bg-background/70 text-micro-lg font-semibold text-muted-foreground backdrop-blur-[1px] sm:text-xs">
+                                            <Clock className="size-3 shrink-0" strokeWidth={ICON_STROKE.default} />
+                                            자동 응답까지 {remainingUntilAutoRecognize(item)}
+                                          </div>
                                         )}
-                                        <Button
-                                          variant="outline"
-                                          className="sm:h-12 sm:text-base"
-                                          disabled={decidingId === item.id || !canReject(item)}
-                                          onClick={() => decide(item, "rejected")}
-                                        >
-                                          반려
-                                        </Button>
                                       </div>
                                     </div>
                                   )}
