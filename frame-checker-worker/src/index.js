@@ -4100,6 +4100,19 @@ async function handleAdminCaptureDecide(req, env, origin) {
     return json({ error: "잘못된 요청입니다." }, 400, origin);
   }
 
+  // 🔧 [버그 수정] 여기서 시트에 쓰기 전까지 이 capture id가 아직
+  // "pending"인지 확인하는 코드가 없었다 — 첫 결정 요청이 시트 반영(수백ms
+  // ~봇 프록시 타임아웃 8초)을 마치고 봇 manifest를 approved로 갱신하기
+  // 전 사이, 관리자가 응답이 느려 답답해서 새로고침하면 GET /admin/captures가
+  // 아직 pending인 스냅샷을 보여줘 "적용"/"반려" 버튼이 다시 뜬다. 여기서
+  // 다시 누르면 같은 캡처에 벌점/제보상점 슬롯이 두 번 채워졌다. 시트에
+  // 쓰기 직전 봇 manifest의 현재 상태를 한 번 더 확인해, 이미 pending이
+  // 아니면(이미 처리됨) 거부한다.
+  const currentStatus = await fetchCaptureReviewStatus(env, id);
+  if (currentStatus !== null && currentStatus !== "pending") {
+    return json({ error: "이미 처리된 제보입니다. 새로고침 후 확인해주세요." }, 409, origin);
+  }
+
   let penaltyResult = null;
   let meritResult = null;
   if (decision === "approved" || decision === "rejected_recognized" || decision === "deferred") {
@@ -4203,6 +4216,14 @@ async function findStoredPenaltyMerit(env, id) {
   const data = await proxyToBotDashboard(env, `/captures/one?id=${encodeURIComponent(id)}`);
   const item = data && data.item;
   return { penalty: item?.penalty || null, merit: item?.merit || null };
+}
+
+// capture id의 봇 manifest상 현재 reviewStatus만 가볍게 조회한다
+// (handleAdminCaptureDecide가 시트에 쓰기 전 중복 처리 방지에 사용).
+async function fetchCaptureReviewStatus(env, id) {
+  const data = await proxyToBotDashboard(env, `/captures/one?id=${encodeURIComponent(id)}`);
+  const item = data && data.item;
+  return item?.reviewStatus ?? null;
 }
 
 // 제보 기록 자체를 완전히 말소한다(반려 취소와 달리 되돌릴 수 없음, 웹
