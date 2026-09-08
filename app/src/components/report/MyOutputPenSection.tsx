@@ -388,7 +388,13 @@ export function MyOutputPenSection({
                                 canRespond && "border-destructive/60 animate-unpaid-glow"
                               )}
                             >
-                              <div className="flex items-center justify-between gap-2">
+                              {/* 🔧 [버그 수정] 항상 가로 배치(justify-between)였는데, 유예/
+                                  확정 건은 뱃지가 3개(예: "유예 1차"/"3차 (벌점)"/"-00:00")까지
+                                  붙어 좁은 모바일 폭에서 각 뱃지 안 텍스트가 눌려 줄바꿈되며
+                                  깨져 보였다(Playwright MCP 모바일 뷰포트 점검으로 발견).
+                                  관리자 화면(ReportReviewList)과 동일하게 sm 미만에서는
+                                  세로로 쌓이도록(flex-col) 맞춘다. */}
+                              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                 <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
                                   <Clock className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
                                   {/* 이미 날짜별로 묶여 있으므로(그룹 헤더에 날짜 표시) 여기서는
