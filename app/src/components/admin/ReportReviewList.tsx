@@ -1123,20 +1123,31 @@ export function ReportReviewList({
                                             )
                                       }
                                     />
-                                    {applied[item.id] && !applied[item.id]!.penalty && (
+                                    {/* 🔧 [버그 수정] "없음 (잔여 슬롯 없어 미등록)"은 "적용"을
+                                        시도했는데 대상자 잔여 슬롯이 없어 페널티 등록만 못 한
+                                        경우(rejected_recognized)를 위한 문구다 — "유예"
+                                        (decision === "deferred")는 애초에 대상자 페널티를
+                                        주지 않는 게 의도된 결정이라 이 조건에 걸려도 같은
+                                        문구가 뜨면 "슬롯이 없어서 처리가 안 됐다"는 오해를
+                                        준다. decision이 rejected_recognized일 때만 보여준다. */}
+                                    {applied[item.id]?.decision === "rejected_recognized" && !applied[item.id]!.penalty && (
                                       <SubRow label="대상자 처리" value="없음 (잔여 슬롯 없어 미등록)" />
                                     )}
-                                    {applied[item.id]?.merit && (
-                                      <SubRow
-                                        label="제보자 상점"
-                                        value={
-                                          "error" in applied[item.id]!.merit!
-                                            ? "부여 실패"
-                                            : `${(applied[item.id]!.merit as ReportMeritResult).occurrence}차 슬롯 부여`
-                                        }
-                                        valueClassName={"error" in applied[item.id]!.merit! ? "text-destructive" : undefined}
-                                      />
-                                    )}
+                                    {/* 🔧 [버그 수정] applied[item.id](로컬 세션)만 보면
+                                        새로고침 후에는 이미 확정된 건의 제보자 상점 부여
+                                        여부가 안 보였다 — item.merit(서버 스냅샷)을 폴백으로
+                                        함께 사용한다. */}
+                                    {(() => {
+                                      const merit = applied[item.id]?.merit ?? item.merit;
+                                      if (!merit) return null;
+                                      return (
+                                        <SubRow
+                                          label="제보자 상점"
+                                          value={"error" in merit ? "부여 실패" : `${(merit as ReportMeritResult).occurrence}차 슬롯 부여`}
+                                          valueClassName={"error" in merit ? "text-destructive" : undefined}
+                                        />
+                                      );
+                                    })()}
                                   </div>
                                 </div>
 
