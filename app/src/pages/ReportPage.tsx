@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -272,22 +271,18 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
       <div className="flex w-full flex-col gap-4" hidden={view !== "capture"}>
         {everOpened.current.capture && (
           <>
-            <Card className="w-full overflow-hidden">
-              <CardContent>
-                <Collapsible defaultOpen className="flex flex-col">
-                  {/* 🔧 [사용자 지시] SectionHeader가 이제 자체 배경(탭 모양)과
-                      좌우 패딩을 갖는데, 여기서는 SectionCard가 아니라
-                      Card+CardContent(이미 좌우 패딩 보유) 조합이라 이중
-                      패딩이 생긴다 — 음수 마진으로 SectionHeader의 배경을
-                      CardContent 바깥(카드 가장자리)까지 확장해 탭처럼
-                      보이게 하고, 본문은 CardContent의 기존 패딩을 그대로
-                      쓴다. 부모 Collapsible의 gap-4를 없애 SectionHeader
-                      자체의 하단 여백(mb-3.5/4)만 적용되게 한다(중복 간격
-                      방지). */}
-                  <div className="-mx-4 -mt-4">
-                    <SectionHeader icon={Flag} title="화각 불량 제보" onRefresh={refresh} />
-                  </div>
-                  <CollapsiblePanel className="flex flex-col gap-4">
+            {/* 🔧 [버그 수정] Card+CardContent(shadcn) 위에 SectionHeader를
+                올리면서, SectionHeader 자신도 이미 -mx-2.5/-mt-2.5(자기
+                패딩만큼 음수 마진)를 갖는데 여기서 또 -mx-4/-mt-4를 덧씌워
+                이중으로 밀려나 탭 배경이 카드 경계를 넘어가고 모서리
+                둥글기가 부자연스러워 보였다(사용자 지적: "내 화각 불량
+                제보"와 비교해 모양이 이상함). MyOutputPenSection 등 다른
+                곳과 동일하게 SectionCard 하나로 통일해 이 이중 마진
+                자체를 없앤다. */}
+            <SectionCard>
+              <Collapsible defaultOpen className="flex flex-col">
+                <SectionHeader icon={Flag} title="화각 불량 제보" onRefresh={refresh} />
+                <CollapsiblePanel className="flex flex-col gap-4">
                     <SectionCard className="flex flex-col gap-3">
                       <div className="flex flex-col gap-1.5">
                         <Label className="flex items-center gap-1.25 text-sm font-bold sm:text-base">
@@ -458,10 +453,9 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
                         <AlertDescription>{message.text}</AlertDescription>
                       </Alert>
                     )}
-                  </CollapsiblePanel>
-                </Collapsible>
-              </CardContent>
-            </Card>
+                </CollapsiblePanel>
+              </Collapsible>
+            </SectionCard>
 
             <MyOutputPenSection refreshSignal={myCapturesRefreshSignal} visible={visible} />
           </>
@@ -470,18 +464,14 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
 
       <div className="w-full" hidden={view !== "notice"}>
         {everOpened.current.notice && (
-          <Card className="w-full overflow-hidden">
-            <CardContent>
-              <Collapsible defaultOpen className="flex flex-col">
-                <div className="-mx-4 -mt-4">
-                  <SectionHeader icon={Bell} title="PUSH 알림" onRefresh={refresh} />
-                </div>
-                <CollapsiblePanel className="flex flex-col gap-4">
-                  <SimpleNoticeSection members={members} noMembers={noMembers} stale={stale} />
-                </CollapsiblePanel>
-              </Collapsible>
-            </CardContent>
-          </Card>
+          <SectionCard>
+            <Collapsible defaultOpen className="flex flex-col">
+              <SectionHeader icon={Bell} title="PUSH 알림" onRefresh={refresh} />
+              <CollapsiblePanel className="flex flex-col gap-4">
+                <SimpleNoticeSection members={members} noMembers={noMembers} stale={stale} />
+              </CollapsiblePanel>
+            </Collapsible>
+          </SectionCard>
         )}
       </div>
     </div>
