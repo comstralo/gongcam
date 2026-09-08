@@ -189,6 +189,16 @@ function PaidFineList({
         body: { number: f.number, day: f.day, status },
       });
       setStatusOverride((prev) => ({ ...prev, [key]: status }));
+      // 🔧 [총 벌금액 미갱신 수정] 위 statusOverride는 개별 뱃지만 바꿀 뿐
+      // "납부된 총 벌금액"(totalAmount)은 갱신하지 않아, 이 탭을 벗어나지
+      // 않고 여러 건을 연달아 처리하면 합계가 첫 로드 시점 값에 그대로
+      // 고정돼 있었다 — records를 통째로 다시 받는 load()는 statusOverride를
+      // 초기화해 방금 바꾼 뱃지 표시가 사라지므로, totalAmount만 가볍게
+      // 다시 받아온다.
+      const cycleParam = cycleFileId ? `?cycle=${encodeURIComponent(cycleFileId)}` : "";
+      call<AdminFinesPaidResponse>(`/admin/fines/paid${cycleParam}`)
+        .then((paidData) => setTotalAmount(paidData.totalAmount || 0))
+        .catch(() => {});
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "납부 상태 변경에 실패했습니다.");
     } finally {
