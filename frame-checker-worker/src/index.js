@@ -3488,6 +3488,9 @@ async function handleMyOutputPen(req, env, origin, url) {
       nextOccurrence: item.nextOccurrence,
       weeklyMinorPenaltyCount: item.weeklyMinorPenaltyCount,
       deferOccurrence: item.deferOccurrence,
+      // "유예" 결정 시점에 스냅샷으로 고정된 슬롯 차수(있으면) — 없으면
+      // nextOccurrence(실시간 재계산값)로 폴백해 보여준다.
+      deferredOccurrence: item.deferredOccurrence ?? null,
       // 이미 확정(approved 등)된 항목이면 봇 manifest에 실제 penalty/merit이
       // 저장되어 있다 — "예상 차감"/"적용 시"에 확정값을 보여줄 수 있게 전달.
       penalty: item.penalty || null,
@@ -4166,6 +4169,23 @@ async function hasReporterAlreadyReceivedMeritToday(env, reporterEmail, nowTs) {
   );
 }
 
+// 🔧 [유예/반려 차수 스냅샷] "지금 적용했다면 몇 차였을지"를 결정 시점에
+// 직접 읽어 고정한다 — item.nextOccurrence는 GET 시점마다 재계산되는 값이라,
+// 유예나 반려로 확정된 뒤 다른 건이 실제로 그 슬롯을 채우면(예: 다음 건이
+// "확정"되어 2차가 채워지면) 이미 확정된 이 건의 표시 차수도 밀려 보였다
+// (사용자 재현: "2차가 확정되니 앞의 유예 1차·2차가 모두 3차로 바뀜" — 반려도
+// 동일 구조라 사용자 확인 후 함께 적용). nickname으로 회원을 못 찾으면 null.
+async function snapshotNextOccurrence(env, accessToken, fileId, nickname) {
+  if (!nickname) return null;
+  const member = (await listAllMembers(env, accessToken, fileId)).find((m) => m.name === nickname);
+  if (!member) return null;
+  const row = parseInt(member.number, 10) + 3;
+  const slotRows = await getSheetValues(env, accessToken, fileId, `'${OUTPUT_PEN_SHEET_NAME}'!F${row}:K${row}`);
+  const slotValues = (slotRows[0] || []).map((v) => parseInt(v, 10) || 0);
+  const slotIndex = slotValues.findIndex((v) => v === 0);
+  return slotIndex === -1 ? null : slotIndex + 1;
+}
+
 async function handleAdminCaptureDecide(req, env, origin) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
@@ -4191,6 +4211,7 @@ async function handleAdminCaptureDecide(req, env, origin) {
   let penaltyResult = null;
   let meritResult = null;
   let timeDeductionResult = null;
+  let deferredOccurrenceSnapshot = null;
   if (decision === "approved" || decision === "rejected_recognized" || decision === "deferred") {
     try {
       const accessToken = await getServiceAccountAccessToken(env);
@@ -4210,10 +4231,9 @@ async function handleAdminCaptureDecide(req, env, origin) {
         // (rejected_recognized, 잔여 슬롯 없음)는 이번 지시 범위 밖이라
         // 그대로 둔다(사용자 확인).
         if (nickname) {
-          const accessTokenForMember = accessToken;
-          const member = (await listAllMembers(env, accessTokenForMember, fileId)).find((m) => m.name === nickname);
+          const member = (await listAllMembers(env, accessToken, fileId)).find((m) => m.name === nickname);
           if (member) {
-            const timeDeduction = await applyTimeDeduction(env, accessTokenForMember, fileId, member.number, ts, sendTime, replyTime);
+            const timeDeduction = await applyTimeDeduction(env, accessToken, fileId, member.number, ts, sendTime, replyTime);
             if (timeDeduction.deductedMinutes > 0) {
               timeDeductionResult = {
                 number: member.number,
@@ -4223,6 +4243,14 @@ async function handleAdminCaptureDecide(req, env, origin) {
             }
           }
         }
+      }
+      // 🔧 [유예/반려 차수 스냅샷] 벌점 슬롯을 실제로 채우지 않는 세 결정
+      // (deferred/rejected_recognized — 아래 순수 rejected는 이 블록 밖에서
+      // 별도 처리) 모두, 결정 시점의 빈 슬롯을 스냅샷으로 남긴다 — 그러지
+      // 않으면 이후 다른 건이 실제로 그 슬롯을 채울 때 이미 확정된 이 건의
+      // 표시 차수까지 밀려 보인다(사용자 재현, 반려도 함께 적용하기로 확인).
+      if (decision === "deferred" || decision === "rejected_recognized") {
+        deferredOccurrenceSnapshot = await snapshotNextOccurrence(env, accessToken, fileId, nickname);
       }
       const alreadyReceivedToday = await hasReporterAlreadyReceivedMeritToday(env, reporterEmail, Date.now());
       if (alreadyReceivedToday) {
@@ -4246,6 +4274,18 @@ async function handleAdminCaptureDecide(req, env, origin) {
     } catch (err) {
       return json({ error: "시트 반영 실패: " + err.message }, 500, origin);
     }
+  } else if (decision === "rejected") {
+    // 🔧 [반려 차수 스냅샷] 순수 반려는 시트에 아무것도 쓰지 않지만(위 if
+    // 블록 밖), 위 유예/반려(인정)와 동일하게 "지금 적용했다면 몇 차였을지"
+    // 취소선 표시가 나중에 밀리지 않도록 결정 시점의 스냅샷을 남긴다. 시트를
+    // 쓰지 않는 경로라 조회 실패는 조용히 무시(null 유지, nextOccurrence로
+    // 폴백)해도 안전하다 — 반려 처리 자체를 막을 이유는 아니다.
+    try {
+      const accessToken = await getServiceAccountAccessToken(env);
+      deferredOccurrenceSnapshot = await snapshotNextOccurrence(env, accessToken, env.GOOGLE_SHEET_FILE_ID, nickname);
+    } catch {
+      // 조회만 실패한 것 — 반려 처리는 계속 진행, 스냅샷 없이 nextOccurrence로 폴백.
+    }
   }
 
   // penalty/merit/timeDeduction을 봇 manifest에도 함께 저장해 둔다 —
@@ -4255,7 +4295,14 @@ async function handleAdminCaptureDecide(req, env, origin) {
   const data = await proxyToBotDashboard(env, "/captures/decide", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id, decision, penalty: penaltyResult, merit: meritResult, timeDeduction: timeDeductionResult }),
+    body: JSON.stringify({
+      id,
+      decision,
+      penalty: penaltyResult,
+      merit: meritResult,
+      timeDeduction: timeDeductionResult,
+      deferredOccurrence: deferredOccurrenceSnapshot,
+    }),
   });
   if (!data) {
     // 🔧 [버그 수정] 원래는 여기서 502만 반환했다 — 그런데 위에서 이미

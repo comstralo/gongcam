@@ -93,7 +93,12 @@ def get_capture(capture_id):
 # 화각 요청 응답 지연에 대한 시간 차감은 별도로 적용되므로(index.js의
 # TimeDeductionResult, {number, deductedMinutes, dayCol}), "유예 취소" 시
 # 이 기록으로 무엇을 되돌려야 하는지 알 수 있게 함께 저장한다.
-def set_decision(capture_id, decision, penalty=None, merit=None, time_deduction=None):
+# deferred_occurrence: "유예" 결정 시점에 실제로 읽은 빈 슬롯 차수(1~6,
+# 정수 또는 None) 스냅샷 — item.nextOccurrence는 조회 시점마다 다시
+# 계산되는 값이라, 유예를 확정한 뒤 다른 건이 그 슬롯을 실제로 채우면
+# 이미 확정된 유예 건의 표시 차수까지 밀려 보이는 문제가 있었다(사용자
+# 재현). 유예 순간의 값을 여기 고정해 두고 이후 계속 그대로 보여준다.
+def set_decision(capture_id, decision, penalty=None, merit=None, time_deduction=None, deferred_occurrence=None):
     with _manifest_lock:
         data = _load()
         if capture_id not in data:
@@ -103,6 +108,7 @@ def set_decision(capture_id, decision, penalty=None, merit=None, time_deduction=
         data[capture_id]["penalty"] = penalty
         data[capture_id]["merit"] = merit
         data[capture_id]["timeDeduction"] = time_deduction
+        data[capture_id]["deferredOccurrence"] = deferred_occurrence
         _save(data)
     return True
 
@@ -144,6 +150,7 @@ def revert_decision(capture_id):
         data[capture_id].pop("penalty", None)
         data[capture_id].pop("merit", None)
         data[capture_id].pop("timeDeduction", None)
+        data[capture_id].pop("deferredOccurrence", None)
         _save(data, target_path)
     return True
 

@@ -947,9 +947,16 @@ export function ReportReviewList({
                                         유예인지), 2번째는 "2차 (벌점)"처럼 유예되지 않았다면
                                         원래 적용됐어야 할 조치를 그대로 보여준다(사용자 지시).
                                         deferOccurrence가 없는 예외적인 경우(아주 오래된 데이터
-                                        등)에는 순번 없이 "유예"만 표시. */}
+                                        등)에는 순번 없이 "유예"만 표시. 🔧 [버그 수정] 차수는
+                                        item.deferredOccurrence(유예 확정 시점의 슬롯 스냅샷)를
+                                        우선 쓴다 — item.nextOccurrence는 조회 시점마다 재계산돼,
+                                        이 유예 건 확정 이후 다른 건이 실제로 그 슬롯을 채우면
+                                        표시 차수까지 밀려 보였다(사용자 재현: "2차 확정되니
+                                        앞의 유예 1차·2차가 3차로 바뀜"). */}
                                     <TintedPill tone="muted">{item.deferOccurrence ? `유예 ${item.deferOccurrence}차` : "유예"}</TintedPill>
-                                    <TintedPill tone="muted">{occurrenceLabel(item.nextOccurrence)}</TintedPill>
+                                    <TintedPill tone="muted">
+                                      {occurrenceLabel(item.deferredOccurrence ?? item.nextOccurrence)}
+                                    </TintedPill>
                                     {/* 🔧 [차감시간 뱃지 추가] 유예도 벌점과 별개로 응답 지연
                                         시간 차감이 확정되므로(사용자 지시) 세 번째 뱃지로 함께
                                         노출한다. */}
@@ -1207,13 +1214,17 @@ export function ReportReviewList({
                                           value={
                                             deferOccurrence ? (
                                               <>
-                                                <span className="line-through">{occurrenceLabel(item.nextOccurrence)}</span>{" "}
+                                                <span className="line-through">
+                                                  {occurrenceLabel(item.deferredOccurrence ?? item.nextOccurrence)}
+                                                </span>{" "}
                                                 유예 {deferOccurrence}차
                                               </>
                                             ) : confirmedPenalty ? (
                                               occurrenceLabel(confirmedPenalty.occurrence)
                                             ) : isRejectedDecided ? (
-                                              <span className="line-through">{occurrenceLabel(item.nextOccurrence)}</span>
+                                              <span className="line-through">
+                                                {occurrenceLabel(item.deferredOccurrence ?? item.nextOccurrence)}
+                                              </span>
                                             ) : (
                                               occurrenceLabel(item.nextOccurrence)
                                             )

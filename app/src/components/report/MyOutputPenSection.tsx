@@ -392,7 +392,14 @@ export function MyOutputPenSection({
                                         <TintedPill tone="muted">
                                           {received!.deferOccurrence ? `유예 ${received!.deferOccurrence}차` : "유예"}
                                         </TintedPill>
-                                        <TintedPill tone="muted">{occurrenceLabel(received!.nextOccurrence)}</TintedPill>
+                                        {/* 🔧 [버그 수정] deferredOccurrence(유예 확정 시점의 슬롯
+                                            스냅샷)를 우선 쓴다 — nextOccurrence는 조회 시점마다
+                                            재계산돼, 이 유예 건 확정 이후 다른 건이 실제로 그
+                                            슬롯을 채우면 표시 차수까지 밀려 보였다(관리자 화면과
+                                            동일 버그, 사용자 재현으로 발견). */}
+                                        <TintedPill tone="muted">
+                                          {occurrenceLabel(received!.deferredOccurrence ?? received!.nextOccurrence)}
+                                        </TintedPill>
                                         {/* 🔧 [차감시간 뱃지 추가] 유예도 벌점과 별개로 응답 지연
                                             시간 차감이 확정되므로(사용자 지시) 세 번째 뱃지로
                                             함께 노출한다. */}
@@ -540,13 +547,17 @@ export function MyOutputPenSection({
                                               value={
                                                 received!.deferOccurrence ? (
                                                   <>
-                                                    <span className="line-through">{occurrenceLabel(received!.nextOccurrence)}</span>{" "}
+                                                    <span className="line-through">
+                                                      {occurrenceLabel(received!.deferredOccurrence ?? received!.nextOccurrence)}
+                                                    </span>{" "}
                                                     유예 {received!.deferOccurrence}차
                                                   </>
                                                 ) : received!.penalty ? (
                                                   occurrenceLabel(received!.penalty.occurrence)
                                                 ) : isRejectedDecided ? (
-                                                  <span className="line-through">{occurrenceLabel(received!.nextOccurrence)}</span>
+                                                  <span className="line-through">
+                                                    {occurrenceLabel(received!.deferredOccurrence ?? received!.nextOccurrence)}
+                                                  </span>
                                                 ) : (
                                                   occurrenceLabel(received!.nextOccurrence)
                                                 )

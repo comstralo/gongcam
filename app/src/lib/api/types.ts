@@ -783,6 +783,12 @@ export type CaptureReviewItem = {
   // shouldDefer인 예상 건은 "지금 유예하면 몇 번째가 될지"를 담는다.
   // 유예와 무관한 건(아직 판정 전이거나 대상 아님)은 null.
   deferOccurrence: number | null;
+  // "유예" 결정 시점에 실제로 읽은 빈 슬롯 차수(1~6) 스냅샷 — nextOccurrence
+  // (조회 시점마다 재계산되는 값)와 달리 유예 확정 당시의 값으로 고정된다.
+  // 다른 건이 나중에 그 슬롯을 실제로 채워도 이 유예 건의 표시 차수는 바뀌지
+  // 않는다. 아직 확정되지 않은(pending) 건이면 null — 이 경우 예상 표시에는
+  // 여전히 nextOccurrence를 쓴다.
+  deferredOccurrence: number | null;
   // 제보자 이메일로 매칭한 이름. 등록 회원이 아니면 null.
   reporterName: string | null;
   // 🔧 [당사자 응답 시스템] 대상자 본인이 [내 송출 P 제보 확인]에서 제출한
@@ -855,6 +861,10 @@ export type MyOutputPenItem = {
   // 이 건이 당일 몇 번째 유예인지(확정된 deferred 건은 실제 순서, pending
   // + 유예 대상 건은 "지금 유예하면 몇 번째가 될지"). 유예와 무관하면 null.
   deferOccurrence: number | null;
+  // "유예" 결정 시점에 실제로 읽은 빈 슬롯 차수(1~6) 스냅샷 — nextOccurrence
+  // 와 달리 유예 확정 당시의 값으로 고정된다. pending이면 null(예상 표시는
+  // nextOccurrence 사용).
+  deferredOccurrence: number | null;
   // 이미 확정된 항목이면 봇 manifest에 저장된 실제 값(관리자가 "예상 차감"
   // 대신 확정값을 보여주는 것과 동일한 패턴).
   penalty: OutputPenaltyResult | null;

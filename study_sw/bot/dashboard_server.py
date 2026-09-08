@@ -345,16 +345,23 @@ def make_dashboard_handler(ctx):
                 if not capture_id or decision not in ("approved", "rejected", "rejected_recognized", "deferred"):
                     self._send_json(400, {"error": "invalid request"})
                     return
-                # penalty/merit/timeDeduction: 웹(index.js)이 시트에 이미
-                # 반영한 값을 함께 보내 manifest에 저장한다 — 새로고침 후에도
-                # "반려 취소"/"삭제"가 어느 슬롯을 되돌려야 하는지 알 수 있게
-                # 하기 위함. timeDeduction은 "유예" 결정에서만 온다(벌점 슬롯
-                # 없이 응답 지연 시간 차감만 별도 적용된 경우).
+                # penalty/merit/timeDeduction/deferredOccurrence: 웹(index.js)
+                # 이 시트에 이미 반영한 값(및 유예 시점 슬롯 스냅샷)을 함께
+                # 보내 manifest에 저장한다 — 새로고침 후에도 "반려 취소"/
+                # "삭제"가 어느 슬롯을 되돌려야 하는지, 그리고 유예 건의 표시
+                # 차수가 이후에도 바뀌지 않아야 하는지를 알 수 있게 하기 위함.
+                # timeDeduction/deferredOccurrence는 "유예" 결정에서만 온다.
                 penalty = body.get("penalty")
                 merit = body.get("merit")
                 time_deduction = body.get("timeDeduction")
+                deferred_occurrence = body.get("deferredOccurrence")
                 ok = capture_manifest.set_decision(
-                    capture_id, decision, penalty=penalty, merit=merit, time_deduction=time_deduction
+                    capture_id,
+                    decision,
+                    penalty=penalty,
+                    merit=merit,
+                    time_deduction=time_deduction,
+                    deferred_occurrence=deferred_occurrence,
                 )
                 self._send_json(200 if ok else 404, {"ok": ok})
                 return
