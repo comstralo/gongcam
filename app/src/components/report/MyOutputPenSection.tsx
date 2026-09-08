@@ -522,37 +522,59 @@ export function MyOutputPenSection({
                                             유예인지)가 있으면 관리자 화면과 동일하게 원래 차수
                                             라벨에 취소선을 긋고 "유예 N차"를 덧붙인다(사용자
                                             지시). */}
-                                        <SubRow
-                                          label={received!.penalty ? "확정 적용" : "예상 적용"}
-                                          value={
-                                            received!.deferOccurrence ? (
-                                              <>
-                                                <span className="line-through">{occurrenceLabel(received!.nextOccurrence)}</span>{" "}
-                                                유예 {received!.deferOccurrence}차
-                                              </>
-                                            ) : received!.penalty ? (
-                                              occurrenceLabel(received!.penalty.occurrence)
-                                            ) : (
-                                              occurrenceLabel(received!.nextOccurrence)
-                                            )
-                                          }
-                                          valueClassName="font-semibold text-destructive"
-                                        />
+                                        {/* 🔧 [반려도 확정으로 표시] "반려"(rejected/
+                                            rejected_recognized)도 관리자가 이미 처리를 마친
+                                            상태이므로 라벨은 "확정"으로 보여주되(사용자 지시),
+                                            실제로는 적용되지 않은 조치이므로 값 자체에 취소선을
+                                            그어 구분한다. */}
+                                        {(() => {
+                                          const isRejectedDecided =
+                                            !received!.penalty &&
+                                            !received!.deferOccurrence &&
+                                            (received!.reviewStatus === "rejected" ||
+                                              received!.reviewStatus === "rejected_recognized");
+                                          const isDecided = !!received!.penalty || !!received!.deferOccurrence || isRejectedDecided;
+                                          return (
+                                            <SubRow
+                                              label={isDecided ? "확정 적용" : "예상 적용"}
+                                              value={
+                                                received!.deferOccurrence ? (
+                                                  <>
+                                                    <span className="line-through">{occurrenceLabel(received!.nextOccurrence)}</span>{" "}
+                                                    유예 {received!.deferOccurrence}차
+                                                  </>
+                                                ) : received!.penalty ? (
+                                                  occurrenceLabel(received!.penalty.occurrence)
+                                                ) : isRejectedDecided ? (
+                                                  <span className="line-through">{occurrenceLabel(received!.nextOccurrence)}</span>
+                                                ) : (
+                                                  occurrenceLabel(received!.nextOccurrence)
+                                                )
+                                              }
+                                              valueClassName="text-destructive"
+                                            />
+                                          );
+                                        })()}
                                         {/* 🔧 [버그 수정] 관리자 화면과 동일한 이유로, 확정된 건은
                                             penalty에 저장된 확정 시점 스냅샷(weeklyMinorPenaltyCount)을
                                             우선 사용해 "이번 주 영향"이 이후 다른 건 처리로 계속
                                             바뀌어 보이지 않게 한다. */}
-                                        <SubRow
-                                          label="이번 주 영향"
-                                          value={
-                                            received!.deferOccurrence
-                                              ? "없음"
-                                              : weeklyImpactLabel(
-                                                  received!.penalty ? received!.penalty.occurrence : received!.nextOccurrence,
-                                                  received!.penalty?.weeklyMinorPenaltyCount ?? received!.weeklyMinorPenaltyCount
-                                                )
-                                          }
-                                        />
+                                        {(() => {
+                                          const impact = received!.deferOccurrence
+                                            ? "없음"
+                                            : weeklyImpactLabel(
+                                                received!.penalty ? received!.penalty.occurrence : received!.nextOccurrence,
+                                                received!.penalty?.weeklyMinorPenaltyCount ?? received!.weeklyMinorPenaltyCount
+                                              );
+                                          const hasImpact = impact !== "없음" && impact !== "-";
+                                          return (
+                                            <SubRow
+                                              label="이번 주 영향"
+                                              value={impact}
+                                              valueClassName={hasImpact ? "text-destructive" : undefined}
+                                            />
+                                          );
+                                        })()}
                                       </div>
                                     </>
                                   )}

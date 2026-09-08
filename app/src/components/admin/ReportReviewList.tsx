@@ -1169,9 +1169,16 @@ export function ReportReviewList({
                                       // 보여준다) — reviewStatus === "deferred"로 이미 확정된 건도,
                                       // 아직 pending이라 shouldDefer로만 예고된 건도 동일하게 표시한다.
                                       const deferOccurrence = item.deferOccurrence;
+                                      // 🔧 [반려도 확정으로 표시] "반려"(순수 rejected 또는
+                                      // rejected_recognized)도 관리자가 이미 처리를 마친 상태이므로
+                                      // 라벨은 "확정"으로 보여주되(사용자 지시), 실제로는 적용되지
+                                      // 않은 조치이므로 값 자체에 취소선을 그어 구분한다.
+                                      const isRejectedDecided =
+                                        !confirmedPenalty && !deferOccurrence && isRejected;
+                                      const isDecided = !!confirmedPenalty || !!deferOccurrence || isRejectedDecided;
                                       return (
                                         <SubRow
-                                          label={confirmedPenalty ? "확정 적용" : "예상 적용"}
+                                          label={isDecided ? "확정 적용" : "예상 적용"}
                                           value={
                                             deferOccurrence ? (
                                               <>
@@ -1180,11 +1187,13 @@ export function ReportReviewList({
                                               </>
                                             ) : confirmedPenalty ? (
                                               occurrenceLabel(confirmedPenalty.occurrence)
+                                            ) : isRejectedDecided ? (
+                                              <span className="line-through">{occurrenceLabel(item.nextOccurrence)}</span>
                                             ) : (
                                               occurrenceLabel(item.nextOccurrence)
                                             )
                                           }
-                                          valueClassName="font-semibold text-destructive"
+                                          valueClassName="text-destructive"
                                         />
                                       );
                                     })()}
@@ -1199,14 +1208,15 @@ export function ReportReviewList({
                                       // 쓴다.
                                       const confirmedPenalty = applied[item.id]?.penalty ?? item.penalty;
                                       const minorCount = confirmedPenalty?.weeklyMinorPenaltyCount ?? item.weeklyMinorPenaltyCount;
+                                      const impact = item.deferOccurrence
+                                        ? "없음"
+                                        : weeklyImpactLabel(confirmedPenalty?.occurrence ?? item.nextOccurrence, minorCount);
+                                      const hasImpact = impact !== "없음" && impact !== "-";
                                       return (
                                         <SubRow
                                           label="이번 주 영향"
-                                          value={
-                                            item.deferOccurrence
-                                              ? "없음"
-                                              : weeklyImpactLabel(confirmedPenalty?.occurrence ?? item.nextOccurrence, minorCount)
-                                          }
+                                          value={impact}
+                                          valueClassName={hasImpact ? "text-destructive" : undefined}
                                         />
                                       );
                                     })()}
