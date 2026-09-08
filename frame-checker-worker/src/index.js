@@ -1947,14 +1947,17 @@ function buildDepositAgainSnapshot(rows) {
 // 제거한다 — 본인이 값을 바꾸면 writeSheetValues가 이 캐시를 즉시
 // 무효화하므로 "방금 쓴 값이 안 보이는" 문제는 생기지 않는다.
 async function getPersonalTabRows(env, accessToken, fileId, memberNumber) {
-  // 개인 탭 값은 본인이 이 Worker의 API로 직접 쓰는 경우가 아니면, 실제로는
-  // 교시(60분) 단위로 봇이 기록하거나 앱스크립트 트리거(일간/주간 집계)가
-  // 돌 때만 바뀐다 — 그 사이엔 몇 번을 조회해도 항상 같은 값이다. 본인이
-  // 값을 바꾸는 경로(반휴 신청, 관리자 처리 등)는 writeSheetValues가 이
-  // 회원의 캐시를 즉시 무효화하므로, TTL을 교시 주기에 맞춰 넉넉히(30분)
-  // 잡아도 "방금 쓴 값이 안 보이는" 문제는 없다 — 회원 수(15)에 비례하는
-  // 캐시라 KV 쓰기 폭주를 피하려면 이 TTL이 가장 중요하다.
-  return _cachedCompute(env, `personalStatus:${fileId}:${memberNumber}`, 30 * 60_000, () =>
+  // 🔧 [30분→10분 하향, 2026-09] 개인 탭 값은 본인이 이 Worker의 API로
+  // 직접 쓰는 경우(반휴 신청, 관리자 처리 등)는 writeSheetValues가 즉시
+  // 무효화하므로 문제없지만, 도움봇 study_sw/bot/sheets.py의 set_sheet()가
+  // 각 교시 시작/종료마다(timetable.csv 기준 최소 10분 간격) gspread로
+  // 개인 탭에 직접 batch_update하는 경로는 이 Worker 캐시를 전혀 거치지
+  // 않아 무효화되지 않는다 — 옛 "교시 60분 단위"라는 전제는 실제 쓰기
+  // 간격(교시 종료→다음 교시 시작 10분)보다 길어 회원이 교시 종료 직후
+  // 자기 참여율을 확인하려 할 때 최대 30분 낡은 값을 볼 수 있었다
+  // (docs/CACHING_POLICY.md §7). 봇의 실제 쓰기 리듬에 맞춰 10분으로
+  // 낮춘다 — 회원 수(15)에 비례하는 캐시라 KV 예산은 여전히 고려 대상.
+  return _cachedCompute(env, `personalStatus:${fileId}:${memberNumber}`, 10 * 60_000, () =>
     getSheetValues(env, accessToken, fileId, `${memberNumber}!A1:U${ROW_REPORT_SHEET_ROW + 1}`)
   );
 }

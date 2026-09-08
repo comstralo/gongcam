@@ -108,7 +108,7 @@ computeFn)` 형태로 각 파생 계산(주로 여러 셀을 모아 가공한 �
 | `meritRank:` | `getMeritRank` | 5분(2026-09 상향, 구 60초) | `invalidateMemberCache` |
 | `reportScore:` | `getReportScore` | 30분 | `invalidateMemberCache`(회원별 키 — KV는 자연 만료만) |
 | `outputPenSlots:` | `getOutputPenSlots` | 5분 | `invalidateMemberCache`(회원별 키 — KV는 자연 만료만) |
-| `personalStatus:` | `getPersonalTabRows` | 30분 | `writeSheetValues` 내장 정밀 무효화 |
+| `personalStatus:` | `getPersonalTabRows` | 10분(2026-09 하향, 구 30분) | `writeSheetValues` 내장 정밀 무효화(§7 — 도움봇 직접 쓰기는 무효화 밖) |
 | `memberRows:` | `getSharedMemberRows` | 60초(유지) | `invalidateMemberCache` |
 | `weeklyPaidFine:` | `getWeeklyPaidFineTotal` | 5분(2026-09 상향, 구 60초) | `invalidateMemberCache` |
 | `penSlotGrid:` | `attachNextOccurrence` | 60초(유지) | `invalidateMemberCache` |
@@ -182,7 +182,46 @@ computeFn)` 형태로 각 파생 계산(주로 여러 셀을 모아 가공한 �
   보류(§5 참고) — 사용 패턴이 바뀌어 이 화면들의 재조회 빈도가 문제가 되면
   재검토.
 
-## 7. 관련 문서
+## 7. 도움봇(`study_sw/bot/`)의 시트 직접 쓰기와 캐시 리듬 정합
+
+지금까지의 무효화 매칭(§2)은 **Worker API를 경유한 쓰기**(`writeSheetValues`)
+만 다룬다. 그런데 로컬 도움봇이 gspread로 시트에 **직접** 쓰는 경로가 따로
+있고, 이 경로는 `writeSheetValues`의 내장 정밀 무효화나 `invalidateMemberCache`
+를 전혀 거치지 않는다 — Worker 입장에서는 "누가 언제 시트를 바꿨는지 알 방법이
+없는 쓰기"다. 이런 쓰기가 있는 캐시 키는 TTL이 유일한 신선도 파라미터가 되므로,
+그 TTL은 임의로 정할 게 아니라 **봇이 실제로 그 값을 갱신하는 주기**에 맞춰야
+한다.
+
+`study_sw/bot/sheets.py`를 조사한 결과, 개인 탭에 직접 쓰는 경로는 두 가지였다.
+
+- **`_process_holiday_use`/`_process_goaltime`(135/201줄)** — 반휴 신청,
+  의무시간(교시제/달성제) 변경 처리. 하지만 `sheets.py:502`의 주석에 "구루미
+  채팅(반휴·의무시간 신청)으로만 트리거되던 처리였으나, 채팅 송수신 기능
+  자체가 서비스(관리자 페이지)로 대체되어 함께 제거됨"이라 명시되어 있고,
+  실제로 호출부가 없는 **죽은 코드**다. 이 두 값은 현재 전부 Worker API
+  (`handleSetLeaveApply`/`handleSetGoalSchedule`)로만 바뀌므로 §2의 "개인
+  탭 내장 무효화" 커버리지 안에 있다 — 위험 없음.
+- **`set_sheet()`(`sheets.py:392`, `worksheet.batch_update`)** — 살아있는
+  유일한 경로. 각 교시(`resource/timetable.csv`)의 시작/종료 시각마다
+  `schedule_process`(`scheduling.py`)가 호출해, 출석시각·참여율·학습시간을
+  개인 탭에 기록한다. `timetable.csv` 기준 교시는 60분 단위이지만, 어느
+  교시 종료 시각과 다음 교시 시작 시각 사이 간격은 **10분**이다(예: 1교시
+  07:20~08:20, 2교시 08:30~09:30) — 즉 회원 관점에서 개인 탭은 최소
+  **10분 간격**으로 갱신된다.
+
+`personalStatus:`(`getPersonalTabRows`) 캐시의 옛 30분 TTL은 "교시(60분)
+단위로만 바뀐다"는 전제로 잡혀 있었는데, 실제 갱신 리듬(10분)보다 3배 느슨했다.
+그 결과 교시가 끝난 직후 회원이 자기 개인 대시보드를 열어도 최대 30분간
+방금 끝난 교시의 참여율이 반영 안 된 값을 볼 수 있었다 — 회원이 확인하고
+싶어할 시점(교시 종료 직후)과 정확히 충돌하는 사용성 문제였다. 2026-09-09
+TTL을 봇의 실제 쓰기 리듬에 맞춰 **10분**으로 낮췄다(§3 표에 반영).
+
+같은 논리로 다른 캐시들도 봇 쓰기 대상인지 확인했다 — `reportScore:`/
+`outputPenSlots:`("데이터" 시트 R~V/F~M열)는 관리자가 제보를 승인/취소할
+때만 바뀌고 봇이 쓰는 대상이 아니므로 이 gap과 무관하다(§4의 회원별 키
+문제는 별개 사안).
+
+## 8. 관련 문서
 
 - `docs/WEB_ADMIN.md` §3.1 — `applyOutputPenalty`/`applyReportMerit`/
   `applyTimeDeduction`가 실제로 호출되는 관리자 제보 처리 화면·플로우.
