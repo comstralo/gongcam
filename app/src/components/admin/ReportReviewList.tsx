@@ -845,7 +845,7 @@ export function ReportReviewList({
                                     처리(적용/유예/반려)하지 않은 건에서만 의미가 있으므로
                                     isApplied/isItemDeferred/isRejected보다 아래에서 판정한다. */}
                                 {isApplied ? (
-                                  <TintedPill tone="ok">적용</TintedPill>
+                                  <TintedPill tone="ok">확정</TintedPill>
                                 ) : isItemDeferred(item, applied) ? (
                                   <TintedPill tone="muted">유예</TintedPill>
                                 ) : isRejected ? (
