@@ -539,12 +539,17 @@ export function ReportReviewList({
           delete next[item.id];
           return next;
         });
-        // item.reviewStatus는 서버 응답 스냅샷이라 이 세션의 items 배열도
-        // 함께 "pending"으로 바꿔야, 새로고침 없이도 즉시 "처리 대기"로
-        // 보이고 승인/반려 버튼이 다시 나타난다.
-        setItems((prev) =>
-          prev ? prev.map((i) => (i.id === item.id ? { ...i, reviewStatus: "pending" } : i)) : prev
-        );
+        // 🔧 [버그 수정] 로컬 items 배열의 reviewStatus만 "pending"으로
+        // 패치하고 끝내면, "유예" 처리됐던 건을 취소했을 때 그 순간의
+        // item.shouldDefer가 갱신되지 않은 채(deferred였던 시점의 스냅샷,
+        // handleAdminCapturesList는 pending 항목에만 shouldDefer를
+        // 계산한다) 그대로 남아있었다 — 대상자가 그날 이미 다른 건으로
+        // "적용"을 받은 상태에서 이 유예를 취소하면, 원래는 여전히
+        // "유예" 후보(shouldDefer: true)여야 하는데 화면은 갱신 안 된
+        // shouldDefer: false를 보고 "적용"(송출 벌점 적용) 버튼을 대신
+        // 그렸다. load()로 서버 최신 스냅샷(shouldDefer 포함)을 다시
+        // 받아와야 정확한 버튼이 나온다.
+        load();
       })
       .catch((err) => setError(err instanceof Error ? err.message : "반려 취소에 실패했습니다."))
       .finally(() => setDecidingId(null));
