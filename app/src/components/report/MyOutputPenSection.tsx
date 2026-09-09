@@ -398,7 +398,12 @@ export function MyOutputPenSection({
                               open={isItemExpanded}
                               onOpenChange={(open) => setExpandedId(open ? item.id : null)}
                               className={cn(
-                                "flex flex-col gap-2.5 rounded-lg border bg-card p-2",
+                                // 🔧 [버그 수정] 이 카드(개별 제보 항목)만 p-2(8px)로
+                                // 상위 두 카드(SectionCard/InfoCard, p-2.5 sm:p-3.5)
+                                // 보다 좁아 "오전 1:48:19가 포함된 박스만 여백이 거의
+                                // 없다"고 느껴졌다(사용자 지적) — 상위 카드와 동일한
+                                // 값으로 맞춘다.
+                                "flex flex-col gap-2.5 rounded-lg border bg-card p-2.5 sm:p-3.5",
                                 // 아직 응답하지 않은 건은 대상자가 놓치기 쉬우므로(90분
                                 // 시한이 지나면 자동으로 위반인정 처리됨) 벌금 미납
                                 // 강조와 동일한 글로우 효과로 눈에 띄게 한다(사용자 지시).
