@@ -74,9 +74,22 @@ export function MyStatusProvider({ children }: { children: ReactNode }) {
   // 감지 대신 세션이 있는 동안 계속 타이머를 돌린다 — /status가 조합하는
   // 캐시 중 가장 짧은 것(5분)의 3배 이상 주기로 폴링해, 앱을 계속 띄워둔
   // 채로도 자동 갱신되게 한다(docs/CACHING_POLICY.md §14).
+  // 🔧 [사용자 지시] "메뉴나 탭 전환 정책과 웹 캐싱 정책을 원초적으로
+  // 다시 판단해서 KV 쓰기 삭제를 절약할 방안을 조사해줘" — 이 Provider는
+  // "페이지 단위 visible 개념이 없다"는 게 곧 "어느 화면을 보고 있든,
+  // 심지어 브라우저 탭이 백그라운드여도 항상 돈다"는 뜻이었다. 실시간
+  // 로그로 실측: 관리자가 Bot·Sheet 탭을 보고 있는 중에도 이 타이머가
+  // /status를 호출해 personalStatus/meritRank/penCycle/outputPenSlots를
+  // 재작성했다 — "웹앱을 열어둔 채 자리를 비우면" 계속 KV를 쓰는 가장
+  // 광범위한 원인이었다(§13). Page Visibility API로 브라우저 탭이 실제로
+  // 안 보이는 순간의 틱은 건너뛴다 — 다시 포그라운드로 돌아오면 다음
+  // 정기 틱부터 재개된다.
   useEffect(() => {
     if (!session) return;
-    const timer = setInterval(refresh, 15 * 60_000);
+    const timer = setInterval(() => {
+      if (document.hidden) return;
+      refresh();
+    }, 15 * 60_000);
     return () => clearInterval(timer);
   }, [session, refresh]);
 
