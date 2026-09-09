@@ -2586,8 +2586,11 @@ async function handleReport(req, env, origin) {
     cooldownSec = SELF_CHECK_COOLDOWN_SEC;
   }
 
-  // 관리자는 일반 제보 20분 쿨다운을 우회한다 — 같은 대상을 반복 확인해야
-  // 하는 경우가 있어서다. 셀프 체크는 관리자 여부와 무관하게 항상 쿨다운을 둔다.
+  // 🔧 [사용자 지시] 관리자는 일반 제보 20분 쿨다운을 우회한다 — 같은
+  // 대상을 반복 확인해야 하는 경우가 있어서다. 셀프 체크도 이제 관리자는
+  // 동일하게 우회한다(사용자 확인: "관리자는 항상 가능하게 하도록
+  // 했을텐데" — 원래는 셀프 체크만 예외로 관리자도 쿨다운이 걸려 있었는데,
+  // 일반 제보와 정책을 통일했다).
   const isAdmin = (session.email || "").toLowerCase() === (env.ADMIN_EMAIL || "").toLowerCase();
 
   if (!isSelfCheck) {
@@ -2641,7 +2644,7 @@ async function handleReport(req, env, origin) {
     cooldownSec = REPORT_COOLDOWN_SEC;
   }
 
-  if (isSelfCheck || !isAdmin) {
+  if (!isAdmin) {
     const onCooldown = await env.REPORTS_KV.get(cooldownKey);
     if (onCooldown) {
       return json(
@@ -2685,24 +2688,38 @@ async function handleReport(req, env, origin) {
   await env.REPORTS_KV.put(cooldownKey, JSON.stringify({ nickname: trimmedNickname, ts }), {
     expirationTtl: cooldownSec,
   });
-  // 셀프 체크는 "최근 진행된 제보"(전체 참여자에게 공개되는 목록)에 노출되면
-  // 안 되므로 공유 인덱스에 추가하지 않는다 — 일반 제보만 여기 들어간다.
-  if (!isSelfCheck) {
-    // 관리자는 재제보 차단(위 429)만 우회할 뿐, "최근 진행된 제보" 목록에는
-    // 관리자 제보도 똑같이 보여야 한다 — 그러지 않으면 실제로는 봇에 정상
-    // 접수됐는데도 참여자들에게 "제보가 없다"고 잘못 보인다(사용자 지적).
-    // 목록 화면(handleListActiveCooldowns)이 "언제 끝나는지"를 계산할 수
-    // 있도록 ts도 함께 저장한다 — 값 자체(TTL 만료 여부)로 쿨다운 중인지는
-    // 이미 판별되므로, ts는 순수하게 표시용 부가 정보다. id/mode/capturedAt은
-    // "촬영 진행 중" 카운트다운 판정에 쓰인다 — 봇이 캡처를 끝내면
-    // handleReportCaptureDone이 이 id를 찾아 capturedAt을 채운다.
-    await _appendToLiveIndex(
-      env,
-      COOLDOWN_INDEX_KEY,
-      { id, nickname: trimmedNickname, mode: finalMode, startedAt: ts, capturedAt: null, expiresAt: ts + cooldownSec * 1000 },
-      cooldownSec
-    );
-  }
+  // 🔧 [버그 수정] 셀프 체크를 원래 이 공유 인덱스에서 아예 제외했는데,
+  // 본인조차 "최근 진행된 제보"에서 자신의 셀프 체크 진행 상황(촬영
+  // 중인지 등)을 확인할 방법이 없었다(사용자 지적: "본인조차 진행
+  // 상황을 모르잖아"). 그렇다고 그대로 노출하면 "최근 진행된 제보"가
+  // 전체 참여자 공개 목록이라 다른 사람에게도 "OOO이 셀프 체크했다"가
+  // 보이는 부작용이 있다 — 항목은 항상 인덱스에 넣되 selfCheck/
+  // reporterEmail을 함께 저장해, 조회 시점(handleListActiveCooldowns)
+  // 에서 요청자 본인 것과 관리자에게만 걸러 보여준다(사용자 결정:
+  // "자기랑 관리자한테만 노출"). 관리자는 재제보 차단(위 429)만
+  // 우회할 뿐 "최근 진행된 제보" 목록에는 관리자 제보도 똑같이 보여야
+  // 한다 — 그러지 않으면 실제로는 봇에 정상 접수됐는데도 참여자들에게
+  // "제보가 없다"고 잘못 보인다(사용자 지적). 목록 화면이 "언제
+  // 끝나는지"를 계산할 수 있도록 ts도 함께 저장한다 — 값 자체(TTL
+  // 만료 여부)로 쿨다운 중인지는 이미 판별되므로, ts는 순수하게
+  // 표시용 부가 정보다. id/mode/capturedAt은 "촬영 진행 중" 카운트다운
+  // 판정에 쓰인다 — 봇이 캡처를 끝내면 handleReportCaptureDone이 이
+  // id를 찾아 capturedAt을 채운다.
+  await _appendToLiveIndex(
+    env,
+    COOLDOWN_INDEX_KEY,
+    {
+      id,
+      nickname: trimmedNickname,
+      mode: finalMode,
+      startedAt: ts,
+      capturedAt: null,
+      expiresAt: ts + cooldownSec * 1000,
+      selfCheck: isSelfCheck,
+      reporterEmail: session.email,
+    },
+    cooldownSec
+  );
 
   // 봇에 즉시 푸시해서 폴링 지연 없이 바로 캡처를 시작시킨다. proxyToBotDashboard는
   // 실패(터널이 그 순간 끊겨 있는 등) 시 예외 없이 null만 반환한다 — 실패하면
@@ -2751,9 +2768,22 @@ async function handleListActiveCooldowns(req, env, origin) {
   const session = await verifySession(token, env.SESSION_SECRET);
   if (!session) return json({ error: "로그인이 만료되었습니다. 다시 로그인해주세요." }, 401, origin);
 
+  const isAdmin = (session.email || "").toLowerCase() === (env.ADMIN_EMAIL || "").toLowerCase();
+
   // list() 대신 handleReport가 등록 시점에 미리 채워둔 인덱스를 읽는다 —
   // 15초 폴링이 몇 명이든 실제 KV.list() 호출 없이 처리된다.
-  const items = await _readLiveIndex(env, COOLDOWN_INDEX_KEY);
+  const rawItems = await _readLiveIndex(env, COOLDOWN_INDEX_KEY);
+  // 🔧 [버그 수정] 셀프 체크 항목도 이제 이 인덱스에 들어오지만(사용자
+  // 지시: 본인이 자신의 진행 상황을 볼 수 있어야 함), "최근 진행된
+  // 제보"는 전체 참여자에게 공개되는 목록이라 그대로 노출하면 다른
+  // 사람에게도 "OOO이 셀프 체크했다"가 보이는 부작용이 있다 — 요청자
+  // 본인의 셀프 체크이거나 관리자 본인이 조회하는 경우에만 통과시키고,
+  // 다른 사람의 셀프 체크 항목은 걸러낸다(사용자 결정: "자기랑
+  // 관리자한테만 노출"). 일반 제보(selfCheck: false)는 지금까지처럼
+  // 누구에게나 보인다.
+  const items = rawItems
+    .filter((item) => !item.selfCheck || isAdmin || item.reporterEmail === session.email)
+    .map(({ selfCheck, reporterEmail, ...rest }) => rest);
   items.sort((a, b) => a.expiresAt - b.expiresAt);
   return json({ items }, 200, origin);
 }

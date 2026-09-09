@@ -93,7 +93,7 @@ function normalizeView(raw: string | null): ReportView {
 export function ReportPage({ visible = true }: { visible?: boolean }) {
   const { call } = useApi();
   const { isAdmin, session } = useAuth();
-  const { members: allMembers, stale, hint, refresh } = useRosterPolling();
+  const { members: allMembers, stale, hint, refresh, refreshProgress } = useRosterPolling();
   // "내 화각 점검" 기능이 따로 있으므로 일반 회원에게는 제보 대상자
   // 드롭다운에서 본인을 아예 안 보여준다(사용자 결정) — 관리자는 기능
   // 테스트를 위해 계속 자기 자신도 선택할 수 있어야 하므로 예외로 둔다.
@@ -158,6 +158,14 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
 
   const noMembers = members.length === 0;
   const submitting = submittingMode !== null;
+  // 🔧 [사용자 지시] 도움봇이 꺼져있거나(stale) 다음 교시 시작이 임박해
+  // 촬영이 끊기는 구간(isWithinReconnectWindow)이면, 개별 입력 필드마다
+  // disabled를 거는 것만으로는 "지금 왜 안 되는지"가 한눈에 안 들어왔다
+  // — 폼 카드 전체를 반투명 오버레이로 덮어 문구를 보여주고 클릭 자체를
+  // 막는다. 스크린샷(3분)이 영상(90초)보다 리드타임이 더 길어, 그 기준
+  // (SCREENSHOT_LEAD_SEC)으로 막으면 두 모드 모두 안전하게 커버된다.
+  const isReconnectBlocked = isWithinReconnectWindow(SCREENSHOT_LEAD_SEC);
+  const isFormBlocked = stale || isReconnectBlocked;
 
   useEffect(() => {
     if (!nickname) {
@@ -247,6 +255,11 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
       });
       setMessage({ text: "내 화각 점검이 접수되었습니다. 잠시 후 확인됩니다.", type: "ok" });
       setMyCapturesRefreshSignal((n) => n + 1);
+      // 🔧 [사용자 지시] 셀프 체크도 이제 "최근 진행된 제보"(본인·관리자
+      // 한정 노출)에 뜨므로, 일반 제보와 동일하게 접수 즉시 그 목록을
+      // 갱신해 다음 폴링(최대 15초)을 기다리지 않고 바로 진행 상황이
+      // 보이게 한다.
+      setCooldownRefreshSignal((n) => n + 1);
     } catch (err) {
       const text = err instanceof ApiError ? err.message : "네트워크 오류입니다.";
       setMessage({ text, type: "error" });
@@ -297,9 +310,33 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
                 공용 SectionCard 기본값은 그대로 둠). */}
             <SectionCard className="shadow-sm shadow-black/[0.03]">
               <Collapsible defaultOpen className="flex flex-col">
-                <SectionHeader icon={Flag} title="화각 불량 제보" onRefresh={refresh} iconVariant="tint" />
+                <SectionHeader
+                  icon={Flag}
+                  title="화각 불량 제보"
+                  onRefresh={refresh}
+                  refreshProgress={refreshProgress}
+                  iconVariant="tint"
+                />
                 <CollapsiblePanel className="flex flex-col gap-4">
-                    <SectionCard className="flex flex-col gap-3">
+                    <SectionCard className="relative flex flex-col gap-3">
+                      {/* 🔧 [사용자 지시] 개별 입력 필드마다 disabled를 거는
+                          것만으로는 "지금 왜 안 되는지"가 한눈에 안 들어와,
+                          도움봇이 꺼져있거나(stale) 교시 시작이 임박한 구간
+                          (isReconnectBlocked)이면 카드 전체를 반투명
+                          오버레이로 덮어 문구를 보여주고 클릭 자체를 막는다.
+                          해당 없음(aria-hidden)으로 스크린리더가 안내
+                          문구만 읽고 뒤 폼은 건너뛰게 한다. */}
+                      {isFormBlocked && (
+                        <div
+                          className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1.5 rounded-xl bg-background/85 px-6 text-center backdrop-blur-[1px]"
+                          aria-hidden="true"
+                        >
+                          <TriangleAlert className="size-5 shrink-0 text-muted-foreground sm:size-6" />
+                          <span className="text-sm font-semibold text-foreground sm:text-base">
+                            {stale ? "도움봇이 가동중이지 않습니다." : "다음 교시 시작이 임박해 잠시 후 접수할 수 있습니다."}
+                          </span>
+                        </div>
+                      )}
                       <div className="flex flex-col gap-1.5">
                         <Label className="flex items-center gap-1.25 text-sm font-bold sm:text-base">
                           <User className="size-3 shrink-0 text-muted-foreground sm:size-3.5" />
@@ -343,15 +380,25 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
                           <Lightbulb className="size-3 shrink-0 text-muted-foreground sm:size-3.5" />
                           상태 메시지
                         </Label>
-                        {/* 🔧 [순차 활성화] 대상자 미선택 시 나머지 영역과 동일하게
-                            비활성화된 것처럼 회색으로 보여준다(사용자 지시) — 이
-                            카드 자체는 입력 요소가 아니라 disabled 속성을 못 쓰므로
-                            배경·테두리·텍스트 색을 무채색 톤으로 낮춰 시각적으로
-                            표현한다. */}
+                        {/* 🔧 [버그 수정] 대상자 미선택 시 나머지 영역과 동일하게
+                            비활성화된 것처럼 보여준다 — 이 카드 자체는 입력
+                            요소가 아니라 disabled 속성을 못 쓰므로 시각적으로
+                            표현해야 한다. 원래는 배경을 bg-muted/40으로
+                            바꾸고 opacity-60을 썼는데, 위아래 SelectTrigger
+                            (제보 대상자/제보 원인)의 비활성화 방식(배경은
+                            그대로 두고 opacity-50만 적용, disabled:opacity-50)
+                            과 색이 달라 보였다(사용자 지적) — 동일하게
+                            맞춘다. */}
+                        {/* 🔧 [버그 수정] 위아래 Select(SelectTrigger)는
+                            pl-3.5 sm:pl-4.5로 좌측 패딩을 명시적으로 키워
+                            뒀는데, 이 InfoCard만 그 오버라이드가 없어
+                            기본값(p-2.5 sm:p-3.5)을 써 좌측 여백이 더
+                            좁아 보였다(사용자 지적) — 나머지 두 필드와
+                            맞춘다. */}
                         <InfoCard
                           className={cn(
-                            "flex h-8 items-center py-0 sm:h-12",
-                            nickname ? "bg-card" : "bg-muted/40 opacity-60"
+                            "flex h-8 items-center bg-card py-0 pl-3.5 sm:h-12 sm:pl-4.5",
+                            !nickname && "opacity-50"
                           )}
                         >
                           <span
@@ -438,11 +485,6 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
                           내 화각 점검
                         </Button>
                       </div>
-                      {isWithinReconnectWindow(SCREENSHOT_LEAD_SEC) && (
-                        <p className="text-center text-micro-lg text-muted-foreground sm:text-xs">
-                          다음 교시 시작이 임박해 잠시 후 다시 접수할 수 있습니다.
-                        </p>
-                      )}
                     </SectionCard>
 
                     <ActiveReportsSection refreshSignal={cooldownRefreshSignal} />
@@ -482,7 +524,13 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
         {everOpened.current.notice && (
           <SectionCard className="shadow-sm shadow-black/[0.03]">
             <Collapsible defaultOpen className="flex flex-col">
-              <SectionHeader icon={Bell} title="PUSH 알림" onRefresh={refresh} iconVariant="tint" />
+              <SectionHeader
+                icon={Bell}
+                title="PUSH 알림"
+                onRefresh={refresh}
+                refreshProgress={refreshProgress}
+                iconVariant="tint"
+              />
               <CollapsiblePanel className="flex flex-col gap-4">
                 <SimpleNoticeSection members={members} noMembers={noMembers} stale={stale} />
               </CollapsiblePanel>
