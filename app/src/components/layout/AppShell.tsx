@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { TabBar } from "./TabBar";
 import { useAuth } from "@/lib/auth/useAuth";
@@ -35,13 +35,29 @@ export function AppShell({ children, title, titleIcon: TitleIcon, hideEyebrow, f
         // 시각적 구분을 위해 그대로 두고, 가장 바깥 여백만 모바일에서
         // 좁혀 실사용 폭을 확보한다 — sm 이상(태블릿/데스크톱)은 기존
         // p-4 그대로 유지.
-        "flex w-full flex-col items-center gap-4.5 p-2.5 sm:p-4",
-        fitToScreen ? "h-dvh overflow-hidden mobile-landscape:gap-2 mobile-landscape:p-2" : "min-h-dvh",
-        session && !fitToScreen && "pb-[calc(32px+64px+env(safe-area-inset-bottom,0px))]",
-        session &&
-          fitToScreen &&
-          "mobile-portrait:pb-[calc(32px+64px+env(safe-area-inset-bottom,0px))] mobile-landscape:pb-2"
+        "flex w-full flex-col items-center gap-4.5 px-2.5 pt-2.5 sm:px-4 sm:pt-4",
+        fitToScreen
+          ? "h-dvh overflow-hidden mobile-landscape:gap-2 mobile-landscape:px-2 mobile-landscape:pt-2 mobile-landscape:pb-2"
+          : "min-h-dvh",
+        session && fitToScreen && "mobile-portrait:pb-(--shell-pb-portrait)"
       )}
+      // 🔧 [버그 수정] 원래 pb를 Tailwind 임의값 calc()(3항 이상이라
+      // 클래스 자체를 못 만듦 — 배포본 CSS에 규칙 자체가 없었다)나,
+      // 이를 CSS 변수로 우회한 pb-(--shell-pb)(이번엔 클래스는 생겼지만
+      // sm:p-4 같은 shorthand 반응형 규칙이 항상 나중 미디어 쿼리
+      // 레이어에 쌓이는 Tailwind 구조상 계속 덮어써짐)로 시도했으나
+      // 둘 다 하단 고정 탭바(TabBar, 실제 높이 약 90px)가 콘텐츠 마지막
+      // 줄을 가리는 문제를 해결하지 못했다(사용자 발견: "아이패드에서
+      // 네비바에 아래가 가려진다"). 인라인 style은 클래스 특정성/소스
+      // 순서 경쟁 자체가 없어 항상 이기므로, paddingBottom을 JS로 직접
+      // 계산해 넣어 이 문제를 근본적으로 없앤다.
+      style={
+        {
+          paddingBottom:
+            session && !fitToScreen ? "calc(32px + 64px + env(safe-area-inset-bottom, 0px))" : undefined,
+          "--shell-pb-portrait": "calc(32px + 64px + env(safe-area-inset-bottom, 0px))",
+        } as CSSProperties
+      }
     >
       {title && (
         <header className="flex w-full page-content flex-col gap-0.5">
