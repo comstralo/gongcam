@@ -362,8 +362,17 @@ export function MyOutputPenSection({
                         {dateLabel(group.dateKey)}
                       </span>
                       <span className="ml-auto flex items-center gap-1.5">
-                        <span className="rounded-full bg-amber-600/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-amber-600 dark:bg-amber-400/15 dark:text-amber-400">
-                          {receivedCount}건
+                        {/* 🔧 [사용자 지시] 이 뱃지는 TintedPill이 아니라 별도로
+                            스타일링된 span이라, 다른 뱃지들을 "9월 9일
+                            수요일"과 같은 크기로 키운 것과 별개로 여전히
+                            작은 채(text-micro-lg sm:text-xs)였다 — 동일하게
+                            맞춘다. 🔧 [버그 수정] leading-none(line-height:1)
+                            때문에 패딩값이 같아도 배경(pill) 높이가
+                            TintedPill(기본 line-height, 28px)보다 6px
+                            작게(22px) 나와 "배경색 크기가 다르다"고
+                            보였다(사용자 지적) — leading-none을 없애 맞춘다. */}
+                        <span className="rounded-full bg-amber-600/15 px-2.5 py-0.5 text-sm font-semibold text-amber-600 sm:text-base dark:bg-amber-400/15 dark:text-amber-400">
+                          총 {receivedCount}건
                         </span>
                         <ChevronDown
                           className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", isDayExpanded && "rotate-180")}
@@ -421,8 +430,12 @@ export function MyOutputPenSection({
                                   들어간다(사용자 지시: "시간 아래에" 표시). */}
                               <div className="flex flex-col gap-1.5">
                                 <div className="flex items-center justify-between gap-1.5">
-                                  <span className="inline-flex shrink-0 items-center gap-1.25 text-xs font-semibold sm:text-sm">
-                                    <Clock className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                                  {/* 🔧 [사용자 지시] 이 시간 텍스트가 날짜 그룹 제목
+                                      ("9월 9일 수요일", text-sm sm:text-base)과 같은
+                                      위계(항목의 "제목" 역할)인데 한 단계 작은
+                                      text-xs sm:text-sm였다 — 크기를 맞춘다. */}
+                                  <span className="inline-flex shrink-0 items-center gap-1.25 text-sm font-semibold sm:text-base">
+                                    <Clock className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                     {/* 이미 날짜별로 묶여 있으므로(그룹 헤더에 날짜 표시) 여기서는
                                         시각만 보여준다(사용자 지시: 날짜는 빼고, 아이콘도 시계로). */}
                                     {new Date(item.ts).toLocaleTimeString("ko-KR")}
@@ -454,43 +467,56 @@ export function MyOutputPenSection({
                                       // 유예 뱃지를 "유예 N차" + 원래 조치("2차 (벌점)" 등) 2개로
                                       // 분리해 보여준다(사용자 지시로 여기도 통일).
                                       <>
-                                        <TintedPill tone="muted">
+                                        {/* 🔧 [사용자 지시] "유예도 구두경고 같은 노란색 뱃지로
+                                            표시해줘" — 확정 케이스의 사유 뱃지(구두경고/벌점 등)와
+                                            동일한 노란색 톤으로 맞춘다. */}
+                                        <TintedPill
+                                          tone="muted"
+                                          className="bg-yellow-500/15 text-yellow-600 dark:bg-yellow-400/15 dark:text-yellow-400"
+                                        >
                                           {received!.deferOccurrence ? `유예 ${received!.deferOccurrence}차` : "유예"}
                                         </TintedPill>
-                                        {/* 🔧 [버그 수정] deferredOccurrence(유예 확정 시점의 슬롯
-                                            스냅샷)를 우선 쓴다 — nextOccurrence는 조회 시점마다
-                                            재계산돼, 이 유예 건 확정 이후 다른 건이 실제로 그
-                                            슬롯을 채우면 표시 차수까지 밀려 보였다(관리자 화면과
-                                            동일 버그, 사용자 재현으로 발견). */}
-                                        <TintedPill tone="muted">
-                                          {occurrenceLabel(received!.deferredOccurrence ?? received!.nextOccurrence)}
-                                        </TintedPill>
+                                        {/* 🔧 [사용자 지시] 유예는 실제로 그 조치(구두경고/벌점 등)가
+                                            적용되지 않은 상태라, 사유 뱃지("N차 (사유)"/괄호 안
+                                            사유)를 아예 보여주지 않는다 — 남겨두면 "이미 그
+                                            조치가 적용됐다"는 혼동을 줄 수 있어서(사용자 확인).
+                                            "유예 N차" 뱃지와 시간 차감 뱃지만 남긴다. 상세 펼침
+                                            영역은 여전히 occurrenceLabel(전체 문구)을 그대로
+                                            보여준다 — 거기는 "원래대로라면 몇 차 (사유)였을지"를
+                                            설명하는 문맥이라 혼동 소지가 없다. */}
                                         {/* 🔧 [차감시간 뱃지 추가] 유예도 벌점과 별개로 응답 지연
                                             시간 차감이 확정되므로(사용자 지시) 세 번째 뱃지로
-                                            함께 노출한다. */}
-                                        <TintedPill tone="muted">
-                                          {formatDeductedTime(received!.timeDeduction?.deductedMinutes ?? 0)}
-                                        </TintedPill>
+                                            함께 노출한다. 🔧 [사용자 지시] 차감시간이 0분("-00:00")
+                                            이면 뱃지 자체를 보여주지 않는다 — 차감이 없다는 걸
+                                            뱃지로 강조할 필요가 없으므로. */}
+                                        {(received!.timeDeduction?.deductedMinutes ?? 0) > 0 && (
+                                          <TintedPill tone="muted">
+                                            {formatDeductedTime(received!.timeDeduction?.deductedMinutes ?? 0)}
+                                          </TintedPill>
+                                        )}
                                       </>
                                     ) : received!.reviewStatus === "approved" ? (
                                       // 🔧 [차수 뱃지 추가] "확정" 뱃지 옆에도 유예와 동일하게
-                                      // "확정 적용" 값(몇 차 · 어떤 조치)을 별도 뱃지로 붙여
-                                      // 상세를 펼치지 않아도 바로 볼 수 있게 한다(사용자 지시).
+                                      // "확정 적용" 값(어떤 조치)을 별도 뱃지로 붙여 상세를
+                                      // 펼치지 않아도 바로 볼 수 있게 한다(사용자 지시) — 헤더
+                                      // 뱃지는 괄호 안 사유만 보여준다(위와 동일한 이유).
                                       <>
                                         <TintedPill tone="warn">확정</TintedPill>
                                         <TintedPill
                                           tone="muted"
                                           className="bg-yellow-500/15 text-yellow-600 dark:bg-yellow-400/15 dark:text-yellow-400"
                                         >
-                                          {occurrenceLabel(received!.penalty?.occurrence ?? received!.nextOccurrence)}
+                                          {actionLabel(received!.penalty?.occurrence ?? received!.nextOccurrence)}
                                         </TintedPill>
                                         {/* 🔧 [차감시간 뱃지 추가] "확정 차감시간" 값도 세 번째
-                                            뱃지로 함께 노출한다(사용자 지시). */}
-                                        <TintedPill tone="muted">
-                                          {formatDeductedTime(
-                                            received!.penalty?.deductedMinutes ?? received!.timeDeduction?.deductedMinutes ?? 0
-                                          )}
-                                        </TintedPill>
+                                            뱃지로 함께 노출한다(사용자 지시) — 0분이면 숨긴다. */}
+                                        {(received!.penalty?.deductedMinutes ?? received!.timeDeduction?.deductedMinutes ?? 0) > 0 && (
+                                          <TintedPill tone="muted">
+                                            {formatDeductedTime(
+                                              received!.penalty?.deductedMinutes ?? received!.timeDeduction?.deductedMinutes ?? 0
+                                            )}
+                                          </TintedPill>
+                                        )}
                                       </>
                                     ) : (
                                       (() => {
@@ -504,11 +530,18 @@ export function MyOutputPenSection({
                                 </div>
                               </div>
 
+                              {/* 🔧 [버그 수정] 여기 pt-2.5가 부모 Collapsible의
+                                  gap-2.5(헤더-패널 사이 간격)에 더해져 중복 적용돼,
+                                  펼쳤을 때 구분선이 "접혔을 때 카드 하단선" 위치보다
+                                  더 아래로 밀려나 이어지는 느낌이 끊겼다(사용자 지적:
+                                  "구분선이 접혔을 때의 영역 끝 지점이랑 맞춰서
+                                  펼쳐지도록"). pt를 없애 gap만으로 간격을 주면
+                                  두 지점이 정확히 일치한다. */}
                               <CollapsiblePanel className="flex flex-col">
-                                <div className="flex flex-col gap-3 pt-2.5 sm:gap-3.5">
+                                <div className="flex flex-col gap-3 sm:gap-3.5">
                                   <div className="h-px w-full bg-border" />
                                   <div className="flex flex-col gap-1.5">
-                                    <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                                    <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                                       <ImageIcon className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                       스크린샷 · 영상
                                     </span>
@@ -526,7 +559,7 @@ export function MyOutputPenSection({
                                     <>
                                       <div className="h-px w-full bg-border" />
                                       <div className="flex flex-col gap-1.5">
-                                        <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                                        <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                                           <FileText className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                           제보정보
                                         </span>
@@ -539,7 +572,7 @@ export function MyOutputPenSection({
                                       <div className="h-px w-full bg-border" />
 
                                       <div className="flex flex-col gap-1.5">
-                                        <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                                        <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                                           <Clock className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                           학습시간 차감
                                         </span>
@@ -576,7 +609,7 @@ export function MyOutputPenSection({
                                       <div className="h-px w-full bg-border" />
 
                                       <div className="flex flex-col gap-1.5">
-                                        <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                                        <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                                           <Gavel className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                           벌점 · 페널티 변동
                                         </span>

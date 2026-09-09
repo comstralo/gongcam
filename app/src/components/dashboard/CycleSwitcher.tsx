@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, RotateCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, RotateCw } from "lucide-react";
 import { useApi } from "@/hooks/useApi";
-import { ICON_STROKE } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import type { CycleListResponse, CycleWeek } from "@/lib/api/types";
 
 // weekOf/weekTo는 백업 파일명에서 온 "YYMMDD" 형식이다.
@@ -159,6 +159,7 @@ export function CycleSwitcher({
 
   const browsedSlot = slots[browseIndex];
   const browsedIsCurrentWeek = browseIndex === currentWeekIndex;
+  const browsedHasData = hasDataAt(browseIndex);
   const thisWeek = thisWeekRange();
 
   return (
@@ -176,17 +177,28 @@ export function CycleSwitcher({
       </button>
 
       <div className="flex items-center gap-1.5 text-center">
-        <CalendarDays className="size-3.5 shrink-0 text-primary sm:size-4" strokeWidth={ICON_STROKE.default} />
         {/* 🔧 [사용자 지시] "이번 주" 대신 다른 과거 슬롯과 동일하게
-            "N주차"로 통일하고, 지금 진행 중인 슬롯(마지막 슬롯)임을
-            "N주차" 바로 왼쪽에 작은 "진행" 뱃지로 표시한다. */}
-        {browsedIsCurrentWeek && (
-          <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-micro font-bold text-primary">
-            진행
+            "N주차"로 통일하고, 지금 진행 중인지/과거인지를 "N주차" 바로
+            왼쪽에 뱃지로 표시한다("진행"→"현재", 과거 슬롯이면 "과거").
+            데이터가 없는 슬롯(browsedHasData=false)은 애초에 "몇 주차"
+            자체가 의미 없으므로 뱃지를 생략한다. 패딩을 TintedPill과
+            동일하게 맞춰 "확정" 등 다른 뱃지와 크기를 통일한다(원래
+            px-1.5 py-0.5로 더 작았음). */}
+        {browsedHasData && (
+          <span
+            className={cn(
+              "rounded-full px-2.5 py-0.5 text-sm font-bold sm:text-base",
+              browsedIsCurrentWeek ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
+            )}
+          >
+            {browsedIsCurrentWeek ? "현재" : "과거"}
           </span>
         )}
-        <span className="text-sm font-medium sm:text-base">{browseIndex + 1}주차</span>
-        <span className="text-sm text-muted-foreground sm:text-base">
+        {/* 🔧 [사용자 지시] "3주차"와 날짜의 색을 서로 바꾼다 — 주차 숫자는
+            보조 정보로 muted, 실제 날짜 구간이 더 중요한 정보이므로
+            기본 전경색으로. */}
+        <span className="text-sm font-medium text-muted-foreground sm:text-base">{browseIndex + 1}주차</span>
+        <span className="text-sm font-medium sm:text-base">
           {browsedIsCurrentWeek
             ? `${thisWeek.start} ~ ${thisWeek.end}`
             : browsedSlot

@@ -30,6 +30,11 @@ const PILL_TONE_CLASSES: Record<PillTone, string> = {
 };
 
 // 대시보드 전반(내 대시보드/전체 대시보드/지난 기록)에서 반복되는 "틴트된 상태 배지".
+// 🔧 [사용자 지시] "제보 화면에서 뱃지들의 텍스트 위계는 9월 9일 수요일과
+// 같은 크기야?"라고 물었을 때 실제로는 한 단계 작았다(text-micro-lg
+// sm:text-xs, 12.5px/12px) — 항목 제목급 텍스트("9월 9일 수요일", "오전
+// 1:48:19" 등, text-sm sm:text-base)와 동일한 크기로 맞춘다(사용자 결정:
+// "동일하게 바꿔"). 공용 컴포넌트라 앱 전역의 뱃지에 함께 적용된다.
 export function TintedPill({
   tone,
   icon: Icon,
@@ -41,15 +46,18 @@ export function TintedPill({
   children: ReactNode;
   className?: string;
 }) {
+  // 🔧 [사용자 지시] 뱃지 텍스트 크기를 키운(text-sm sm:text-base) 뒤로
+  // 상하 패딩(py-1)이 상대적으로 너무 두꺼워 보였다("상하가 부하게
+  // 보인다") — 좌우(px-2.5)는 그대로 두고 상하만 줄인다.
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-micro-lg font-semibold sm:text-xs",
+        "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-sm font-semibold sm:text-base",
         PILL_TONE_CLASSES[tone],
         className
       )}
     >
-      {Icon && <Icon className="size-3 sm:size-3.5" strokeWidth={ICON_STROKE.emphasis} />}
+      {Icon && <Icon className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.emphasis} />}
       {children}
     </span>
   );
