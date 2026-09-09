@@ -2,11 +2,7 @@ import { createContext, useCallback, useEffect, useRef, useState, type ReactNode
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/lib/auth/useAuth";
 import { PULL_REFRESH_EVENT } from "@/hooks/usePullToRefresh";
-import { isIdleFor } from "@/lib/idleTracker";
 import type { StatusResponse } from "@/lib/api/types";
-
-// usePollingRefresh와 동일한 기준 — app/src/hooks/usePollingRefresh.ts 참고.
-const IDLE_THRESHOLD_MS = 5 * 60_000;
 
 export type MyStatusContextValue = {
   status: StatusResponse | null;
@@ -23,22 +19,7 @@ export const MyStatusContext = createContext<MyStatusContextValue | null>(null);
 // 페이지를 옮길 때마다 이미 아는 값(예: 시트 이름)이 잠깐 비어 있다가 다시
 // 채워지는 깜빡임이 생긴다 — 다른 회원 조회/과거 사이클 조회처럼 파라미터가
 // 붙는 조회는 각 페이지가 지금처럼 별도로 호출하고, 이 캐시는 건드리지 않는다.
-//
-// 🔧 [사용자 지시] "탭 전환 정책과 캐싱 정책을 원초적으로 재검토해서 KV
-// 쓰기 삭제를 절약할 방안" — useMyStatus() 사용처를 전수조사한 결과 이
-// 전역 상태를 실제로 쓰는 화면은 StatusPage(대시보드 MY 탭)와
-// SettingsPage 둘뿐이었다. 그런데 이 Provider는 원래 라우팅 정보를 모르는
-// 위치(App.tsx의 HashRouter 바로 안)에 있어 "지금 어느 화면을 보고
-// 있는지"와 무관하게 세션이 있는 동안 항상 15분 폴링을 돌렸다 — 제보/
-// 알림/링크/관리자 화면에 있는 동안에도 그 두 화면과 무관한 캐시
-// (personalStatus/meritRank/penCycle/outputPenSlots/reportScore)가
-// 계속 재작성됐다(wrangler tail 실시간 로그로 실측 확인). App.tsx가 이제
-// visible(그 두 화면 중 하나를 보고 있는지)을 넘겨준다 — 최초 로드(로그인
-// 직후 1회, 화면 전환 시 깜빡임 방지가 원래 목적)와 pull-to-refresh
-// 리스너는 사용자의 명시적 액션이거나 "다른 화면에 있어도 미리 준비해
-// 두는" 원래 설계 의도이므로 visible과 무관하게 그대로 두고, 아래 15분
-// 폴링 타이머에만 조건을 추가한다.
-export function MyStatusProvider({ children, visible = true }: { children: ReactNode; visible?: boolean }) {
+export function MyStatusProvider({ children }: { children: ReactNode }) {
   const { call } = useApi();
   const { session } = useAuth();
   const [status, setStatusState] = useState<StatusResponse | null>(null);
@@ -93,36 +74,11 @@ export function MyStatusProvider({ children, visible = true }: { children: React
   // 감지 대신 세션이 있는 동안 계속 타이머를 돌린다 — /status가 조합하는
   // 캐시 중 가장 짧은 것(5분)의 3배 이상 주기로 폴링해, 앱을 계속 띄워둔
   // 채로도 자동 갱신되게 한다(docs/CACHING_POLICY.md §14).
-  // 🔧 [사용자 지시] "메뉴나 탭 전환 정책과 웹 캐싱 정책을 원초적으로
-  // 다시 판단해서 KV 쓰기 삭제를 절약할 방안을 조사해줘" — 이 Provider는
-  // "페이지 단위 visible 개념이 없다"는 게 곧 "어느 화면을 보고 있든,
-  // 심지어 브라우저 탭이 백그라운드여도 항상 돈다"는 뜻이었다. 실시간
-  // 로그로 실측: 관리자가 Bot·Sheet 탭을 보고 있는 중에도 이 타이머가
-  // /status를 호출해 personalStatus/meritRank/penCycle/outputPenSlots를
-  // 재작성했다 — "웹앱을 열어둔 채 자리를 비우면" 계속 KV를 쓰는 가장
-  // 광범위한 원인이었다(§13). Page Visibility API로 브라우저 탭이 실제로
-  // 안 보이는 순간의 틱은 건너뛴다 — 다시 포그라운드로 돌아오면 다음
-  // 정기 틱부터 재개된다. 🔧 [B 방안] 여기에 더해 visible(App.tsx가
-  // 넘겨주는, "대시보드 또는 설정 화면을 보고 있는지")도 함께 체크한다 —
-  // 두 조건 중 하나라도 걸리면(다른 화면에 있거나, 브라우저 탭이
-  // 백그라운드거나) 이 틱은 건너뛴다.
-  // 🔧 [G 방안] "더 적용할만한건 더 없는지 연구해줘" — A/B를 배포한
-  // 뒤에도 wrangler tail 실시간 로그로 확인해보니, 관리자가 대시보드/
-  // 설정 화면을 실제로 띄워놓고(document.hidden=false, visible=true)
-  // 자리를 비우거나 다른 작업을 하는 동안에도 이 타이머는 정상적으로
-  // 계속 돌았다 — document.hidden과 visible만으로는 "화면은 보이지만
-  // 실제로는 안 쓰고 있음"을 구분할 수 없었다. idleTracker(마지막 사용자
-  // 조작 시각을 앱 전역에서 추적)로 이 경우도 건너뛴다.
   useEffect(() => {
     if (!session) return;
-    const timer = setInterval(() => {
-      if (document.hidden) return;
-      if (!visible) return;
-      if (isIdleFor(IDLE_THRESHOLD_MS)) return;
-      refresh();
-    }, 15 * 60_000);
+    const timer = setInterval(refresh, 15 * 60_000);
     return () => clearInterval(timer);
-  }, [session, refresh, visible]);
+  }, [session, refresh]);
 
   function setStatus(updater: StatusResponse | ((prev: StatusResponse | null) => StatusResponse | null)) {
     // 낙관적 업데이트(예: 반휴 신청 성공 직후 잔여량 즉시 감소)도 하나의

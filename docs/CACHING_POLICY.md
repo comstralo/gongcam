@@ -471,84 +471,33 @@ isolate 분산과 KV 히트율에 달려 있어 정적 코드 조사만으로는
 (다른 SPA 내부 탭에 가려짐)에는 타이머 자체를 돌리지 않아, 보이지 않는
 화면이 백그라운드에서 계속 요청을 쌓는 것도 막는다.
 
-> 🔧 **[2026-09-09 보강] Page Visibility API 추가** — 위 `visible`은
-> "SPA 내부 탭 전환"(Account↔PEN·Money 등)만 감지할 뿐, **브라우저 탭
-> 자체가 다른 탭에 가려지거나 최소화되거나 화면이 꺼진 경우는 전혀
-> 감지하지 못했다.** §13의 실시간 로그(`wrangler tail`)로 실측한 결과,
-> 관리자가 "Bot·Sheet" 탭을 보고 있는 중에도 `MyStatusProvider`(전역,
-> 세션 존재 기준 15분 폴링)가 `/status`를 호출해 무관한 캐시들을
-> 재작성하고 있었다 — "웹앱을 열어둔 채 자리를 비우면(다른 브라우저
-> 탭으로 전환, 최소화, 잠듦 등) 폴링이 계속 KV를 소진한다"는, `visible`
-> 체크만으로는 막을 수 없던 근본 원인이었다. `usePollingRefresh`와
-> `MyStatusProvider`의 타이머 콜백에 `document.hidden` 체크를 추가했다
-> — 타이머 자체는 계속 돌지만, 브라우저 탭이 실제로 안 보이는 순간의
-> 틱은 `load()`/`refresh()` 호출을 건너뛴다. 다시 포그라운드로 돌아오면
-> 다음 정기 틱부터 재개된다(최악의 경우 `intervalMs`만큼 지연 — 낭비를
-> 막는다는 목적에 부합하고, 급하면 수동 새로고침 버튼으로 즉시 받아올
-> 수 있다). `useRefreshOnVisible`(탭 재방문 시 즉시 재조회)은 이번엔
-> 건드리지 않았다 — 그건 별도 절감 방안(트리거 조건 강화)으로 남겨둔다.
-
-> 🔧 **[2026-09-09 추가 보강] `MyStatusProvider` 자체를 화면 범위로 좁힘** —
-> 위 `document.hidden` 체크로도 `MyStatusProvider`는 여전히 "세션이 있는 동안
-> 항상" 15분 폴링을 돌렸다 — `useMyStatus()`를 실제로 쓰는 화면은
-> `StatusPage`(대시보드)와 `SettingsPage` 둘뿐인데(사용처 전수조사로 확인),
-> 이 Provider가 원래 `App.tsx`의 `HashRouter` 바로 안(라우팅 정보를 모르는
-> 위치)에 있어 제보/알림/링크/관리자 화면에 있는 동안에도 무관한 캐시
-> (personalStatus/meritRank/penCycle/outputPenSlots/reportScore)를 계속
-> 재작성했다(`wrangler tail` 실측). Provider를 `useLocation`을 쓸 수 있는
-> `MainViews` 내부로 옮기고, `visible={path === "/" || path === "/settings"}`를
-> 넘겨 타이머 콜백에 `if (!visible) return;`을 추가했다 — 최초 로드(로그인
-> 직후 1회, 화면 전환 시 깜빡임 방지 목적)와 pull-to-refresh 리스너는 이
-> `visible`과 무관하게 그대로 둔다(사용자가 그 화면으로 돌아왔을 때 바로
-> 최신값을 보여주려는 원래 의도이므로). `/login`, `/checker`는 `useMyStatus`를
-> 쓰지 않아(확인 완료) Provider 밖에 있어도 안전하다.
-
-> 🔧 **[2026-09-09 추가 보강] 유휴 감지(Idle Detection)** — 위 방안들
-> (§12.1 본문의 `visible`, `document.hidden`, 바로 위 화면 범위 제한)을 배포한 뒤에도
-> `wrangler tail` 실시간 로그로 재확인한 결과, 관리자가 화면(예: "참여
-> 스터디원 목록")을 실제로 띄워놓은 채 자리를 비우거나 다른 작업을 하는
-> 동안에도 폴링이 정상적으로 계속 돌았다 — 탭이 다른 SPA 탭에 가려지지도,
-> 브라우저 탭 자체가 백그라운드로 가지도 않았으니 두 조건 다 통과해
-> 버리기 때문이다. `app/src/lib/idleTracker.ts`를 신설해, 마우스/키보드/
-> 터치 조작이 일정 시간 없었으면 "화면은 보이지만 실제로는 안 쓰고
-> 있다"고 판단해 폴링 틱을 건너뛴다. 앱 전체가 이벤트 리스너 하나를
-> 공유한다(훅마다 걸면 관리자 탭처럼 여러 섹션이 동시에 폴링을 도는
-> 화면에서 리스너가 중복 등록되므로) — 모듈이 로드되는 즉시(React
-> 생명주기와 무관하게 단 한 번) 등록되고, `isIdleFor(thresholdMs)`는 그
-> 결과를 읽기만 하는 순수 함수다. `useRefreshOnVisible`(탭 재방문 시
-> 즉시 재조회)에는 적용하지 않았다 — 탭을 클릭해 전환하는 행위 자체가
-> 명백한 활동 신호라 적용할 이유가 없다. 각 컴포넌트의 최초 마운트
-> 로드(`useEffect(load, [])`)도 이 판정과 무관하게 그대로 실행된다 —
-> idle 여부와 상관없이 화면이 뜰 때 데이터는 항상 채워져야 한다.
-
-> 🔧 **[2026-09-09 재수정] 유휴 기준 5분 → 2분** — 처음엔 5분으로
-> 잡았는데, 이건 가장 짧은 폴링 주기(3분, `ReportReviewList`/
-> `PenaltyCandidateList`/`PaidFineList`/`MyOutputPenSection`)보다 더
-> 길어서 "각 화면 폴링 주기보다 충분히 짧아야 의미가 있다"는 위 설계
-> 원칙 자체를 어기고 있었다 — 유휴가 시작된 시점부터 3분 뒤(첫 틱)까지는
-> 아직 유휴 5분을 못 채워 그 한 번의 재폴링은 항상 통과됐고, 그다음
-> 틱(6분)부터야 차단됐다. Playwright로 `document.hidden`과 idle을 각각
-> 합성 이벤트로 격리 조작해 실측 검증한 결과 정확히 이 패턴(1회 통과
-> 후 차단)이 재현됨을 확인했다. 가장 짧은 폴링 주기(3분)보다 짧은
-> 2분으로 낮춰, 유휴가 시작되면 그다음 틱부터 곧바로 차단되게 했다 —
-> 15분 폴링 화면들(`StatusPage`/`MemberRosterList`)에는 더 보수적으로
-> 작동할 뿐 부작용이 없다. `usePollingRefresh.ts`의 `IDLE_THRESHOLD_MS`
-> 하나만 공유되므로 모든 폴링 화면에 일괄 적용된다(`MyStatusContext`는
-> 자체 상수를 따로 갖고 있어 원래도 5분 그대로 — 15분 폴링 기준으로는
-> 이미 충분히 짧다).
-
-> 🔧 **[2026-09-09 UI 버그 수정] 새로고침 게이지가 hidden/idle과 무관하게
-> 계속 돌던 문제** — 사용자 지적: "게이지가 계속 움직이면 사용자는 그걸
-> 새로고침되는 거라고 오해할 수도 있잖아". `usePollingRefresh`는 실제
-> 재조회를 하는 `dataTimer`와 게이지를 채우는 `displayTimer`가 원래
-> 완전히 독립적이라, hidden/idle로 `dataTimer`가 건너뛰어도
-> `displayTimer`는 그대로 돌아 게이지가 정상적으로 다 차올랐다가
-> 리셋되길 반복했다 — "지금 자동으로 새로고침되고 있다"는 잘못된
-> 인상을 준다. `displayTimer`도 매 틱마다 같은 hidden/idle 조건을 함께
-> 확인해, 건너뛰는 동안 흐른 시간만큼 기준 시각(`startedAt`)을 함께
-> 밀어 그 구간엔 게이지가 그 자리에서 멈춰 있는 것처럼 보이게 했다 —
-> 다시 활성화되면(탭이 다시 보이거나 조작을 재개하면) 멈췄던 지점부터
-> 자연스럽게 이어서 채워진다.
+> 🔧 **[2026-09-09 시도 후 원복] Page Visibility API(A) / `MyStatusProvider`
+> 화면 범위 제한(B) / 유휴 감지(G)** — 같은 날 세 가지를 순서대로 추가해
+> 배포했었다: (A) 브라우저 탭이 다른 탭에 가려지거나 최소화된 순간의
+> 폴링 틱을 `document.hidden`으로 건너뛰기, (B) `MyStatusProvider`를
+> `App.tsx`의 `HashRouter` 바로 아래(라우팅 정보를 모르는 위치)에서
+> `MainViews` 내부로 옮겨 대시보드/설정 화면일 때만 15분 폴링이 돌게
+> 좁히기, (G) `app/src/lib/idleTracker.ts`를 신설해 마우스/키보드/터치
+> 조작이 일정 시간(처음 5분, 이후 3분 폴링 주기보다 짧게 2분으로 재조정)
+> 없으면 "화면은 보이지만 실제로는 안 쓰고 있다"고 판단해 폴링 틱을
+> 건너뛰기. `wrangler tail` 실시간 로그와 Playwright(각 조건을 합성
+> 이벤트로 격리 조작)로 세 가지 모두 의도대로 정확히 동작함을 검증까지
+> 마쳤었다. 게이지도 hidden/idle로 실제 재조회가 건너뛰어질 때 표시용
+> `displayTimer`가 계속 정상적으로 차올라 "지금 새로고침되고 있다"는
+> 오해를 줄 수 있다는 지적에 맞춰 함께 동결시키도록 고쳤었다.
+>
+> 이후 사용자가 "가만히 화면을 보고만 있는데(스크롤·클릭 없이) 갱신이
+> 멈추는 게 이상하다"고 지적했다 — 유휴 감지는 실제 조작 이벤트만
+> 보므로 "화면을 계속 읽고만 있는" 정당한 사용 패턴과 "자리를 비운"
+> 상태를 구분할 수 없다는 근본적 한계가 있었다. 이 한계를 어떻게
+> 완화할지(유휴 기준을 다시 늘리거나, 멈췄을 때 이유를 보여주는 UI를
+> 추가하는 등) 검토하기 전에, 우선 세 가지를 전부 걷어내 원점(§13
+> 진단 도구만 있는 상태)으로 되돌렸다 — `app/src/App.tsx`,
+> `app/src/hooks/usePollingRefresh.ts`, `app/src/lib/status/
+> MyStatusContext.tsx`를 A/B/G 이전 커밋(`0f2f43d`) 상태로 되돌리고
+> `idleTracker.ts`는 삭제했다. §13의 화면별 KV 쓰기/삭제 추적 로그(진단
+> 도구)는 A/B/G와 무관하게 그대로 남아 있다 — 다시 절감 방안을 설계할
+> 때 이 로그로 원인을 다시 좁힐 수 있다.
 
 ### 12.2 적용한 화면과 주기
 
@@ -560,7 +509,7 @@ isolate 분산과 KV 히트율에 달려 있어 정적 코드 조사만으로는
 | `MyOutputPenSection`(내 송출 P 제보 확인) | `penSlotGrid:` 60초 | 3분 |
 | `StatusPage`(다른 회원/과거 사이클 조회) | `members:`/`meritRank:`/`outputPenSlots:`/`penCycle:` 5분, `reportScore:` 30분 | 15분(가장 짧은 쪽 기준) |
 | `MemberRosterList`(참여 스터디원 목록) | `members:`/`meta:` 5분 | 15분 |
-| `MyStatusContext`(내 대시보드, 앱 전역 Provider) | `personalStatus:` 10분 등 §12.1 상동 | 15분, 대시보드/설정 화면일 때만(B) + `document.hidden`(A) + 5분 유휴(G) 모두 적용 |
+| `MyStatusContext`(내 대시보드, 앱 전역 Provider) | `personalStatus:` 10분 등 §12.1 상동 | 15분, `visible` 대신 세션 존재 기준(A/B/G 원복 — §12.1 상단 참고) |
 
 `AdminMoneyTab`의 `PrizeRecipientList`(`/roster-status`)는 `buildRosterStatus`
 가 `_cachedCompute` 없이 매번 직접 시트를 조회하는 무캐시 경로라(§3
