@@ -50,17 +50,35 @@ export function usePollingRefresh(visible: boolean, load: () => void, intervalMs
 
   useEffect(() => {
     if (!visible) return;
-    const startedAt = Date.now();
+    let startedAt = Date.now();
+    let lastTick = startedAt;
     setProgress(1);
 
+    function isBlocked() {
+      return document.hidden || isIdleFor(IDLE_THRESHOLD_MS);
+    }
+
     const dataTimer = setInterval(() => {
-      if (document.hidden) return;
-      if (isIdleFor(IDLE_THRESHOLD_MS)) return;
+      if (isBlocked()) return;
       loadRef.current();
     }, intervalMs);
     // 표시용 카운트다운 — 1초마다 남은 비율만 갱신, 네트워크 요청 없음.
+    // 🔧 [게이지 오해 방지] hidden/idle로 실제 재조회(dataTimer)가 건너뛰어져도
+    // 이 타이머는 원래 독립적으로 계속 돌아, 게이지만 정상적으로 다 차올랐다가
+    // 리셋되길 반복했다 — 사용자 입장에서는 "지금 자동 새로고침되고 있다"는
+    // 잘못된 인상을 준다(실제로는 안 쓰이고 있는데도). 건너뛰는 동안 흐른
+    // 시간만큼 startedAt을 함께 밀어, 그 구간은 게이지가 그 자리에서 멈춰
+    // 있는 것처럼 보이게 한다 — 다시 활성화되면 멈췄던 지점부터 자연스럽게
+    // 이어서 채워진다.
     const displayTimer = setInterval(() => {
-      const elapsed = (Date.now() - startedAt) % intervalMs;
+      const now = Date.now();
+      const delta = now - lastTick;
+      lastTick = now;
+      if (isBlocked()) {
+        startedAt += delta;
+        return;
+      }
+      const elapsed = (now - startedAt) % intervalMs;
       setProgress(1 - elapsed / intervalMs);
     }, 1000);
 
