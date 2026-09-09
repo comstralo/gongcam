@@ -512,7 +512,42 @@ KV 캐시가 아니라 매 요청마다 `proxyToBotDashboard(env, "/status")`로
 `MemberRosterList`까지 실제로 전달하도록 고치고, `useRefreshOnVisible`도
 함께 추가했다 — 폴링 설계 과정에서 발견한 부수적 버그 수정.
 
-## 13. 관련 문서
+## 13. 화면별 KV 쓰기/삭제 추적 로그 (2026-09-09 신설)
+
+사용자가 "관리자 3명이 화면을 계속 켜 놓으면 어떤 문제가 생기냐"고 물으며
+"어느 화면에서 어떤 기능에 의해 쓰기·삭제가 주기적으로 발생하는지" 확실히
+알고 싶다고 요청해 추가한 진단 도구다. §5.1의 Cloudflare 실측 게이지
+(`kvWritesToday`)는 "오늘 하루 총합"만 보여줄 뿐 "어디서" 늘어나는지는
+알려주지 않는다는 한계가 있었다.
+
+- **구현**: `fetch`/`scheduled` 핸들러 진입 시 `env.REPORTS_KV`를 얇은
+  프록시(`instrumentKvNamespace`, index.js)로 한 번만 감싼다 — 58곳에
+  흩어진 개별 `.put()`/`.delete()` 호출부는 전혀 건드리지 않고, 이후의
+  모든 호출을 자동으로 가로챈다. 각 호출마다 (연산 kv_put/kv_delete ×
+  캐시 종류 × 이 요청의 URL pathname)을 인메모리 카운터
+  (`_kvUsageCounters`, sheets API 카운터와 별도 Map으로 분리, 30분 창)에
+  누적하고, `wrangler tail`에서 바로 보이도록 `console.log`도 함께
+  남긴다(`[kv put] path=/admin/captures key=sheetCache:exitStatus:...`).
+- **캐시 종류 표기**: `sheetCache:`(§1의 KV_CACHE_PREFIX)로 시작하는
+  키만 두 번째 세그먼트까지 포함해 `sheetCache:exitStatus:`처럼 §3 표의
+  캐시 종류가 그대로 드러나게 한다. 그 외(`report:`/`leaveq:`/
+  `exitRequest:` 등)는 첫 세그먼트만.
+- **확인 방법**: `GET /admin/usage` 응답의 `kvWriteBreakdown` 배열
+  (`{op, kind, path, count}[]`), "Bot·Sheet" 탭 "사용량 모니터링" 섹션에
+  "최근 30분 KV 쓰기·삭제 — 화면별"로 표시된다. `path`를 이 문서 §12.2의
+  화면↔엔드포인트 매핑과 대조하면 "어느 화면"인지 바로 알 수 있다.
+  개별 이벤트 하나하나를 놓치지 않고 보려면(예: 정확히 몇 시 몇 분에
+  발생했는지) `wrangler tail`로 실시간 로그를 직접 관찰하는 것이 이
+  인메모리 집계보다 정확하다 — 집계는 isolate 콜드스타트마다 리셋되는
+  근사치다.
+- **한계**: 여러 isolate로 요청이 분산되면 이 집계는 "지금 이 요청을
+  처리한 isolate가 최근 30분간 직접 본 것"만 보여준다 — 다른 isolate가
+  처리한 호출은 여기 안 잡힌다(§9.2의 isolate 분산 한계와 같은 종류).
+  "정확한 하루 총합"은 §5.1의 Cloudflare 실측 게이지를 신뢰하고, 이
+  breakdown은 "지금 이 순간 뭐가 반복해서 쓰는지" 원인을 좁히는 용도로
+  쓴다.
+
+## 14. 관련 문서
 
 - `docs/WEB_ADMIN.md` §3.1 — `applyOutputPenalty`/`applyReportMerit`/
   `applyTimeDeduction`가 실제로 호출되는 관리자 제보 처리 화면·플로우.

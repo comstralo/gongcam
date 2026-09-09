@@ -189,21 +189,32 @@ function UsageMonitorSection({ visible }: { visible: boolean }) {
                       unit="회"
                     />
                     {/* 🔧 [사용자 지시] "해당 로그를 남겨서 어디서 누수가
-                        발생하는지 알 수 있도록 해줘" — 위 게이지는
-                        Cloudflare 실측 총합만 보여줘 "어디서" 늘어나는지는
-                        알 수 없었다. 이 Worker isolate가 최근 5분간 실제로
-                        호출한 KV.put/delete를 키 접두사별로 집계해 함께
-                        보여준다(isolate당 근사치 — 정확한 하루 총합은
-                        위 게이지를 신뢰). */}
+                        발생하는지 알 수 있도록 해줘" → "어느 화면에서 어떤
+                        기능에 의해 주기적으로 발생하는지 확인할 수 있도록,
+                        좀 더 확실하게 원인을 알고 싶어" — 처음엔 캐시
+                        종류만 보여줘 "어디서" 늘어나는지는 알 수 없었다.
+                        이제 이 Worker isolate가 최근 30분간 실제로 호출한
+                        KV.put/delete를 (연산·캐시종류·요청경로) 조합으로
+                        집계해 함께 보여준다 — path로 어느 화면인지(§docs/
+                        CACHING_POLICY.md §12.2의 화면↔엔드포인트 매핑과
+                        대조), kind로 어떤 캐시인지 바로 알 수 있다
+                        (isolate당 근사치 — 정확한 하루 총합은 위 게이지를
+                        신뢰). 개별 이벤트 단위까지 보려면 wrangler tail의
+                        [kv put]/[kv delete] 로그를 함께 참고. */}
                     {usage.kvWriteBreakdown.length > 0 && (
                       <div className="flex flex-col gap-0.5">
-                        <FieldLabel>최근 5분 KV 쓰기·삭제 (이 서버 기준)</FieldLabel>
-                        {usage.kvWriteBreakdown.map(({ kind, count }) => (
-                          <div key={kind} className="flex items-center justify-between gap-2 pl-2">
+                        <FieldLabel>최근 30분 KV 쓰기·삭제 — 화면별 (이 서버 기준)</FieldLabel>
+                        {usage.kvWriteBreakdown.map(({ op, kind, path, count }) => (
+                          <div
+                            key={`${op}|${kind}|${path}`}
+                            className="flex items-center justify-between gap-2 pl-2"
+                          >
                             <span className="truncate text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
-                              {kind}
+                              {op === "kv_put" ? "PUT" : "DEL"} {path} · {kind}
                             </span>
-                            <span className="text-micro-lg font-semibold tabular-nums sm:text-xs">{count}</span>
+                            <span className="shrink-0 text-micro-lg font-semibold tabular-nums sm:text-xs">
+                              {count}
+                            </span>
                           </div>
                         ))}
                       </div>

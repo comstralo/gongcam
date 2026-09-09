@@ -5,9 +5,12 @@
 > 읽어 조사한 결과입니다. 구현 명령을 내릴 때 과거 맥락을 다시 설명하지 않고 이 문서를
 > 참조점으로 삼기 위한 것으로, 코드가 바뀌면 이 문서도 함께 갱신해야 합니다.
 >
-> 조사 시점: 2026-09-01. 대상 커밋 기준 `app/src/pages/DashboardPage.tsx`,
-> `app/src/pages/StatusPage.tsx`, `app/src/pages/RosterPage.tsx`,
-> `app/src/components/dashboard/*`, `frame-checker-worker/src/index.js`.
+> 조사 시점: 2026-09-01(본문), §11에 2026-09-09 갱신 1건 추가(하단
+> "알림" 탭이 종 아이콘 다이얼로그에서 정식 탭으로 승격된 사실 반영,
+> 여전히 더미인 상태는 동일). 대상 커밋 기준
+> `app/src/pages/DashboardPage.tsx`, `app/src/pages/StatusPage.tsx`,
+> `app/src/pages/RosterPage.tsx`, `app/src/components/dashboard/*`,
+> `frame-checker-worker/src/index.js`.
 
 ## 1. 범위 정의 — "대시보드"란
 
@@ -479,9 +482,18 @@ computedMerit = max(0, round4((studyTimeMerit + reportMerit(조건부)) × multi
 
 ## 11. 알려진 함정 / 특이사항
 
-- **`NotificationDialog`는 완전히 더미다.** `DUMMY_NOTIFICATIONS` 하드코딩 배열만 보여줄
-  뿐 실제 알림 API가 없다(`TODO(dev-preview)` 주석 있음). "알림 목록이 안 보인다" 류
-  버그 리포트는 이 자리부터 확인할 것 — 백엔드를 뒤질 필요 없음.
+- **[2026-09-09 갱신] "종 아이콘을 누르면 뜨는 `NotificationDialog`"는 더
+  이상 코드에 존재하지 않는다 — 하단 탭 메뉴의 정식 "알림" 탭
+  (`app/src/pages/NotificationsPage.tsx`, `TabBar.tsx`에 Bell 아이콘 +
+  안읽음 뱃지로 노출)으로 승격되었다.** 다만 **여전히 완전한 더미다** —
+  `DUMMY_NOTIFICATIONS`(`app/src/lib/notifications/notifications.ts`)
+  하드코딩 배열 3건만 보여줄 뿐 실제 알림 API가 없다(`TODO(dev-preview)`
+  주석 있음). "알림 목록이 안 보인다"/"알림이 안 온다" 류 버그 리포트는
+  이 자리부터 확인할 것 — 백엔드를 뒤질 필요 없음. 이 탭은 대시보드
+  범위 밖(전체 회원 공통 하단 탭)이라 이 문서를 포함한 5개 설계 문서
+  (WEB_REPORT/WEB_SETTINGS/WEB_ADMIN/WEB_DASHBOARD/HELPERBOT) 어디에도
+  본문 절이 없다 — 새로 다룰 화면을 문서화한다면 별도 섹션이 필요하다.
+  `docs/WEB_ADMIN.md` §7에도 동일 사실이 교차 기록되어 있다.
 - **KST 계산이 프론트/백엔드에서 서로 다른 방식으로 두 번 구현되어 있다.** 백엔드
   (Cloudflare Workers, 로컬 타임존 항상 UTC)는 `Date.now() + 9시간` 트릭 +
   `getUTC*()` 게터. 프론트(브라우저, 로컬 타임존 임의)는

@@ -309,22 +309,54 @@ function _getUsageCounter(kind, minutesAgo = 0) {
 }
 
 // 🔧 [사용자 지시] "해당 로그를 남겨서 어디서 누수가 발생하는지 아니면
-// 기분탓인건지 알 수 있도록 해줘" — KV 쓰기/삭제 하루 사용량이 300회쯤
-// 늘어난 걸 봤는데 짚이는 원인이 없다는 지적을 받아, 실제로 어느 키
-// 접두사(report:/leaveq:/cache:.../exitRequest: 등)에서 write·delete가
-// 얼마나 발생하는지 추적한다. 58곳에 흩어진 개별 env.REPORTS_KV.put/
-// delete 호출부를 일일이 계측 코드로 바꾸는 대신, fetch 핸들러 진입 시
-// env.REPORTS_KV 자체를 이 얇은 프록시로 한 번만 감싸 이후의 모든 호출을
-// 자동으로 잡는다(호출부 수정 0건). 인메모리 카운터(_usageCounters와
-// 동일한 방식, 콜드스타트 시 리셋되는 근사치)에 "kv_put:<prefix>"/
-// "kv_delete:<prefix>" 형태로 분 단위 누적하고, wrangler tail로 바로
-// 확인할 수 있도록 매 호출마다 console.log도 함께 남긴다.
-function _kvKeyPrefix(key) {
-  const idx = key.indexOf(":");
-  return idx === -1 ? key : key.slice(0, idx + 1);
+// 기분탓인건지 알 수 있도록 해줘" → "어느 화면에서 어떤 기능에 의해
+// 쓰기·삭제가 주기적으로 발생하는지 확인할 수 있도록, 좀 더 확실하게
+// 원인을 알고 싶어" — 처음엔 "어떤 캐시 종류"(kind)까지만 구분했는데,
+// "어느 화면"까지 특정하려면 그 KV 호출이 어느 API 요청 처리 중
+// 일어났는지(요청 경로)도 함께 남겨야 한다. 58곳에 흩어진 개별
+// env.REPORTS_KV.put/delete 호출부를 일일이 계측 코드로 바꾸는 대신,
+// fetch 핸들러 진입 시 env.REPORTS_KV 자체를 이 얇은 프록시로 한 번만
+// 감싸 이후의 모든 호출을 자동으로 잡는다(호출부 수정 0건) — 그 프록시를
+// 만들 때 현재 요청의 url.pathname을 클로저로 넘겨받아 매 호출마다 함께
+// 기록한다. sheets_read/write 카운터(_usageCounters, 분당 60 한도 확인용
+// — "이번 분"/"직전 분"만 보면 충분해 5분 창)와는 목적이 다르므로(이건
+// "주기적으로 반복되는 패턴"을 보는 게 목적이라 더 긴 관찰 창이 필요)
+// 별도 Map으로 분리하고 청소 창도 30분으로 늘렸다.
+const _kvUsageCounters = new Map(); // "kv_put|sheetCache:exitStatus:|/admin/captures:2026-09-09T12:34" -> count
+const KV_USAGE_WINDOW_MIN = 30;
+
+function _bumpKvUsageCounter(op, prefix, path) {
+  const minuteKey = new Date().toISOString().slice(0, 16); // "YYYY-MM-DDTHH:MM"
+  const key = `${op}|${prefix}|${path || "(cron/기타)"}:${minuteKey}`;
+  _kvUsageCounters.set(key, (_kvUsageCounters.get(key) || 0) + 1);
+  // 오래된 분 버킷은 청소한다 — 30분 창만 유지하면 충분하다. path까지
+  // 조합에 들어가 카디널리티가 늘었으니 sheets 카운터보다 넉넉히 잡는다.
+  if (_kvUsageCounters.size > 2000) {
+    const cutoff = Date.now() - KV_USAGE_WINDOW_MIN * 60_000;
+    for (const k of _kvUsageCounters.keys()) {
+      const minuteKey2 = k.slice(-16);
+      if (new Date(minuteKey2 + ":00Z").getTime() < cutoff) _kvUsageCounters.delete(k);
+    }
+  }
 }
 
-function instrumentKvNamespace(kv) {
+// "최근 5분간 kv_put:sheetCache:9 라고 찍혀" — 콜론 1개까지만 잘라
+// 접두사를 만들면 sheetCache:exitStatus:.../sheetCache:memberRows:... 등
+// 서로 다른 캐시 키 종류가 전부 "sheetCache:" 하나로 뭉뚱그려진다.
+// sheetCache:(KV_CACHE_PREFIX)로 시작하는 키만 특별 취급해 그 다음
+// 세그먼트(캐시 키 종류: exitStatus/memberRows/outputPenSlots 등)까지
+// 포함해 두 번째 콜론까지 자른다 — 나머지(report:/leaveq:/exitRequest:
+// 등)는 원래대로 첫 콜론까지만.
+function _kvKeyPrefix(key) {
+  const idx = key.indexOf(":");
+  if (idx === -1) return key;
+  const firstPrefix = key.slice(0, idx + 1);
+  if (firstPrefix !== KV_CACHE_PREFIX) return firstPrefix;
+  const secondIdx = key.indexOf(":", idx + 1);
+  return secondIdx === -1 ? key : key.slice(0, secondIdx + 1);
+}
+
+function instrumentKvNamespace(kv, requestPath) {
   return {
     ...kv,
     get: kv.get.bind(kv),
@@ -332,40 +364,36 @@ function instrumentKvNamespace(kv) {
     getWithMetadata: kv.getWithMetadata ? kv.getWithMetadata.bind(kv) : undefined,
     put(key, value, opts) {
       const prefix = _kvKeyPrefix(key);
-      _bumpUsageCounter(`kv_put:${prefix}`);
-      console.log(`[kv put] ${key}`);
+      _bumpKvUsageCounter("kv_put", prefix, requestPath);
+      console.log(`[kv put] path=${requestPath || "(cron/기타)"} key=${key}`);
       return kv.put(key, value, opts);
     },
     delete(key) {
       const prefix = _kvKeyPrefix(key);
-      _bumpUsageCounter(`kv_delete:${prefix}`);
-      console.log(`[kv delete] ${key}`);
+      _bumpKvUsageCounter("kv_delete", prefix, requestPath);
+      console.log(`[kv delete] path=${requestPath || "(cron/기타)"} key=${key}`);
       return kv.delete(key);
     },
   };
 }
 
-// _bumpUsageCounter가 "kind:분버킷"으로 저장하므로, "kv_put:"/"kv_delete:"로
-// 시작하는 kind만 모아 접두사별 합계를 낸다(minutesWindow분 이내 버킷만
-// 합산 — 기본 5분, _usageCounters가 그 이상은 청소해버리므로 사실상
-// 저장된 값 전체가 대상이 된다).
-function _getKvWriteBreakdown(minutesWindow = 5) {
+// 최근 minutesWindow분(기본 30분) 동안의 (연산·캐시종류·요청경로)별 집계 —
+// 어느 화면(경로)이 어떤 캐시를 얼마나 자주 쓰기/삭제하는지 한눈에 보여준다.
+function _getKvWriteBreakdown(minutesWindow = KV_USAGE_WINDOW_MIN) {
   const cutoff = Date.now() - minutesWindow * 60_000;
-  const totals = new Map(); // "kv_put:report:" -> count
-  for (const [key, count] of _usageCounters) {
-    if (!key.startsWith("kv_put:") && !key.startsWith("kv_delete:")) continue;
-    const lastColon = key.lastIndexOf(":", key.length - 1);
-    // key 형태: "kv_put:report::2026-09-09T12:34" 처럼 접두사 자체에 콜론이
-    // 있어 minuteKey 분리가 애매할 수 있으니, 뒤에서부터 "YYYY-MM-DDTHH:MM"
-    // 형태(길이 16)만 minuteKey로 취급하고 나머지 전부를 kind로 되돌린다.
+  const totals = new Map(); // "kv_put|sheetCache:exitStatus:|/admin/captures" -> count
+  for (const [key, count] of _kvUsageCounters) {
     const minuteKey = key.slice(-16);
     const ts = Date.parse(minuteKey + ":00Z");
     if (Number.isNaN(ts) || ts < cutoff) continue;
-    const kind = key.slice(0, key.length - 17); // ":" + minuteKey(16자) 제거
-    totals.set(kind, (totals.get(kind) || 0) + count);
+    const groupKey = key.slice(0, key.length - 17); // ":" + minuteKey(16자) 제거
+    totals.set(groupKey, (totals.get(groupKey) || 0) + count);
   }
   return [...totals.entries()]
-    .map(([kind, count]) => ({ kind, count }))
+    .map(([groupKey, count]) => {
+      const [op, kind, path] = groupKey.split("|");
+      return { op, kind, path, count };
+    })
     .sort((a, b) => b.count - a.count);
 }
 
@@ -3182,12 +3210,16 @@ async function handleAdminUsageStatus(req, env, origin) {
         kvWritesPerDay: 1_000,
         kvStorageBytes: 1_000_000_000,
       },
-      // 🔧 [KV 쓰기/삭제 누수 추적] "어디서 누수가 발생하는지 알 수 있게"
-      // — 이 isolate가 콜드스타트된 이후 최근 5분간 실제로 KV.put/delete를
-      // 호출한 키 접두사별 집계(예: [{kind:"kv_put:cache:",count:12}, ...]).
-      // isolate당 근사치라 정확한 하루 총합은 아니지만, "지금 이 순간 뭐가
-      // 계속 쓰고 있는지"를 콘솔 로그([kv put]/[kv delete])와 함께 바로
-      // 알 수 있다.
+      // 🔧 [KV 쓰기/삭제 추적, 화면별 특정] "어느 화면에서 어떤 기능에
+      // 의해 쓰기·삭제가 주기적으로 발생하는지" — 이 isolate가 콜드스타트된
+      // 이후 최근 30분간 실제로 KV.put/delete를 호출한 (연산·캐시종류·
+      // 요청경로) 조합별 집계, 예: [{op:"kv_put", kind:"sheetCache:
+      // exitStatus:", path:"/admin/captures", count:5}, ...]. path로
+      // "어느 화면"인지(§docs/CACHING_POLICY.md §12.2의 화면↔엔드포인트
+      // 매핑과 대조), kind로 "어떤 캐시"인지 바로 알 수 있다. isolate당
+      // 근사치라 정확한 하루 총합은 아니지만, wrangler tail의
+      // [kv put]/[kv delete] 로그(경로+전체 키 포함)와 함께 보면 개별
+      // 이벤트 단위까지 확인 가능하다.
       kvWriteBreakdown: _getKvWriteBreakdown(),
     },
     200,
@@ -8665,13 +8697,15 @@ function resolveOrigin(req, env) {
 
 export default {
   async fetch(rawReq, rawEnv) {
-    // 🔧 [KV 쓰기/삭제 누수 추적] env.REPORTS_KV를 계측 프록시로 감싸,
-    // 이 요청 처리 중 실행되는 모든 .put()/.delete() 호출을 키 접두사별로
-    // 자동 집계한다 — 아래의 req/env는 이 감싸진 버전을 쓴다.
+    // 🔧 [KV 쓰기/삭제 추적, 화면별 특정] env.REPORTS_KV를 계측 프록시로
+    // 감싸, 이 요청 처리 중 실행되는 모든 .put()/.delete() 호출을
+    // "캐시 종류 × 이 요청의 경로"로 자동 집계한다 — url을 먼저 계산해
+    // pathname을 프록시에 넘겨야 하므로 origin 계산보다 앞으로 옮겼다.
+    // 아래의 req/env는 이 감싸진 버전을 쓴다.
     const req = rawReq;
-    const env = { ...rawEnv, REPORTS_KV: instrumentKvNamespace(rawEnv.REPORTS_KV) };
-    const origin = resolveOrigin(req, env);
     const url = new URL(req.url);
+    const env = { ...rawEnv, REPORTS_KV: instrumentKvNamespace(rawEnv.REPORTS_KV, url.pathname) };
+    const origin = resolveOrigin(req, env);
 
     if (req.method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders(origin) });
@@ -8953,7 +8987,7 @@ export default {
   // 크론이 이미 처리해 둔 항목은 targetResponse가 채워져 있어 그 경로의
   // 필터(!item.targetResponse)에 걸리지 않으므로 중복 처리 위험이 없다.
   async scheduled(event, rawEnv) {
-    const env = { ...rawEnv, REPORTS_KV: instrumentKvNamespace(rawEnv.REPORTS_KV) };
+    const env = { ...rawEnv, REPORTS_KV: instrumentKvNamespace(rawEnv.REPORTS_KV, "(cron)") };
     const data = await proxyToBotDashboard(env, "/captures");
     if (!data) return; // 봇 연결 불가 — 다음 크론 실행이나 화면 조회 시 안전망이 재시도.
     await applyAutoRecognitionForExpired(env, data.items || []);
