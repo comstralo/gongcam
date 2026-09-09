@@ -2,7 +2,11 @@ import { createContext, useCallback, useEffect, useRef, useState, type ReactNode
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/lib/auth/useAuth";
 import { PULL_REFRESH_EVENT } from "@/hooks/usePullToRefresh";
+import { isIdleFor } from "@/lib/idleTracker";
 import type { StatusResponse } from "@/lib/api/types";
+
+// usePollingRefresh와 동일한 기준 — app/src/hooks/usePollingRefresh.ts 참고.
+const IDLE_THRESHOLD_MS = 5 * 60_000;
 
 export type MyStatusContextValue = {
   status: StatusResponse | null;
@@ -102,11 +106,19 @@ export function MyStatusProvider({ children, visible = true }: { children: React
   // 넘겨주는, "대시보드 또는 설정 화면을 보고 있는지")도 함께 체크한다 —
   // 두 조건 중 하나라도 걸리면(다른 화면에 있거나, 브라우저 탭이
   // 백그라운드거나) 이 틱은 건너뛴다.
+  // 🔧 [G 방안] "더 적용할만한건 더 없는지 연구해줘" — A/B를 배포한
+  // 뒤에도 wrangler tail 실시간 로그로 확인해보니, 관리자가 대시보드/
+  // 설정 화면을 실제로 띄워놓고(document.hidden=false, visible=true)
+  // 자리를 비우거나 다른 작업을 하는 동안에도 이 타이머는 정상적으로
+  // 계속 돌았다 — document.hidden과 visible만으로는 "화면은 보이지만
+  // 실제로는 안 쓰고 있음"을 구분할 수 없었다. idleTracker(마지막 사용자
+  // 조작 시각을 앱 전역에서 추적)로 이 경우도 건너뛴다.
   useEffect(() => {
     if (!session) return;
     const timer = setInterval(() => {
       if (document.hidden) return;
       if (!visible) return;
+      if (isIdleFor(IDLE_THRESHOLD_MS)) return;
       refresh();
     }, 15 * 60_000);
     return () => clearInterval(timer);
