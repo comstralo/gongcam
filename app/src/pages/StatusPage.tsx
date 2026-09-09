@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
+import { User } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
+import { SectionHeader, SectionCard } from "@/components/admin/shared";
 import { StatusView } from "@/components/dashboard/StatusView";
 import { CycleSwitcher } from "@/components/dashboard/CycleSwitcher";
 import { useApi } from "@/hooks/useApi";
@@ -95,57 +98,67 @@ export function StatusPage({
   useRefreshOnVisible(visible, reload);
   // buildPersonalStatus가 조합하는 캐시 중 가장 짧은 것(members: 5분)의
   // 3배 이상 주기로 폴링해, 화면을 계속 띄워둔 채로도 자동 갱신되게 한다.
-  usePollingRefresh(visible, reload, 15 * 60_000);
+  const refreshProgress = usePollingRefresh(visible, reload, 15 * 60_000);
 
   return (
-    // 🔧 2026-09: 이 화면을 감싸던 바깥 Card/CardContent를 제거했다(사용자
-    // 지시) — 안쪽 StatusView가 이미 SummaryTile(각자 자체 카드)과 요일별
-    // 카드로 구성돼 있어, 바깥 Card는 "내 대시보드" 선택/CycleSwitcher까지
-    // 한 박스에 가두면서 이중 테두리만 만들 뿐이었다. RosterPage(ALL 탭)에서
-    // 같은 이유로 이미 제거한 것과 동일한 처리.
-    <div className="flex w-full flex-col gap-5">
-      {/* 🔧 2026-09: "내 대시보드" 드롭다운이 CycleSwitcher와 별도 줄을
-          차지해, "이번 주" 버튼 옆에 남는 공간을 그대로 낭비하고 있었다
-          (사용자 지시) — 같은 flex 줄에 넣고 드롭다운을 ml-auto로 우측에
-          붙여 CycleSwitcher가 flex-wrap으로 감싸는 마지막 줄의 "이번 주"
-          버튼 오른쪽 빈 공간에 자리 잡도록 했다. */}
-      {(isAdmin || onSelectCycle) && (
-        <div className="flex w-full flex-wrap items-center gap-1.5 sm:gap-2">
-          {onSelectCycle && (
-            <div className="min-w-0 flex-1">
-              <CycleSwitcher
-                selectedFileId={cycleFileId ?? null}
-                onSelect={onSelectCycle}
-                memberNumber={selected === SELF_VALUE ? "self" : selected}
-              />
-            </div>
-          )}
-          {isAdmin && (
-            // 🔧 [로딩 중 빈 목록 오해 방지] members가 아직 null(회원 목록
-            // 응답 전)일 때 드롭다운을 열면 "내 대시보드" 옵션만 있고 다른
-            // 회원은 하나도 안 보여, 순간적으로 "다른 회원이 없다"로 오해할
-            // 수 있었다. 이 짧은 로딩 구간엔 트리거 자체를 비활성화한다 —
-            // 이 앱의 다른 Select들(NewMemberForm, SimpleNoticeSection 등)과
-            // 동일한 컨벤션.
-            <Select value={selected} onValueChange={(v) => setSelected(v ?? SELF_VALUE)} disabled={!members}>
-              <SelectTrigger className="ml-auto w-fit shrink-0 data-[size=default]:h-9 sm:data-[size=default]:h-11 sm:text-base">
-                <SelectValue>
-                  {selected === SELF_VALUE ? "내 대시보드" : members?.find((m) => m.number === selected)?.name}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={SELF_VALUE} className="sm:text-base">
-                  내 대시보드
-                </SelectItem>
-                {members?.map((m) => (
-                  <SelectItem key={m.number} value={m.number} className="sm:text-base">
-                    {m.name}
+    // 🔧 [사용자 지시] "MY도 헤더 제목으로 박스 안에 묶으려고 하거든?" —
+    // 원래는 안쪽 StatusView가 이미 SummaryTile(각자 자체 카드)과 요일별
+    // 카드로 구성돼 있어 바깥 Card를 두면 이중 테두리만 생긴다는 이유로
+    // 감싸는 카드를 없앴었는데, 이번엔 제보 화면("화각 불량 제보")과
+    // 동일하게 SectionCard+SectionHeader로 전체를 감싸 제목 있는 탭
+    // 형태로 통일한다.
+    <SectionCard className="shadow-sm shadow-black/[0.03]">
+      <Collapsible defaultOpen className="flex flex-col">
+        <SectionHeader
+          icon={User}
+          title="내 대시보드"
+          loading={loading}
+          onRefresh={reload}
+          refreshProgress={refreshProgress}
+          iconVariant="tint"
+          trailing={
+            isAdmin ? (
+              // 🔧 [사용자 지시] "관리자 드롭다운을 헤더 영역에 넣어버릴 수
+              // 있나?" — CycleSwitcher와 한 줄을 다투던 회원 선택 드롭다운을
+              // 제목 옆(새로고침 버튼 왼쪽)으로 옮겨, 본문 폭을 CycleSwitcher가
+              // 온전히 쓰게 한다. 🔧 [로딩 중 빈 목록 오해 방지] members가
+              // 아직 null(회원 목록 응답 전)일 때 드롭다운을 열면 "내
+              // 대시보드" 옵션만 있고 다른 회원은 하나도 안 보여, 순간적으로
+              // "다른 회원이 없다"로 오해할 수 있었다. 이 짧은 로딩 구간엔
+              // 트리거 자체를 비활성화한다 — 이 앱의 다른 Select들
+              // (NewMemberForm, SimpleNoticeSection 등)과 동일한 컨벤션.
+              <Select value={selected} onValueChange={(v) => setSelected(v ?? SELF_VALUE)} disabled={!members}>
+                {/* 🔧 [사용자 지시] "'화각 불량 제보'의 헤더 배경 높이랑 '내
+                    대시보드'의 높이랑 다른거 아니야?" — 이 드롭다운(h-8/
+                    sm:h-9, 32px/36px)이 옆의 새로고침 버튼(icon-sm, size-7
+                    고정 28px)보다 커서 헤더 전체 높이가 그만큼 늘어나
+                    있었다. 새로고침 버튼과 같은 높이(h-7=28px)로 맞춘다. */}
+                <SelectTrigger className="w-fit shrink-0 data-[size=default]:h-7 sm:text-sm">
+                  <SelectValue>
+                    {selected === SELF_VALUE ? "내 대시보드" : members?.find((m) => m.number === selected)?.name}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={SELF_VALUE} className="sm:text-base">
+                    내 대시보드
                   </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        </div>
+                  {members?.map((m) => (
+                    <SelectItem key={m.number} value={m.number} className="sm:text-base">
+                      {m.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : undefined
+          }
+        />
+        <CollapsiblePanel className="flex flex-col gap-5">
+      {onSelectCycle && (
+        <CycleSwitcher
+          selectedFileId={cycleFileId ?? null}
+          onSelect={onSelectCycle}
+          memberNumber={selected === SELF_VALUE ? "self" : selected}
+        />
       )}
       {membersError && (
         <Alert variant="destructive">
@@ -189,6 +202,8 @@ export function StatusPage({
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-    </div>
+        </CollapsiblePanel>
+      </Collapsible>
+    </SectionCard>
   );
 }

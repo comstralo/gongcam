@@ -713,6 +713,10 @@ export type AdminUsageResponse = {
     kvWritesPerDay: number;
     kvStorageBytes: number;
   };
+  // 🔧 [KV 쓰기/삭제 누수 추적] 이 Worker isolate가 최근 5분간 실제로
+  // KV.put/delete를 호출한 키 접두사별 집계 — 예: [{kind:"kv_put:cache:",
+  // count:12}]. isolate당 근사치라 정확한 하루 총합은 아니다.
+  kvWriteBreakdown: { kind: string; count: number }[];
 };
 
 export type BotCommand = "restart";

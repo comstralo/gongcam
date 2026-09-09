@@ -308,6 +308,67 @@ function _getUsageCounter(kind, minutesAgo = 0) {
   return _usageCounters.get(`${kind}:${minuteKey}`) || 0;
 }
 
+// 🔧 [사용자 지시] "해당 로그를 남겨서 어디서 누수가 발생하는지 아니면
+// 기분탓인건지 알 수 있도록 해줘" — KV 쓰기/삭제 하루 사용량이 300회쯤
+// 늘어난 걸 봤는데 짚이는 원인이 없다는 지적을 받아, 실제로 어느 키
+// 접두사(report:/leaveq:/cache:.../exitRequest: 등)에서 write·delete가
+// 얼마나 발생하는지 추적한다. 58곳에 흩어진 개별 env.REPORTS_KV.put/
+// delete 호출부를 일일이 계측 코드로 바꾸는 대신, fetch 핸들러 진입 시
+// env.REPORTS_KV 자체를 이 얇은 프록시로 한 번만 감싸 이후의 모든 호출을
+// 자동으로 잡는다(호출부 수정 0건). 인메모리 카운터(_usageCounters와
+// 동일한 방식, 콜드스타트 시 리셋되는 근사치)에 "kv_put:<prefix>"/
+// "kv_delete:<prefix>" 형태로 분 단위 누적하고, wrangler tail로 바로
+// 확인할 수 있도록 매 호출마다 console.log도 함께 남긴다.
+function _kvKeyPrefix(key) {
+  const idx = key.indexOf(":");
+  return idx === -1 ? key : key.slice(0, idx + 1);
+}
+
+function instrumentKvNamespace(kv) {
+  return {
+    ...kv,
+    get: kv.get.bind(kv),
+    list: kv.list.bind(kv),
+    getWithMetadata: kv.getWithMetadata ? kv.getWithMetadata.bind(kv) : undefined,
+    put(key, value, opts) {
+      const prefix = _kvKeyPrefix(key);
+      _bumpUsageCounter(`kv_put:${prefix}`);
+      console.log(`[kv put] ${key}`);
+      return kv.put(key, value, opts);
+    },
+    delete(key) {
+      const prefix = _kvKeyPrefix(key);
+      _bumpUsageCounter(`kv_delete:${prefix}`);
+      console.log(`[kv delete] ${key}`);
+      return kv.delete(key);
+    },
+  };
+}
+
+// _bumpUsageCounter가 "kind:분버킷"으로 저장하므로, "kv_put:"/"kv_delete:"로
+// 시작하는 kind만 모아 접두사별 합계를 낸다(minutesWindow분 이내 버킷만
+// 합산 — 기본 5분, _usageCounters가 그 이상은 청소해버리므로 사실상
+// 저장된 값 전체가 대상이 된다).
+function _getKvWriteBreakdown(minutesWindow = 5) {
+  const cutoff = Date.now() - minutesWindow * 60_000;
+  const totals = new Map(); // "kv_put:report:" -> count
+  for (const [key, count] of _usageCounters) {
+    if (!key.startsWith("kv_put:") && !key.startsWith("kv_delete:")) continue;
+    const lastColon = key.lastIndexOf(":", key.length - 1);
+    // key 형태: "kv_put:report::2026-09-09T12:34" 처럼 접두사 자체에 콜론이
+    // 있어 minuteKey 분리가 애매할 수 있으니, 뒤에서부터 "YYYY-MM-DDTHH:MM"
+    // 형태(길이 16)만 minuteKey로 취급하고 나머지 전부를 kind로 되돌린다.
+    const minuteKey = key.slice(-16);
+    const ts = Date.parse(minuteKey + ":00Z");
+    if (Number.isNaN(ts) || ts < cutoff) continue;
+    const kind = key.slice(0, key.length - 17); // ":" + minuteKey(16자) 제거
+    totals.set(kind, (totals.get(kind) || 0) + count);
+  }
+  return [...totals.entries()]
+    .map(([kind, count]) => ({ kind, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
 // fileId를 명시적으로 받는다 — 원본 시트뿐 아니라 지난 기록(Drive 백업 파일)도
 // 같은 조회 로직을 공유해야 하기 때문.
 async function getSheetValues(env, accessToken, fileId, range) {
@@ -2957,30 +3018,25 @@ async function proxyToBotDashboard(env, path, options = {}) {
   }
 }
 
-// UTC "datetimeHour"(예: "2026-08-28T15:00:00Z") 문자열을 KST 날짜
-// 문자열("YYYY-MM-DD")로 변환한다 — Cloudflare Analytics의 date 필터는
-// UTC 자정~자정 단위라서, "오늘(KST)" 하루가 UTC로는 어제 15시~오늘
-// 14시59분에 걸쳐 있다. 이 함수로 각 시간대 버킷을 KST 기준 날짜로 되돌려
-// 재집계해야 한국시간 자정에 정확히 초기화되는 "오늘" 합계가 나온다.
-function datetimeHourToKSTDateString(datetimeHour) {
-  const ms = Date.parse(datetimeHour);
-  if (Number.isNaN(ms)) return null;
-  return formatISODate(new Date(ms + 9 * 60 * 60 * 1000));
-}
-
-// Cloudflare GraphQL Analytics API로 오늘(KST) 하루치 Workers 요청 수와
+// Cloudflare GraphQL Analytics API로 오늘(UTC) 하루치 Workers 요청 수와
 // KV 읽기/쓰기 수를 조회한다. CF_API_TOKEN/CF_ACCOUNT_ID가 없으면(토큰
 // 미발급) null을 반환 — "Bot·Sheet" 탭이 이 부분만 빈 상태로 보여준다.
+// 🔧 [사용자 지시] "일일한도 초기화 시점이 실제 클라우드플레어측 초기화
+// 시점과 동일해?" — 무료 티어 할당량(하루 쓰기 1,000회 등)은 Cloudflare
+// 내부적으로 UTC 자정에 리셋된다. 예전엔 이 화면이 "오늘"을 KST 자정
+// 기준으로 재계산해서 보여줬는데, 그러면 화면의 "오늘 사용량"이 실제
+// 한도가 리셋되는 시점(UTC 자정 = KST 오전 9시)과 9시간 어긋나 — 예를
+// 들어 KST 오전 9시 직후엔 실제 카운터는 막 0으로 리셋됐는데 화면은
+// 여전히 KST 자정부터의 누적치를 보여주는 식으로, 실제 한도 임박 여부를
+// 오판하게 만들 수 있었다. Cloudflare의 실제 리셋 기준(UTC 자정~자정)을
+// 그대로 따르도록 바꾼다 — date 필터도, 이후 집계 필터도 전부 UTC
+// 날짜로 통일(예전에 KST용으로 쓰던 datetimeHourToKSTDateString 변환은
+// 더 이상 필요 없어 제거).
 async function fetchCloudflareUsage(env) {
   if (!env.CF_API_TOKEN || !env.CF_ACCOUNT_ID) return null;
 
-  // Cloudflare의 date 필터는 UTC 자정~자정 단위다 — "오늘(KST)"이 UTC로는
-  // 어제 날짜에 걸쳐 있을 수 있어(KST 0~9시 = UTC 전날 15~24시), UTC 기준
-  // 어제+오늘 이틀을 모두 가져온 뒤 아래에서 datetimeHour를 KST로 되돌려
-  // "오늘(KST)"에 해당하는 시간대만 다시 걸러 합산한다.
-  const todayKST = todayKSTDateString();
-  const utcTodayStr = formatISODate(new Date());
-  const utcYesterdayStr = formatISODate(new Date(Date.now() - 24 * 60 * 60_000));
+  const todayUTC = formatISODate(new Date());
+  const utcTodayStr = todayUTC;
   // workersInvocationsAdaptive는 dimensions 없이 limit만 걸면 그날 데이터를
   // 시간대별로 쪼개지 않은 채 정렬 기준 없는 임의의 버킷 몇 개만 반환한다
   // (실측: limit 1이었을 때 하루 총 요청의 약 90%만 잡혔음 — 24시간 중 일부
@@ -3033,7 +3089,11 @@ async function fetchCloudflareUsage(env) {
         query,
         variables: {
           accountTag: env.CF_ACCOUNT_ID,
-          dateGeq: utcYesterdayStr,
+          // 🔧 실제 할당량 리셋 기준(UTC 자정~자정)과 동일하게 오늘(UTC)
+          // 하루만 조회한다 — 예전엔 KST 하루가 UTC 이틀에 걸쳐 있어 이틀을
+          // 가져온 뒤 재필터링했지만, 이제 UTC 기준으로만 보므로 그 보정이
+          // 필요 없다.
+          dateGeq: utcTodayStr,
           dateLeq: utcTodayStr,
           storageSince,
         },
@@ -3044,7 +3104,7 @@ async function fetchCloudflareUsage(env) {
     if (!account) return null;
 
     const workerGroups = (account.workersInvocationsAdaptive || []).filter(
-      (g) => g.dimensions && datetimeHourToKSTDateString(g.dimensions.datetimeHour) === todayKST
+      (g) => g.dimensions && formatISODate(new Date(g.dimensions.datetimeHour)) === todayUTC
     );
     const workers = workerGroups.reduce(
       (acc, g) => ({
@@ -3058,7 +3118,7 @@ async function fetchCloudflareUsage(env) {
     // 함께 묶지 않으면 실사용량을 과소평가한다(실측 확인: list가 read보다도
     // 호출량이 더 많았음 — 이 저장소의 폴링 화면들이 KV.list()를 자주 쓰기 때문).
     const kvGroups = (account.kvOperationsAdaptiveGroups || []).filter(
-      (g) => g.dimensions && datetimeHourToKSTDateString(g.dimensions.datetimeHour) === todayKST
+      (g) => g.dimensions && formatISODate(new Date(g.dimensions.datetimeHour)) === todayUTC
     );
     const kvReads = kvGroups
       .filter((g) => ["read", "list"].includes(g.dimensions.actionType))
@@ -3122,6 +3182,13 @@ async function handleAdminUsageStatus(req, env, origin) {
         kvWritesPerDay: 1_000,
         kvStorageBytes: 1_000_000_000,
       },
+      // 🔧 [KV 쓰기/삭제 누수 추적] "어디서 누수가 발생하는지 알 수 있게"
+      // — 이 isolate가 콜드스타트된 이후 최근 5분간 실제로 KV.put/delete를
+      // 호출한 키 접두사별 집계(예: [{kind:"kv_put:cache:",count:12}, ...]).
+      // isolate당 근사치라 정확한 하루 총합은 아니지만, "지금 이 순간 뭐가
+      // 계속 쓰고 있는지"를 콘솔 로그([kv put]/[kv delete])와 함께 바로
+      // 알 수 있다.
+      kvWriteBreakdown: _getKvWriteBreakdown(),
     },
     200,
     origin
@@ -8597,7 +8664,12 @@ function resolveOrigin(req, env) {
 }
 
 export default {
-  async fetch(req, env) {
+  async fetch(rawReq, rawEnv) {
+    // 🔧 [KV 쓰기/삭제 누수 추적] env.REPORTS_KV를 계측 프록시로 감싸,
+    // 이 요청 처리 중 실행되는 모든 .put()/.delete() 호출을 키 접두사별로
+    // 자동 집계한다 — 아래의 req/env는 이 감싸진 버전을 쓴다.
+    const req = rawReq;
+    const env = { ...rawEnv, REPORTS_KV: instrumentKvNamespace(rawEnv.REPORTS_KV) };
     const origin = resolveOrigin(req, env);
     const url = new URL(req.url);
 
@@ -8880,7 +8952,8 @@ export default {
   // 늦게 돌기 전에 조회하는 경우"를 위한 안전망으로 그대로 남겨둔다 —
   // 크론이 이미 처리해 둔 항목은 targetResponse가 채워져 있어 그 경로의
   // 필터(!item.targetResponse)에 걸리지 않으므로 중복 처리 위험이 없다.
-  async scheduled(event, env) {
+  async scheduled(event, rawEnv) {
+    const env = { ...rawEnv, REPORTS_KV: instrumentKvNamespace(rawEnv.REPORTS_KV) };
     const data = await proxyToBotDashboard(env, "/captures");
     if (!data) return; // 봇 연결 불가 — 다음 크론 실행이나 화면 조회 시 안전망이 재시도.
     await applyAutoRecognitionForExpired(env, data.items || []);

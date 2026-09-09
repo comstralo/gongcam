@@ -270,25 +270,28 @@ function PaidFineList({
                   className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded"
                 >
                   <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                    <span className="inline-flex shrink-0 items-center gap-1.25 text-xs font-semibold text-muted-foreground sm:text-sm">
-                      <CalendarDays className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                    <span className="inline-flex shrink-0 items-center gap-1.25 text-sm font-semibold text-muted-foreground sm:text-base">
+                      <CalendarDays className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
                       {thisWeekDateLabel(group.day, cycleWeekOf)} {group.day}요일
                     </span>
+                    {/* 🔧 [사용자 지시] "'화각 불량 제보'에서 설정한 디자인을 기준으로
+                        비슷한 모양의 다른 화면에도 적용" — 제보 화면의 "총 N건" 뱃지와
+                        동일한 크기(text-xs sm:text-sm)로 통일한다. */}
                     <span className="ml-auto flex flex-wrap items-center justify-end gap-1">
-                      <span className="rounded-full bg-ok/15 px-2 py-1 text-micro-lg leading-none font-semibold text-ok sm:text-xs">
+                      <span className="rounded-full bg-ok/15 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-ok sm:text-sm">
                         납부 : {paidCount}건
                       </span>
-                      <span className="rounded-full bg-destructive/15 px-2 py-1 text-micro-lg leading-none font-semibold text-destructive sm:text-xs">
+                      <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-destructive sm:text-sm">
                         미납 : {unpaidCount}건
                       </span>
-                      <span className="rounded-full bg-amber-600/15 px-2 py-1 text-micro-lg leading-none font-semibold text-amber-600 sm:text-xs dark:bg-amber-400/15 dark:text-amber-400">
+                      <span className="rounded-full bg-amber-600/15 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-amber-600 sm:text-sm dark:bg-amber-400/15 dark:text-amber-400">
                         면제 : {exemptCount}건
                       </span>
                       {/* 🔧 2026-09: "벌금을 납부하지 않아서 '퇴실 처리
                           (직권 P)'가 눌려서 퇴실 처리된 사용자"(사용자 정의)를
                           센다 — GET /admin/fines/admin-forced-count가 요일별로
                           이미 집계해 내려준다(handleAdminFinesAdminForcedCount). */}
-                      <span className="rounded-full bg-primary/15 px-2 py-1 text-micro-lg leading-none font-semibold text-primary sm:text-xs">
+                      <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-primary sm:text-sm">
                         직권 P : {adminForcedCounts[group.day] || 0}건
                       </span>
                     </span>
@@ -319,8 +322,8 @@ function PaidFineList({
                       return (
                         <div key={key} className="flex flex-col gap-2.5 rounded-lg border bg-card p-3">
                           <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-                            <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
-                              <User className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                            <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
+                              <User className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                               {f.name}
                             </span>
                             <div className="flex items-center gap-1.5">
@@ -331,8 +334,14 @@ function PaidFineList({
                                 onClick={() => toggleMember(f)}
                                 aria-label={isMemberExpanded ? "상세 접기" : "상세 펼치기"}
                               >
+                                {/* 🔧 [사용자 지시] 제보 화면 기준 통일 — 색 지정이 없으면 outline
+                                    버튼의 기본 전경색을 물려받아 날짜 그룹 헤더의 chevron
+                                    (text-muted-foreground)보다 진하게 보였다. */}
                                 <ChevronDown
-                                  className={cn("size-3.5 transition-transform", isMemberExpanded && "rotate-180")}
+                                  className={cn(
+                                    "size-3.5 text-muted-foreground transition-transform",
+                                    isMemberExpanded && "rotate-180"
+                                  )}
                                   strokeWidth={ICON_STROKE.default}
                                 />
                               </Button>

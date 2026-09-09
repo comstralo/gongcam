@@ -3,7 +3,7 @@ import { MessageSquareText, Pencil, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { DividedValue, InfoCard } from "@/components/dashboard/shared";
+import { InfoCard } from "@/components/dashboard/shared";
 import { useApi } from "@/hooks/useApi";
 import { ICON_STROKE } from "@/lib/utils";
 import type { StatusMessageResponse, SetStatusMessageResponse } from "@/lib/api/types";
@@ -53,17 +53,15 @@ export function StatusMessageCard() {
 
   return (
     <div className="flex flex-col gap-2.5">
+      {/* 🔧 [사용자 지시] "텍스트 위계도 '제보' 화면 참고해서 조정" — 제목이
+          다른 설정 카드(ItemTitle 등)보다 한 단계 작았다 — 통일한다. */}
       <InfoCard className="flex flex-col gap-2.5 bg-card">
-        <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+        {/* 🔧 [사용자 지시] "'제보 대상자 선택 시 다른 참여자에게 표시됩니다.'
+            이거랑 좌측의 구분자 제거해" — 설명 문구와 DividedValue 구분자를
+            없애고 제목만 남긴다. */}
+        <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
           <MessageSquareText className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-          <DividedValue
-            items={[
-              "상태 메시지",
-              <span className="truncate text-xs font-normal text-muted-foreground sm:text-sm">
-                제보 대상자 선택 시 다른 참여자에게 표시됩니다.
-              </span>,
-            ]}
-          />
+          상태 메시지
         </span>
 
         {editing ? (

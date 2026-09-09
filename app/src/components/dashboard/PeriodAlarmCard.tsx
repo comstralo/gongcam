@@ -17,7 +17,10 @@ export function PeriodAlarmCard() {
   }
 
   return (
-    <InfoCard className="flex items-center justify-between gap-2.5">
+    // 🔧 [사용자 지시] "'설정'에서 황토색 배경 부분들 다 걷어내 흰색으로" —
+    // InfoCard 기본 배경(bg-muted, #f1e9da)이 황토색으로 보였다 — bg-card로
+    // 오버라이드한다.
+    <InfoCard className="flex items-center justify-between gap-2.5 bg-card">
       <span className="inline-flex min-w-0 flex-1 items-center gap-1.25 truncate text-sm font-semibold sm:text-base">
         <BellRing className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
         <DividedValue

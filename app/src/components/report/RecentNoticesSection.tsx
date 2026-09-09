@@ -49,13 +49,19 @@ export function RecentNoticesSection({ refreshSignal }: { refreshSignal?: number
   }, []);
 
   return (
+    // 🔧 [사용자 지시] "PUSH 알림 전송" 탭을 "화각 불량 제보" 탭의
+    // ActiveReportsSection("최근 진행된 제보") 기준으로 통일 — 제목이
+    // text-xs font-semibold text-muted-foreground sm:text-sm로 한 단계
+    // 작고 얇았고(비교 대상은 text-sm font-bold sm:text-base, muted
+    // 없이 기본 전경색), SubRow도 오버라이드 없이 기본 크기(더 작음)
+    // 그대로였다.
     <SectionCard className="flex flex-col gap-1.5">
-      <span className="flex items-center gap-1.25 text-xs font-semibold text-muted-foreground sm:text-sm">
-        <History className="size-3 shrink-0 sm:size-3.5" />
+      <span className="flex items-center gap-1.25 text-sm font-bold sm:text-base">
+        <History className="size-3 shrink-0 text-muted-foreground sm:size-3.5" />
         최근 전송된 알림
       </span>
       {items.length === 0 ? (
-        <SubRow label="최근 전송된 알림이 없습니다." value="" />
+        <SubRow label="최근 전송된 알림이 없습니다." value="" labelClassName="text-xs sm:text-sm" />
       ) : (
         <div className="flex flex-col gap-1">
           {items.map((item, i) => (
@@ -63,6 +69,8 @@ export function RecentNoticesSection({ refreshSignal }: { refreshSignal?: number
               key={`${item.nickname}-${item.ts}-${i}`}
               label={`${item.nickname} · ${item.message}`}
               value={formatElapsed(now - item.ts)}
+              labelClassName="text-xs sm:text-sm"
+              valueClassName="text-xs sm:text-sm"
             />
           ))}
         </div>

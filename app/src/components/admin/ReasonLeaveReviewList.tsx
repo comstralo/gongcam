@@ -172,18 +172,21 @@ export function ReasonLeaveReviewList({
                     className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded"
                   >
                     <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                      <span className="inline-flex shrink-0 items-center gap-1.25 text-xs font-semibold text-muted-foreground sm:text-sm">
-                        <CalendarDays className="size-3 shrink-0 sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                      <span className="inline-flex shrink-0 items-center gap-1.25 text-sm font-semibold text-muted-foreground sm:text-base">
+                        <CalendarDays className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
                         {thisWeekDateLabel(group.day, cycleWeekOf)} {group.day}요일
                       </span>
+                      {/* 🔧 [사용자 지시] "'화각 불량 제보'에서 설정한 디자인을 기준으로
+                          비슷한 모양의 다른 화면에도 적용" — 제보 화면의 "총 N건" 뱃지와
+                          동일한 크기(text-xs sm:text-sm)로 통일한다. */}
                       <span className="ml-auto flex flex-wrap items-center justify-end gap-1">
-                        <span className="rounded-full bg-destructive/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-destructive">
+                        <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-destructive sm:text-sm">
                           대기 : {pendingCount}건
                         </span>
-                        <span className="rounded-full bg-ok/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-ok">
+                        <span className="rounded-full bg-ok/15 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-ok sm:text-sm">
                           승인 : {approvedCount}건
                         </span>
-                        <span className="rounded-full bg-amber-600/15 px-2 py-1 text-micro-lg leading-none sm:text-xs font-semibold text-amber-600 dark:bg-amber-400/15 dark:text-amber-400">
+                        <span className="rounded-full bg-amber-600/15 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-amber-600 sm:text-sm dark:bg-amber-400/15 dark:text-amber-400">
                           반려 : {rejectedCount}건
                         </span>
                       </span>
@@ -205,8 +208,8 @@ export function ReasonLeaveReviewList({
                         return (
                           <div key={item.id} className="flex flex-col gap-2.5 rounded-lg border bg-card p-3">
                             <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-                              <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
-                                <User className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                              <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
+                                <User className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                 {item.memberName}
                               </span>
                               <div className="flex items-center gap-1.5">
@@ -226,8 +229,14 @@ export function ReasonLeaveReviewList({
                                   onClick={() => setExpandedId(isMemberExpanded ? null : item.id)}
                                   aria-label={isMemberExpanded ? "상세 접기" : "상세 펼치기"}
                                 >
+                                  {/* 🔧 [사용자 지시] 제보 화면 기준 통일 — 색 지정이 없으면 outline
+                                      버튼의 기본 전경색을 물려받아 날짜 그룹 헤더의 chevron
+                                      (text-muted-foreground)보다 진하게 보였다. */}
                                   <ChevronDown
-                                    className={cn("size-3.5 transition-transform", isMemberExpanded && "rotate-180")}
+                                    className={cn(
+                                      "size-3.5 text-muted-foreground transition-transform",
+                                      isMemberExpanded && "rotate-180"
+                                    )}
                                     strokeWidth={ICON_STROKE.default}
                                   />
                                 </Button>
@@ -238,7 +247,7 @@ export function ReasonLeaveReviewList({
                               <>
                                 <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:gap-3.5 sm:p-5">
                                   <div className="flex flex-col gap-1.5">
-                                    <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                                    <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                                       <ImageIcon className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
                                       증빙 이미지
                                     </span>
@@ -255,24 +264,31 @@ export function ReasonLeaveReviewList({
 
                                   <div className="h-px w-full bg-border" />
 
+                                  {/* 🔧 [사용자 지시] "현재 페이지(관리자)의
+                                      위계도 맞춰줘" — SubRow 기본 크기가
+                                      제보 화면 기준보다 한 단계 작았다. */}
                                   <div className="flex flex-col gap-1.5">
-                                    <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                                    <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                                       <FileText className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
                                       신청 정보
                                     </span>
-                                    <SubRow label="사유" value={item.reason || "-"} />
-                                    <SubRow label="신청 장수" value={`${item.count ?? 1}장`} />
-                                    <SubRow label="신청일시" value={new Date(item.ts).toLocaleString("ko-KR")} />
+                                    <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
+                                      <SubRow label="사유" value={item.reason || "-"} />
+                                      <SubRow label="신청 장수" value={`${item.count ?? 1}장`} />
+                                      <SubRow label="신청일시" value={new Date(item.ts).toLocaleString("ko-KR")} />
+                                    </div>
                                   </div>
 
                                   {isRejected && (
                                     <>
                                       <div className="h-px w-full bg-border" />
-                                      <SubRow
-                                        label="반려 사유"
-                                        value={rejectedInfo.reason || "-"}
-                                        valueClassName="text-destructive"
-                                      />
+                                      <div className="[&_span]:text-xs [&_span]:sm:text-sm">
+                                        <SubRow
+                                          label="반려 사유"
+                                          value={rejectedInfo.reason || "-"}
+                                          valueClassName="text-destructive"
+                                        />
+                                      </div>
                                     </>
                                   )}
 

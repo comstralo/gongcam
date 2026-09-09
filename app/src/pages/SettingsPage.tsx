@@ -48,7 +48,9 @@ export function SettingsPage({ visible = true }: { visible?: boolean }) {
                 onExitRequestChange={refresh}
               >
                 <InfoCard className="flex items-center justify-between gap-2.5 bg-card">
-                  <span className="inline-flex min-w-0 flex-1 items-center gap-1.25 truncate text-xs font-semibold sm:text-sm">
+                  {/* 🔧 [사용자 지시] "텍스트 위계도 '제보' 화면 참고해서 조정" —
+                      제목이 다른 설정 카드보다 한 단계 작았다 — 통일한다. */}
+                  <span className="inline-flex min-w-0 flex-1 items-center gap-1.25 truncate text-sm font-semibold sm:text-base">
                     <DoorOpen className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                     <DividedValue
                       items={[
@@ -71,7 +73,7 @@ export function SettingsPage({ visible = true }: { visible?: boolean }) {
               </DepositRefundDialog>
             ) : (
               <InfoCard className="flex items-center justify-between gap-2.5 bg-card">
-                <span className="inline-flex min-w-0 flex-1 items-center gap-1.25 truncate text-xs font-semibold sm:text-sm">
+                <span className="inline-flex min-w-0 flex-1 items-center gap-1.25 truncate text-sm font-semibold sm:text-base">
                   <DoorOpen className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                   <DividedValue
                     items={[

@@ -188,6 +188,26 @@ function UsageMonitorSection({ visible }: { visible: boolean }) {
                       limit={usage.limits.kvWritesPerDay}
                       unit="회"
                     />
+                    {/* 🔧 [사용자 지시] "해당 로그를 남겨서 어디서 누수가
+                        발생하는지 알 수 있도록 해줘" — 위 게이지는
+                        Cloudflare 실측 총합만 보여줘 "어디서" 늘어나는지는
+                        알 수 없었다. 이 Worker isolate가 최근 5분간 실제로
+                        호출한 KV.put/delete를 키 접두사별로 집계해 함께
+                        보여준다(isolate당 근사치 — 정확한 하루 총합은
+                        위 게이지를 신뢰). */}
+                    {usage.kvWriteBreakdown.length > 0 && (
+                      <div className="flex flex-col gap-0.5">
+                        <FieldLabel>최근 5분 KV 쓰기·삭제 (이 서버 기준)</FieldLabel>
+                        {usage.kvWriteBreakdown.map(({ kind, count }) => (
+                          <div key={kind} className="flex items-center justify-between gap-2 pl-2">
+                            <span className="truncate text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
+                              {kind}
+                            </span>
+                            <span className="text-micro-lg font-semibold tabular-nums sm:text-xs">{count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {usage.cloudflare.workersErrorsToday > 0 && (
                       <p className="text-micro-lg text-destructive sm:text-xs">
                         오늘 Workers 오류 {usage.cloudflare.workersErrorsToday}건

@@ -8,8 +8,13 @@ const Collapsible = CollapsiblePrimitive.Root
 function CollapsibleTrigger({
   className,
   children,
+  hideChevron,
   ...props
-}: CollapsiblePrimitive.Trigger.Props) {
+}: CollapsiblePrimitive.Trigger.Props & {
+  /** SectionHeader가 chevron만 따로 우측 끝(새로고침 버튼 뒤)에 두고
+   * 싶을 때, 제목을 감싸는 트리거 쪽 chevron을 감춘다. */
+  hideChevron?: boolean
+}) {
   return (
     <CollapsiblePrimitive.Trigger
       data-slot="collapsible-trigger"
@@ -20,7 +25,9 @@ function CollapsibleTrigger({
       {...props}
     >
       {children}
-      <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-panel-open/collapsible-trigger:rotate-180" />
+      {!hideChevron && (
+        <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-panel-open/collapsible-trigger:rotate-180" />
+      )}
     </CollapsiblePrimitive.Trigger>
   )
 }

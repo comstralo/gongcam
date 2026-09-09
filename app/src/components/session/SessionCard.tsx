@@ -15,7 +15,10 @@ export function SessionCard({ name, onLogout }: { name?: string; onLogout?: () =
   // 같은 InfoCard 레이아웃 크기의 펄스 스켈레톤을 먼저 그려 자리를 잡는다.
   if (!session) {
     return (
-      <InfoCard className="flex items-center justify-between gap-2.5" aria-hidden>
+      // 🔧 [사용자 지시] "'설정'에서 황토색 배경 부분들 다 걷어내 흰색으로" —
+      // InfoCard 기본 배경(bg-muted, #f1e9da)이 황토색으로 보였다 — bg-card로
+      // 오버라이드한다.
+      <InfoCard className="flex items-center justify-between gap-2.5 bg-card" aria-hidden>
         <span className="flex min-w-0 flex-1 animate-pulse items-center gap-1.25">
           <span className="size-3.5 shrink-0 rounded-full bg-muted sm:size-4" />
           <span className="h-3.5 w-32 rounded bg-muted sm:h-4 sm:w-40" />
@@ -26,8 +29,10 @@ export function SessionCard({ name, onLogout }: { name?: string; onLogout?: () =
   }
 
   return (
-    <InfoCard className="flex items-center justify-between gap-2.5">
-      <span className="inline-flex min-w-0 flex-1 items-center gap-1.25 truncate text-xs font-semibold sm:text-sm">
+    // 🔧 [사용자 지시] "텍스트 위계도 '제보' 화면 참고해서 조정" — 이름
+    // 텍스트가 다른 설정 카드보다 한 단계 작았다 — 통일한다.
+    <InfoCard className="flex items-center justify-between gap-2.5 bg-card">
+      <span className="inline-flex min-w-0 flex-1 items-center gap-1.25 truncate text-sm font-semibold sm:text-base">
         <User className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
         <DividedValue
           items={[

@@ -282,7 +282,7 @@ function ConsensusSection({
     <div className="flex flex-col gap-1.5">
       <Label className={cn("justify-start", disabled && "opacity-50")}>
         <Checkbox checked={isConsensus && !disabled} disabled={disabled} onCheckedChange={onToggleConsensus} />
-        <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+        <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
           <Users className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
           다른 관리자 의견 반영
         </span>
@@ -305,17 +305,21 @@ function ConsensusSection({
               readOnly
             />
           ))}
-          <SubRow
-            label="판정 현황"
-            value={
-              allSubmitted
-                ? willApprove
-                  ? `검토 결과 위반으로 인정 (위반 O ${yesCount}/${totalReviewers}명)`
-                  : `위반 O ${yesCount}/${totalReviewers}명 → 반려`
-                : `전원 제출 대기 중 (기준 위반 O ${CONSENSUS_THRESHOLD}명 이상)`
-            }
-            valueClassName={allSubmitted ? cn("font-semibold", willApprove ? "text-destructive" : "text-foreground") : undefined}
-          />
+          {/* 🔧 [사용자 지시] "현재 페이지(관리자)의 위계도 맞춰줘" — SubRow
+              기본 크기가 제보 화면 기준보다 한 단계 작았다. */}
+          <div className="[&_span]:text-xs [&_span]:sm:text-sm">
+            <SubRow
+              label="판정 현황"
+              value={
+                allSubmitted
+                  ? willApprove
+                    ? `검토 결과 위반으로 인정 (위반 O ${yesCount}/${totalReviewers}명)`
+                    : `위반 O ${yesCount}/${totalReviewers}명 → 반려`
+                  : `전원 제출 대기 중 (기준 위반 O ${CONSENSUS_THRESHOLD}명 이상)`
+              }
+              valueClassName={allSubmitted ? cn("font-semibold", willApprove ? "text-destructive" : "text-foreground") : undefined}
+            />
+          </div>
         </>
       )}
     </div>
@@ -837,8 +841,8 @@ export function ReportReviewList({
                     onClick={() => setExpandedDay(isDayExpanded ? null : group.dateKey)}
                     className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded"
                   >
-                    <span className="inline-flex shrink-0 items-center gap-1.25 text-xs font-semibold sm:text-sm">
-                      <CalendarDays className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                    <span className="inline-flex shrink-0 items-center gap-1.25 text-sm font-semibold sm:text-base">
+                      <CalendarDays className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                       {dateLabel(group.dateKey)}
                     </span>
                     <span className="ml-auto flex items-center gap-1.5">
@@ -857,23 +861,33 @@ export function ReportReviewList({
                           "대기/유예/반려"(1행) · "이의/인정/확정"(2행)으로
                           배치 — 뱃지 자체 순서(DOM 순서)로 행이 정해지므로
                           이 순서 그대로 나열한다. */}
-                      <span className="grid grid-cols-3 gap-1">
-                        <span className="rounded-full bg-foreground/8 px-2 py-1 text-center text-micro-lg leading-none sm:text-xs font-semibold text-muted-foreground">
+                      {/* 🔧 [사용자 지시] "'화각 불량 제보'에서 설정한 디자인을 기준으로
+                          비슷한 모양의 다른 화면에도 적용" — 제보 화면의 "총 N건" 뱃지와
+                          동일한 크기(text-xs sm:text-sm)로 통일한다(기존 text-micro-lg
+                          leading-none sm:text-xs는 한 단계 작았다). 🔧 [버그 수정] 텍스트가
+                          커진 만큼 기존 grid-cols-3 고정 3열 폭 안에서 "대기 : 0건" 같은
+                          텍스트가 줄바꿈돼 깨져 보였다 — 각 뱃지가 자기 내용만큼만 폭을
+                          차지하는 flex-wrap으로 바꾸고 whitespace-nowrap으로 줄바꿈을
+                          막는다(2행 배치는 grid-cols-3 대신 flex-wrap의 자연스러운
+                          줄바꿈으로 유지되며, DOM 순서가 그대로라 "대기/유예/반려"·
+                          "이의/인정/확정" 순서도 유지된다). */}
+                      <span className="flex flex-wrap justify-end gap-1">
+                        <span className="rounded-full bg-foreground/8 px-2 py-0.5 text-center text-xs font-semibold whitespace-nowrap text-muted-foreground sm:text-sm">
                           대기 : {pendingCount}건
                         </span>
-                        <span className="rounded-full bg-foreground/8 px-2 py-1 text-center text-micro-lg leading-none sm:text-xs font-semibold text-muted-foreground">
+                        <span className="rounded-full bg-foreground/8 px-2 py-0.5 text-center text-xs font-semibold whitespace-nowrap text-muted-foreground sm:text-sm">
                           유예 : {deferredCount}건
                         </span>
-                        <span className="rounded-full bg-foreground/8 px-2 py-1 text-center text-micro-lg leading-none sm:text-xs font-semibold text-muted-foreground">
+                        <span className="rounded-full bg-foreground/8 px-2 py-0.5 text-center text-xs font-semibold whitespace-nowrap text-muted-foreground sm:text-sm">
                           반려 : {rejectedCount}건
                         </span>
-                        <span className="rounded-full bg-amber-600/15 px-2 py-1 text-center text-micro-lg leading-none sm:text-xs font-semibold text-amber-600 dark:bg-amber-400/15 dark:text-amber-400">
+                        <span className="rounded-full bg-amber-600/15 px-2 py-0.5 text-center text-xs font-semibold whitespace-nowrap text-amber-600 sm:text-sm dark:bg-amber-400/15 dark:text-amber-400">
                           이의 : {disputedCount}건
                         </span>
-                        <span className="rounded-full bg-ok/15 px-2 py-1 text-center text-micro-lg leading-none sm:text-xs font-semibold text-ok">
+                        <span className="rounded-full bg-ok/15 px-2 py-0.5 text-center text-xs font-semibold whitespace-nowrap text-ok sm:text-sm">
                           인정 : {recognizedCount}건
                         </span>
-                        <span className="rounded-full bg-destructive/15 px-2 py-1 text-center text-micro-lg leading-none sm:text-xs font-semibold text-destructive">
+                        <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-center text-xs font-semibold whitespace-nowrap text-destructive sm:text-sm">
                           확정 : {appliedCount}건
                         </span>
                       </span>
@@ -910,18 +924,27 @@ export function ReportReviewList({
                             )}
                           >
                             <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-                              <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
-                                <User className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                              <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
+                                <User className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                 {/* 이미 날짜별로 묶여 있으므로(그룹 헤더에 날짜 표시) 여기서는
                                     시:분:초까지 덧붙여 같은 대상자의 여러 건을 시각으로
                                     구분한다(사용자 지시: 토글 제목 옆에 발생일시도 표시,
                                     초 단위까지). 구분자는 이 프로젝트 전반(대시보드 타일
                                     등)에서 쓰는 DividedValue(텍스트 "|" 대신 은은한 세로선
                                     요소)를 그대로 재사용한다. */}
+                                {/* 🔧 [사용자 지시] "구분자 우측 시간이 다른데를
+                                    보면 구분자 우측은 폰트 위계가 더 작게
+                                    되어있지 않아?" — 크기 클래스가 없어 부모의
+                                    text-sm sm:text-base를 그대로 물려받아
+                                    좌측과 같은 크기였다(굵기만 font-normal이라
+                                    작아 보이는 착시). 설정 화면(SessionCard/
+                                    PeriodAlarmCard)의 DividedValue 우측
+                                    항목처럼 명시적으로 한 단계 작게
+                                    (text-xs sm:text-sm) 통일한다. */}
                                 <DividedValue
                                   items={[
                                     item.nickname,
-                                    <span key="ts" className="font-normal text-muted-foreground">
+                                    <span key="ts" className="text-xs font-normal text-muted-foreground sm:text-sm">
                                       {new Date(item.ts).toLocaleTimeString("ko-KR", {
                                         hour: "2-digit",
                                         minute: "2-digit",
@@ -1008,8 +1031,14 @@ export function ReportReviewList({
                                   onClick={() => setExpandedId(isMemberExpanded ? null : item.id)}
                                   aria-label={isMemberExpanded ? "상세 접기" : "상세 펼치기"}
                                 >
+                                  {/* 🔧 [사용자 지시] 제보 화면 기준 통일 — 색 지정이 없으면 outline
+                                      버튼의 기본 전경색을 물려받아 날짜 그룹 헤더의 chevron
+                                      (text-muted-foreground)보다 진하게 보였다. */}
                                   <ChevronDown
-                                    className={cn("size-3.5 transition-transform", isMemberExpanded && "rotate-180")}
+                                    className={cn(
+                                      "size-3.5 text-muted-foreground transition-transform",
+                                      isMemberExpanded && "rotate-180"
+                                    )}
                                     strokeWidth={ICON_STROKE.default}
                                   />
                                 </Button>
@@ -1024,7 +1053,7 @@ export function ReportReviewList({
                               <>
                                 <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:gap-3.5 sm:p-5">
                                   <div className="flex flex-col gap-1.5">
-                                    <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                                    <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                                       <ImageIcon className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                       스크린샷 · 영상
                                     </span>
@@ -1042,14 +1071,19 @@ export function ReportReviewList({
                                   <div className="h-px w-full bg-border" />
 
                                   <div className="flex flex-col gap-1.5">
-                                    <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                                    <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                                       <FileText className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                       제보정보
                                     </span>
-                                    <SubRow label="사유" value={item.reason || "-"} valueClassName="text-destructive" />
-                                    <SubRow label="제보자" value={item.reporterName || item.reporterEmail || "-"} />
-                                    <SubRow label="발생일시" value={new Date(item.ts).toLocaleString("ko-KR")} />
-                                    <SubRow label="처리현황" value={statusLabel(item)} />
+                                    {/* 🔧 [사용자 지시] "현재 페이지(관리자)의
+                                        위계도 맞춰줘" — SubRow 기본 크기가
+                                        제보 화면 기준보다 한 단계 작았다. */}
+                                    <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
+                                      <SubRow label="사유" value={item.reason || "-"} valueClassName="text-destructive" />
+                                      <SubRow label="제보자" value={item.reporterName || item.reporterEmail || "-"} />
+                                      <SubRow label="발생일시" value={new Date(item.ts).toLocaleString("ko-KR")} />
+                                      <SubRow label="처리현황" value={statusLabel(item)} />
+                                    </div>
                                   </div>
                                 </div>
 
@@ -1066,7 +1100,7 @@ export function ReportReviewList({
                                     을 여기도 적용한다. */}
                                 {!isApplied && !isRejected && item.targetResponse === "disputed" && (
                                   <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:gap-3.5 sm:p-5">
-                                    <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                                    <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                                       <Users className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                       내 의견
                                     </span>
@@ -1102,7 +1136,7 @@ export function ReportReviewList({
                                 )}
                                 {!isApplied && !isRejected && item.targetResponse !== "disputed" && (
                                   <div className="flex flex-col gap-2 rounded-xl border bg-card p-4 sm:p-5">
-                                    <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                                    <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                                       <Users className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                       내 의견
                                     </span>
@@ -1118,7 +1152,7 @@ export function ReportReviewList({
                               <>
                                 <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:gap-3.5 sm:p-5">
                                   <div className="flex flex-col gap-1.5">
-                                    <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                                    <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                                       <ImageIcon className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                       스크린샷 · 영상
                                     </span>
@@ -1136,20 +1170,22 @@ export function ReportReviewList({
                                   <div className="h-px w-full bg-border" />
 
                                   <div className="flex flex-col gap-1.5">
-                                    <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                                    <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                                       <FileText className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                       제보정보
                                     </span>
-                                    <SubRow label="사유" value={item.reason || "-"} valueClassName="text-destructive" />
-                                    <SubRow label="제보자" value={item.reporterName || item.reporterEmail || "-"} />
-                                    <SubRow label="발생일시" value={new Date(item.ts).toLocaleString("ko-KR")} />
-                                    <SubRow label="처리현황" value={statusLabel(item)} />
+                                    <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
+                                      <SubRow label="사유" value={item.reason || "-"} valueClassName="text-destructive" />
+                                      <SubRow label="제보자" value={item.reporterName || item.reporterEmail || "-"} />
+                                      <SubRow label="발생일시" value={new Date(item.ts).toLocaleString("ko-KR")} />
+                                      <SubRow label="처리현황" value={statusLabel(item)} />
+                                    </div>
                                   </div>
 
                                   <div className="h-px w-full bg-border" />
 
                                   <div className="flex flex-col gap-1.5">
-                                    <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                                    <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                                       <Clock className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                       학습시간 차감
                                     </span>
@@ -1161,6 +1197,10 @@ export function ReportReviewList({
                                         여전히 "적용" 버튼을 눌렀을 때 확정값(penalty.deductedMinutes)으로
                                         이루어진다 — 그 전까지는 이 예상값만 표시.
                                     */}
+                                    {/* 🔧 [사용자 지시] "현재 페이지(관리자)의
+                                        위계도 맞춰줘" — SubRow 기본 크기가
+                                        제보 화면 기준보다 한 단계 작았다. */}
+                                    <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
                                     <SubRow
                                       label="응답일시"
                                       value={
@@ -1201,15 +1241,17 @@ export function ReportReviewList({
                                         />
                                       );
                                     })()}
+                                    </div>
                                   </div>
 
                                   <div className="h-px w-full bg-border" />
 
                                   <div className="flex flex-col gap-1.5">
-                                    <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                                    <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                                       <Gavel className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                       벌점 · 페널티 변동
                                     </span>
+                                    <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
                                     {/* 🔧 [버그 수정] 위 학습시간 차감과 동일한 이유로,
                                         applied[item.id](로컬 세션)만 보면 새로고침 후 이미
                                         확정된 건이 "예상 적용" + 재계산된 nextOccurrence로
@@ -1309,6 +1351,7 @@ export function ReportReviewList({
                                         제거 — 확정(approved)/유예(deferred)/반려(인정,
                                         rejected_recognized) 어떤 결정이든 관리자 화면에서는
                                         더 이상 노출하지 않는다(부여 실패 케이스도 포함). */}
+                                    </div>
                                   </div>
                                 </div>
 

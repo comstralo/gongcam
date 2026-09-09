@@ -45,12 +45,21 @@ export function DashboardPage({ visible = true }: { visible?: boolean }) {
 
   return (
     <div className="flex w-full page-content flex-col items-center gap-4">
+      {/* 🔧 [사용자 지시] "제보"와 탭 디자인이 다른 곳도 다 제보에 맞춰서
+          통일" — 제보 화면(ReportPage)의 알약형(rounded-full) 탭과 동일한
+          모양으로 맞춘다. */}
       <Tabs value={view} onValueChange={changeView} className="w-full">
-        <TabsList className="w-full">
-          <TabsTrigger value="me" className="flex-1 font-mono text-xs tracking-wide uppercase">
+        <TabsList className="h-auto w-full rounded-full bg-secondary p-1">
+          <TabsTrigger
+            value="me"
+            className="h-auto flex-1 rounded-full py-2.5 font-mono text-xs tracking-wide uppercase data-active:shadow-sm"
+          >
             My
           </TabsTrigger>
-          <TabsTrigger value="all" className="flex-1 font-mono text-xs tracking-wide uppercase">
+          <TabsTrigger
+            value="all"
+            className="h-auto flex-1 rounded-full py-2.5 font-mono text-xs tracking-wide uppercase data-active:shadow-sm"
+          >
             RANK
           </TabsTrigger>
         </TabsList>

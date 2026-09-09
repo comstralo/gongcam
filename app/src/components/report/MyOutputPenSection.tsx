@@ -370,8 +370,11 @@ export function MyOutputPenSection({
                             때문에 패딩값이 같아도 배경(pill) 높이가
                             TintedPill(기본 line-height, 28px)보다 6px
                             작게(22px) 나와 "배경색 크기가 다르다"고
-                            보였다(사용자 지적) — leading-none을 없애 맞춘다. */}
-                        <span className="rounded-full bg-amber-600/15 px-2.5 py-0.5 text-sm font-semibold text-amber-600 sm:text-base dark:bg-amber-400/15 dark:text-amber-400">
+                            보였다(사용자 지적) — leading-none을 없애 맞춘다.
+                            🔧 [사용자 지시] "뱃지는 아까 키웠잖아? 지금보니까
+                            살짝 작은게 나은 것 같다" — TintedPill과 함께
+                            한 단계씩 낮춘다(text-xs sm:text-sm). */}
+                        <span className="rounded-full bg-amber-600/15 px-2.5 py-0.5 text-xs font-semibold text-amber-600 sm:text-sm dark:bg-amber-400/15 dark:text-amber-400">
                           총 {receivedCount}건
                         </span>
                         <ChevronDown
@@ -419,49 +422,33 @@ export function MyOutputPenSection({
                                 canRespond && "border-destructive/60 animate-unpaid-glow"
                               )}
                             >
-                              {/* 🔧 [버그 수정] 원래 시간+뱃지가 항상 한 가로줄(justify-between)
-                                  이었는데, 유예/확정 건은 뱃지가 3개(예: "유예 1차"/"3차 (벌점)"/
-                                  "-00:00")까지 붙어 좁은 모바일 폭에서 잘리거나 눌려 깨져
-                                  보였다(Playwright MCP 모바일 뷰포트 점검 + 사용자 재확인).
-                                  가로 스크롤·flex-wrap 개행 모두 시도했으나, 시간과 뱃지가
-                                  같은 줄을 나눠 써야 해 뱃지 쪽 가용 폭이 좁은 게 근본
-                                  원인이었다. 뱃지 줄을 시간 아래 별도 줄로 분리하면 카드
-                                  전체 폭을 뱃지에 온전히 쓸 수 있어 잘림 없이 한 줄로
-                                  들어간다(사용자 지시: "시간 아래에" 표시). */}
-                              <div className="flex flex-col gap-1.5">
-                                <div className="flex items-center justify-between gap-1.5">
-                                  {/* 🔧 [사용자 지시] 이 시간 텍스트가 날짜 그룹 제목
-                                      ("9월 9일 수요일", text-sm sm:text-base)과 같은
-                                      위계(항목의 "제목" 역할)인데 한 단계 작은
-                                      text-xs sm:text-sm였다 — 크기를 맞춘다. */}
-                                  <span className="inline-flex shrink-0 items-center gap-1.25 text-sm font-semibold sm:text-base">
-                                    <Clock className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-                                    {/* 이미 날짜별로 묶여 있으므로(그룹 헤더에 날짜 표시) 여기서는
-                                        시각만 보여준다(사용자 지시: 날짜는 빼고, 아이콘도 시계로). */}
-                                    {new Date(item.ts).toLocaleTimeString("ko-KR")}
-                                  </span>
-                                  {/* 🔧 [사용자 지시] 펼치기 버튼은 테두리 있는 버튼 대신 아이콘
-                                      모양만 남긴다(variant="ghost"). icon-sm의 클릭 영역(28px)이
-                                      화살표 아이콘(14px)보다 두 배 커, 그 여유 공간(7px)이 카드
-                                      오른쪽 패딩에 더해져 왼쪽 시간 텍스트 여백보다 시각적으로
-                                      넓어 보였다(사용자 지적: "우측에 마우스 커서 거의 2개
-                                      들어간다"). 터치 타겟(클릭 영역)은 그대로 두고 -mr-1.5로
-                                      시각적 위치만 카드 가장자리에 맞춘다. */}
-                                  <Button
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    className="-mr-1.5 shrink-0"
-                                    onClick={() => setExpandedId(isItemExpanded ? null : item.id)}
-                                    aria-label={isItemExpanded ? "상세 접기" : "상세 펼치기"}
-                                  >
-                                    <ChevronDown
-                                      className={cn("size-3.5 transition-transform", isItemExpanded && "rotate-180")}
-                                      strokeWidth={ICON_STROKE.default}
-                                    />
-                                  </Button>
-                                </div>
-                                <div className="flex items-center gap-1.5 [&_span]:shrink-0 [&_span]:whitespace-nowrap">
-                                  {isReceived ? (
+                              {/* 🔧 [사용자 지시] "뱃지가 줄어들어서 한 줄에 표현도 가능할 것
+                                  같은데 잘리거나 넘칠 때만 개행하도록" — 뱃지 크기를
+                                  줄인(TintedPill text-sm→text-xs) 뒤로는 대부분 폭에서 한
+                                  줄에 들어가므로, 시간(좌측 고정)과 뱃지 그룹(우측 정렬,
+                                  사용자 지시: "뱃지는 우측 정렬")을 양끝에 두고, 뱃지
+                                  그룹만 flex-wrap으로 둬 공간이 모자랄 때만 다음 줄로
+                                  넘어간다(이전엔 뱃지가 3개까지 붙는 유예/확정 건에서
+                                  좁은 폭에 잘려 보여 아예 별도 줄로 고정 분리했었으나,
+                                  뱃지 자체가 작아진 지금은 잘릴 때만 개행하는 편이
+                                  대부분의 경우 더 컴팩트하다). 접기 버튼은 뱃지 그룹과
+                                  함께 묶어 항상 맨 우측 끝을 지키게 한다. */}
+                              <div className="flex flex-wrap items-center justify-between gap-x-1.5 gap-y-1">
+                                {/* 🔧 [사용자 지시] 이 시간 텍스트가 날짜 그룹 제목
+                                    ("9월 9일 수요일", text-sm sm:text-base)과 같은
+                                    위계(항목의 "제목" 역할)인데 한 단계 작은
+                                    text-xs sm:text-sm였다 — 크기를 맞춘다. */}
+                                <span className="inline-flex shrink-0 items-center gap-1.25 text-sm font-semibold sm:text-base">
+                                  <Clock className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
+                                  {/* 이미 날짜별로 묶여 있으므로(그룹 헤더에 날짜 표시) 여기서는
+                                      시각만 보여준다(사용자 지시: 날짜는 빼고, 아이콘도 시계로). */}
+                                  {new Date(item.ts).toLocaleTimeString("ko-KR")}
+                                </span>
+                                {/* 🔧 [사용자 지시] "좀 더 우측으로 붙여도 될 것 같다" — 뱃지
+                                    그룹과 접기 버튼 사이 간격을 줄여 더 가깝게 붙인다. */}
+                                <div className="flex min-w-0 flex-wrap items-center justify-end gap-0.5">
+                                  <div className="flex flex-wrap items-center justify-end gap-1.5 [&_span]:shrink-0 [&_span]:whitespace-nowrap">
+                                    {isReceived ? (
                                     received!.reviewStatus === "deferred" ? (
                                       // 🔧 [관리자 화면과 동일화] 관리자 화면(ReportReviewList)은
                                       // 유예 뱃지를 "유예 N차" + 원래 조치("2차 (벌점)" 등) 2개로
@@ -524,9 +511,39 @@ export function MyOutputPenSection({
                                         return <TintedPill tone={tone}>{label}</TintedPill>;
                                       })()
                                     )
-                                  ) : (
-                                    <TintedPill tone="ok">화각 점검</TintedPill>
-                                  )}
+                                    ) : (
+                                      <TintedPill tone="ok">화각 점검</TintedPill>
+                                    )}
+                                  </div>
+                                  {/* 🔧 [사용자 지시] 펼치기 버튼은 테두리 있는 버튼 대신 아이콘
+                                      모양만 남긴다(variant="ghost"). icon-sm의 클릭 영역(28px)이
+                                      화살표 아이콘(14px)보다 두 배 커, 그 여유 공간(7px)이 카드
+                                      오른쪽 패딩에 더해져 왼쪽 시간 텍스트 여백보다 시각적으로
+                                      넓어 보였다(사용자 지적: "우측에 마우스 커서 거의 2개
+                                      들어간다"). 터치 타겟(클릭 영역)은 그대로 두고 -mr-1.5로
+                                      시각적 위치만 카드 가장자리에 맞춘다. 뱃지 그룹과 같은
+                                      우측 묶음 안에 둬 뱃지가 개행되어도 접기 버튼은 항상
+                                      그 줄의 맨 끝을 지킨다. */}
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    className="-mr-1.5 shrink-0"
+                                    onClick={() => setExpandedId(isItemExpanded ? null : item.id)}
+                                    aria-label={isItemExpanded ? "상세 접기" : "상세 펼치기"}
+                                  >
+                                    {/* 🔧 [사용자 지시] "뱃지 우측의 빈 공간과 토글 ^ 버튼 색상이
+                                      일치하는지" — 날짜 그룹 헤더의 chevron은
+                                      text-muted-foreground(회색)로 명시돼 있는데, 이 항목별
+                                      chevron은 색 클래스가 없어 ghost 버튼의 기본 전경색을
+                                      그대로 물려받아 더 진하게 보였다 — 동일하게 맞춘다. */}
+                                  <ChevronDown
+                                      className={cn(
+                                        "size-3.5 text-muted-foreground transition-transform",
+                                        isItemExpanded && "rotate-180"
+                                      )}
+                                      strokeWidth={ICON_STROKE.default}
+                                    />
+                                  </Button>
                                 </div>
                               </div>
 
@@ -564,9 +581,30 @@ export function MyOutputPenSection({
                                           제보정보
                                         </span>
                                         {/* 관리자 화면과 동일한 레이아웃이되, 제보자는 숨긴다(사용자 지시). */}
-                                        <SubRow label="사유" value={displayReason(received!.reason)} valueClassName="text-destructive" />
-                                        <SubRow label="발생일시" value={new Date(item.ts).toLocaleString("ko-KR")} />
-                                        <SubRow label="처리현황" value={statusLabel(received!)} />
+                                        {/* 🔧 [사용자 지시] "2번 사진의 영역을 1번 사진의 위계 크기
+                                            처럼 맞추고 싶어" — SubRow 기본 크기(text-micro-lg
+                                            sm:text-xs)가 "일간 총 벌금 · 재납 예치금" 아래
+                                            항목들(labelClassName/valueClassName로 text-xs
+                                            sm:text-sm 오버라이드됨)보다 한 단계 작았다 — 이
+                                            섹션의 모든 SubRow에 동일하게 적용해 통일한다. */}
+                                        <SubRow
+                                          label="사유"
+                                          value={displayReason(received!.reason)}
+                                          labelClassName="text-xs sm:text-sm"
+                                          valueClassName="text-xs text-destructive sm:text-sm"
+                                        />
+                                        <SubRow
+                                          label="발생일시"
+                                          value={new Date(item.ts).toLocaleString("ko-KR")}
+                                          labelClassName="text-xs sm:text-sm"
+                                          valueClassName="text-xs sm:text-sm"
+                                        />
+                                        <SubRow
+                                          label="처리현황"
+                                          value={statusLabel(received!)}
+                                          labelClassName="text-xs sm:text-sm"
+                                          valueClassName="text-xs sm:text-sm"
+                                        />
                                       </div>
 
                                       <div className="h-px w-full bg-border" />
@@ -583,6 +621,8 @@ export function MyOutputPenSection({
                                               ? new Date(received!.targetRespondedAt).toLocaleString("ko-KR")
                                               : "대상자 응답 대기 중"
                                           }
+                                          labelClassName="text-xs sm:text-sm"
+                                          valueClassName="text-xs sm:text-sm"
                                         />
                                         {(() => {
                                           // 🔧 [유예도 확정으로 표시] "유예"는 벌점만 면제될 뿐 응답
@@ -600,7 +640,8 @@ export function MyOutputPenSection({
                                             <SubRow
                                               label={isConfirmed ? "확정 차감시간" : "예상 차감시간"}
                                               value={formatDeductedTime(deductedMinutes)}
-                                              valueClassName={deductedMinutes === 0 ? undefined : "text-destructive"}
+                                              labelClassName="text-xs sm:text-sm"
+                                              valueClassName={cn("text-xs sm:text-sm", deductedMinutes !== 0 && "text-destructive")}
                                             />
                                           );
                                         })()}
@@ -658,7 +699,8 @@ export function MyOutputPenSection({
                                                   occurrenceLabel(received!.nextOccurrence)
                                                 )
                                               }
-                                              valueClassName="text-destructive"
+                                              labelClassName="text-xs sm:text-sm"
+                                              valueClassName="text-xs text-destructive sm:text-sm"
                                             />
                                           );
                                         })()}
@@ -688,7 +730,8 @@ export function MyOutputPenSection({
                                             <SubRow
                                               label="이번 주 영향"
                                               value={impact}
-                                              valueClassName={hasImpact ? "text-destructive" : undefined}
+                                              labelClassName="text-xs sm:text-sm"
+                                              valueClassName={cn("text-xs sm:text-sm", hasImpact && "text-destructive")}
                                             />
                                           );
                                         })()}

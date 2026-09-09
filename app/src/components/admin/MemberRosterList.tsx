@@ -110,14 +110,17 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
                     onClick={() => setExpandedNumber(isExpanded ? null : m.number)}
                     className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded"
                   >
-                    <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
-                      <User className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                    <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
+                      <User className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                       {m.name}
                     </span>
                     <span className="flex items-center gap-1.5">
+                      {/* 🔧 [사용자 지시] "'화각 불량 제보'에서 설정한 디자인을 기준으로
+                          비슷한 모양의 다른 화면에도 적용" — 패딩 오버라이드(px-2 py-1
+                          leading-none)를 없애 TintedPill 기본 크기로 통일한다. 이전엔
+                          바로 옆 "퇴실 예약" 뱃지와 미묘하게 크기가 달랐다. */}
                       <TintedPill
                         tone={m.partiStatus === "스터디장" ? "primary" : m.partiStatus === "부스터디장" ? "ok" : "muted"}
-                        className="px-2 py-1 leading-none"
                       >
                         {m.partiStatus}
                       </TintedPill>
@@ -132,49 +135,60 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
                   {isExpanded && (
                     <>
                       <div className="flex flex-col gap-1.5 rounded-xl border bg-card p-4 sm:p-5">
-                        <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                        <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                           <Hash className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
                           상태 정보
                         </span>
-                        <SubRow label="참여유형" value={formatGoalType(m.goalType)} />
-                        <SubRow label="가입일자" value={m.joinDate || "-"} />
-                        <SubRow label="준비 중인 시험" value={m.examKind || "-"} />
-                        <SubRow label="구글 계정" value={m.googleAccount || "-"} />
-                        <SubRow label="구루미 계정" value={m.gooroomeeAccount || "-"} />
-                        <SubRow
-                          label="시트번호"
-                          value={
-                            spreadsheetId && m.sheetGid !== null ? (
-                              <a
-                                href={`https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${m.sheetGid}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
-                              >
-                                {m.number}번
-                                <ExternalLink className="size-3 shrink-0" strokeWidth={ICON_STROKE.default} />
-                              </a>
-                            ) : (
-                              `${m.number}번`
-                            )
-                          }
-                        />
-                        <SubRow
-                          label="퇴실 예약일자"
-                          value={m.exitRequested ? (m.exitRequestDate ? `${m.exitRequestDate} 희망` : "접수됨") : "-"}
-                          valueClassName={m.exitRequested ? "text-amber-600 dark:text-amber-400" : undefined}
-                        />
-                        <SubRow
-                          label="최근 접속일자"
-                          value={m.lastLoginAt ? new Date(m.lastLoginAt).toLocaleString("ko-KR") : "-"}
-                        />
-                        <SubRow label="최근 접속 IP" value={m.lastLoginIp || "-"} />
+                        {/* 🔧 [사용자 지시] "현재 페이지(관리자)의 위계도
+                            맞춰줘" — SubRow 기본 크기(text-micro-lg
+                            sm:text-xs)가 제보 화면 기준(text-xs sm:text-sm)
+                            보다 한 단계 작았다. 호출부마다
+                            labelClassName/valueClassName을 개별 지정하는
+                            대신, SubRow만 감싸는 컨테이너에 자손 선택자로
+                            한 번에 적용한다 — valueClassName으로 이미 색만
+                            지정된 곳(퇴실 예약일자 등)과도 충돌 없이
+                            합쳐진다. */}
+                        <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
+                          <SubRow label="참여유형" value={formatGoalType(m.goalType)} />
+                          <SubRow label="가입일자" value={m.joinDate || "-"} />
+                          <SubRow label="준비 중인 시험" value={m.examKind || "-"} />
+                          <SubRow label="구글 계정" value={m.googleAccount || "-"} />
+                          <SubRow label="구루미 계정" value={m.gooroomeeAccount || "-"} />
+                          <SubRow
+                            label="시트번호"
+                            value={
+                              spreadsheetId && m.sheetGid !== null ? (
+                                <a
+                                  href={`https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${m.sheetGid}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
+                                >
+                                  {m.number}번
+                                  <ExternalLink className="size-3 shrink-0" strokeWidth={ICON_STROKE.default} />
+                                </a>
+                              ) : (
+                                `${m.number}번`
+                              )
+                            }
+                          />
+                          <SubRow
+                            label="퇴실 예약일자"
+                            value={m.exitRequested ? (m.exitRequestDate ? `${m.exitRequestDate} 희망` : "접수됨") : "-"}
+                            valueClassName={m.exitRequested ? "text-amber-600 dark:text-amber-400" : undefined}
+                          />
+                          <SubRow
+                            label="최근 접속일자"
+                            value={m.lastLoginAt ? new Date(m.lastLoginAt).toLocaleString("ko-KR") : "-"}
+                          />
+                          <SubRow label="최근 접속 IP" value={m.lastLoginIp || "-"} />
+                        </div>
                       </div>
 
                       {/* 🔧 [관리자용 알림 설정 열람] 조회 전용 — 실제 변경은
                           회원 본인만 자기 대시보드의 알림 설정에서 할 수 있다. */}
                       <div className="flex flex-col gap-1.5 rounded-xl border bg-card p-4 sm:p-5">
-                        <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                        <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                           <Bell className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
                           알림 설정
                         </span>
@@ -186,18 +200,20 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
                             줬다(사용자 지적) — PUSH 구독 행 자체는 없애고,
                             구독이 꺼진 회원은 세부 항목을 실제 저장값과
                             무관하게 전부 OFF로 보여준다. */}
-                        {notifyCategories &&
-                          Object.entries(notifyCategories).map(([key, label]) => {
-                            const enabled = m.pushSubscribed && m.notifyPrefs[key as NotifyCategory];
-                            return (
-                              <SubRow
-                                key={key}
-                                label={label}
-                                value={enabled ? "ON" : "OFF"}
-                                valueClassName={enabled ? "text-ok" : "text-muted-foreground"}
-                              />
-                            );
-                          })}
+                        <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
+                          {notifyCategories &&
+                            Object.entries(notifyCategories).map(([key, label]) => {
+                              const enabled = m.pushSubscribed && m.notifyPrefs[key as NotifyCategory];
+                              return (
+                                <SubRow
+                                  key={key}
+                                  label={label}
+                                  value={enabled ? "ON" : "OFF"}
+                                  valueClassName={enabled ? "text-ok" : "text-muted-foreground"}
+                                />
+                              );
+                            })}
+                        </div>
                       </div>
 
                       {/* 🔧 [퇴실 처리 버튼 분리] "스터디원 목록"은 자진 퇴실
@@ -225,7 +241,7 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
                         </Button>
                         <ExitProcessDialog candidate={m} lockKind="admin_forced" onConfirmed={load} triggerClassName="w-full">
                           <Button variant="destructive" className="w-full sm:h-12 sm:text-base">
-                            퇴실 처리 (직권 P)
+                            직권 P 퇴실
                           </Button>
                         </ExitProcessDialog>
                         <ExitProcessDialog
@@ -238,7 +254,7 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
                             variant="destructive"
                             className="w-full sm:h-12 sm:text-base"
                           >
-                            퇴실 처리 (정산)
+                            정산 퇴실
                           </Button>
                         </ExitProcessDialog>
                         {m.exitRequested && (

@@ -235,7 +235,7 @@ export function ExitProcessDialog({
               <InfoCard className="flex flex-col gap-1.5">
                 <Label
                   htmlFor="forced-reason"
-                  className="flex items-center gap-1.25 text-xs font-semibold text-muted-foreground sm:text-sm"
+                  className="flex items-center gap-1.25 text-sm font-semibold text-muted-foreground sm:text-base"
                 >
                   <MessageSquareWarning className="size-3.5 shrink-0 sm:size-4" />
                   직권 퇴실 사유
@@ -272,7 +272,7 @@ export function ExitProcessDialog({
                   (아래 버튼 참고). */}
               {preview && (
                 <InfoCard className="flex items-center justify-between gap-2">
-                  <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+                  <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
                     <PiggyBank className="size-3.5 shrink-0 sm:size-4" />
                     반환 예치금
                   </span>
@@ -288,51 +288,61 @@ export function ExitProcessDialog({
                 </InfoCard>
               )}
 
+              {/* 🔧 [사용자 지시] "현재 페이지(관리자)의 위계도 맞춰줘" —
+                  SubRow 기본 크기(text-micro-lg sm:text-xs)가 제보 화면
+                  기준(text-xs sm:text-sm)보다 한 단계 작았다. SubRow만
+                  감싸는 컨테이너에 자손 선택자로 한 번에 적용한다. */}
               {preview && preview.breakdown && (
                 <InfoCard className="flex flex-col gap-1.5">
-                  <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+                  <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
                     <TrendingDown className="size-3.5 shrink-0 sm:size-4" />
                     차감 원인
                   </span>
-                  {buildDepositCauseItems(preview.breakdown, preview.breakdown.lateNotice ? 50 : 0).map((item) => (
-                    <SubRow
-                      key={item.key}
-                      label={item.label}
-                      value={`${item.rate}%`}
-                      valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
-                    />
-                  ))}
+                  <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
+                    {buildDepositCauseItems(preview.breakdown, preview.breakdown.lateNotice ? 50 : 0).map((item) => (
+                      <SubRow
+                        key={item.key}
+                        label={item.label}
+                        value={`${item.rate}%`}
+                        valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
+                      />
+                    ))}
+                  </div>
                 </InfoCard>
               )}
 
               {preview && (
                 <InfoCard className="flex flex-col gap-1.5">
-                  <span className="flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                  <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                     <Eye className="size-3.5 shrink-0 sm:size-4" />
                     처리 결과
                   </span>
-                  <SubRow label="반환 예치금" value={won(preview.refundAmount)} />
-                  <SubRow label="귀속 예치금" value={won(preview.heldAmount)} />
-                  <SubRow label="주간 납부 벌금" value={won(preview.fineAlreadyPayment)} />
-                  <SubRow label="처리일자" value={preview.processedDate} />
+                  <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
+                    <SubRow label="반환 예치금" value={won(preview.refundAmount)} />
+                    <SubRow label="귀속 예치금" value={won(preview.heldAmount)} />
+                    <SubRow label="주간 납부 벌금" value={won(preview.fineAlreadyPayment)} />
+                    <SubRow label="처리일자" value={preview.processedDate} />
+                  </div>
                 </InfoCard>
               )}
 
               {preview && (
                 <InfoCard className="flex flex-col gap-1.5">
-                  <span className="flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                  <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                     <ArrowRightLeft className="size-3.5 shrink-0 sm:size-4" />
                     시트 변동사항
                   </span>
-                  <SubRow label="(집계) 퇴실자 벌금" value={`${won(preview.fineOuter)} → ${won(preview.newFineOuter)}`} />
-                  <SubRow label="(집계) 퇴실자 예치금" value={`${won(preview.depositOuter)} → ${won(preview.newDepositOuter)}`} />
+                  <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
+                    <SubRow label="(집계) 퇴실자 벌금" value={`${won(preview.fineOuter)} → ${won(preview.newFineOuter)}`} />
+                    <SubRow label="(집계) 퇴실자 예치금" value={`${won(preview.depositOuter)} → ${won(preview.newDepositOuter)}`} />
+                  </div>
                 </InfoCard>
               )}
 
               <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
                 <div className="flex items-center gap-1.5 text-destructive">
                   <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
-                  <span className="text-xs font-semibold sm:text-sm">주의사항</span>
+                  <span className="text-sm font-semibold sm:text-base">주의사항</span>
                 </div>
                 <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
                   확정하면 현재 시트가 백업 탭으로 옮겨지고 원래 슬롯이 초기화됩니다. 되돌릴 수 없으니
@@ -357,7 +367,7 @@ export function ExitProcessDialog({
 
               {preview && (
                 <InfoCard className="flex items-center justify-between gap-2">
-                  <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+                  <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
                     <PiggyBank className="size-3.5 shrink-0 sm:size-4" />
                     반환 예치금
                   </span>
@@ -379,64 +389,72 @@ export function ExitProcessDialog({
                   lateNotice를 그대로 신뢰한다. */}
               {preview && preview.breakdown && (
                 <InfoCard className="flex flex-col gap-1.5">
-                  <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+                  <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
                     <TrendingDown className="size-3.5 shrink-0 sm:size-4" />
                     차감 원인
                   </span>
-                  {buildDepositCauseItems(preview.breakdown, preview.breakdown.lateNotice ? 50 : 0).map((item) => (
-                    <SubRow
-                      key={item.key}
-                      label={item.label}
-                      value={`${item.rate}%`}
-                      valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
-                    />
-                  ))}
+                  <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
+                    {buildDepositCauseItems(preview.breakdown, preview.breakdown.lateNotice ? 50 : 0).map((item) => (
+                      <SubRow
+                        key={item.key}
+                        label={item.label}
+                        value={`${item.rate}%`}
+                        valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
+                      />
+                    ))}
+                  </div>
                 </InfoCard>
               )}
 
               {preview && (
                 <InfoCard className="flex flex-col gap-1.5">
-                  <span className="flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                  <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                     <Eye className="size-3.5 shrink-0 sm:size-4" />
                     처리 결과
                   </span>
-                  <SubRow label="반환 예치금" value={won(preview.refundAmount)} />
-                  <SubRow label="귀속 예치금" value={won(preview.heldAmount)} />
-                  <SubRow label="주간 납부 벌금" value={won(preview.fineAlreadyPayment)} />
-                  <SubRow label="처리일자" value={preview.processedDate} />
+                  <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
+                    <SubRow label="반환 예치금" value={won(preview.refundAmount)} />
+                    <SubRow label="귀속 예치금" value={won(preview.heldAmount)} />
+                    <SubRow label="주간 납부 벌금" value={won(preview.fineAlreadyPayment)} />
+                    <SubRow label="처리일자" value={preview.processedDate} />
+                  </div>
                 </InfoCard>
               )}
 
               {preview && (
                 <InfoCard className="flex flex-col gap-1.5">
-                  <span className="flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                  <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                     <ArrowRightLeft className="size-3.5 shrink-0 sm:size-4" />
                     시트 변동사항
                   </span>
-                  <SubRow label="(집계) 퇴실자 벌금" value={`${won(preview.fineOuter)} → ${won(preview.newFineOuter)}`} />
-                  <SubRow label="(집계) 퇴실자 예치금" value={`${won(preview.depositOuter)} → ${won(preview.newDepositOuter)}`} />
+                  <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
+                    <SubRow label="(집계) 퇴실자 벌금" value={`${won(preview.fineOuter)} → ${won(preview.newFineOuter)}`} />
+                    <SubRow label="(집계) 퇴실자 예치금" value={`${won(preview.depositOuter)} → ${won(preview.newDepositOuter)}`} />
+                  </div>
                 </InfoCard>
               )}
 
               {preview && preview.exitProcess && (
                 <InfoCard className="flex flex-col gap-1.5">
-                  <span className="flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                  <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                     <ClipboardList className="size-3.5 shrink-0 sm:size-4" />
                     퇴실 프로세스
                   </span>
-                  <SubRow
-                    label="신청일자"
-                    value={preview.exitProcess.requestedAt ? new Date(preview.exitProcess.requestedAt).toLocaleString("ko-KR") : "-"}
-                  />
-                  <SubRow label="예약일자" value={preview.exitProcess.exitDate || "-"} />
-                  <SubRow
-                    label="예치금 정산액 동의일자"
-                    value={preview.exitProcess.agreedAt ? new Date(preview.exitProcess.agreedAt).toLocaleString("ko-KR") : "미동의"}
-                    valueClassName={!preview.exitProcess.agreedAt ? "text-destructive" : undefined}
-                  />
-                  {preview.fromBackup && (
-                    <SubRow label="데이터 기준" value="지난 주 백업 시트" valueClassName="text-muted-foreground" />
-                  )}
+                  <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
+                    <SubRow
+                      label="신청일자"
+                      value={preview.exitProcess.requestedAt ? new Date(preview.exitProcess.requestedAt).toLocaleString("ko-KR") : "-"}
+                    />
+                    <SubRow label="예약일자" value={preview.exitProcess.exitDate || "-"} />
+                    <SubRow
+                      label="예치금 정산액 동의일자"
+                      value={preview.exitProcess.agreedAt ? new Date(preview.exitProcess.agreedAt).toLocaleString("ko-KR") : "미동의"}
+                      valueClassName={!preview.exitProcess.agreedAt ? "text-destructive" : undefined}
+                    />
+                    {preview.fromBackup && (
+                      <SubRow label="데이터 기준" value="지난 주 백업 시트" valueClassName="text-muted-foreground" />
+                    )}
+                  </div>
                 </InfoCard>
               )}
 
@@ -444,7 +462,7 @@ export function ExitProcessDialog({
                 <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
                   <div className="flex items-center gap-1.5 text-destructive">
                     <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
-                    <span className="text-xs font-semibold sm:text-sm">주의사항</span>
+                    <span className="text-sm font-semibold sm:text-base">주의사항</span>
                   </div>
                   <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
                     확정하면 현재 시트가 백업 탭으로 옮겨지고 원래 슬롯이 초기화됩니다. 되돌릴 수 없으니
@@ -473,7 +491,7 @@ export function ExitProcessDialog({
                   보여주는" 블록은 처리 유형 자유 선택 드롭다운과 마찬가지로
                   절대 렌더링될 수 없는 죽은 코드였다 — 함께 제거했다. */}
               <InfoCard className="flex flex-col gap-2">
-                <Label className="text-xs font-semibold text-muted-foreground sm:text-sm">처리 유형</Label>
+                <Label className="text-sm font-semibold text-muted-foreground sm:text-base">처리 유형</Label>
                 <FieldValue className="text-sm sm:text-base">{KIND_LABEL[lockKind]}</FieldValue>
 
                 {lockKind === "forced" && candidate.allChecks && candidate.allChecks.length > 0 && (
@@ -492,7 +510,7 @@ export function ExitProcessDialog({
 
               {preview && (
                 <InfoCard className="flex flex-col gap-2">
-                  <span className="text-xs font-semibold sm:text-sm">{preview.kindStr} 처리 결과</span>
+                  <span className="text-sm font-semibold sm:text-base">{preview.kindStr} 처리 결과</span>
                   {preview.allChecks.length > 0 && <ForcedExitChecklist checks={preview.allChecks} />}
                   <pre className="whitespace-pre-wrap font-mono text-xs text-muted-foreground sm:text-sm">
                     {preview.resultMsg}
@@ -504,7 +522,7 @@ export function ExitProcessDialog({
                 <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
                   <div className="flex items-center gap-1.5 text-destructive">
                     <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
-                    <span className="text-xs font-semibold sm:text-sm">주의사항</span>
+                    <span className="text-sm font-semibold sm:text-base">주의사항</span>
                   </div>
                   <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
                     확정하면 현재 시트가 백업 탭으로 옮겨지고 원래 슬롯이 초기화됩니다. 되돌릴 수 없으니

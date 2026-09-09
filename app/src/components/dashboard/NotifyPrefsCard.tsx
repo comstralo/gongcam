@@ -195,7 +195,10 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
 
   return (
     <div className="flex flex-col gap-2.5">
-      <InfoCard className="flex flex-col gap-2.5">
+      {/* 🔧 [사용자 지시] "'설정'에서 황토색 배경 부분들 다 걷어내 흰색으로" —
+          InfoCard 기본 배경(bg-muted, #f1e9da)이 황토색으로 보였다 — bg-card로
+          오버라이드한다. 아래 amber 경고 카드(346행 부근)는 의도된 색이라 그대로 둔다. */}
+      <InfoCard className="flex flex-col gap-2.5 bg-card">
         <div className="flex items-center justify-between gap-2.5">
           <span className="inline-flex min-w-0 flex-1 items-center gap-1.25 truncate text-sm font-semibold sm:text-base">
             <Bell className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
@@ -229,18 +232,21 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
           </div>
         )}
 
+        {/* 🔧 [사용자 지시] "푸시 알림 하위 텍스트 위계도 잡아줘" — 카테고리
+            라벨/전송 버튼이 text-micro-lg sm:text-xs(제보 화면의 SubRow보다
+            한 단계 작음)였다 — text-xs sm:text-sm로 통일한다. */}
         {state === "on" && categories && prefs && (
           <div className="flex flex-col gap-1.5">
             {(Object.keys(categories) as NotifyCategory[]).map((key) => (
               <div key={key} className="flex items-center justify-between gap-2 pl-5 sm:pl-5.5">
-                <span className="text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
+                <span className="text-xs text-muted-foreground before:mr-1 before:content-['└'] sm:text-sm">
                   {categories[key]}
                 </span>
                 <span className="inline-flex shrink-0 items-center gap-2">
                   {isAdmin && (
                     <button
                       type="button"
-                      className="text-micro-lg font-medium text-muted-foreground/70 outline-none hover:text-primary focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 sm:text-xs"
+                      className="text-xs font-medium text-muted-foreground/70 outline-none hover:text-primary focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 sm:text-sm"
                       disabled={testingCategory === key}
                       onClick={() => sendTestToSelf(key)}
                       aria-label={`${categories[key]} 테스트 발송`}
@@ -262,9 +268,11 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
 
         {state === "on" && devices && devices.length > 0 && (
           <div className="flex flex-col gap-1.5 border-t pt-2.5">
+            {/* 🔧 [사용자 지시] 이 ItemTitle(dashboard/shared.tsx 버전,
+                font-bold)이 "푸시 알림"(font-semibold)보다 굵었다 — 통일한다. */}
             <span className="inline-flex items-center gap-1.25">
               <Smartphone className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-              <ItemTitle>알림 받는 기기</ItemTitle>
+              <ItemTitle className="font-semibold">알림 받는 기기</ItemTitle>
             </span>
             {devices.map((d) =>
               editingDeviceId === d.id ? (
@@ -279,7 +287,7 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
                       if (e.key === "Enter") confirmRename(d);
                       if (e.key === "Escape") cancelRename();
                     }}
-                    className="h-6 flex-1 text-micro-lg sm:text-xs"
+                    className="h-6 flex-1 text-xs sm:text-sm"
                     aria-label="기기 이름"
                   />
                   <span className="inline-flex shrink-0 items-center gap-1">
@@ -306,7 +314,7 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
               ) : (
                 <div key={d.id} className="flex items-center justify-between gap-2 pl-5 sm:pl-5.5">
                   <span className="inline-flex min-w-0 items-center gap-1">
-                    <span className="truncate text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
+                    <span className="truncate text-xs text-muted-foreground before:mr-1 before:content-['└'] sm:text-sm">
                       {d.deviceLabel}
                     </span>
                     <button
@@ -348,17 +356,20 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
           <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
           <ItemTitle>주의사항</ItemTitle>
         </div>
+        {/* 🔧 [사용자 지시] 하위 텍스트 위계 통일 — 그룹 라벨/안내 문구가
+            text-micro-lg sm:text-xs(제보 화면 주의사항의 text-xs sm:text-sm
+            보다 한 단계 작음)였다 — 통일한다. */}
         <ul className="flex flex-col gap-1">
           {PUSH_NOTICE_CAUTIONS.map(({ group, items }) => (
             <li key={group} className="flex flex-col gap-0.5">
-              <span className="text-micro-lg font-semibold leading-relaxed text-muted-foreground before:mr-1 before:content-['·'] sm:text-xs">
+              <span className="text-xs font-semibold leading-relaxed text-muted-foreground before:mr-1 before:content-['·'] sm:text-sm">
                 {group}
               </span>
               <ul className="flex flex-col gap-0.5 pl-3">
                 {items.map((text) => (
                   <li
                     key={text}
-                    className="text-micro-lg leading-relaxed text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs"
+                    className="text-xs leading-relaxed text-muted-foreground before:mr-1 before:content-['└'] sm:text-sm"
                   >
                     {text}
                   </li>

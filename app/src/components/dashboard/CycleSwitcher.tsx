@@ -183,11 +183,13 @@ export function CycleSwitcher({
             데이터가 없는 슬롯(browsedHasData=false)은 애초에 "몇 주차"
             자체가 의미 없으므로 뱃지를 생략한다. 패딩을 TintedPill과
             동일하게 맞춰 "확정" 등 다른 뱃지와 크기를 통일한다(원래
-            px-1.5 py-0.5로 더 작았음). */}
+            px-1.5 py-0.5로 더 작았음). 🔧 [사용자 지시] "뱃지는 아까
+            키웠잖아? 지금보니까 살짝 작은게 나은 것 같다" — TintedPill과
+            함께 한 단계씩 낮춘다(text-xs sm:text-sm). */}
         {browsedHasData && (
           <span
             className={cn(
-              "rounded-full px-2.5 py-0.5 text-sm font-bold sm:text-base",
+              "rounded-full px-2.5 py-0.5 text-xs font-bold sm:text-sm",
               browsedIsCurrentWeek ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
             )}
           >

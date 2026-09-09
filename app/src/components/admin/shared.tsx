@@ -120,6 +120,7 @@ export function SectionHeader({
   onRefresh,
   refreshProgress,
   iconVariant = "plain",
+  trailing,
 }: {
   icon: LucideIcon;
   title: string;
@@ -130,6 +131,11 @@ export function SectionHeader({
    * 딱딱해 보인다" — 우선 제보 화면에서만 사용). 기본은 기존과 동일한
    * 맨 아이콘(plain). */
   iconVariant?: "plain" | "tint";
+  /** 🔧 [사용자 지시] "관리자 드롭다운을 헤더 영역에 넣어버릴 수 있나?" —
+   * 제목과 새로고침 버튼 사이에 임의 콘텐츠(회원 선택 Select 등)를 끼워
+   * 넣기 위한 옵셔널 슬롯. 생략하면 기존 20여 곳의 사용처와 완전히
+   * 동일하게 렌더링된다. */
+  trailing?: ReactNode;
 }) {
   // 🔧 [사용자 지시] 제목-본문 경계를 hr 구분선 대신 "카드 안의 탭"처럼
   // 보이게 한다 — 헤더 영역에 은은한 배경을 입히되, SectionCard가
@@ -153,7 +159,14 @@ export function SectionHeader({
   // 한 단계 더 키웠다(py-3, sm:py-3.5) — 앱 전체 20여 곳에 공통 적용.
   return (
     <div className="relative -mx-2.5 -mt-2.5 mb-3.5 flex items-center justify-between gap-2 bg-section-header px-2.5 py-3 sm:-mx-3.5 sm:-mt-3.5 sm:mb-4 sm:px-3.5 sm:py-3.5">
-      <CollapsibleTrigger className="flex-1">
+      {/* 🔧 [사용자 지시] "전체 헤더 영역의 버튼 순서를 ^ 새로고침 → 새로고침
+          ^ 순으로 바꿔" — trailing 유무와 무관하게 제목 트리거의 chevron은
+          항상 숨기고(hideChevron), 새로고침 버튼 뒤에 chevron만 보이는
+          두 번째 트리거를 둔다 — 같은 Collapsible.Root 아래 트리거는
+          여러 개 둬도 동일한 열림 상태를 함께 토글하므로 어느 쪽을
+          눌러도 똑같이 펼쳐진다. 두 번째 트리거의 제목 텍스트는 화면엔
+          안 보이되(sr-only) 스크린 리더용 라벨로 남긴다. */}
+      <CollapsibleTrigger className={trailing ? "w-auto shrink-0" : "flex-1"} hideChevron>
         <span className="flex items-center gap-2 text-sm font-bold sm:text-base">
           {iconVariant === "tint" ? (
             <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary sm:size-7">
@@ -165,6 +178,8 @@ export function SectionHeader({
           {title}
         </span>
       </CollapsibleTrigger>
+      {trailing && <span className="flex-1" aria-hidden="true" />}
+      {trailing}
       {onRefresh ? (
         <Button variant="outline" size="icon-sm" className="shrink-0" onClick={onRefresh} disabled={loading} aria-label="새로고침">
           <RotateCw className={cn("size-3.5", loading && "animate-spin")} strokeWidth={ICON_STROKE.default} />
@@ -172,6 +187,9 @@ export function SectionHeader({
       ) : (
         <span className="size-7 shrink-0" aria-hidden="true" />
       )}
+      <CollapsibleTrigger className="w-auto shrink-0">
+        <span className="sr-only">{title}</span>
+      </CollapsibleTrigger>
       {/* 🔧 [사용자 지시] 새로고침 진행률을 버튼 테두리 원형 게이지 대신
           "배경색이 끝나는 지점"인 탭 하단 경계선에 가로 바로 표현한다. */}
       {refreshProgress !== undefined && !loading && <RefreshProgressBar progress={1 - refreshProgress} />}

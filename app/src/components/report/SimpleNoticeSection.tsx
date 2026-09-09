@@ -91,8 +91,13 @@ export function SimpleNoticeSection({
     <div className="flex flex-col gap-4">
       <SectionCard className="flex flex-col gap-3">
         <div className="flex flex-col gap-1.5">
-          <Label className="flex items-center gap-1.25 text-xs font-semibold text-muted-foreground sm:text-sm">
-            <User className="size-3 shrink-0 sm:size-3.5" />
+          {/* 🔧 [사용자 지시] "PUSH 알림 전송" 탭을 "화각 불량 제보" 탭
+              기준으로 통일 — 라벨이 text-xs font-semibold text-muted-
+              foreground sm:text-sm로 "제보 대상자"(ReportPage, text-sm
+              font-bold sm:text-base, muted 없이 기본 전경색)보다 한 단계
+              작고 얇았다. */}
+          <Label className="flex items-center gap-1.25 text-sm font-bold sm:text-base">
+            <User className="size-3 shrink-0 text-muted-foreground sm:size-3.5" />
             수신 대상자
           </Label>
           <Select value={nickname} onValueChange={(v) => setNickname(v ?? "")} disabled={stale || noMembers}>
@@ -121,8 +126,8 @@ export function SimpleNoticeSection({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="notice-reason" className="flex items-center gap-1.25 text-xs font-semibold text-muted-foreground sm:text-sm">
-            <MessageSquareWarning className="size-3 shrink-0 sm:size-3.5" />
+          <Label htmlFor="notice-reason" className="flex items-center gap-1.25 text-sm font-bold sm:text-base">
+            <MessageSquareWarning className="size-3 shrink-0 text-muted-foreground sm:size-3.5" />
             전송 원인
           </Label>
           <Select value={reason} onValueChange={(v) => setReason(v ?? "")} disabled={stale}>
@@ -151,16 +156,21 @@ export function SimpleNoticeSection({
 
       <RecentNoticesSection refreshSignal={noticeRefreshSignal} />
 
+      {/* 🔧 [사용자 지시] "PUSH 알림 전송" 탭을 "화각 불량 제보" 탭
+          (ReportPage.tsx 495/501행) 기준으로 통일 — 제목은 text-xs
+          font-semibold sm:text-sm → text-sm font-bold sm:text-base,
+          본문은 text-micro-lg sm:text-xs → text-xs sm:text-sm로 각각
+          한 단계씩 작았다. */}
       <InfoCard className="flex flex-col gap-1 border-amber-600/30 bg-amber-600/5 dark:border-amber-400/30 dark:bg-amber-400/5">
         <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
           <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
-          <span className="text-xs font-semibold sm:text-sm">주의사항</span>
+          <span className="text-sm font-bold sm:text-base">주의사항</span>
         </div>
         <ul className="flex flex-col gap-0.5">
           {NOTICE_CAUTIONS.map((text) => (
             <li
               key={text}
-              className="text-micro-lg leading-relaxed text-muted-foreground before:mr-1 before:content-['·'] sm:text-xs"
+              className="text-xs leading-relaxed text-muted-foreground before:mr-1 before:content-['·'] sm:text-sm"
             >
               {text}
             </li>

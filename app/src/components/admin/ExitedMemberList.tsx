@@ -371,8 +371,11 @@ export function ExitedMemberList() {
                     onClick={() => setExpandedNumber(isExpanded ? null : m.number)}
                     className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded"
                   >
-                    <span className="inline-flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
-                      <User className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                    {/* 🔧 [사용자 지시] "이름이 작게 나오지 않아?" — 다른
+                        관리자 화면(참여 스터디원 목록 등)의 회원 이름
+                        (text-sm sm:text-base)보다 한 단계 작았다 — 통일한다. */}
+                    <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
+                      <User className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                       {displayName(m.name)}
                     </span>
                     <span className="flex items-center gap-1.5">
@@ -394,8 +397,11 @@ export function ExitedMemberList() {
 
                       {result && (
                         <>
+                          {/* 🔧 [사용자 지시] "현재 페이지(관리자)의 위계도
+                              맞춰줘" — 이 소제목만 다른 소제목(차감 원인 등,
+                              text-sm sm:text-base)보다 한 단계 작았다. */}
                           <InfoCard className="flex items-center justify-between gap-2 bg-card">
-                            <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+                            <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
                               <PiggyBank className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
                               반환 예치금
                             </span>
@@ -410,52 +416,64 @@ export function ExitedMemberList() {
                             </span>
                           </InfoCard>
 
+                          {/* 🔧 [사용자 지시] "현재 페이지(관리자)의 위계도
+                              맞춰줘" — 소제목(차감 원인/처리 결과/퇴실유형)이
+                              다른 관리자 화면 소제목(text-sm sm:text-base)
+                              보다 한 단계 작았고, SubRow도 기본 크기
+                              (text-micro-lg sm:text-xs)라 제보 화면 기준
+                              (text-xs sm:text-sm)보다 작았다 — 함께 맞춘다. */}
                           <InfoCard className="flex flex-col gap-1.5 bg-card">
-                            <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
+                            <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
                               <TrendingDown className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
                               차감 원인
                             </span>
-                            {insertAdminForcedCauseItem(
-                              buildDepositCauseItems(result.breakdown, result.breakdown.lateNotice ? 50 : 0),
-                              result.kind
-                            ).map((item) => (
-                              <SubRow
-                                key={item.key}
-                                label={item.label}
-                                value={`${item.rate}%`}
-                                valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
-                              />
-                            ))}
+                            <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
+                              {insertAdminForcedCauseItem(
+                                buildDepositCauseItems(result.breakdown, result.breakdown.lateNotice ? 50 : 0),
+                                result.kind
+                              ).map((item) => (
+                                <SubRow
+                                  key={item.key}
+                                  label={item.label}
+                                  value={`${item.rate}%`}
+                                  valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
+                                />
+                              ))}
+                            </div>
                           </InfoCard>
 
                           <InfoCard className="flex flex-col gap-1.5 bg-card">
-                            <span className="flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                            <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                               <Eye className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
                               처리 결과
                             </span>
-                            <SubRow label="반환 예치금" value={won(result.refundAmount)} />
-                            <SubRow label="귀속 예치금" value={won(result.heldAmount)} />
-                            <SubRow label="주간 납부 벌금" value={won(result.fineAlreadyPayment)} />
-                            <SubRow label="처리일자" value={result.processedDate} />
+                            <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
+                              <SubRow label="반환 예치금" value={won(result.refundAmount)} />
+                              <SubRow label="귀속 예치금" value={won(result.heldAmount)} />
+                              <SubRow label="주간 납부 벌금" value={won(result.fineAlreadyPayment)} />
+                              <SubRow label="처리일자" value={result.processedDate} />
+                            </div>
                           </InfoCard>
 
                           <InfoCard className="flex flex-col gap-1.5 bg-card">
-                            <span className="flex items-center gap-1.25 text-xs font-semibold sm:text-sm">
+                            <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                               <ClipboardList className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
                               퇴실유형
                             </span>
-                            <SubRow label="유형" value={exitTypeLabel(result.kindStr, result.reasons)} />
-                            {/* 🔧 2026-09: 처음엔 admin_forced(직권 P)에서만
-                                조건부로 보였으나, 사용자 지시로 모든 퇴실
-                                유형에 항상 표시하도록 변경 — forced/settle은
-                                블랙리스트 체크박스 자체가 없어(§ExitProcessDialog)
-                                항상 N으로 저장된 값이 그대로 뜬다. 표기도
-                                "예/아니오"에서 "Y/N"으로 변경. */}
-                            <SubRow
-                              label="블랙리스트"
-                              value={result.blacklist ? "Y" : "N"}
-                              valueClassName={result.blacklist ? "text-destructive" : undefined}
-                            />
+                            <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
+                              <SubRow label="유형" value={exitTypeLabel(result.kindStr, result.reasons)} />
+                              {/* 🔧 2026-09: 처음엔 admin_forced(직권 P)에서만
+                                  조건부로 보였으나, 사용자 지시로 모든 퇴실
+                                  유형에 항상 표시하도록 변경 — forced/settle은
+                                  블랙리스트 체크박스 자체가 없어(§ExitProcessDialog)
+                                  항상 N으로 저장된 값이 그대로 뜬다. 표기도
+                                  "예/아니오"에서 "Y/N"으로 변경. */}
+                              <SubRow
+                                label="블랙리스트"
+                                value={result.blacklist ? "Y" : "N"}
+                                valueClassName={result.blacklist ? "text-destructive" : undefined}
+                              />
+                            </div>
                           </InfoCard>
 
                           <Button

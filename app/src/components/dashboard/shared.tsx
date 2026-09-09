@@ -49,15 +49,18 @@ export function TintedPill({
   // 🔧 [사용자 지시] 뱃지 텍스트 크기를 키운(text-sm sm:text-base) 뒤로
   // 상하 패딩(py-1)이 상대적으로 너무 두꺼워 보였다("상하가 부하게
   // 보인다") — 좌우(px-2.5)는 그대로 두고 상하만 줄인다.
+  // 🔧 [사용자 지시] "뱃지는 아까 키웠잖아? 지금보니까 살짝 작은게 나은
+  // 것 같다" — 항목 제목("오전 1:48:19")과 완전히 동일했던 크기(text-sm
+  // sm:text-base)에서 한 단계씩 낮춘다(text-xs sm:text-sm).
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-sm font-semibold sm:text-base",
+        "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold sm:text-sm",
         PILL_TONE_CLASSES[tone],
         className
       )}
     >
-      {Icon && <Icon className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.emphasis} />}
+      {Icon && <Icon className="size-3 sm:size-3.5" strokeWidth={ICON_STROKE.emphasis} />}
       {children}
     </span>
   );
