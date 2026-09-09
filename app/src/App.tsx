@@ -48,7 +48,21 @@ function MainViews() {
   if (!MAIN_VIEWS.includes(path)) return <Navigate to="/" replace />;
 
   return (
-    <>
+    // 🔧 [사용자 지시] "탭 전환 정책과 캐싱 정책을 원초적으로 재검토해서
+    // KV 쓰기 삭제를 절약할 방안" — MyStatusProvider는 원래 HashRouter
+    // 바로 안(라우팅 정보를 모르는 위치)에 있어, "지금 어느 메인 페이지를
+    // 보고 있는지"와 완전히 무관하게 세션이 있는 동안 항상 15분 폴링을
+    // 돌렸다. 이 전역 상태를 실제로 쓰는 화면은 대시보드(StatusPage)와
+    // 설정(SettingsPage) 둘뿐인데(useMyStatus 사용처 전수조사로 확인),
+    // 제보/알림/링크/관리자 화면에 있는 동안에도 계속 재작성됐다.
+    // MainViews(=useLocation을 쓸 수 있는 위치) 안으로 Provider를 옮겨
+    // path를 그대로 visible 계산에 써서, 그 두 화면 중 하나를 보고 있을
+    // 때만 폴링이 돌게 좁힌다. 최초 로드(로그인 직후 1회, 화면 전환 시
+    // 깜빡임 방지가 원래 목적)와 pull-to-refresh 리스너는 이 visible과
+    // 무관하게 그대로 유지된다 — MyStatusProvider 내부 참고. CheckerPage/
+    // LoginPage는 useMyStatus를 쓰지 않아(확인 완료) Provider 밖에 있어도
+    // 안전하다.
+    <MyStatusProvider visible={path === "/" || path === "/settings"}>
       <PullToRefreshIndicator />
       <div hidden={path !== "/"}>
         {everVisited.current["/"] && (
@@ -98,7 +112,7 @@ function MainViews() {
             <AdminDeniedCard />
           ))}
       </div>
-    </>
+    </MyStatusProvider>
   );
 }
 
@@ -109,20 +123,23 @@ export default function App() {
     <AuthProvider>
       <PeriodAlarmProvider>
         <HashRouter>
-          <MyStatusProvider>
-            <Routes>
-              <Route path="/login" element={<LoginPage />} />
-              <Route
-                path="/checker"
-                element={
-                  <AppShell fitToScreen>
-                    <CheckerPage />
-                  </AppShell>
-                }
-              />
-              <Route path="/*" element={<MainViews />} />
-            </Routes>
-          </MyStatusProvider>
+          {/* 🔧 MyStatusProvider는 이제 MainViews 내부(useLocation을 쓸 수
+              있는 위치)로 옮겨, 대시보드/설정 화면을 보고 있을 때만 폴링이
+              돌도록 좁혔다 — 상세 이유는 MainViews의 주석 참고. /login,
+              /checker는 useMyStatus를 쓰지 않아(확인 완료) Provider 밖에
+              있어도 안전하다. */}
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route
+              path="/checker"
+              element={
+                <AppShell fitToScreen>
+                  <CheckerPage />
+                </AppShell>
+              }
+            />
+            <Route path="/*" element={<MainViews />} />
+          </Routes>
         </HashRouter>
       </PeriodAlarmProvider>
     </AuthProvider>

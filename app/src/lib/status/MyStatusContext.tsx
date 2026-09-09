@@ -19,7 +19,22 @@ export const MyStatusContext = createContext<MyStatusContextValue | null>(null);
 // 페이지를 옮길 때마다 이미 아는 값(예: 시트 이름)이 잠깐 비어 있다가 다시
 // 채워지는 깜빡임이 생긴다 — 다른 회원 조회/과거 사이클 조회처럼 파라미터가
 // 붙는 조회는 각 페이지가 지금처럼 별도로 호출하고, 이 캐시는 건드리지 않는다.
-export function MyStatusProvider({ children }: { children: ReactNode }) {
+//
+// 🔧 [사용자 지시] "탭 전환 정책과 캐싱 정책을 원초적으로 재검토해서 KV
+// 쓰기 삭제를 절약할 방안" — useMyStatus() 사용처를 전수조사한 결과 이
+// 전역 상태를 실제로 쓰는 화면은 StatusPage(대시보드 MY 탭)와
+// SettingsPage 둘뿐이었다. 그런데 이 Provider는 원래 라우팅 정보를 모르는
+// 위치(App.tsx의 HashRouter 바로 안)에 있어 "지금 어느 화면을 보고
+// 있는지"와 무관하게 세션이 있는 동안 항상 15분 폴링을 돌렸다 — 제보/
+// 알림/링크/관리자 화면에 있는 동안에도 그 두 화면과 무관한 캐시
+// (personalStatus/meritRank/penCycle/outputPenSlots/reportScore)가
+// 계속 재작성됐다(wrangler tail 실시간 로그로 실측 확인). App.tsx가 이제
+// visible(그 두 화면 중 하나를 보고 있는지)을 넘겨준다 — 최초 로드(로그인
+// 직후 1회, 화면 전환 시 깜빡임 방지가 원래 목적)와 pull-to-refresh
+// 리스너는 사용자의 명시적 액션이거나 "다른 화면에 있어도 미리 준비해
+// 두는" 원래 설계 의도이므로 visible과 무관하게 그대로 두고, 아래 15분
+// 폴링 타이머에만 조건을 추가한다.
+export function MyStatusProvider({ children, visible = true }: { children: ReactNode; visible?: boolean }) {
   const { call } = useApi();
   const { session } = useAuth();
   const [status, setStatusState] = useState<StatusResponse | null>(null);
@@ -83,15 +98,19 @@ export function MyStatusProvider({ children }: { children: ReactNode }) {
   // 재작성했다 — "웹앱을 열어둔 채 자리를 비우면" 계속 KV를 쓰는 가장
   // 광범위한 원인이었다(§13). Page Visibility API로 브라우저 탭이 실제로
   // 안 보이는 순간의 틱은 건너뛴다 — 다시 포그라운드로 돌아오면 다음
-  // 정기 틱부터 재개된다.
+  // 정기 틱부터 재개된다. 🔧 [B 방안] 여기에 더해 visible(App.tsx가
+  // 넘겨주는, "대시보드 또는 설정 화면을 보고 있는지")도 함께 체크한다 —
+  // 두 조건 중 하나라도 걸리면(다른 화면에 있거나, 브라우저 탭이
+  // 백그라운드거나) 이 틱은 건너뛴다.
   useEffect(() => {
     if (!session) return;
     const timer = setInterval(() => {
       if (document.hidden) return;
+      if (!visible) return;
       refresh();
     }, 15 * 60_000);
     return () => clearInterval(timer);
-  }, [session, refresh]);
+  }, [session, refresh, visible]);
 
   function setStatus(updater: StatusResponse | ((prev: StatusResponse | null) => StatusResponse | null)) {
     // 낙관적 업데이트(예: 반휴 신청 성공 직후 잔여량 즉시 감소)도 하나의
