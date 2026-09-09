@@ -1,21 +1,42 @@
 import { useEffect, useState } from "react";
-import { RotateCw } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, RotateCw } from "lucide-react";
 import { useApi } from "@/hooks/useApi";
-import { cn } from "@/lib/utils";
+import { ICON_STROKE } from "@/lib/utils";
 import type { CycleListResponse, CycleWeek } from "@/lib/api/types";
 
-// weekOf는 백업 파일명에서 온 "YYMMDD"(그 주 월요일) 형식이다.
-function formatWeekLabel(weekOf: string) {
-  const m = weekOf.match(/^(\d{2})(\d{2})(\d{2})$/);
-  if (!m) return weekOf;
+// weekOf/weekTo는 백업 파일명에서 온 "YYMMDD" 형식이다.
+function formatDate(raw: string) {
+  const m = raw.match(/^(\d{2})(\d{2})(\d{2})$/);
+  if (!m) return raw;
   const [, , mm, dd] = m;
-  return `${parseInt(mm, 10)}월 ${parseInt(dd, 10)}일 주`;
+  return `${mm}.${dd}`;
+}
+
+// 🔧 [사용자 지시] "이번 주" 슬롯도 과거 주차처럼 날짜 구간을 보여준다 —
+// 이 컴포넌트는 /cycles 응답(과거 백업의 weekOf/weekTo)만 받고 "이번 주"
+// 자체의 날짜는 서버에서 내려주지 않으므로, 다른 화면들과 동일한 관용구
+// ((getDay()+6)%7로 일요일=0을 월요일=0으로 보정)로 클라이언트에서
+// 오늘이 속한 주의 월~일을 직접 계산한다.
+function thisWeekRange(): { start: string; end: string } {
+  const now = new Date();
+  const todayIndex = (now.getDay() + 6) % 7;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - todayIndex);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const fmt = (d: Date) => `${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
+  return { start: fmt(monday), end: fmt(sunday) };
 }
 
 // MY/ALL 상단에서 "현재 진행 중인 사이클(최대 3주) 중 어느 시점을 볼지"
-// 고르는 토글. "현재"(실시간, cycle 파라미터 없음)가 항상 맨 앞에 있고,
-// 그 뒤로 이미 백업된 주차가 최신순으로 이어진다 — 사이클을 벗어난(4주
-// 이상 지난) 기록은 이 토글에 나타나지 않는다.
+// 고르는 전환 UI. "현재"(실시간, cycle 파라미터 없음)가 항상 맨 마지막
+// 슬롯이고, 그 앞으로 이미 백업된 주차가 오래된 순으로 이어진다 — 사이클을
+// 벗어난(4주 이상 지난) 기록은 나타나지 않는다.
+// 🔧 [사용자 지시] 원래 슬롯 개수만큼 버튼을 나열해(예: "데이터 없음" ×2 +
+// "이번 주") 슬롯이 늘어날수록 버튼 줄이 옆으로 계속 길어지는 방식이었는데,
+// "N/3주차 : 08.02 ~ 08.09"처럼 현재 슬롯 하나만 보여주고 </> 로 넘기는
+// 방식으로 바꿨다 — 백엔드가 실제로 관리하는 "사이클 내 몇 번째 주인지"
+// (1/3주차 등, 여러 사이클을 관통하는 누적 번호는 없음)를 그대로 노출한다.
 export function CycleSwitcher({
   selectedFileId,
   onSelect,
@@ -23,7 +44,7 @@ export function CycleSwitcher({
   // 중), "self"(본인 대시보드 — 서버가 세션 이메일로 본인을 판정), 또는
   // undefined(전체 랭킹처럼 특정 회원 관점이 없는 화면 — 필터링 없음).
   // 회원 관점이 있을 때, 그 회원이 해당 주차 명단에 없으면(중도 가입 등)
-  // 그 버튼을 "데이터 없음"으로 표시한다.
+  // 그 슬롯을 "데이터 없음"으로 표시한다.
   memberNumber,
 }: {
   selectedFileId: string | null;
@@ -64,6 +85,29 @@ export function CycleSwitcher({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [memberNumber, retryToken]);
 
+  // 🔧 [버그 수정] 훅은 조건부 return보다 항상 먼저 호출돼야 한다(React
+  // 훅 규칙) — weeks/maxWeeks가 아직 없을 때도 슬롯 계산이 빈 배열
+  // 기준으로 안전하게 굴러가도록 미리 만들어두고, 실제 화면 분기는
+  // 아래 JSX에서만 한다.
+  const oldestFirst = weeks ? [...weeks].reverse() : [];
+  const missingCount = Math.max(0, maxWeeks - 1 - oldestFirst.length);
+  const pastSlots: (CycleWeek | null)[] = [...Array(missingCount).fill(null), ...oldestFirst];
+  // "이번 주"(fileId: null)를 항상 마지막 슬롯으로 붙여, 전체를 "1/3주차 →
+  // 2/3주차 → 3/3주차(이번 주)"처럼 시간 순으로 오가는 하나의 트랙으로 만든다.
+  const slots: (CycleWeek | null)[] = maxWeeks > 0 ? [...pastSlots, null] : [];
+  const currentWeekIndex = slots.length - 1;
+  const selectedIndex =
+    selectedFileId === null ? currentWeekIndex : slots.findIndex((w) => w?.fileId === selectedFileId);
+  const activeIndex = selectedIndex === -1 ? currentWeekIndex : selectedIndex;
+
+  const [browseIndex, setBrowseIndex] = useState(activeIndex);
+  // selectedFileId가 바깥에서 바뀌거나(다른 화면 전환 등) 슬롯 목록이 막
+  // 도착해 activeIndex가 -1→실제 값으로 바뀔 때 탐색 위치도 맞춘다.
+  useEffect(() => {
+    setBrowseIndex(activeIndex);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeIndex]);
+
   if (error) {
     return (
       <button
@@ -78,77 +122,80 @@ export function CycleSwitcher({
   }
 
   // 🔧 2026-09: 응답 오기 전엔 아예 아무것도 안 그리다가(return null) 응답이
-  // 도착하는 순간 버튼 행 전체가 레이아웃에 갑자기 끼어들어 그 아래 콘텐츠가
-  // 훅 밀리는 "짠" 현상이 있었다(사용자 지적) — 실제 버튼과 같은 크기의
-  // 알약 모양 자리표시자를 먼저 그려 그 자리를 미리 차지해둔다. 실제 슬롯
-  // 개수(과거 주차 + "이번 주")를 아직 모르므로 대표적으로 3개만 보여준다.
+  // 도착하는 순간 전환 UI가 레이아웃에 갑자기 끼어들어 그 아래 콘텐츠가
+  // 훅 밀리는 "짠" 현상이 있었다(사용자 지적) — 실제 카드와 같은 크기의
+  // 자리표시자를 먼저 그려 그 자리를 미리 차지해둔다.
   if (weeks === null || maxWeeks === 0) {
-    return (
-      <div className="flex w-full flex-wrap gap-1.5 sm:gap-2" aria-hidden>
-        {Array.from({ length: 3 }).map((_, i) => (
-          <div
-            key={i}
-            className="h-9 w-24 animate-pulse rounded-full bg-muted/50 sm:h-11 sm:w-28"
-          />
-        ))}
-      </div>
-    );
+    return <div className="h-11 w-full animate-pulse rounded-full bg-muted/50 sm:h-12" aria-hidden />;
   }
 
-  // 🔧 [빈 슬롯 표시] 아직 3주가 다 안 지나 백업이 없는 과거 주차는 원래
-  // 버튼 자체가 안 보였다 — 몇 주째인지, 앞으로 몇 자리가 더 채워질지
-  // 가늠할 수 없었다. 실제 존재하는 주차(최신순 응답을 오래된 순으로
-  // 뒤집은 것) 앞쪽을, 아직 없는 주차 수만큼 비활성화 슬롯으로 채운다.
-  // maxWeeks(3)는 "사이클 전체 주 수"이고 그중 하나는 항상 아래의 "현재"
-  // 버튼이 차지하므로, 채워야 할 과거 슬롯 예산은 maxWeeks - 1이다 —
-  // 이걸 안 빼서 총 버튼이 4개(빈슬롯 3 + 현재 1)로 보이던 버그였다.
-  const oldestFirst = [...weeks].reverse();
-  const missingCount = Math.max(0, maxWeeks - 1 - oldestFirst.length);
-  const slots: (CycleWeek | null)[] = [...Array(missingCount).fill(null), ...oldestFirst];
+  function goTo(index: number) {
+    const target = slots[index];
+    if (index === currentWeekIndex) {
+      onSelect(null, null);
+    } else if (target) {
+      onSelect(target.fileId, target);
+    }
+    // target이 null(아직 데이터 없는 과거 슬롯)이면 이동만 하고 선택은
+    // 바꾸지 않는다 — 아래에서 "데이터 없음"만 보여주고 화살표는 계속
+    // 눌러 다른 슬롯으로 넘어갈 수 있게 둔다.
+  }
+
+  // 🔧 [사용자 지시] "데이터가 없으면 넘어가지 않도록" — 원래는 화살표로
+  // "데이터 없음" 슬롯까지도 이동은 허용하고 그 자리에서만 선택을 안 바꿨는데,
+  // 그 슬롯으로 이동 자체가 안 되도록 막는다(그 방향 화살표를 비활성화).
+  function hasDataAt(index: number): boolean {
+    if (index === currentWeekIndex) return true;
+    return !!slots[index]?.hasData;
+  }
+
+  function step(delta: 1 | -1) {
+    const next = browseIndex + delta;
+    if (next < 0 || next >= slots.length || !hasDataAt(next)) return;
+    setBrowseIndex(next);
+    goTo(next);
+  }
+
+  const browsedSlot = slots[browseIndex];
+  const browsedIsCurrentWeek = browseIndex === currentWeekIndex;
+  const thisWeek = thisWeekRange();
 
   return (
-    <div className="flex w-full flex-wrap gap-1.5 sm:gap-2">
-      {slots.map((w, i) =>
-        // 🔧 [중도 가입 회원 처리] 백업 파일 자체는 존재해도(w는 non-null),
-        // 조회 대상 회원이 그 시점 명단에 없었다면(hasData: false) 실제
-        // 날짜 라벨을 보여줄 수 없다 — 백업 자체가 없는 빈 슬롯과 동일하게
-        // "데이터 없음"으로 비활성화한다.
-        w && w.hasData ? (
-          <button
-            key={w.fileId}
-            type="button"
-            onClick={() => onSelect(w.fileId, w)}
-            className={cn(
-              "rounded-full border px-3.5 py-2 text-sm font-semibold transition-colors sm:text-base",
-              w.fileId === selectedFileId
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-border bg-card text-foreground hover:border-primary/50 hover:bg-muted"
-            )}
-          >
-            {formatWeekLabel(w.weekOf)}
-          </button>
-        ) : (
-          <button
-            key={w ? w.fileId : `empty-${i}`}
-            type="button"
-            disabled
-            className="cursor-not-allowed rounded-full border border-border bg-muted/50 px-3.5 py-2 text-sm font-semibold text-muted-foreground/50 sm:text-base"
-          >
-            데이터 없음
-          </button>
-        )
-      )}
+    // 🔧 [사용자 지시] "깔끔하게" — 가운데 필박스 배경/테두리와 화살표의
+    // 원형 배경 버튼을 모두 없애고, 아이콘과 텍스트만 남긴 미니멀한 한 줄로.
+    <div className="flex w-full items-center justify-center gap-3">
       <button
         type="button"
-        onClick={() => onSelect(null, null)}
-        className={cn(
-          "rounded-full border px-3.5 py-2 text-sm font-semibold transition-colors sm:text-base",
-          selectedFileId === null
-            ? "border-primary bg-primary text-primary-foreground"
-            : "border-border bg-card text-foreground hover:border-primary/50 hover:bg-muted"
-        )}
+        onClick={() => step(-1)}
+        disabled={!hasDataAt(browseIndex - 1)}
+        aria-label="이전 주차"
+        className="flex shrink-0 items-center justify-center p-1 text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-25"
       >
-        이번 주
+        <ChevronLeft className="size-4 sm:size-5" strokeWidth={2.5} />
+      </button>
+
+      <div className="flex items-center gap-1.5 text-center">
+        <CalendarDays className="size-3.5 shrink-0 text-primary sm:size-4" strokeWidth={ICON_STROKE.default} />
+        <span className="text-sm font-medium sm:text-base">
+          {browsedIsCurrentWeek ? "이번 주" : `${browseIndex + 1}/${maxWeeks}주차`}
+        </span>
+        <span className="text-sm text-muted-foreground sm:text-base">
+          {browsedIsCurrentWeek
+            ? `${thisWeek.start} ~ ${thisWeek.end}`
+            : browsedSlot
+              ? `${formatDate(browsedSlot.weekOf)} ~ ${formatDate(browsedSlot.weekTo)}`
+              : "데이터 없음"}
+        </span>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => step(1)}
+        disabled={!hasDataAt(browseIndex + 1)}
+        aria-label="다음 주차"
+        className="flex shrink-0 items-center justify-center p-1 text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-25"
+      >
+        <ChevronRight className="size-4 sm:size-5" strokeWidth={2.5} />
       </button>
     </div>
   );
