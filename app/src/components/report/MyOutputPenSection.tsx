@@ -353,8 +353,12 @@ export function MyOutputPenSection({
                       onClick={() => setExpandedDay(isDayExpanded ? null : group.dateKey)}
                       className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded"
                     >
-                      <span className="inline-flex shrink-0 items-center gap-1.25 text-xs font-semibold sm:text-sm">
-                        <CalendarDays className="size-3 shrink-0 text-muted-foreground sm:size-3.5" strokeWidth={ICON_STROKE.default} />
+                      {/* 🔧 [사용자 지시] "최근 진행된 제보"(ActiveReportsSection,
+                          text-sm sm:text-base)와 같은 화면 위계인데 이 날짜
+                          그룹 헤더만 한 단계 작은 text-xs sm:text-sm였다 —
+                          크기를 맞춰 위계를 키운다(볼드는 기존 semibold 유지). */}
+                      <span className="inline-flex shrink-0 items-center gap-1.25 text-sm font-semibold sm:text-base">
+                        <CalendarDays className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                         {dateLabel(group.dateKey)}
                       </span>
                       <span className="ml-auto flex items-center gap-1.5">
