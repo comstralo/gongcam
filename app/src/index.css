@@ -92,7 +92,10 @@
 }
 
 @theme inline {
-    --font-sans: "Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    /* 🔧 [사용자 지시] variable font → 정적 폰트(woff2)로 교체하며
+       "Pretendard Variable"이 아니라 "Pretendard"가 실제 font-family
+       이름이다(index.html의 pretendard-subset.css 참고). */
+    --font-sans: "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);

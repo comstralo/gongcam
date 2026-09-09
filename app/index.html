@@ -11,7 +11,14 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="캠스터디" />
-    <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css" />
+    <!-- 🔧 [사용자 지시] variable font(pretendardvariable-dynamic-subset,
+         format('woff2-variations'))가 플랫폼마다(맥 Chromium vs iOS
+         Safari) 같은 font-weight 값을 다른 굵기로 보간해 굵기 차이가
+         심하게 느껴졌다("완전히 다른 폰트 같다") — woff2-variations는
+         브라우저 엔진별 variable font 처리 방식 차이를 그대로 노출한다.
+         고정 weight별 정적 폰트 파일(format('woff2'))로 바꿔 모든
+         플랫폼에서 동일한 굵기로 렌더링되게 한다. -->
+    <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-subset.css" />
     <script>
       // React가 마운트되기 전에 저장된 테마를 먼저 적용해, 다크모드
       // 사용자가 페이지를 열 때 라이트 화면이 잠깐 번쩍이는(FOUC) 현상을

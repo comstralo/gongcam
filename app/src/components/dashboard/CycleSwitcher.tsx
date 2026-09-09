@@ -34,9 +34,10 @@ function thisWeekRange(): { start: string; end: string } {
 // 벗어난(4주 이상 지난) 기록은 나타나지 않는다.
 // 🔧 [사용자 지시] 원래 슬롯 개수만큼 버튼을 나열해(예: "데이터 없음" ×2 +
 // "이번 주") 슬롯이 늘어날수록 버튼 줄이 옆으로 계속 길어지는 방식이었는데,
-// "N/3주차 : 08.02 ~ 08.09"처럼 현재 슬롯 하나만 보여주고 </> 로 넘기는
-// 방식으로 바꿨다 — 백엔드가 실제로 관리하는 "사이클 내 몇 번째 주인지"
-// (1/3주차 등, 여러 사이클을 관통하는 누적 번호는 없음)를 그대로 노출한다.
+// "N주차 : 08.02 ~ 08.09"처럼 현재 슬롯 하나만 보여주고 </> 로 넘기는
+// 방식으로 바꿨다. N은 이 사이클 안에서 몇 번째 주인지(1~maxWeeks, 여러
+// 사이클을 관통하는 누적 번호는 아니다)이고, 지금 진행 중인 마지막 슬롯
+// (실시간, cycle 파라미터 없음)에는 "진행" 뱃지를 따로 붙여 구분한다.
 export function CycleSwitcher({
   selectedFileId,
   onSelect,
@@ -176,9 +177,15 @@ export function CycleSwitcher({
 
       <div className="flex items-center gap-1.5 text-center">
         <CalendarDays className="size-3.5 shrink-0 text-primary sm:size-4" strokeWidth={ICON_STROKE.default} />
-        <span className="text-sm font-medium sm:text-base">
-          {browsedIsCurrentWeek ? "이번 주" : `${browseIndex + 1}/${maxWeeks}주차`}
-        </span>
+        {/* 🔧 [사용자 지시] "이번 주" 대신 다른 과거 슬롯과 동일하게
+            "N주차"로 통일하고, 지금 진행 중인 슬롯(마지막 슬롯)임을
+            "N주차" 바로 왼쪽에 작은 "진행" 뱃지로 표시한다. */}
+        {browsedIsCurrentWeek && (
+          <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-micro font-bold text-primary">
+            진행
+          </span>
+        )}
+        <span className="text-sm font-medium sm:text-base">{browseIndex + 1}주차</span>
         <span className="text-sm text-muted-foreground sm:text-base">
           {browsedIsCurrentWeek
             ? `${thisWeek.start} ~ ${thisWeek.end}`
