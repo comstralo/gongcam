@@ -684,7 +684,31 @@ KV 캐시가 아니라 매 요청마다 `proxyToBotDashboard(env, "/status")`로
 자동 배포되지 않는다 — 이 변경이 실제로 반영되려면 사용자가 직접
 Apps Script 편집기에 붙여넣어야 한다.
 
-## 15. 관련 문서
+## 15. 반일 휴무 신청 남용 방지 — 회원당 분당 2회 제한 (2026-09-10)
+
+캐시 정합성을 점검하던 중 "장난으로 반일 휴무를 계속 눌렀다 껐다
+하면 쓰기 횟수가 계속 소진되는 거 아니냐"는 지적으로 발견한 문제다.
+`handleSetLeaveApply`(일반반휴 신청/취소, `LeaveApplyButton.tsx`)는
+신청/취소 둘 다 매번 실제로 값이 바뀌는 조작이라, 프론트의 "직전과
+같은 값이면 무시" 방어(`if (nextValue === prevCount) return;`)로는
+반복 토글을 막지 못한다 — 게다가 취소하면 반휴 잔여량도 다시
+채워져서 잔여량 부족으로 자연히 막히지도 않는다. 토글 1회마다
+시트 쓰기 1회(`writeSheetValues`) + KV 삭제 1회
+(`invalidatePersonalStatusCache`, `writeSheetValues`가 개인 탭
+쓰기를 감지해 자동 호출)가 실제로 발생하므로, 연타하면 KV 예산은
+물론 이 프로젝트가 실제로 겪은 적 있는 "시트 API 분당 쓰기 한도"
+까지 위협할 수 있다(이건 계정 전체가 공유하는 한도라, 한 사람의
+장난이 다른 모든 사용자의 정상적인 작업까지 막을 수 있다).
+
+`checkAndRecordLeaveApplyRate(env, memberNumber)`로 회원 1명당 **1분에
+최대 2회**까지만 허용한다 — `leaveApplyRate:{번호}` 키에 `{windowStart,
+count}`를 60초 TTL로 저장하는 고정 창(슬라이딩 아님) 방식. 정상
+사용(신청 한 번 또는 취소 한 번)은 전혀 걸리지 않고, 한도 초과 시
+`429`와 함께 "너무 자주 요청했습니다"를 반환한다 — 프론트는 기존
+`ApiError` 처리 경로를 그대로 타므로 별도 프론트 수정 없이 에러
+메시지가 그대로 노출된다.
+
+## 16. 관련 문서
 
 - `docs/WEB_ADMIN.md` §3.1 — `applyOutputPenalty`/`applyReportMerit`/
   `applyTimeDeduction`가 실제로 호출되는 관리자 제보 처리 화면·플로우.

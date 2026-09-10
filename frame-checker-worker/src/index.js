@@ -4934,6 +4934,47 @@ async function handleGetLeaveApply(req, env, origin, url) {
   }
 }
 
+// 🔧 [사용자 지시, 2026-09] "장난으로 반일 휴무를 계속 눌렀다 껐다 하면
+// 쓰기 횟수가 계속 소진되는거 아니야?" — 신청/취소는 매번 진짜로 값이
+// 바뀌는 조작이라(그리고 취소하면 잔여량도 다시 채워져 자연히 막히지도
+// 않는다), 프론트의 "직전과 같은 값이면 무시" 방어만으로는 반복 토글을
+// 못 막는다. 한 번의 토글마다 시트 쓰기 1회 + KV 삭제 1회
+// (invalidatePersonalStatusCache)가 실제로 발생하므로, 회원 1명당 1분에
+// LEAVE_APPLY_RATE_LIMIT_MAX회까지만 허용한다 — 정상 사용(신청 또는
+// 취소 한 번)은 전혀 걸리지 않고, 연타 스팸만 막는다. 고정 60초 창
+// 방식(슬라이딩 윈도우가 아님)이라 창 경계에서 약간의 버스트 여지는
+// 있지만, 이건 보안 목적이 아니라 남용 억제용이라 이 정도 근사로 충분하다.
+const LEAVE_APPLY_RATE_LIMIT_KEY_PREFIX = "leaveApplyRate:";
+const LEAVE_APPLY_RATE_LIMIT_WINDOW_SEC = 60;
+const LEAVE_APPLY_RATE_LIMIT_MAX = 2;
+
+// true면 이번 요청을 진행해도 됨(카운트 기록 완료), false면 이번 창에서
+// 한도를 이미 다 썼다는 뜻(레코드는 갱신하지 않음 — 거부된 시도까지
+// 카운트에 넣지 않는다).
+async function checkAndRecordLeaveApplyRate(env, memberNumber) {
+  const key = `${LEAVE_APPLY_RATE_LIMIT_KEY_PREFIX}${memberNumber}`;
+  const now = Date.now();
+  let entry = null;
+  try {
+    const raw = await env.REPORTS_KV.get(key);
+    entry = raw ? JSON.parse(raw) : null;
+  } catch {
+    entry = null;
+  }
+  const windowMs = LEAVE_APPLY_RATE_LIMIT_WINDOW_SEC * 1000;
+  if (entry && now - entry.windowStart < windowMs) {
+    if (entry.count >= LEAVE_APPLY_RATE_LIMIT_MAX) return false;
+    await env.REPORTS_KV.put(key, JSON.stringify({ windowStart: entry.windowStart, count: entry.count + 1 }), {
+      expirationTtl: LEAVE_APPLY_RATE_LIMIT_WINDOW_SEC,
+    });
+    return true;
+  }
+  await env.REPORTS_KV.put(key, JSON.stringify({ windowStart: now, count: 1 }), {
+    expirationTtl: LEAVE_APPLY_RATE_LIMIT_WINDOW_SEC,
+  });
+  return true;
+}
+
 async function handleSetLeaveApply(req, env, origin) {
   const authHeader = req.headers.get("Authorization") || "";
   const token = authHeader.replace(/^Bearer\s+/i, "");
@@ -4961,6 +5002,11 @@ async function handleSetLeaveApply(req, env, origin) {
   try {
     const accessToken = await getServiceAccountAccessToken(env);
     const memberNumber = await resolveMemberNumber(env, accessToken, session);
+
+    if (!(await checkAndRecordLeaveApplyRate(env, memberNumber))) {
+      return json({ error: "너무 자주 요청했습니다. 잠시 뒤 다시 시도해주세요." }, 429, origin);
+    }
+
     const colLetter = String.fromCharCode("A".charCodeAt(0) + col);
 
     const cellRows = await getSheetValues(env, accessToken, env.GOOGLE_SHEET_FILE_ID, `${memberNumber}!${colLetter}${config.useRow + 1}`).catch(() => []);
