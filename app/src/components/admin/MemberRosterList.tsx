@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Users, User, ChevronDown, Hash, Bell, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, SubRow, TintedPill } from "@/components/dashboard/shared";
 import { SectionHeader, AdminListSkeleton } from "@/components/admin/shared";
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
@@ -104,12 +104,13 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
             {members.map((m) => {
               const isExpanded = expandedNumber === m.number;
               return (
-                <InfoCard key={m.number} className="flex flex-col gap-2.5 bg-card">
-                  <button
-                    type="button"
-                    onClick={() => setExpandedNumber(isExpanded ? null : m.number)}
-                    className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded"
-                  >
+                // 🔧 [사용자 지시] "제보 쪽 토글의 전환 애니메이션처럼 부드럽게"
+                // — MyOutputPenSection에 적용한 base-ui Collapsible(높이
+                // 전환)을 여기도 적용해 펼침이 즉시 나타나지 않고 부드럽게
+                // 펼쳐지도록 한다.
+                <Collapsible key={m.number} open={isExpanded} onOpenChange={(open) => setExpandedNumber(open ? m.number : null)}>
+                <InfoCard className="flex flex-col gap-2.5 bg-card">
+                  <CollapsibleTrigger className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded" hideChevron>
                     <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                       <User className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                       {m.name}
@@ -130,10 +131,10 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
                         strokeWidth={ICON_STROKE.default}
                       />
                     </span>
-                  </button>
+                  </CollapsibleTrigger>
 
-                  {isExpanded && (
-                    <>
+                  <CollapsiblePanel className="flex flex-col">
+                    <div className="flex flex-col gap-2.5 pt-2.5">
                       <div className="flex flex-col gap-1.5 rounded-xl border bg-card p-4 sm:p-5">
                         <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                           <Hash className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
@@ -268,9 +269,10 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
                           </Button>
                         )}
                       </div>
-                    </>
-                  )}
+                    </div>
+                  </CollapsiblePanel>
                 </InfoCard>
+                </Collapsible>
               );
             })}
           </div>

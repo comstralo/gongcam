@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { UserX, User, ChevronDown, PiggyBank, TrendingDown, Eye, ClipboardList, Search, ShieldOff, ShieldAlert } from "lucide-react";
-import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -365,12 +365,13 @@ export function ExitedMemberList() {
               const isExpanded = expandedNumber === m.number;
               const result = m.result;
               return (
-                <InfoCard key={m.number} className="flex flex-col gap-2.5 bg-card">
-                  <button
-                    type="button"
-                    onClick={() => setExpandedNumber(isExpanded ? null : m.number)}
-                    className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded"
-                  >
+                // 🔧 [사용자 지시] "제보 쪽 토글의 전환 애니메이션처럼 부드럽게"
+                // — 기존엔 isExpanded 조건부 렌더링으로 펼침 영역이 즉시
+                // 나타났다 사라졌다(뚝뚝 끊김). MyOutputPenSection에 적용했던
+                // base-ui Collapsible(높이 전환 애니메이션)을 여기도 적용한다.
+                <Collapsible key={m.number} open={isExpanded} onOpenChange={(open) => setExpandedNumber(open ? m.number : null)}>
+                <InfoCard className="flex flex-col gap-2.5 bg-card">
+                  <CollapsibleTrigger className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded" hideChevron>
                     {/* 🔧 [사용자 지시] "이름이 작게 나오지 않아?" — 다른
                         관리자 화면(참여 스터디원 목록 등)의 회원 이름
                         (text-sm sm:text-base)보다 한 단계 작았다 — 통일한다. */}
@@ -385,10 +386,10 @@ export function ExitedMemberList() {
                         strokeWidth={ICON_STROKE.default}
                       />
                     </span>
-                  </button>
+                  </CollapsibleTrigger>
 
-                  {isExpanded && (
-                    <>
+                  <CollapsiblePanel className="flex flex-col">
+                    <div className="flex flex-col gap-2.5 pt-2.5">
                       {!result && (
                         <p className="py-4 text-center text-xs text-muted-foreground sm:text-sm">
                           처리 결과를 조회할 수 없습니다 (이 기능 도입 이전에 처리된 퇴실자입니다).
@@ -491,9 +492,10 @@ export function ExitedMemberList() {
                           </Button>
                         </>
                       )}
-                    </>
-                  )}
+                    </div>
+                  </CollapsiblePanel>
                 </InfoCard>
+                </Collapsible>
               );
             })}
           </div>

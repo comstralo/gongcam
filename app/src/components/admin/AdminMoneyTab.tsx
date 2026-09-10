@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ChevronDown, CircleDollarSign, CalendarDays, Loader2, User, Trophy, Timer, Award, Coins } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, DayDetailCard, TintedPill, ItemTitle, DividedValue } from "@/components/dashboard/shared";
 import { SectionHeader, FieldLabel, SectionCard, AdminListSkeleton } from "@/components/admin/shared";
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
@@ -267,12 +267,13 @@ function PaidFineList({
             const unpaidCount = group.members.filter((f) => effectiveStatus(f) === "미납").length;
             const exemptCount = group.members.filter((f) => effectiveStatus(f) === "면제").length;
             return (
-              <InfoCard key={group.day} className="flex flex-col gap-2.5 bg-card">
-                <button
-                  type="button"
-                  onClick={() => setExpandedDay(isDayExpanded ? null : group.day)}
-                  className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded"
-                >
+              // 🔧 [사용자 지시] "제보 쪽 토글의 전환 애니메이션처럼 부드럽게"
+              // — 날짜/회원 펼치기가 조건부 렌더링으로 즉시 나타났다 사라져
+              // "뚝뚝 끊기는" 느낌이 있었다. MyOutputPenSection에 적용한
+              // base-ui Collapsible(높이 전환)을 여기도 적용한다.
+              <Collapsible key={group.day} open={isDayExpanded} onOpenChange={(open) => setExpandedDay(open ? group.day : null)}>
+              <InfoCard className="flex flex-col gap-2.5 bg-card">
+                <CollapsibleTrigger className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded" hideChevron>
                   <span className="flex min-w-0 flex-1 items-center gap-1.5">
                     <span className="inline-flex shrink-0 items-center gap-1.25 text-sm font-semibold text-muted-foreground sm:text-base">
                       <CalendarDays className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
@@ -304,10 +305,10 @@ function PaidFineList({
                     className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", isDayExpanded && "rotate-180")}
                     strokeWidth={ICON_STROKE.default}
                   />
-                </button>
+                </CollapsibleTrigger>
 
-                {isDayExpanded && (
-                  <div className="flex flex-col gap-2.5">
+                <CollapsiblePanel className="flex flex-col">
+                  <div className="flex flex-col gap-2.5 pt-2.5">
                     {group.members.map((f) => {
                       const key = fineKey(f);
                       const isPending = pendingKey === key;
@@ -324,7 +325,8 @@ function PaidFineList({
                       const otherActions = ALL_FINE_ACTIONS.filter((a) => a !== status);
 
                       return (
-                        <div key={key} className="flex flex-col gap-2.5 rounded-lg border bg-card p-3">
+                        <Collapsible key={key} open={isMemberExpanded} onOpenChange={() => toggleMember(f)}>
+                        <div className="flex flex-col gap-2.5 rounded-lg border bg-card p-3">
                           <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
                             <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                               <User className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
@@ -332,11 +334,14 @@ function PaidFineList({
                             </span>
                             <div className="flex items-center gap-1.5">
                               <TintedPill tone={FINE_BADGE_TONE[status]}>{status}</TintedPill>
-                              <Button
-                                variant="outline"
-                                size="icon-sm"
-                                onClick={() => toggleMember(f)}
-                                aria-label={isMemberExpanded ? "상세 접기" : "상세 펼치기"}
+                              <CollapsibleTrigger
+                                render={
+                                  <Button
+                                    variant="outline"
+                                    size="icon-sm"
+                                    aria-label={isMemberExpanded ? "상세 접기" : "상세 펼치기"}
+                                  />
+                                }
                               >
                                 {/* 🔧 [사용자 지시] 제보 화면 기준 통일 — 색 지정이 없으면 outline
                                     버튼의 기본 전경색을 물려받아 날짜 그룹 헤더의 chevron
@@ -348,12 +353,12 @@ function PaidFineList({
                                   )}
                                   strokeWidth={ICON_STROKE.default}
                                 />
-                              </Button>
+                              </CollapsibleTrigger>
                             </div>
                           </div>
 
-                          {isMemberExpanded && (
-                            <>
+                          <CollapsiblePanel className="flex flex-col">
+                            <div className="flex flex-col gap-2.5 pt-2.5">
                               {detail === "loading" && (
                                 <div className="flex items-center justify-center py-4">
                                   <Loader2 className="size-4 animate-spin text-muted-foreground" />
@@ -415,14 +420,16 @@ function PaidFineList({
                                 )}
                               </div>
                               )}
-                            </>
-                          )}
+                            </div>
+                          </CollapsiblePanel>
                         </div>
+                        </Collapsible>
                       );
                     })}
                   </div>
-                )}
+                </CollapsiblePanel>
               </InfoCard>
+              </Collapsible>
             );
           })}
         </div>

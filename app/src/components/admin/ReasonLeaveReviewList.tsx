@@ -3,7 +3,7 @@ import { BedDouble, ChevronDown, CalendarDays, User, FileText, Image as ImageIco
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, SubRow, TintedPill } from "@/components/dashboard/shared";
 import { SectionHeader, CapturePreview, AdminListSkeleton } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
@@ -165,12 +165,12 @@ export function ReasonLeaveReviewList({
               const rejectedCount = group.items.filter((item) => isItemRejected(item, rejected)).length;
               const pendingCount = group.items.length - approvedCount - rejectedCount;
               return (
-                <InfoCard key={group.day} className="flex flex-col gap-2.5 bg-card">
-                  <button
-                    type="button"
-                    onClick={() => setExpandedDay(isDayExpanded ? null : group.day)}
-                    className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded"
-                  >
+                // 🔧 [사용자 지시] "제보 쪽 토글의 전환 애니메이션처럼 부드럽게"
+                // — MyOutputPenSection에 적용한 base-ui Collapsible(높이
+                // 전환)을 여기도 적용한다.
+                <Collapsible key={group.day} open={isDayExpanded} onOpenChange={(open) => setExpandedDay(open ? group.day : null)}>
+                <InfoCard className="flex flex-col gap-2.5 bg-card">
+                  <CollapsibleTrigger className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded" hideChevron>
                     <span className="flex min-w-0 flex-1 items-center gap-1.5">
                       <span className="inline-flex shrink-0 items-center gap-1.25 text-sm font-semibold text-muted-foreground sm:text-base">
                         <CalendarDays className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
@@ -195,10 +195,10 @@ export function ReasonLeaveReviewList({
                       className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", isDayExpanded && "rotate-180")}
                       strokeWidth={ICON_STROKE.default}
                     />
-                  </button>
+                  </CollapsibleTrigger>
 
-                  {isDayExpanded && (
-                    <div className="flex flex-col gap-2.5">
+                  <CollapsiblePanel className="flex flex-col">
+                    <div className="flex flex-col gap-2.5 pt-2.5">
                       {group.items.map((item) => {
                         const isMemberExpanded = expandedId === item.id;
                         const isApproved = isItemApproved(item, approved);
@@ -206,7 +206,8 @@ export function ReasonLeaveReviewList({
                         const isRejected = !!rejectedInfo;
                         const isRejecting = !!rejecting[item.id];
                         return (
-                          <div key={item.id} className="flex flex-col gap-2.5 rounded-lg border bg-card p-3">
+                          <Collapsible key={item.id} open={isMemberExpanded} onOpenChange={(open) => setExpandedId(open ? item.id : null)}>
+                          <div className="flex flex-col gap-2.5 rounded-lg border bg-card p-3">
                             <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
                               <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                                 <User className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
@@ -223,11 +224,14 @@ export function ReasonLeaveReviewList({
                                 ) : (
                                   <TintedPill tone="warn">대기</TintedPill>
                                 )}
-                                <Button
-                                  variant="outline"
-                                  size="icon-sm"
-                                  onClick={() => setExpandedId(isMemberExpanded ? null : item.id)}
-                                  aria-label={isMemberExpanded ? "상세 접기" : "상세 펼치기"}
+                                <CollapsibleTrigger
+                                  render={
+                                    <Button
+                                      variant="outline"
+                                      size="icon-sm"
+                                      aria-label={isMemberExpanded ? "상세 접기" : "상세 펼치기"}
+                                    />
+                                  }
                                 >
                                   {/* 🔧 [사용자 지시] 제보 화면 기준 통일 — 색 지정이 없으면 outline
                                       버튼의 기본 전경색을 물려받아 날짜 그룹 헤더의 chevron
@@ -239,12 +243,12 @@ export function ReasonLeaveReviewList({
                                     )}
                                     strokeWidth={ICON_STROKE.default}
                                   />
-                                </Button>
+                                </CollapsibleTrigger>
                               </div>
                             </div>
 
-                            {isMemberExpanded && (
-                              <>
+                            <CollapsiblePanel className="flex flex-col">
+                              <div className="flex flex-col gap-2.5 pt-2.5">
                                 <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:gap-3.5 sm:p-5">
                                   <div className="flex flex-col gap-1.5">
                                     <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
@@ -357,14 +361,16 @@ export function ReasonLeaveReviewList({
                                     )}
                                   </>
                                 )}
-                              </>
-                            )}
+                              </div>
+                            </CollapsiblePanel>
                           </div>
+                          </Collapsible>
                         );
                       })}
                     </div>
-                  )}
+                  </CollapsiblePanel>
                 </InfoCard>
+                </Collapsible>
               );
             })}
           </div>

@@ -4,7 +4,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 import { DividedValue, InfoCard, SubRow, TintedPill } from "@/components/dashboard/shared";
 import { CycleSwitcher } from "@/components/dashboard/CycleSwitcher";
 import { SectionHeader, CapturePreview, AdminListSkeleton } from "@/components/admin/shared";
@@ -835,12 +835,12 @@ export function ReportReviewList({
               const recognizedCount = group.items.filter((item) => stillPending(item) && item.targetResponse === "recognized").length;
               const pendingCount = group.items.length - appliedCount - deferredCount - rejectedCount - disputedCount - recognizedCount;
               return (
-                <InfoCard key={group.dateKey} className="flex flex-col gap-2.5 bg-card">
-                  <button
-                    type="button"
-                    onClick={() => setExpandedDay(isDayExpanded ? null : group.dateKey)}
-                    className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded"
-                  >
+                // 🔧 [사용자 지시] "제보 쪽 토글의 전환 애니메이션처럼 부드럽게"
+                // — MyOutputPenSection에 적용한 base-ui Collapsible(높이
+                // 전환)을 여기도 적용한다.
+                <Collapsible key={group.dateKey} open={isDayExpanded} onOpenChange={(open) => setExpandedDay(open ? group.dateKey : null)}>
+                <InfoCard className="flex flex-col gap-2.5 bg-card">
+                  <CollapsibleTrigger className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded" hideChevron>
                     <span className="inline-flex shrink-0 items-center gap-1.25 text-sm font-semibold sm:text-base">
                       <CalendarDays className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                       {dateLabel(group.dateKey)}
@@ -896,10 +896,10 @@ export function ReportReviewList({
                         strokeWidth={ICON_STROKE.default}
                       />
                     </span>
-                  </button>
+                  </CollapsibleTrigger>
 
-                  {isDayExpanded && (
-                    <div className="flex flex-col gap-2.5">
+                  <CollapsiblePanel className="flex flex-col">
+                    <div className="flex flex-col gap-2.5 pt-2.5">
                       {/* 🔧 [정렬 기준 변경] 원래 처리 상태(대기→확정→유예→반려)
                           우선으로 정렬해, 같은 시각에 발생한 여러 건이 상태만
                           다르면 시간 순서와 무관하게 뒤섞여 보였다(사용자 지적).
@@ -916,8 +916,8 @@ export function ReportReviewList({
                         // (사용자 지시) — 적용/유예/반려로 이미 처리된 항목은 제외.
                         const isUnprocessed = !isApplied && !isItemDeferred(item, applied) && !isRejected;
                         return (
+                          <Collapsible key={item.id} open={isMemberExpanded} onOpenChange={(open) => setExpandedId(open ? item.id : null)}>
                           <div
-                            key={item.id}
                             className={cn(
                               "flex flex-col gap-2.5 rounded-lg border bg-card p-3",
                               isUnprocessed && "animate-unpaid-glow border-destructive"
@@ -1025,11 +1025,14 @@ export function ReportReviewList({
                                 ) : (
                                   <TintedPill tone="muted">대기</TintedPill>
                                 )}
-                                <Button
-                                  variant="outline"
-                                  size="icon-sm"
-                                  onClick={() => setExpandedId(isMemberExpanded ? null : item.id)}
-                                  aria-label={isMemberExpanded ? "상세 접기" : "상세 펼치기"}
+                                <CollapsibleTrigger
+                                  render={
+                                    <Button
+                                      variant="outline"
+                                      size="icon-sm"
+                                      aria-label={isMemberExpanded ? "상세 접기" : "상세 펼치기"}
+                                    />
+                                  }
                                 >
                                   {/* 🔧 [사용자 지시] 제보 화면 기준 통일 — 색 지정이 없으면 outline
                                       버튼의 기본 전경색을 물려받아 날짜 그룹 헤더의 chevron
@@ -1041,11 +1044,13 @@ export function ReportReviewList({
                                     )}
                                     strokeWidth={ICON_STROKE.default}
                                   />
-                                </Button>
+                                </CollapsibleTrigger>
                               </div>
                             </div>
 
-                            {isMemberExpanded && !isAdmin && (
+                            <CollapsiblePanel className="flex flex-col">
+                            <div className="flex flex-col gap-2.5 pt-2.5">
+                            {!isAdmin && (
                               // 🔧 2026-09: 부스터디장(공동 검토자) 전용 제한 뷰 — 스크린샷·
                               // 제보 정보는 읽기 전용으로 그대로 보여주되, 시간 차감/벌점
                               // 변동/승인·반려/삭제 등 시트를 직접 바꾸는 관리자 액션은 전혀
@@ -1148,7 +1153,7 @@ export function ReportReviewList({
                               </>
                             )}
 
-                            {isMemberExpanded && isAdmin && (
+                            {isAdmin && (
                               <>
                                 <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:gap-3.5 sm:p-5">
                                   <div className="flex flex-col gap-1.5">
@@ -1508,12 +1513,16 @@ export function ReportReviewList({
                                 </div>
                               </>
                             )}
+                            </div>
+                            </CollapsiblePanel>
                           </div>
+                          </Collapsible>
                         );
                       })}
                     </div>
-                  )}
+                  </CollapsiblePanel>
                 </InfoCard>
+                </Collapsible>
               );
             })}
           </div>
