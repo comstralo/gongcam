@@ -124,9 +124,13 @@ function PaidFineList({
 }) {
   const { call } = useApi();
   const TODAY_INDEX = useTodayIndex();
-  // 지난 사이클 조회 중이면 읽기 전용 — 납부 상태 변경·퇴실 처리는 그
-  // 시점 시트에 실제로 값을 쓰는 액션이라 현재 시트에서만 의미가 있다.
-  const readOnly = !!cycleFileId;
+  // 🔧 [사용자 지시, 2026-09-10] "예치금 재납이나 벌금 납부는 익일이거나
+  // 하루 이틀 늦게 처리될 수도 있는데, 지난 주 시트에도 쓸 수 있어야
+  // 하지 않나?" — 원래는 과거 사이클(cycleFileId) 조회 중이면 읽기
+  // 전용이었으나, 납부확인은 이제 handleAdminFineStatus가 조회 중인
+  // 그 사이클(현재 진행 중인 1~3주차 범위 내)에 그대로 반영하도록
+  // 백엔드가 바뀌어 더 이상 잠글 필요가 없다.
+  const readOnly = false;
 
   const [records, setRecords] = useState<FineRecord[] | null>(null);
   const [totalAmount, setTotalAmount] = useState(0);
@@ -190,7 +194,7 @@ function PaidFineList({
     try {
       await call<SetFineStatusResponse>("/admin/fines/status", {
         method: "POST",
-        body: { number: f.number, day: f.day, status },
+        body: { number: f.number, day: f.day, status, cycle: cycleFileId },
       });
       setStatusOverride((prev) => ({ ...prev, [key]: status }));
       // 🔧 [총 벌금액 미갱신 수정] 위 statusOverride는 개별 뱃지만 바꿀 뿐
@@ -367,7 +371,9 @@ function PaidFineList({
                               {/* "일간 총 벌금 · 재납 예치금" 바로 아래 —
                                   DayDetailCard의 마지막 섹션이라 그 카드
                                   바깥(아래)에 놓으면 시각적으로 그 자리다.
-                                  지난 사이클 조회 중엔 읽기 전용이라 숨긴다. */}
+                                  🔧 [2026-09-10] readOnly는 이제 항상 false라
+                                  (PaidFineList 상단 참고) 지난 사이클
+                                  조회 중에도 그대로 보인다. */}
                               {!readOnly && (
                               <div className="flex items-center gap-2">
                                 {otherActions.map((action) =>
@@ -387,6 +393,7 @@ function PaidFineList({
                                       lockForcedReason="벌금 시한 내 미납자"
                                       onConfirmed={load}
                                       triggerClassName="flex-1"
+                                      cycleFileId={cycleFileId}
                                     >
                                       <Button variant="destructive" className="w-full sm:h-11">
                                         퇴실 처리 (직권 P)

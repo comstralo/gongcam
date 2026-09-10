@@ -977,7 +977,15 @@ const MEMBER_CACHE_GROUPS = {
 // groups를 생략하면 기존과 동일하게 9종 전부를 무효화한다(안전한 기본값) —
 // 호출부가 실제로 어떤 시트 범위를 바꿨는지 확실할 때만 좁은 그룹을 넘겨
 // 무관한 KV 삭제를 줄인다(docs/CACHING_POLICY.md §11).
-function invalidateMemberCache(env, groups) {
+//
+// 🔧 [사용자 지시, 2026-09-10] "예치금 재납/벌금 납부는 지난주 시트에도
+// 쓸 수 있어야 한다" — 이 함수는 원래 KV 쪽 무조건 삭제 대상(9종 중 7종)의
+// 파일 구분을 env.GOOGLE_SHEET_FILE_ID로 하드코딩하고 있었다. 벌금 처리가
+// 이제 과거 사이클(백업 fileId)에도 쓸 수 있게 되면서, 그 경우 무효화도
+// 같은 백업 fileId를 대상으로 해야 한다 — 기본값은 그대로 현재 시트라
+// 기존 호출부(전부 세 번째 인자를 안 넘김)는 동작이 전혀 바뀌지 않는다.
+function invalidateMemberCache(env, groups, fileId) {
+  const targetFileId = fileId || (env && env.GOOGLE_SHEET_FILE_ID);
   const activeKeys = groups ? [...new Set(groups.flatMap((g) => MEMBER_CACHE_GROUPS[g]))] : MEMBER_CACHE_GROUPS.roster;
   const activePrefixes = activeKeys.map((name) => `${name}:`);
   // 인메모리는 그룹 전체를 늘 세대 카운터 하나로 무효화한다(공짜 — 좁혀도
@@ -1001,7 +1009,7 @@ function invalidateMemberCache(env, groups) {
   if (env) {
     for (const name of MEMBER_CACHE_UNCONDITIONAL_KEYS) {
       if (activeKeys.includes(name)) {
-        kvDeletes.push(env.REPORTS_KV.delete(`${KV_CACHE_PREFIX}${name}:${env.GOOGLE_SHEET_FILE_ID}`).catch(() => {}));
+        kvDeletes.push(env.REPORTS_KV.delete(`${KV_CACHE_PREFIX}${name}:${targetFileId}`).catch(() => {}));
       }
     }
   }
@@ -5992,11 +6000,18 @@ async function handleAdminFinesExempt(req, env, origin, url) {
   }
 }
 
+// 🔧 [사용자 지시, 2026-09-10] "예치금 재납이나 벌금 납부는 당일에 처리될
+// 수도 있지만 보통은 익일이거나 하루 이틀 늦게 처리될 수도 있는데, 그럼
+// 쓰기가 지난 주 시트에서도 가능해야 하지 않나?" — 납부확인은 "그 주차의
+// 납부 기록 자체"라 실제로 그 주차 시트(현재 진행 중인 사이클 내 백업
+// 포함)에 남아야 정확하다. resolveTargetFileId가 이미 "현재 사이클
+// (1~3주차) 밖의 임의 fileId"는 거부하므로, 사이클을 벗어난 과거 기록을
+// 건드릴 위험은 없다.
 async function handleAdminFineStatus(req, env, origin) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
 
-  const { number, day, status } = await req.json();
+  const { number, day, status, cycle } = await req.json();
   const sheetNum = parseInt(number, 10);
   const dayIndex = STATUS_DAYS.indexOf(day);
   if (!sheetNum || sheetNum < 1 || sheetNum > 15 || dayIndex === -1) {
@@ -6008,12 +6023,12 @@ async function handleAdminFineStatus(req, env, origin) {
 
   try {
     const accessToken = await getServiceAccountAccessToken(env);
-    const fileId = env.GOOGLE_SHEET_FILE_ID;
+    const { fileId } = await resolveTargetFileId(env, accessToken, cycle);
     const col = colIndexToLetter(STATUS_DAY_COLS[dayIndex]);
     await writeSheetValues(env, accessToken, fileId, [
       { range: `${sheetNum}!${col}${ROW_PAYMENT_CHECK + 1}`, values: [[status]] },
     ]);
-    await invalidateMemberCache(env, ["fine"]); // 납부확인 값이 바뀌었으므로 관련 캐시만 무효화.
+    await invalidateMemberCache(env, ["fine"], fileId); // 납부확인 값이 바뀌었으므로 관련 캐시만, 그 fileId에 한해 무효화.
     return json({ ok: true, number: String(sheetNum), day, status }, 200, origin);
   } catch (err) {
     return json({ error: "납부 상태 변경 실패: " + err.message }, 500, origin);
@@ -6684,27 +6699,51 @@ const EXIT_KIND_VALUES = ["forced", "admin_forced", "settle", "deposit_again"];
 // (사용자 지시: "지난 주 데이터를 가지고 계속 동일한 내용으로 계산").
 // 백업이 아직 없으면(리셋 전, 또는 드문 실패) 원본을 그대로 쓴다 — 이 경우
 // exitWeekResetPassed가 false이므로 애초에 이 분기를 타지 않는다.
-async function resolveExitSourceFileId(env, accessToken, fileId, number, kind) {
-  if (kind !== "settle") return { sourceFileId: fileId, fromBackup: false };
-  const exitRequestRaw = await env.REPORTS_KV.get(`${EXIT_REQUEST_KV_PREFIX}${number}`).catch(() => null);
-  if (!exitRequestRaw) return { sourceFileId: fileId, fromBackup: false };
-  let exitDate;
-  try {
-    exitDate = JSON.parse(exitRequestRaw).exitDate;
-  } catch {
-    return { sourceFileId: fileId, fromBackup: false };
+//
+// 🔧 [사용자 지시, 2026-09-10] "예치금 재납/벌금 납부는 익일이거나 하루
+// 이틀 늦게 처리될 수도 있는데, 지난주 시트 기준으로도 처리 가능해야
+// 하지 않나?" — settle은 회원의 exitDate로 관련 주차를 자동 판정하지만,
+// deposit_again(예치금 재납)·forced류는 그런 날짜가 없다. 대신 "예치금
+// 재납 대상자" 목록 자체가 이미 cycle 파라미터로 현재 진행 중인 1~3주차
+// 중 어느 시점을 보고 있는지 알고 있으므로(handleAdminExitCandidates),
+// 그 화면에서 확정을 누르면 프론트가 같은 cycleFileId를 함께 보내
+// "그 목록을 보면서 확정한 그 주차 데이터"로 계산하게 한다. resolveTargetFileId
+// 가 이미 "현재 사이클(1~3주차) 밖의 임의 fileId"를 거부하므로, 사이클을
+// 벗어난 파일을 계산 근거로 쓸 위험은 없다. settle의 자동 판정이 있으면
+// 그걸 그대로 우선한다 — 회원 스스로 신청한 exitDate가 더 정확하다.
+// 실제 참여상태 변경·탭 정리(performExitReset/performDepositAgainReset)는
+// 이 값과 무관하게 항상 현재 시트(fileId)에만 쓴다 — "지금 이 사람이
+// 활동 중인지"는 항상 현재 기준이어야 하기 때문이다(앱스크립트 원본
+// _exit_define도 항상 현재 시트에만 쓰고, 일요일 발생분은 표시만 남긴다).
+async function resolveExitSourceFileId(env, accessToken, fileId, number, kind, cycleFileId) {
+  if (kind === "settle") {
+    const exitRequestRaw = await env.REPORTS_KV.get(`${EXIT_REQUEST_KV_PREFIX}${number}`).catch(() => null);
+    if (exitRequestRaw) {
+      let exitDate;
+      try {
+        exitDate = JSON.parse(exitRequestRaw).exitDate;
+      } catch {
+        exitDate = null;
+      }
+      if (exitDate && exitWeekResetPassed(exitDate)) {
+        const backup = await findBackupForExitDate(env, accessToken, exitDate);
+        if (!backup) {
+          throw new Error("퇴실 예약 주차의 백업 시트를 아직 찾을 수 없습니다. 잠시 후 다시 시도해주세요.");
+        }
+        return { sourceFileId: backup.fileId, fromBackup: true };
+      }
+    }
   }
-  if (!exitDate || !exitWeekResetPassed(exitDate)) return { sourceFileId: fileId, fromBackup: false };
-  const backup = await findBackupForExitDate(env, accessToken, exitDate);
-  if (!backup) {
-    throw new Error("퇴실 예약 주차의 백업 시트를 아직 찾을 수 없습니다. 잠시 후 다시 시도해주세요.");
+  if (cycleFileId) {
+    const { fileId: resolvedFileId } = await resolveTargetFileId(env, accessToken, cycleFileId);
+    return { sourceFileId: resolvedFileId, fromBackup: resolvedFileId !== fileId };
   }
-  return { sourceFileId: backup.fileId, fromBackup: true };
+  return { sourceFileId: fileId, fromBackup: false };
 }
 
 // 실제로 시트를 바꾸지 않고 discount_ratio/사유/결과 메시지만 계산해 돌려준다.
-async function computeExitResult(env, accessToken, fileId, number, name, kind, forcedReason) {
-  const { sourceFileId, fromBackup } = await resolveExitSourceFileId(env, accessToken, fileId, number, kind);
+async function computeExitResult(env, accessToken, fileId, number, name, kind, forcedReason, cycleFileId) {
+  const { sourceFileId, fromBackup } = await resolveExitSourceFileId(env, accessToken, fileId, number, kind, cycleFileId);
   const status = await buildPersonalStatus(env, accessToken, sourceFileId, number, name);
   const breakdown = status.depositRefundBreakdown;
   const process = calcExitProcess(kind, breakdown, forcedReason);
@@ -6816,7 +6855,7 @@ async function handleAdminExitPreview(req, env, origin) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
 
-  const { number, kind, forcedReason } = await req.json();
+  const { number, kind, forcedReason, cycle } = await req.json();
   const sheetNum = parseInt(number, 10);
   if (!sheetNum || sheetNum < 1 || sheetNum > 15 || !EXIT_KIND_VALUES.includes(kind)) {
     return json({ error: "회원번호 또는 처리 유형이 올바르지 않습니다." }, 400, origin);
@@ -6834,7 +6873,7 @@ async function handleAdminExitPreview(req, env, origin) {
     // "관리자 선택에 따라 반환율이 달라지면 안 된다"는 검증은 시트를 실제로
     // 바꾸는 확정 단계(handleAdminExitConfirm)에서만 하면 충분하고, 여기
     // (시트 불변경, 계산만)까지 막을 필요는 없다.
-    const result = await computeExitResult(env, accessToken, fileId, member.number, member.name, kind, forcedReason);
+    const result = await computeExitResult(env, accessToken, fileId, member.number, member.name, kind, forcedReason, cycle);
     if (!result) {
       return json({ error: "해당 처리 유형에 해당하지 않는 회원입니다." }, 400, origin);
     }
@@ -7091,7 +7130,7 @@ async function handleAdminExitConfirm(req, env, origin) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
 
-  const { number, kind, forcedReason, blacklist } = await req.json();
+  const { number, kind, forcedReason, blacklist, cycle } = await req.json();
   const sheetNum = parseInt(number, 10);
   if (!sheetNum || sheetNum < 1 || sheetNum > 15 || !EXIT_KIND_VALUES.includes(kind)) {
     return json({ error: "회원번호 또는 처리 유형이 올바르지 않습니다." }, 400, origin);
@@ -7137,7 +7176,7 @@ async function handleAdminExitConfirm(req, env, origin) {
       return json({ error: "직권 퇴실 사유를 입력해야 확정 처리할 수 있습니다." }, 400, origin);
     }
 
-    const result = await computeExitResult(env, accessToken, fileId, member.number, member.name, kind, forcedReason);
+    const result = await computeExitResult(env, accessToken, fileId, member.number, member.name, kind, forcedReason, cycle);
     if (!result) {
       return json({ error: "해당 처리 유형에 해당하지 않는 회원입니다." }, 400, origin);
     }

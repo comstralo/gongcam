@@ -62,9 +62,18 @@ export function ExitProcessDialog({
   triggerClassName,
   lockKind,
   lockForcedReason,
+  cycleFileId,
   children,
 }: {
   candidate: ExitProcessCandidate;
+  // 🔧 [사용자 지시, 2026-09-10] "예치금 재납은 지난주 시트 기준으로도
+  // 확정할 수 있어야 한다" — PenaltyCandidateList가 현재 진행 중인
+  // 1~3주차 중 어느 시점을 보고 있는지(cycleFileId)를 그대로 넘기면,
+  // 계산(미리보기/확정 모두)이 그 시점 데이터를 기준으로 이뤄진다. 실제
+  // 참여상태 변경·탭 정리는 이 값과 무관하게 항상 현재 시트에만 반영된다
+  // (백엔드 resolveExitSourceFileId 참고) — 안 넘기면(undefined) 기존과
+  // 동일하게 항상 현재 시트 기준으로 계산한다.
+  cycleFileId?: string | null;
   // 실제로 확정된 유형(forced/admin_forced/settle/deposit_again)을 함께
   // 넘긴다 — 호출부(PenaltyCandidateList 등)가 "이 회원이 강퇴로 처리됐는지
   // 재납으로 처리됐는지"를 화면 상태로 구분해 보여줘야 하기 때문이다.
@@ -124,6 +133,7 @@ export function ExitProcessDialog({
           number: candidate.number,
           kind: lockKind,
           forcedReason: lockKind === "admin_forced" ? forcedReason : undefined,
+          cycle: cycleFileId ?? undefined,
         },
       });
       setPreview(data);
@@ -176,6 +186,7 @@ export function ExitProcessDialog({
           kind: lockKind,
           forcedReason: lockKind === "admin_forced" ? forcedReason : undefined,
           blacklist: lockKind === "admin_forced" ? blacklist : undefined,
+          cycle: cycleFileId ?? undefined,
         },
       });
       setConfirmed(true);

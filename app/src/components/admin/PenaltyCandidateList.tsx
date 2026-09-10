@@ -93,9 +93,12 @@ export function PenaltyCandidateList({
   // 결과("강퇴"/"재납")를 화면 상태로 기억해 뱃지로만 바꿔 그 자리에 남긴다
   // ("송출 P 제보 확인"과 동일한 패턴 — 사용자 요청으로 디자인 통일).
   const [processed, setProcessed] = useState<Record<string, ExitKind>>({});
-  // 서버가 지난 사이클 조회면 readOnly: true를 내려준다 — 그 시점의 페널티
-  // 누적 판정은 "현재 기준"이라는 전제가 깨지므로 강퇴/재납 확정 액션을
-  // 잠근다(사용자 지시: 과거 사이클은 스냅샷 조회만, 실제 처리는 현재에서만).
+  // 서버가 지난 사이클 조회면 readOnly: true를 내려준다 — 이제는 액션을
+  // 잠그는 용도가 아니라, "지난 사이클 데이터 기준으로 처리 중"임을 화면에
+  // 안내하는 용도로만 쓴다(사용자 지시, 2026-09-10: "예치금 재납/벌금 납부는
+  // 익일이거나 하루 이틀 늦게 처리될 수도 있으니 지난주 시트에도 쓸 수
+  // 있어야 한다"). 실제 계산은 이 화면이 보고 있는 cycleFileId 기준으로
+  // 이뤄지고, 참여상태 변경 자체는 항상 현재 시트에 반영된다.
   const [readOnly, setReadOnly] = useState(false);
 
   function load() {
@@ -235,35 +238,45 @@ export function PenaltyCandidateList({
                                   />
                                 </div>
 
-                                {readOnly ? (
-                                  <p className="text-center text-xs text-muted-foreground sm:text-sm">
-                                    지난 사이클 기록은 조회만 가능합니다.
-                                  </p>
-                                ) : decidedKind ? (
+                                {decidedKind ? (
                                   <p className="text-center text-xs text-muted-foreground sm:text-sm">
                                     이미 처리된 대상입니다.
                                   </p>
                                 ) : (
-                                  <div className="grid grid-cols-2 gap-2">
-                                    <ExitProcessDialog
-                                      candidate={c}
-                                      onConfirmed={(kind) => setProcessed((prev) => ({ ...prev, [c.number]: kind }))}
-                                      lockKind="forced"
-                                    >
-                                      <Button variant="destructive" className="w-full sm:h-12 sm:text-base">
-                                        강제퇴실자 처리
-                                      </Button>
-                                    </ExitProcessDialog>
-                                    <ExitProcessDialog
-                                      candidate={c}
-                                      onConfirmed={(kind) => setProcessed((prev) => ({ ...prev, [c.number]: kind }))}
-                                      lockKind="deposit_again"
-                                    >
-                                      <Button variant="destructive" className="w-full sm:h-12 sm:text-base">
-                                        재납자 처리
-                                      </Button>
-                                    </ExitProcessDialog>
-                                  </div>
+                                  <>
+                                    {/* 🔧 [사용자 지시, 2026-09-10] "예치금 재납/강퇴 확정은 지난주
+                                        시트 기준으로도 처리될 수 있어야 한다" — 지난 사이클(1~3주차
+                                        내) 조회 중이어도 그 시점 데이터를 기준으로 확정할 수 있다.
+                                        cycleFileId를 그대로 넘기면 계산은 그 시점 기준, 실제 참여상태
+                                        변경은 항상 현재 시트에 반영된다(ExitProcessDialog/백엔드 참고). */}
+                                    {readOnly && (
+                                      <p className="text-center text-xs text-muted-foreground sm:text-sm">
+                                        지난 사이클 기록 기준으로 처리합니다 — 실제 반영은 현재 시트에 됩니다.
+                                      </p>
+                                    )}
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <ExitProcessDialog
+                                        candidate={c}
+                                        onConfirmed={(kind) => setProcessed((prev) => ({ ...prev, [c.number]: kind }))}
+                                        lockKind="forced"
+                                        cycleFileId={cycleFileId}
+                                      >
+                                        <Button variant="destructive" className="w-full sm:h-12 sm:text-base">
+                                          강제퇴실자 처리
+                                        </Button>
+                                      </ExitProcessDialog>
+                                      <ExitProcessDialog
+                                        candidate={c}
+                                        onConfirmed={(kind) => setProcessed((prev) => ({ ...prev, [c.number]: kind }))}
+                                        lockKind="deposit_again"
+                                        cycleFileId={cycleFileId}
+                                      >
+                                        <Button variant="destructive" className="w-full sm:h-12 sm:text-base">
+                                          재납자 처리
+                                        </Button>
+                                      </ExitProcessDialog>
+                                    </div>
+                                  </>
                                 )}
                               </>
                             )}
