@@ -171,6 +171,12 @@ export function StatusPage({
         <StatusView
           status={status}
           allowGoalSchedule={!isViewingCycle && selected === SELF_VALUE}
+          // 🔧 [사용자 지시] "오늘이 아닌 과거 일자의 반일 휴무 신청은
+          // 블락하되, 관리자가 다른 회원의 대시보드를 띄웠을 때는 예외로
+          // 허용" — 실수를 대신 등록해주는 용도이므로 대상은 실시간(현재
+          // 진행 중인 시트) 조회로 한정한다. 과거 사이클(isViewingCycle)은
+          // 이미 끝난 주라 "신청"이라는 개념 자체가 성립하지 않는다.
+          adminTargetNumber={isAdmin && !isViewingCycle && selected !== SELF_VALUE ? selected : undefined}
           isViewingCycle={isViewingCycle}
           onLeaveApplied={(day, type, delta) => {
             const applyLeaveDelta = (prev: StatusResponse | null) => {

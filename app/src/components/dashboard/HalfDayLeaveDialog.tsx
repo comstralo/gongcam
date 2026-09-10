@@ -97,6 +97,8 @@ export function HalfDayLeaveDialog({
   reasonLeaveUsed,
   normalLeaveLeft,
   reasonLeaveLeft,
+  isPastDay = false,
+  adminTargetNumber,
   onNormalApplied,
   onReasonLeaveApplied,
   onReasonLeaveSubmitted,
@@ -111,6 +113,14 @@ export function HalfDayLeaveDialog({
   // 이 요일 한정이 아니라 전체(주간/사이클) 잔여량이다.
   normalLeaveLeft: string;
   reasonLeaveLeft: string;
+  // 🔧 [사용자 지시] "오늘이 아닌 과거 일자의 반일 휴무 신청은 블락" —
+  // 본인 신청(adminTargetNumber 없음)일 때만 이 값으로 트리거 버튼을
+  // 잠근다. 관리자 대리 모드에서는 무시한다(실수를 대신 등록해주는 용도).
+  isPastDay?: boolean;
+  // 있으면 "관리자가 이 회원번호를 대신 신청하는" 모드 — 요일 제한 없이
+  // 항상 허용하고, 실제 API도 본인용(/leave-apply)이 아니라 관리자
+  // 전용(/admin/leave-apply)으로 이 번호를 실어 호출한다.
+  adminTargetNumber?: string;
   onNormalApplied?: (delta: number) => void;
   // 승인된 사유반휴를 취소했을 때 그 변화량(항상 음수)을 부모에 알려, 요일
   // 카드의 "사유반휴" 카운트를 새로고침 없이 즉시 갱신한다.
@@ -176,9 +186,15 @@ export function HalfDayLeaveDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [day]);
 
+  // 🔧 [사용자 지시] "오늘이 아닌 과거 일자의 반일 휴무 신청은 블락" —
+  // 관리자 대리 모드(adminTargetNumber 있음)면 이 제한을 아예 적용하지
+  // 않는다("실수가 발생했을 때, 관리자가 해당 인원 대신에 휴무를 등록해
+  // 주기 위함"이라는 명시적 예외).
+  const blockedByPastDay = isPastDay && !adminTargetNumber;
+
   function handleOpenChange(next: boolean) {
     if (next) {
-      if (cooldownRemainingSec > 0) return;
+      if (cooldownRemainingSec > 0 || blockedByPastDay) return;
     } else {
       try {
         localStorage.setItem(REOPEN_COOLDOWN_STORAGE_PREFIX + day, String(Date.now()));
@@ -211,8 +227,14 @@ export function HalfDayLeaveDialog({
   const [cancelingApproved, setCancelingApproved] = useState(false);
   const [cancelApprovedError, setCancelApprovedError] = useState<string | null>(null);
 
+  // 🔧 [관리자 대리 신청, 2026-09-10] 관리자 대리 모드는 증빙 절차 자체가
+  // 없다(즉시 등록 용도) — /reason-leave-proof는 세션 본인 기준이라 이
+  // 조회 자체가 의미 없으므로 건너뛴다. 사유반휴 UI는 아래에서
+  // adminTargetNumber 유무로 완전히 다른 컴포넌트(LeaveApplyButton)로 분기한다.
   useEffect(() => {
     if (!open) return;
+    onOpen?.();
+    if (adminTargetNumber) return;
     setStatus("loading");
     setReason("");
     setProofCount(0);
@@ -226,9 +248,8 @@ export function HalfDayLeaveDialog({
     call<ReasonLeaveProofStatus>(`/reason-leave-proof?day=${encodeURIComponent(day)}`)
       .then(setStatus)
       .catch(() => setStatus("error"));
-    onOpen?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, day]);
+  }, [open, day, adminTargetNumber]);
 
   // usedToday가 바뀌어(예: 일반반휴를 먼저 신청) 선택 가능한 최대 장수가
   // 줄어들면, 이미 골라둔 proofCount도 그 상한을 넘지 않게 맞춘다.
@@ -347,10 +368,18 @@ export function HalfDayLeaveDialog({
           한다(base-ui 표준 패턴, 이중 <button> 없이 동일하게 동작). */}
       <DialogTrigger
         render={
-          <Button variant="outline" className="w-full sm:h-11 sm:text-base" disabled={cooldownRemainingSec > 0} />
+          <Button
+            variant="outline"
+            className="w-full sm:h-11 sm:text-base"
+            disabled={cooldownRemainingSec > 0 || blockedByPastDay}
+          />
         }
       >
-        {cooldownRemainingSec > 0 ? `${cooldownRemainingSec}초 후 재시도` : "반일 휴무 신청"}
+        {blockedByPastDay
+          ? "지난 요일은 신청할 수 없습니다"
+          : cooldownRemainingSec > 0
+            ? `${cooldownRemainingSec}초 후 재시도`
+            : "반일 휴무 신청"}
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
@@ -378,7 +407,13 @@ export function HalfDayLeaveDialog({
               <CalendarCheck className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
               <ItemTitle>일반 반휴</ItemTitle>
             </span>
-            <LeaveApplyButton day={day} dayFull={dayFull} onApplied={onNormalApplied} />
+            <LeaveApplyButton
+              day={day}
+              type="normal"
+              dayFull={dayFull}
+              adminTargetNumber={adminTargetNumber}
+              onApplied={onNormalApplied}
+            />
           </InfoCard>
 
           <InfoCard className="flex flex-col gap-2">
@@ -387,6 +422,20 @@ export function HalfDayLeaveDialog({
               <ItemTitle>사유 반휴</ItemTitle>
             </span>
 
+            {/* 🔧 [관리자 대리 신청, 2026-09-10] 관리자 모드는 증빙 절차
+                없이 일반반휴와 동일한 스테퍼+신청/취소로 즉시 등록한다 —
+                아래 증빙 제출 폼(status/submitted 기반)은 본인 신청
+                전용이라 완전히 건너뛴다. */}
+            {adminTargetNumber ? (
+              <LeaveApplyButton
+                day={day}
+                type="reason"
+                dayFull={dayFull}
+                adminTargetNumber={adminTargetNumber}
+                onApplied={onReasonLeaveApplied}
+              />
+            ) : (
+              <>
             {status === "loading" && (
               // 🔧 2026-09: 다이얼로그가 열리자마자 fetch를 시작해, 텍스트
               // 한 줄 → 신청 폼(텍스트에어리어+파일첨부+버튼) 전체로 이
@@ -569,6 +618,8 @@ export function HalfDayLeaveDialog({
               <Alert variant="destructive">
                 <AlertDescription>{submitError}</AlertDescription>
               </Alert>
+            )}
+              </>
             )}
           </InfoCard>
 

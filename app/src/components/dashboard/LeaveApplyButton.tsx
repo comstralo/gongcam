@@ -6,22 +6,34 @@ import { ApiError } from "@/lib/api/client";
 import { MAX_LEAVES_PER_DAY } from "@/components/dashboard/shared";
 import type { LeaveApplyResponse, SetLeaveApplyResponse } from "@/lib/api/types";
 
-// 선택한 요일(day)의 일반반휴 신청을 all-or-nothing으로 다룬다: 아직
+const LEAVE_TYPE_LABEL: Record<"normal" | "reason", string> = { normal: "일반반휴", reason: "사유반휴" };
+
+// 선택한 요일(day)의 반휴 신청을 all-or-nothing으로 다룬다: 아직
 // 신청 전이면 좌측 -/+ 스테퍼로 장수(1~2)를 고른 뒤 "신청"을 눌러야 반영되고,
 // 이미 신청됐으면 스테퍼는 잠기고(부분 변경 불가) "취소" 버튼만 눌러 한
 // 번에 0으로 되돌릴 수 있다 — 신청된 장수를 1↔2로 바꾸려면 먼저 취소한
 // 뒤 새로 신청해야 한다.
 // onApplied: 신청/취소가 실제로 반영됐을 때 그 변화량(delta, 음수 가능)을
-// 부모에 알려, 요일 카드의 "일반반휴" 카운트를 새로고침 없이 즉시 갱신한다.
+// 부모에 알려, 요일 카드의 반휴 카운트를 새로고침 없이 즉시 갱신한다.
+// 🔧 [관리자 대리 신청, 2026-09-10] 원래 일반반휴(normal) 전용이었는데,
+// 관리자 대리 모드에서는 사유반휴도 증빙 없이 이 컴포넌트와 동일한
+// 스테퍼+신청/취소 UI로 즉시 등록해야 해서(HalfDayLeaveDialog 참고)
+// type을 파라미터화했다.
 export function LeaveApplyButton({
   day,
+  type = "normal",
   dayFull,
+  adminTargetNumber,
   onApplied,
 }: {
   day: string;
+  type?: "normal" | "reason";
   // 이 요일에 이미 반휴(일반+사유 합산) 상한을 다 썼는지 — true면 현재
   // 저장된 값보다 늘리는 조작만 막는다(줄이는 것은 항상 허용).
   dayFull?: boolean;
+  // 있으면 관리자가 이 회원번호를 대신 신청하는 모드 — 조회/신청 모두
+  // 관리자 자신이 아니라 이 번호를 대상으로 한다(HalfDayLeaveDialog 참고).
+  adminTargetNumber?: string;
   onApplied?: (delta: number) => void;
 }) {
   const { call } = useApi();
@@ -29,10 +41,12 @@ export function LeaveApplyButton({
   const [draft, setDraft] = useState(0);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const label = LEAVE_TYPE_LABEL[type];
 
   function load() {
     setState("loading");
-    call<LeaveApplyResponse>(`/leave-apply?type=normal&day=${encodeURIComponent(day)}`)
+    const numberParam = adminTargetNumber ? `&number=${encodeURIComponent(adminTargetNumber)}` : "";
+    call<LeaveApplyResponse>(`/leave-apply?type=${type}&day=${encodeURIComponent(day)}${numberParam}`)
       .then((data) => {
         // count/left는 항상 숫자를 기대하지만, 구버전 응답 등 예상 밖의 값이
         // 오더라도 NaN이 draft/maxDraft 계산에 퍼지지 않도록 방어한다.
@@ -44,7 +58,7 @@ export function LeaveApplyButton({
       .catch(() => setState("error"));
   }
 
-  useEffect(load, [day]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(load, [day, type, adminTargetNumber]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function apply(nextValue: number) {
     if (state === "loading" || state === "error") return;
@@ -53,10 +67,15 @@ export function LeaveApplyButton({
     setPending(true);
     setError(null);
     try {
-      const data = await call<SetLeaveApplyResponse>("/leave-apply", {
-        method: "POST",
-        body: { type: "normal", day, count: nextValue },
-      });
+      const data = adminTargetNumber
+        ? await call<SetLeaveApplyResponse>("/admin/leave-apply", {
+            method: "POST",
+            body: { type, number: adminTargetNumber, day, count: nextValue },
+          })
+        : await call<SetLeaveApplyResponse>("/leave-apply", {
+            method: "POST",
+            body: { type, day, count: nextValue },
+          });
       const nextCount = Number.isFinite(data.count) ? data.count : nextValue;
       // left(전체 잔여)는 시트 수식(=2-SUMPRODUCT(...))이 "이번 주 전체
       // 요일" 사용량으로 계산하므로, 이 요일의 count가 바뀐 만큼 반대
@@ -112,7 +131,7 @@ export function LeaveApplyButton({
             className="h-full w-8 shrink-0 rounded-r-none sm:w-11"
             disabled={pending || applied || draft <= 0}
             onClick={() => setDraft((d) => Math.max(0, d - 1))}
-            aria-label="일반반휴 장수 줄이기"
+            aria-label={`${label} 장수 줄이기`}
           >
             <Minus className="size-3.5" />
           </Button>
@@ -124,7 +143,7 @@ export function LeaveApplyButton({
             className="h-full w-8 shrink-0 rounded-l-none sm:w-11"
             disabled={pending || applied || draft >= maxDraft}
             onClick={() => setDraft((d) => Math.min(maxDraft, d + 1))}
-            aria-label="일반반휴 장수 늘리기"
+            aria-label={`${label} 장수 늘리기`}
           >
             <Plus className="size-3.5" />
           </Button>
@@ -150,7 +169,7 @@ export function LeaveApplyButton({
       </div>
       {!applied && draft >= maxDraft && noLeftToIncrease && (
         <p className="text-center text-micro text-muted-foreground sm:text-micro-lg">
-          일반반휴 잔여량이 없습니다.
+          {label} 잔여량이 없습니다.
         </p>
       )}
       {error && <p className="text-center text-micro text-destructive sm:text-micro-lg">{error}</p>}

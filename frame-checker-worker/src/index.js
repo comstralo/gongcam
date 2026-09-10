@@ -4929,6 +4929,10 @@ const LEAVE_MAX_COUNT_BY_TYPE = { normal: 2, reason: 1 };
 // MAX_LEAVES_PER_DAY와 일치시켜야 한다).
 const MAX_LEAVES_PER_DAY_LIMIT = 2;
 
+// 🔧 [관리자 대리 신청, 2026-09-10] number 쿼리 파라미터는 관리자에게만
+// 허용한다 — 관리자가 다른 회원의 대시보드를 띄우면 LeaveApplyButton이
+// 이 파라미터로 그 회원의 일반반휴 현재 상태를 조회해야, 관리자 본인이
+// 아니라 그 회원의 값이 표시된다(handleAdminLeaveApply와 짝을 이룬다).
 async function handleGetLeaveApply(req, env, origin, url) {
   const authHeader = req.headers.get("Authorization") || "";
   const token = authHeader.replace(/^Bearer\s+/i, "");
@@ -4937,13 +4941,20 @@ async function handleGetLeaveApply(req, env, origin, url) {
 
   const type = url.searchParams.get("type");
   const day = url.searchParams.get("day");
+  const numberParam = url.searchParams.get("number");
   const config = LEAVE_TYPE_CONFIG[type];
   const col = statusColForDay(day);
   if (!config || col === null) return json({ error: "잘못된 요청입니다." }, 400, origin);
+  if (numberParam) {
+    const sheetNum = parseInt(numberParam, 10);
+    if (!sheetNum || sheetNum < 1 || sheetNum > 15) return json({ error: "잘못된 요청입니다." }, 400, origin);
+    const isAdminSession = session.email === (env.ADMIN_EMAIL || "").toLowerCase();
+    if (!isAdminSession) return json({ error: "관리자만 다른 회원을 조회할 수 있습니다." }, 403, origin);
+  }
 
   try {
     const accessToken = await getServiceAccountAccessToken(env);
-    const memberNumber = await resolveMemberNumber(env, accessToken, session);
+    const memberNumber = numberParam ? String(parseInt(numberParam, 10)) : await resolveMemberNumber(env, accessToken, session);
     const colLetter = String.fromCharCode("A".charCodeAt(0) + col);
 
     const [cellRows, leftRows] = await Promise.all([
@@ -5054,6 +5065,81 @@ async function handleSetLeaveApply(req, env, origin) {
     return json({ ok: true, applied: count > 0, count }, 200, origin);
   } catch (err) {
     return json({ error: `${config.label} 신청 실패: ` + err.message }, 500, origin);
+  }
+}
+
+// 🔧 [관리자 대리 신청, 2026-09-10] "대시보드에서 오늘이 아닌 과거 일자의
+// 반일 휴무 신청은 블락하되, 관리자가 다른 회원의 대시보드를 띄웠을 때는
+// 예외로 허용" — 실수로 신청을 놓친 회원을 관리자가 대신 등록해줄 수
+// 있어야 한다는 요구사항(사용자 지시). handleSetLeaveApply/
+// handleAdminLeaveProofDecide는 둘 다 "세션 본인"(memberNumber를
+// resolveMemberNumber로 찾음) 또는 "이미 접수된 증빙 큐 항목"만 다뤄서,
+// "관리자가 임의 회원의 임의 요일에 즉시 반영"하는 경로가 없었다.
+// type(normal/reason) 공용 — 일반반휴는 handleSetLeaveApply와 동일하게
+// 셀에 count를 직접 쓰고, 사유반휴는 handleAdminLeaveProofDecide의 승인
+// 로직(증빙 없이 관리자 직권으로 이미 확정된 값을 쓰는 것과 동일한 셈)을
+// 그대로 재사용해 즉시 반영한다 — 증빙 대기열(leaveq:)을 거치지 않는다.
+// 요일 제한이 전혀 없다 — 관리자 전용이라 과거 요일도 항상 허용한다.
+async function handleAdminLeaveApply(req, env, origin) {
+  const admin = await requireAdmin(req, env);
+  if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
+
+  const { type, number, day, count: rawCount } = await req.json().catch(() => ({}));
+  const config = LEAVE_TYPE_CONFIG[type];
+  const col = statusColForDay(day);
+  const sheetNum = parseInt(number, 10);
+  const maxCount = LEAVE_MAX_COUNT_BY_TYPE[type] || 1;
+  const count = typeof rawCount === "number" ? rawCount : NaN;
+  if (
+    !config ||
+    col === null ||
+    !sheetNum ||
+    sheetNum < 1 ||
+    sheetNum > 15 ||
+    !Number.isInteger(count) ||
+    count < 0 ||
+    count > maxCount
+  ) {
+    return json({ error: "잘못된 요청입니다." }, 400, origin);
+  }
+
+  try {
+    const accessToken = await getServiceAccountAccessToken(env);
+    const memberNumber = String(sheetNum);
+    const colLetter = String.fromCharCode("A".charCodeAt(0) + col);
+
+    const cellRows = await getSheetValues(env, accessToken, env.GOOGLE_SHEET_FILE_ID, `${memberNumber}!${colLetter}${config.useRow + 1}`).catch(() => []);
+    const prevCount = parseLeaveCount((cellRows[0] && cellRows[0][0]) || "");
+
+    if (count > prevCount) {
+      const leftRows = await getSheetValues(env, accessToken, env.GOOGLE_SHEET_FILE_ID, `${memberNumber}!C${config.leftRow + 1}`).catch(() => []);
+      const left = safeNumber((leftRows[0] && leftRows[0][0]) || 0);
+      if (count - prevCount > left) return json({ error: `${config.label} 잔여량이 없습니다.` }, 400, origin);
+    }
+
+    await writeSheetValues(env, accessToken, env.GOOGLE_SHEET_FILE_ID, [
+      { range: `${memberNumber}!${colLetter}${config.useRow + 1}`, values: [[count > 0 ? count : ""]] },
+    ]);
+
+    // 사유반휴는 정식 승인 흐름(handleAdminLeaveProofDecide)과 동일하게
+    // 처리 이력을 남긴다 — "지난 사이클 조회" 화면이 이 로그로 그 주의
+    // 사유반휴 처리 내역을 보여주므로, 관리자 대리 신청도 빠지면 안 된다.
+    if (type === "reason" && count > prevCount) {
+      await _appendLeaveHistory(env, {
+        id: `admin-apply-${Date.now()}`,
+        decision: "approved",
+        memberNumber,
+        memberName: null,
+        day,
+        reason: "관리자 대리 신청",
+        rejectReason: null,
+        decidedAt: Date.now(),
+      }).catch(() => {});
+    }
+
+    return json({ ok: true, number: memberNumber, applied: count > 0, count }, 200, origin);
+  } catch (err) {
+    return json({ error: `${config.label} 대리 신청 실패: ` + err.message }, 500, origin);
   }
 }
 
@@ -9054,6 +9140,9 @@ export default {
       }
       if (url.pathname === "/leave-apply" && req.method === "POST") {
         return await handleSetLeaveApply(req, env, origin);
+      }
+      if (url.pathname === "/admin/leave-apply" && req.method === "POST") {
+        return await handleAdminLeaveApply(req, env, origin);
       }
       if (url.pathname === "/reason-leave-proof" && req.method === "GET") {
         return await handleGetReasonLeaveProof(req, env, origin, url);

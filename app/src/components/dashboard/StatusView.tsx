@@ -45,6 +45,15 @@ function formatHM(raw: string): string {
 export function StatusView({
   status,
   allowGoalSchedule = false,
+  // 🔧 [사용자 지시] "관리자가 다른 회원의 대시보드를 띄웠을 때는 반일
+  // 휴무 등록이 가능해야 한다" — allowGoalSchedule과 달리 반일 휴무는
+  // 본인 조회든(실시간) 관리자가 대신 보는 중이든 다이얼로그 자체는 항상
+  // 띄운다. 관리자가 남을 보는 중이면 그 회원번호(실시간 조회에 한정 —
+  // StatusPage가 과거 사이클이면 undefined로 넘김), 본인이 보는 중이면
+  // undefined — HalfDayLeaveDialog가 이 값의 유무로 "대리 신청 모드"인지
+  // 판단해, 대리 모드면 요일 제한 없이 항상 허용하고 /admin/leave-apply로
+  // API를 바꿔 호출한다.
+  adminTargetNumber,
   // 과거 사이클(완결된 지난 주) 조회 중인지 — true면 그 주의 모든 요일이 이미
   // 지났으므로, 오늘 요일 기준 "미래라 선택 불가" 판정을 걸지 않는다.
   isViewingCycle = false,
@@ -53,6 +62,7 @@ export function StatusView({
 }: {
   status: StatusResponse | null;
   allowGoalSchedule?: boolean;
+  adminTargetNumber?: string;
   isViewingCycle?: boolean;
   // 일반반휴 신청·취소가 반영됐을 때 부모(StatusPage)에 알려, 그 요일의
   // normalLeaveUsed를 새로고침 없이 즉시 갱신하게 한다.
@@ -402,13 +412,19 @@ export function StatusView({
             isPast={isViewingCycle || effectiveSelectedDay < TODAY_INDEX}
             depositRefundBreakdown={status.depositRefundBreakdown}
             footer={
-              allowGoalSchedule ? (
+              allowGoalSchedule || adminTargetNumber ? (
                 <HalfDayLeaveDialog
                   day={selected.day}
                   usedToday={selected.normalLeaveUsed + selected.reasonLeaveUsed}
                   reasonLeaveUsed={selected.reasonLeaveUsed}
                   normalLeaveLeft={status.normalLeaveLeft}
                   reasonLeaveLeft={status.reasonLeaveLeft}
+                  // 🔧 [사용자 지시] 오늘이 아닌 과거 일자는 본인 신청을
+                  // 막는다 — 관리자 대리 모드(adminTargetNumber 있음)면
+                  // 이 제한 자체가 무의미하므로 HalfDayLeaveDialog 내부에서
+                  // adminTargetNumber 유무로 우선 판단한다.
+                  isPastDay={!isViewingCycle && effectiveSelectedDay < TODAY_INDEX}
+                  adminTargetNumber={adminTargetNumber}
                   onNormalApplied={(delta) => onLeaveApplied?.(selected.day, "normal", delta)}
                   onReasonLeaveApplied={(delta) => onLeaveApplied?.(selected.day, "reason", delta)}
                   onReasonLeaveSubmitted={onReasonLeaveSubmitted}

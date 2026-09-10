@@ -53,9 +53,13 @@ DashboardPage (app/src/pages/DashboardPage.tsx)
 │             │   └─ 주간 교시 참여율 → PeriodAttendanceDialog
 │             ├─ 요일 버튼 그리드(월~일, 7개) — 선택 시 DayDetailCard 전환
 │             └─ DayDetailCard (components/dashboard/shared.tsx)
-│                 └─ footer: HalfDayLeaveDialog (본인만)
-│                     ├─ LeaveApplyButton (일반반휴, 즉시 반영)
-│                     └─ 사유반휴 폼 → ImageEditDialog(증빙 이미지 크롭/모자이크, 순수 클라이언트)
+│                 └─ footer: HalfDayLeaveDialog (본인 실시간 조회 + 관리자 대리 모드, 2026-09-10)
+│                     ├─ 본인: 과거 요일 신청 블락(오늘만 허용)
+│                     │   ├─ LeaveApplyButton type="normal" (일반반휴, 즉시 반영)
+│                     │   └─ 사유반휴 폼 → ImageEditDialog(증빙 이미지 크롭/모자이크, 순수 클라이언트)
+│                     └─ 관리자가 다른 회원 대시보드 조회 중(adminTargetNumber): 요일 제한 없음
+│                         ├─ LeaveApplyButton type="normal" adminTargetNumber=번호
+│                         └─ LeaveApplyButton type="reason" adminTargetNumber=번호 (증빙 없이 즉시 등록)
 └─ [all] RosterPage (pages/RosterPage.tsx)
           ├─ CycleSwitcher
           ├─ "랭킹" 섹션 → RosterView (components/dashboard/RosterView.tsx)
@@ -179,6 +183,33 @@ DashboardPage (app/src/pages/DashboardPage.tsx)
 하루 반휴 합산 상한은 `MAX_LEAVES_PER_DAY = 2`(일반+사유 합계, `shared.tsx`)로 프론트·
 백엔드(`MAX_LEAVES_PER_DAY_LIMIT`, index.js) 양쪽에 동일하게 하드코딩되어 있다 — 한쪽만
 바꾸면 어긋난다.
+
+#### 4.3.1 과거 요일 차단 + 관리자 대리 신청 (2026-09-10)
+
+본인이 실시간(현재 시트) 조회 중일 때, 선택한 요일이 오늘보다 과거면
+`HalfDayLeaveDialog`의 트리거 버튼 자체가 비활성화된다("지난 요일은 신청할 수
+없습니다") — `StatusView`가 `isPastDay = !isViewingCycle && effectiveSelectedDay <
+TODAY_INDEX`를 계산해 넘긴다.
+
+관리자가 "다른 회원 보기" 드롭다운으로 본인이 아닌 회원을 조회 중이면(단, 실시간
+조회에 한정 — 과거 사이클 조회는 대상 아님) `StatusPage`가 `adminTargetNumber`(그
+회원번호)를 내려주고, 이 값이 있으면 `isPastDay` 제한이 완전히 무시된다("실수가
+발생했을 때, 관리자가 해당 인원 대신에 휴무를 등록해주기 위함"). 이 모드에서는:
+
+- **일반반휴**: `LeaveApplyButton`이 `adminTargetNumber`를 받아 `GET /leave-apply?
+  ...&number=`로 그 회원 상태를 조회하고, `POST /admin/leave-apply`로 신청/취소한다
+  (본인용 `POST /leave-apply`는 항상 세션 본인만 건드리므로 별도 엔드포인트가
+  필요했다).
+- **사유반휴**: 증빙 제출→관리자 승인이라는 정식 절차 자체를 건너뛴다.
+  `HalfDayLeaveDialog`가 본인용 증빙 폼 대신 `LeaveApplyButton type="reason"
+  adminTargetNumber=번호`를 그대로 렌더링해, 일반반휴와 동일한 스테퍼+신청/취소
+  UI로 `/admin/leave-apply`(`type:"reason"`)를 호출한다 — 셀에 직접 count를 쓰고,
+  처리 이력(`leaveHistory:{weekOf}`, §13.x)에도 "관리자 대리 신청"으로 남는다.
+
+`handleGetLeaveApply`는 `number` 쿼리가 오면 세션이 관리자인지 검증한 뒤 그
+회원번호로 조회를 바꾼다. `handleAdminLeaveApply`는 `requireAdmin` + 임의 요일
+허용이 유일한 차이이고, 실제 시트 반영 로직(일반)과 승인 로직(사유)은
+`handleSetLeaveApply`/`handleAdminLeaveProofDecide`와 각각 동일하다.
 
 ---
 
@@ -317,8 +348,9 @@ URL 쿼리 `cycle`로 관리해 두 탭에 전달), 실시간(현재) 값과 "�
 | GET | `/admin/members/:number` | `handleAdminMemberStatus` | 관리자가 특정 회원 `/status`와 동형 응답 조회 |
 | GET | `/goal-schedule` | `handleGetGoalSchedule` | 다음 주 목표시간 예약 조회 |
 | POST | `/goal-schedule` | `handleSetGoalSchedule` | 예약 저장(집계 시트 N열, 월요일 오후 트리거가 반영) |
-| GET | `/leave-apply?type=normal&day=` | `handleGetLeaveApply` | |
-| POST | `/leave-apply` | `handleSetLeaveApply` | `{type:"normal"|"reason", day, count}` |
+| GET | `/leave-apply?type=normal&day=` | `handleGetLeaveApply` | `&number=<번호>`는 관리자 전용(다른 회원 조회) |
+| POST | `/leave-apply` | `handleSetLeaveApply` | `{type:"normal"|"reason", day, count}` — 세션 본인만 |
+| POST | `/admin/leave-apply` | `handleAdminLeaveApply` (2026-09-10) | 관리자 대리 신청 — `{type, number, day, count}`, 요일 제한 없음. 사유반휴도 증빙 없이 즉시 반영 |
 | GET | `/reason-leave-proof?day=` | `handleGetReasonLeaveProof` | pending/rejected 상태 조회 |
 | POST | `/reason-leave-proof` | `handleSetReasonLeaveProof` | 증빙 제출(관리자 승인 대기) |
 | POST | `/reason-leave-proof/cancel` | `handleCancelReasonLeaveProof` | 대기 중 신청 본인 철회 |
