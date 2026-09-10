@@ -51,7 +51,7 @@ export function StatusPage({
   // "다른 회원 보기" 드롭다운 자체가 사라졌다 — 그 주차 백업 시트의 회원
   // 목록을 cycle 파라미터로 함께 요청한다(그 주엔 있었지만 지금은 퇴실한
   // 회원도 과거 기록 조회 대상에 포함되도록).
-  useEffect(() => {
+  function loadMembers() {
     if (!isAdmin) return;
     const cycleParam = isViewingCycle ? `?cycle=${encodeURIComponent(String(cycleFileId))}` : "";
     call<AdminMembersResponse>(`/admin/members${cycleParam}`)
@@ -64,8 +64,14 @@ export function StatusPage({
         setSelected((prev) => (prev === SELF_VALUE || list.some((m) => m.number === prev) ? prev : SELF_VALUE));
       })
       .catch((err) => setMembersError(err instanceof Error ? err.message : "회원 목록을 불러오지 못했습니다."));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, isViewingCycle, cycleFileId]);
+  }
+
+  // 🔧 [사용자 지시] "드롭다운의 폴링은 클릭할 때마다 발생하게 할 수
+  // 있어?" — 이 목록은 자동 폴링이 없어(최초 마운트/사이클 전환 시에만
+  // 조회) 대시보드를 오래 띄워두면 신규 회원이 안 보일 수 있었다.
+  // ReportPage의 참여자 선택 드롭다운과 동일하게, 드롭다운을 열 때마다
+  // (onOpenChange) 다시 불러오게 한다.
+  useEffect(loadMembers, [isAdmin, isViewingCycle, cycleFileId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function reload() {
     if (usingMyStatus) {
@@ -128,7 +134,14 @@ export function StatusPage({
               // "다른 회원이 없다"로 오해할 수 있었다. 이 짧은 로딩 구간엔
               // 트리거 자체를 비활성화한다 — 이 앱의 다른 Select들
               // (NewMemberForm, SimpleNoticeSection 등)과 동일한 컨벤션.
-              <Select value={selected} onValueChange={(v) => setSelected(v ?? SELF_VALUE)} disabled={!members}>
+              <Select
+                value={selected}
+                onValueChange={(v) => setSelected(v ?? SELF_VALUE)}
+                disabled={!members}
+                onOpenChange={(open) => {
+                  if (open) loadMembers();
+                }}
+              >
                 {/* 🔧 [사용자 지시] "'화각 불량 제보'의 헤더 배경 높이랑 '내
                     대시보드'의 높이랑 다른거 아니야?" — 이 드롭다운(h-8/
                     sm:h-9, 32px/36px)이 옆의 새로고침 버튼(icon-sm, size-7

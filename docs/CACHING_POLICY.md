@@ -803,15 +803,24 @@ fileId의 회원 명단은 애초에 무효화될 이유가 없는 불변 데이
 같은 원칙(`fileId === env.GOOGLE_SHEET_FILE_ID` 분기)으로 과거 fileId만
 2시간으로 늘렸다.
 
-이 드롭다운 목록은 **폴링의 영향을 받지 않는다** — `StatusPage`의
-`usePollingRefresh`(30분)/`useRefreshOnVisible`은 선택된 회원의
-`/status`(또는 `/admin/members/:number`)를 재조회하는 `reload()`에만
-걸려 있고, `/admin/members`(목록 자체)를 부르는 `useEffect`는
+이 드롭다운 목록은 **자동 폴링의 영향을 받지 않는다** —
+`StatusPage`의 `usePollingRefresh`(30분)/`useRefreshOnVisible`은 선택된
+회원의 `/status`(또는 `/admin/members/:number`)를 재조회하는
+`reload()`에만 걸려 있고, `/admin/members`(목록 자체)를 부르는 로직은
 `[isAdmin, isViewingCycle, cycleFileId]`가 바뀔 때(최초 마운트, 사이클
-전환)만 독립적으로 실행된다. 폴링·가시성 복귀 어느 쪽도 이 목록을 다시
-불러오지 않는다 — 대시보드를 오래 띄워둔 채 신규 회원이 등록돼도,
-새로고침하거나 사이클을 전환하기 전까지는 드롭다운에 반영되지 않는다
-(알려진 한계로 기록, 이번 세션에서는 수정하지 않음).
+전환)만 독립적으로 실행된다.
+
+**후속 대응(같은 날, 2026-09-10)**: "대시보드를 오래 띄워둔 채 신규
+회원이 등록돼도 반영이 안 된다"는 한계를 "드롭다운을 클릭할 때마다
+새로고침되게 할 수 있냐"는 요청으로 해소했다. 목록 조회 로직을
+`loadMembers()`로 분리하고, `Select`의 `onOpenChange`가 열릴 때(open
+===true)마다 이를 호출하도록 추가했다 — `ReportPage`의 참여자 선택
+드롭다운이 이미 쓰던 동일한 관용구(같은 파일, 349번 줄 근처)를 그대로
+재사용한 것이라 새로운 패턴은 아니다. `members:` 캐시(10분/과거
+2시간, TTL은 그대로) 덕분에 매번 열 때마다 실제 Sheets API가 다시
+불리는 게 아니라, 캐시가 아직 유효하면 그 값을 즉시 반환하고 TTL이
+지났을 때만 실제로 재조회된다 — "열 때마다 최신 여부를 확인"하는
+효과와 "불필요한 쿼터 소모 방지"를 동시에 달성한다.
 
 ## 18. 관련 문서
 
