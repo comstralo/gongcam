@@ -59,6 +59,20 @@ export function AdminListSkeleton({ rows = 3 }: { rows?: number }) {
   );
 }
 
+// 🔧 [사용자 지시] "PEN·MONEY에서 사유 반휴 신청 처리가 내용이 없을 땐
+// 작았다가 펼쳐지는데 눈에 띄네" — AdminListSkeleton(카드 3개 높이)이
+// 뜨다가, 로딩이 끝나 실제로 항목이 0개면 텍스트 한 줄(py-6)로 확 줄어드는
+// 낙차가 관리자 리스트 7곳(제보 검토/스터디원·퇴실자 목록/정산·벌금/
+// 페널티 대상자/사유반휴 검토) 전부에 있었다. 빈 상태도 InfoCard + 같은
+// 세로 패딩(py-8)을 줘 스켈레톤과 실제 데이터 사이 높이 차이를 줄인다.
+export function AdminEmptyState({ children }: { children: ReactNode }) {
+  return (
+    <InfoCard className="flex items-center justify-center bg-card py-8">
+      <p className="text-center text-sm text-muted-foreground sm:text-base">{children}</p>
+    </InfoCard>
+  );
+}
+
 // 관리자 탭에서 접이식 섹션 하나를 감싸는 카드. 회색 배경(bg-muted)을 쓰면
 // 내용물이 흐리게 보여 비활성화된 것처럼 착시가 생기므로, 배경은 부모
 // Card와 같은 흰 바탕(bg-card)을 유지하고 테두리로만 섹션 경계를 드러낸다.

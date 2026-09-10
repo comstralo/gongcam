@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { InfoCard, SubRow, TintedPill, buildDepositCauseItems } from "@/components/dashboard/shared";
 import type { DepositCauseItem } from "@/components/dashboard/shared";
-import { SectionHeader, displayExitedName as displayName, AdminListSkeleton } from "@/components/admin/shared";
+import { SectionHeader, displayExitedName as displayName, AdminListSkeleton, AdminEmptyState } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { usePullRefreshListener } from "@/hooks/usePullToRefresh";
 import { ApiError } from "@/lib/api/client";
@@ -349,9 +349,7 @@ export function ExitedMemberList() {
 
         {loading && !members && <AdminListSkeleton />}
 
-        {!loading && members && members.length === 0 && (
-          <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">퇴실한 스터디원이 없습니다.</p>
-        )}
+        {!loading && members && members.length === 0 && <AdminEmptyState>퇴실한 스터디원이 없습니다.</AdminEmptyState>}
 
         {!loading && members && members.length > 0 && filteredMembers && filteredMembers.length === 0 && (
           <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">

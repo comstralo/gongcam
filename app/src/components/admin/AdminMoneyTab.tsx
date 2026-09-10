@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, DayDetailCard, TintedPill, ItemTitle, DividedValue } from "@/components/dashboard/shared";
-import { SectionHeader, FieldLabel, SectionCard, AdminListSkeleton } from "@/components/admin/shared";
+import { SectionHeader, FieldLabel, SectionCard, AdminListSkeleton, AdminEmptyState } from "@/components/admin/shared";
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
 import { ReportReviewList } from "@/components/admin/ReportReviewList";
 import { PenaltyCandidateList } from "@/components/admin/PenaltyCandidateList";
@@ -253,9 +253,7 @@ function PaidFineList({
 
       {loading && !records && <AdminListSkeleton />}
 
-      {!loading && records && groups.length === 0 && (
-        <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">처리 대상이 없습니다.</p>
-      )}
+      {!loading && records && groups.length === 0 && <AdminEmptyState>처리 대상이 없습니다.</AdminEmptyState>}
 
       {groups.length > 0 && (
         <div className="flex flex-col gap-2 sm:gap-2.5">
@@ -530,9 +528,7 @@ function PrizeRecipientList({
 
         {loading && !settlement && <AdminListSkeleton />}
 
-        {!loading && settlement && settlement.length === 0 && (
-          <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">이번 주 정산 대상이 없습니다.</p>
-        )}
+        {!loading && settlement && settlement.length === 0 && <AdminEmptyState>이번 주 정산 대상이 없습니다.</AdminEmptyState>}
 
         {settlement && settlement.length > 0 && (
           // §"랭킹"(RosterView)의 카드 출력 형태를 그대로 재활용한다 —

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, SubRow, TintedPill } from "@/components/dashboard/shared";
-import { SectionHeader, AdminListSkeleton } from "@/components/admin/shared";
+import { SectionHeader, AdminListSkeleton, AdminEmptyState } from "@/components/admin/shared";
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
 import { useApi } from "@/hooks/useApi";
 import { usePullRefreshListener } from "@/hooks/usePullToRefresh";
@@ -95,9 +95,7 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
 
         {loading && !members && <AdminListSkeleton />}
 
-        {!loading && members && members.length === 0 && (
-          <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">등록된 스터디원이 없습니다.</p>
-        )}
+        {!loading && members && members.length === 0 && <AdminEmptyState>등록된 스터디원이 없습니다.</AdminEmptyState>}
 
         {members && members.length > 0 && (
           <div className="flex flex-col gap-2 sm:gap-2.5">

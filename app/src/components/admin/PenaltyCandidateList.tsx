@@ -4,7 +4,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, TintedPill } from "@/components/dashboard/shared";
-import { SectionHeader, PenaltyHistorySection, AdminListSkeleton } from "@/components/admin/shared";
+import { SectionHeader, PenaltyHistorySection, AdminListSkeleton, AdminEmptyState } from "@/components/admin/shared";
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
@@ -134,9 +134,7 @@ export function PenaltyCandidateList({
 
         {loading && !candidates && <AdminListSkeleton />}
 
-        {!loading && candidates && candidates.length === 0 && (
-          <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">처리 대상이 없습니다.</p>
-        )}
+        {!loading && candidates && candidates.length === 0 && <AdminEmptyState>처리 대상이 없습니다.</AdminEmptyState>}
 
         {candidates && candidates.length > 0 && (
           <div className="flex flex-col gap-2 sm:gap-2.5">

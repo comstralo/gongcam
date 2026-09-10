@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 import { DividedValue, InfoCard, SubRow, TintedPill } from "@/components/dashboard/shared";
 import { CycleSwitcher } from "@/components/dashboard/CycleSwitcher";
-import { SectionHeader, CapturePreview, AdminListSkeleton } from "@/components/admin/shared";
+import { SectionHeader, CapturePreview, AdminListSkeleton, AdminEmptyState } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { usePollingRefresh } from "@/hooks/usePollingRefresh";
@@ -815,9 +815,7 @@ export function ReportReviewList({
 
         {loading && !items && <AdminListSkeleton />}
 
-        {!loading && items && items.length === 0 && (
-          <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">검토 대기 중인 제보가 없습니다.</p>
-        )}
+        {!loading && items && items.length === 0 && <AdminEmptyState>검토 대기 중인 제보가 없습니다.</AdminEmptyState>}
 
         {items && items.length > 0 && (
           <div className="flex flex-col gap-2 sm:gap-2.5">
