@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { User } from "lucide-react";
+import { Loader2, User } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
@@ -197,7 +197,11 @@ export function StatusPage({
         }}
         onReasonLeaveSubmitted={reload}
       />
-      {loading && <p className="text-center font-mono text-xs text-muted-foreground sm:text-sm">불러오는 중...</p>}
+      {loading && (
+        <div className="flex items-center justify-center py-2">
+          <Loader2 className="size-4 animate-spin text-muted-foreground sm:size-5" />
+        </div>
+      )}
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>

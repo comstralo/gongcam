@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Minus, Plus } from "lucide-react";
+import { Loader2, Minus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
@@ -81,7 +81,7 @@ export function LeaveApplyButton({
   if (state === "loading") {
     return (
       <Button variant="outline" className="w-full sm:h-11" disabled>
-        불러오는 중...
+        <Loader2 className="size-4 animate-spin" />
       </Button>
     );
   }

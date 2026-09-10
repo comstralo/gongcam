@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { RotateCw, FileText, Image as ImageIcon, Search, type LucideIcon } from "lucide-react";
+import { RotateCw, FileText, Image as ImageIcon, Loader2, Search, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -257,7 +257,7 @@ export function CapturePreview({
   if (!blobUrl) {
     return (
       <div className="flex aspect-video w-full items-center justify-center rounded-lg border border-dashed bg-muted">
-        <p className="text-xs text-muted-foreground sm:text-sm">미리보기 불러오는 중...</p>
+        <Loader2 className="size-5 animate-spin text-muted-foreground" />
       </div>
     );
   }

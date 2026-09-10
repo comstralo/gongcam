@@ -13,7 +13,7 @@ import { usePullRefreshListener } from "@/hooks/usePullToRefresh";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/lib/auth/useAuth";
 import { ApiError } from "@/lib/api/client";
-import { Bell, Flag, Lightbulb, MessageSquareWarning, TriangleAlert, User } from "lucide-react";
+import { Bell, Flag, Lightbulb, Loader2, MessageSquareWarning, TriangleAlert, User } from "lucide-react";
 import { InfoCard } from "@/components/dashboard/shared";
 import { SimpleNoticeSection } from "@/components/report/SimpleNoticeSection";
 import { ActiveReportsSection } from "@/components/report/ActiveReportsSection";
@@ -401,18 +401,20 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
                             !nickname && "opacity-50"
                           )}
                         >
-                          <span
-                            className={cn(
-                              "truncate text-sm sm:text-base",
-                              targetStatusMessage ? "text-foreground" : "text-muted-foreground"
-                            )}
-                          >
-                            {!nickname
-                              ? "제보 대상자를 먼저 선택해주세요."
-                              : targetStatusMessage === null
-                                ? "불러오는 중..."
+                          {nickname && targetStatusMessage === null ? (
+                            <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
+                          ) : (
+                            <span
+                              className={cn(
+                                "truncate text-sm sm:text-base",
+                                targetStatusMessage ? "text-foreground" : "text-muted-foreground"
+                              )}
+                            >
+                              {!nickname
+                                ? "제보 대상자를 먼저 선택해주세요."
                                 : targetStatusMessage || "작성된 내용이 없습니다."}
-                          </span>
+                            </span>
+                          )}
                         </InfoCard>
                       </div>
 

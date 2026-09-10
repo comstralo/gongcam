@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, CircleDollarSign, CalendarDays, User, Trophy, Timer, Award, Coins } from "lucide-react";
+import { ChevronDown, CircleDollarSign, CalendarDays, Loader2, User, Trophy, Timer, Award, Coins } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
@@ -355,7 +355,9 @@ function PaidFineList({
                           {isMemberExpanded && (
                             <>
                               {detail === "loading" && (
-                                <p className="py-4 text-center text-sm text-muted-foreground">불러오는 중...</p>
+                                <div className="flex items-center justify-center py-4">
+                                  <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                                </div>
                               )}
                               {detail === "error" && (
                                 <p className="py-4 text-center text-sm text-destructive">정보를 불러오지 못했습니다.</p>

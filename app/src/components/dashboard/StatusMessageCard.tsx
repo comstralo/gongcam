@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { MessageSquareText, Pencil, Check, X } from "lucide-react";
+import { MessageSquareText, Pencil, Check, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -92,9 +92,13 @@ export function StatusMessageCard() {
             onClick={startEdit}
             className="flex items-center justify-between gap-2 rounded-lg border bg-muted/50 px-3 py-2 text-left outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
           >
-            <span className={message ? "truncate text-sm" : "truncate text-sm text-muted-foreground"}>
-              {message === null ? "불러오는 중..." : message || "설정된 상태 메시지가 없습니다."}
-            </span>
+            {message === null ? (
+              <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
+            ) : (
+              <span className={message ? "truncate text-sm" : "truncate text-sm text-muted-foreground"}>
+                {message || "설정된 상태 메시지가 없습니다."}
+              </span>
+            )}
             <Pencil className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={ICON_STROKE.default} />
           </button>
         )}
