@@ -134,7 +134,7 @@ export function StatusPage({
                     sm:h-9, 32px/36px)이 옆의 새로고침 버튼(icon-sm, size-7
                     고정 28px)보다 커서 헤더 전체 높이가 그만큼 늘어나
                     있었다. 새로고침 버튼과 같은 높이(h-7=28px)로 맞춘다. */}
-                <SelectTrigger className="w-fit shrink-0 data-[size=default]:h-7 sm:text-sm">
+                <SelectTrigger className="w-fit shrink-0 bg-card data-[size=default]:h-7 sm:text-sm">
                   <SelectValue>
                     {selected === SELF_VALUE ? "내 대시보드" : members?.find((m) => m.number === selected)?.name}
                   </SelectValue>
