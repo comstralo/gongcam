@@ -1806,8 +1806,19 @@ async function findMemberNumberByEmail(env, accessToken, fileId, email) {
 // invalidateMemberCache()로 반드시 무효화하므로, TTL은 "무효화가 놓친 경우의
 // 안전망"일 뿐이다 — meta:와 같은 이유로 10분으로 늘려(2026-09-10 재조정,
 // 구 5분) KV 읽기 빈도를 줄인다(docs/CACHING_POLICY.md §5).
+//
+// 🔧 [과거 fileId TTL 상향, 2026-09-10] "내 대시보드 드롭다운도 과거
+// fileId면 2시간으로 늘리고, 신규등록/퇴실 시 캐시 무효화가 되는 게
+// 맞지 않냐"는 지적 — 무효화는 이미 위 5곳(handleAdminCreateMember/
+// handleAdminExitConfirm/performExitReset/performDepositAgainReset/
+// handleAdminMemberReorderPreview)이 모두 groups:["roster"]를 호출해
+// members가 항상 함께 지워지므로 추가 구현이 필요 없었다. personalStatus:/
+// rosterStatus:와 동일한 원칙(§17)으로 TTL만 과거 fileId에서 2시간으로
+// 늘린다 — 과거 fileId는 이 다섯 경로가 항상 그 fileId를 정확히 넘겨
+// 무효화하므로(관리자 조작이 있으면 즉시 반영) 안전하다.
 async function listAllMembers(env, accessToken, fileId) {
-  return _cachedCompute(env, `members:${fileId}`, 10 * 60_000, async () => {
+  const ttlMs = fileId === env.GOOGLE_SHEET_FILE_ID ? 10 * 60_000 : 2 * 60 * 60_000;
+  return _cachedCompute(env, `members:${fileId}`, ttlMs, async () => {
     const rows = await getSheetValues(env, accessToken, fileId, "데이터!A1:V50");
     const members = [];
     for (const row of rows) {

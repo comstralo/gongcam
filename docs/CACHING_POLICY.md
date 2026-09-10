@@ -117,7 +117,7 @@ computeFn)` 형태로 각 파생 계산(주로 여러 셀을 모아 가공한 �
 |---|---|---|---|
 | `penCycle:` | `getCurrentPenCycle` | 5분(2026-09 상향, 구 60초) | **없음** — Worker가 쓰는 경로가 전혀 없어 의도적으로 무효화 그룹 밖 |
 | `meta:` | `getSpreadsheetMeta` | 5분 | `invalidateMemberCache` |
-| `members:` | `listAllMembers` | 10분(2026-09-10 재상향, 구 5분/60초) | `invalidateMemberCache` |
+| `members:` | `listAllMembers` | 10분(현재 시트) / **2시간(과거 fileId, §17 확장)** | `invalidateMemberCache`(`roster` 그룹 — 신규등록/퇴실/재납/번호이동 5곳이 모두 호출, 항상 현재 시트 대상) |
 | `reportScore:` | `getReportScore` | 30분 | `invalidateMemberCache` + `invalidateMemberSlotCache`(2026-09-09부터 제보 처리 경로에서 KV까지 즉시) |
 | `outputPenSlots:` | `getOutputPenSlots` | 5분 | `invalidateMemberCache`(회원별 키 — KV는 자연 만료만) |
 | `personalStatus:` | `getPersonalTabRows` | 10분(현재 시트) / **2시간(과거 fileId, §17 신설)** | `writeSheetValues` 내장 정밀 무효화(§7 — 도움봇 직접 쓰기는 무효화 밖, 과거 fileId엔 도움봇이 쓰지 않아 무관) |
@@ -786,6 +786,32 @@ fileId에 쓰기는 하지만, 그 대상이 회원 번호 탭이 아니라 별�
 현재 시트는 기존 TTL(10분/30분)을 유지하고 과거 fileId는 **2시간**으로
 늘렸다. 무효화 인프라는 이미 fileId 단위로 정확히 동작하므로 추가 구현
 없이 TTL 숫자만 바꿨다.
+
+**§17.1 확장 — `members:` (2026-09-10, 같은 날 후속)**: "내 대시보드"
+드롭다운("다른 회원 보기")이 쓰는 `listAllMembers`도 같은 문제를 갖고
+있었다 — 10분 TTL이 현재/과거 fileId 구분 없이 적용됐다. "신규 회원
+등록이나 퇴실 발생 시 캐시가 무효화되는 게 맞냐"는 확인 질문에 실제
+호출부 5곳(`handleAdminCreateMember`/`handleAdminExitConfirm`/
+`performExitReset`/`performDepositAgainReset`/
+`handleAdminMemberReorderPreview`)을 전수조사한 결과, 전부 이미
+`invalidateMemberCache(env, ["roster"])`를 호출하고 있었다 — `members`가
+`MEMBER_CACHE_UNCONDITIONAL_KEYS`에 속해 `roster` 그룹에 자동 포함되기
+때문에 별도 구현이 필요 없었다. 이 5곳은 전부 `fileId` 인자 없이
+호출해(기본값 = 현재 시트) 항상 현재 시트만 무효화한다 — 신규등록·퇴실은
+애초에 항상 현재 시트에서만 일어나는 조작이라 이게 맞다. 즉 과거
+fileId의 회원 명단은 애초에 무효화될 이유가 없는 불변 데이터이므로,
+같은 원칙(`fileId === env.GOOGLE_SHEET_FILE_ID` 분기)으로 과거 fileId만
+2시간으로 늘렸다.
+
+이 드롭다운 목록은 **폴링의 영향을 받지 않는다** — `StatusPage`의
+`usePollingRefresh`(30분)/`useRefreshOnVisible`은 선택된 회원의
+`/status`(또는 `/admin/members/:number`)를 재조회하는 `reload()`에만
+걸려 있고, `/admin/members`(목록 자체)를 부르는 `useEffect`는
+`[isAdmin, isViewingCycle, cycleFileId]`가 바뀔 때(최초 마운트, 사이클
+전환)만 독립적으로 실행된다. 폴링·가시성 복귀 어느 쪽도 이 목록을 다시
+불러오지 않는다 — 대시보드를 오래 띄워둔 채 신규 회원이 등록돼도,
+새로고침하거나 사이클을 전환하기 전까지는 드롭다운에 반영되지 않는다
+(알려진 한계로 기록, 이번 세션에서는 수정하지 않음).
 
 ## 18. 관련 문서
 
