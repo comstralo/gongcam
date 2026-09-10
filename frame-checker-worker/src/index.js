@@ -495,12 +495,13 @@ async function getSheetFormulas(env, accessToken, fileId, range) {
 }
 
 // 여러 셀 범위를 한 번에 기입한다 — valueRanges: [{ range: "1!B2", values: [["텍스트"]] }, ...]
-// 특정 회원의 personalStatus 캐시(개인 탭 원본 행)를 인메모리+KV 양쪽에서
-// 지운다. 시트에 직접 쓸 때(writeSheetValues)뿐 아니라, 시트를 안 건드리고
-// KV만 바꾸는 조작(퇴실 신청 등)이 depositRefundBreakdown처럼 personalStatus
-// 캐시가 감싸는 계산 결과에 영향을 줄 때도 재사용한다.
+// 특정 회원의 personalStatusBundle 캐시(개인 탭 원본 행 + outputPenSlots +
+// reportScore, §캐싱 통합 2026-09 참고)를 인메모리+KV 양쪽에서 지운다.
+// 시트에 직접 쓸 때(writeSheetValues)뿐 아니라, 시트를 안 건드리고 KV만
+// 바꾸는 조작(퇴실 신청 등)이 depositRefundBreakdown처럼 이 번들이 감싸는
+// 계산 결과에 영향을 줄 때도 재사용한다.
 async function invalidatePersonalStatusCache(env, fileId, memberNumber) {
-  const cacheKey = `personalStatus:${fileId}:${memberNumber}`;
+  const cacheKey = `personalStatusBundle:${fileId}:${memberNumber}`;
   _sheetCache.delete(cacheKey);
   _bumpCacheGeneration(cacheKey);
   await env.REPORTS_KV.delete(`${KV_CACHE_PREFIX}${cacheKey}`).catch(() => {});
@@ -637,23 +638,29 @@ const _inFlight = new Map(); // key -> Promise<value>
 // reportScore:는 아직 계산 중이라 특정 회원 키가 _sheetCache에 존재하지도
 // 않는 시점에 무효화가 끼어들 수 있어(그래서 키별 Map으로는 놓칠 수 있음),
 // "이 그룹에 속하는 키인지"만 판별해 그룹 공통 카운터를 쓰는 편이 더
-// 정확하다. personalStatus:(writeSheetValues가 개별 무효화)처럼 정확히
-// 어떤 키를 지우는지 아는 경우는 키별 Map으로 정밀하게 추적한다.
+// 정확하다. personalStatusBundle:(writeSheetValues가 개별 무효화)처럼
+// 정확히 어떤 키를 지우는지 아는 경우는 키별 Map으로 정밀하게 추적한다.
 // 🔧 [중복 캐시 통합, 2026-09-10] meritRank: 캐시 키는 폐지됐다 —
 // getMeritRank가 rosterStatus:(buildRosterStatus)를 그대로 재사용하도록
 // 바뀌었다(§16 참고). 이 목록에서도 제거.
+// 🔧 [캐싱 통합, 2026-09] reportScore:/outputPenSlots: 캐시 키는 폐지됐다 —
+// personalStatusBundle:(§getPersonalStatusBundle)이 셋(개인 탭 원본 포함)을
+// 하나로 합쳐 캐싱한다. 이 목록에서도 제거(personalStatusBundle:은 회원별
+// 키라 fileId당 1개를 전제하는 이 prefix 목록·MEMBER_CACHE_UNCONDITIONAL_KEYS
+// 방식으로는 지울 수 없고, invalidateMemberSlotCache/invalidatePersonalStatusCache
+// 가 회원 번호를 알 때 개별적으로 지운다 — 기존 personalStatus:도 항상 이
+// 방식이었다).
 const MEMBER_CACHE_PREFIXES = [
   "members:",
   "meta:",
   "exitStatus:",
   "memberRows:",
-  "reportScore:",
-  "outputPenSlots:",
   "penSlotGrid:",
   "weeklyPaidFine:",
   "rosterStatus:",
   "adminMemberList:",
   "dataSheetRows:",
+  "coReviewers:",
 ];
 let _memberCacheGeneration = 0;
 const _cacheGeneration = new Map(); // key -> generation number (member-cache 그룹 외의 개별 키용)
@@ -960,7 +967,7 @@ async function _readLeaveHistory(env, weekOf) {
 // 이 값을 슬롯에 그대로 기록하므로(applyOutputPenalty 등), 리셋 직후
 // 오래 낡아있으면 잘못된 사이클 번호가 슬롯에 찍힐 위험이 있어 하루
 // 종일 같은 긴 TTL 대신 2시간으로 절충했다.
-const MEMBER_CACHE_UNCONDITIONAL_KEYS = ["members", "meta", "exitStatus", "memberRows", "penSlotGrid", "weeklyPaidFine", "penCycle", "rosterStatus", "adminMemberList", "dataSheetRows"];
+const MEMBER_CACHE_UNCONDITIONAL_KEYS = ["members", "meta", "exitStatus", "memberRows", "penSlotGrid", "weeklyPaidFine", "penCycle", "rosterStatus", "adminMemberList", "dataSheetRows", "coReviewers"];
 
 // 🔧 [불필요한 KV 삭제 절감, 2026-09] 호출부가 실제로 건드린 시트 범위에
 // 맞는 그룹만 넘기면, 무관한 캐시까지 매번 함께 지우는 낭비를 피할 수 있다
@@ -970,7 +977,10 @@ const MEMBER_CACHE_UNCONDITIONAL_KEYS = ["members", "meta", "exitStatus", "membe
 const MEMBER_CACHE_GROUPS = {
   // 회원 명단/시트 구조 자체가 바뀌는 저빈도 조작(신규등록/퇴실/번호이동)
   // 전용 — 9종 전부와 관련 있으므로 groups를 생략(=전체)했을 때와 동일하다.
-  roster: [...MEMBER_CACHE_UNCONDITIONAL_KEYS, "reportScore", "outputPenSlots"], // penCycle/rosterStatus/adminMemberList 포함 11종 전부
+  // 🔧 [캐싱 통합, 2026-09] reportScore/outputPenSlots는 personalStatusBundle
+  // 로 흡수됐다 — 이 그룹이 실제로 회원별 캐시까지 지우는 경로는 여전히
+  // invalidateMemberSlotCache(각 호출부가 번호를 알 때 명시 호출)가 담당한다.
+  roster: [...MEMBER_CACHE_UNCONDITIONAL_KEYS], // penCycle/rosterStatus/adminMemberList 포함 9종 전부
   // 제보 승인/취소/반려·유예 — 벌점(outputPenSlots)·제보상점(reportScore)
   // 슬롯만 바뀐다. 다음 슬롯 미리보기(penSlotGrid)와 퇴실 후보 판정
   // (exitStatus)도 이 슬롯을 입력으로 쓰므로 함께 포함한다.
@@ -981,13 +991,19 @@ const MEMBER_CACHE_GROUPS = {
   // 정합성엔 영향이 없다고 판단해 이 그룹에서 의도적으로 뺐다(사용자 확인,
   // 원래는 meritRank: 캐시 단독 논의였으나 §16에서 getMeritRank가
   // rosterStatus를 재사용하도록 통합되며 이 판단도 함께 적용된다).
-  penalty: ["exitStatus", "penSlotGrid", "outputPenSlots", "reportScore"],
+  // 🔧 [캐싱 통합, 2026-09] outputPenSlots/reportScore가 personalStatusBundle
+  // 로 흡수되며 이 그룹에서도 빠졌다 — 제보 처리 호출부는 이미 전부
+  // invalidateMemberSlotCache(대상자·제보자 번호)를 함께 호출해 그 회원의
+  // personalStatusBundle을 명시적으로 지운다(§invalidateMemberSlotCache 참고).
+  penalty: ["exitStatus", "penSlotGrid"],
   // 벌금 납부 상태 변경 — 개인 탭 31행(납부확인)만 바뀐다.
   fine: ["exitStatus", "memberRows", "weeklyPaidFine"],
   // 퇴실 신청/동의/취소(KV) — exitStatus 계산의 입력값(EXIT_REQUEST_KV_PREFIX)만 바뀐다.
   exitRequest: ["exitStatus"],
-  // 참여상태(부스터디장 임명 등, 개인 탭 L3) 변경.
-  partiStatus: ["exitStatus"],
+  // 참여상태(부스터디장 임명 등, 개인 탭 L3) 변경. coReviewers는 이 값을
+  // 그대로 캐싱한 것이라 함께 무효화해야 임명/해제가 "송출 P 대상 처리"에
+  // 즉시 반영된다(§getCurrentCoReviewers 참고).
+  partiStatus: ["exitStatus", "coReviewers"],
   // 앱스크립트 sheet_reset()이 매주 집계!D25(페널티 사이클)를 갱신한
   // 직후 호출하는 전용 그룹 — penCycle 하나만 좁게 지운다.
   cycle: ["penCycle"],
@@ -1056,16 +1072,17 @@ function invalidateMemberCache(env, groups, fileId) {
 // 건드린 회원 번호(대상자·제보자, 최대 2명)에 한해 이 함수를 함께 호출한다
 // — "번호 재사용" 대비용으로 좁게 쓰이던 함수가 이제 일반적인 제보 처리
 // 경로에서도 쓰인다.
+// 🔧 [캐싱 통합, 2026-09] outputPenSlots/reportScore가 personalStatusBundle:
+// 하나로 합쳐지면서(§getPersonalStatusBundle), 이 둘을 개별적으로 지우던
+// 과거 키(outputPenSlots:/reportScore:)는 더 이상 존재하지 않는다 —
+// personalStatusBundle: 하나만 지우면 셋(개인 탭 원본 포함) 다 함께
+// 재계산된다.
 function invalidateMemberSlotCache(env, memberNumber) {
   if (!env) return Promise.resolve();
   const fileId = env.GOOGLE_SHEET_FILE_ID;
-  const reportRow = parseInt(memberNumber, 10) + 3;
-  _sheetCache.delete(`outputPenSlots:${fileId}:${memberNumber}`);
-  _sheetCache.delete(`reportScore:${fileId}:${reportRow}`);
-  return Promise.all([
-    env.REPORTS_KV.delete(`${KV_CACHE_PREFIX}outputPenSlots:${fileId}:${memberNumber}`).catch(() => {}),
-    env.REPORTS_KV.delete(`${KV_CACHE_PREFIX}reportScore:${fileId}:${reportRow}`).catch(() => {}),
-  ]);
+  const cacheKey = `personalStatusBundle:${fileId}:${memberNumber}`;
+  _sheetCache.delete(cacheKey);
+  return env.REPORTS_KV.delete(`${KV_CACHE_PREFIX}${cacheKey}`).catch(() => {});
 }
 
 // 스프레드시트 메타(모든 탭의 sheetId/title)를 가져온다. 시트 복사/삭제/서식
@@ -1445,8 +1462,9 @@ function weeklyReasonLeaveTotal(rows) {
 // 🔧 [데이터 시트 통합] 옛 개인 탭 C39(누적 송출P)/C40(금주 달성P) 숫자 셀은
 // 사라졌다 — 총 페널티는 이제 appscript.js daily_calc()와 동일하게 "데이터"
 // 시트 F~M열(4차=I, 6차=K, 주간P 1~2차=L/M) 중 현재 사이클(집계!D25)과 일치하는
-// 슬롯 개수로 판정한다. outputPenSlots는 getOutputPenSlots()의 반환값. 송출P와
-// 주간P를 구분해서 반환한다(UI가 "송출 P N회 / 주간 P N회" 형태로 따로 보여줌).
+// 슬롯 개수로 판정한다. outputPenSlots는 getPersonalStatusBundle()이 감싸는
+// _computeOutputPenSlots()의 반환값. 송출P와 주간P를 구분해서 반환한다
+// (UI가 "송출 P N회 / 주간 P N회" 형태로 따로 보여줌).
 function countCurrentCyclePen(outputPenSlots, currentCycle) {
   const { values, timePenValues } = outputPenSlots;
   let outputPen = 0;
@@ -1749,7 +1767,7 @@ function weeklyGoalTime(rows, goalType) {
 // 배열(outputPenReasons/timePenReasons)로 별도 조립했지만, "예치금 재납
 // 대상자"에서 쓰는 슬롯 이력(outputPenHistory/timePenHistory,
 // PenaltySlotHistoryEntry[])과 형식이 달라 두 화면의 "원인"이 서로 다르게
-// 보였다. 이제 getOutputPenSlots()가 이미 buildSlotHistory로 만들어둔
+// 보였다. 이제 _computeOutputPenSlots()가 이미 buildSlotHistory로 만들어둔
 // 이력을 그대로 넘겨받아 개인 대시보드 "총 페널티" 모달과 관리자
 // "예치금 재납 대상자"가 완전히 같은 데이터·형식(N차 라벨, 발생일시,
 // 사유, 캡처ID)을 쓰게 한다.
@@ -1885,23 +1903,15 @@ async function getMeritRank(env, accessToken, fileId, memberNumber) {
 // 사이클 번호)로 바뀌었다. 개인 탭 C37 수식과 동일하게, 현재 사이클(집계!D25)과
 // 일치하는 슬롯 개수 × 0.1이 총점이다. "벌점" 개념은 이제 존재하지 않는다
 // (별도 페널티 판정은 송출P/주간P 슬롯이 담당).
-// 회원마다 다른 행(reportRow)을 읽는 회원별 캐시. writeSheetValues가 이
-// 회원의 개인 탭에 쓰기가 일어날 때 personalStatus 캐시를 지우는 것과
-// 같은 이유로, 봇/앱스크립트가 아닌 본인 조작으로 이 값이 바뀔 일은 없어
-// 제보 처리 경로(handleAdminCaptureDecide 등)가 invalidateMemberSlotCache로
-// 즉시 무효화하므로, TTL은 안전망일 뿐이다 — 30분(2026-09-10 재조정,
-// 대시보드 폴링 주기와 동일)으로 잡아도 위험 없다.
-async function getReportScore(env, accessToken, fileId, reportRow) {
+async function _computeReportScore(env, accessToken, fileId, reportRow) {
   if (!reportRow) return { total: 0 };
-  return _cachedCompute(env, `reportScore:${fileId}:${reportRow}`, 30 * 60_000, async () => {
-    const [slotRows, currentCycle] = await Promise.all([
-      getSheetValues(env, accessToken, fileId, `데이터!R${reportRow}:V${reportRow}`),
-      getCurrentPenCycle(env, accessToken, fileId),
-    ]);
-    const slotRow = (slotRows && slotRows[0]) || [];
-    const count = slotRow.filter((v) => parseInt(v, 10) === currentCycle).length;
-    return { total: Math.round(count * 0.1 * 10) / 10 };
-  });
+  const [slotRows, currentCycle] = await Promise.all([
+    getSheetValues(env, accessToken, fileId, `데이터!R${reportRow}:V${reportRow}`),
+    getCurrentPenCycle(env, accessToken, fileId),
+  ]);
+  const slotRow = (slotRows && slotRows[0]) || [];
+  const count = slotRow.filter((v) => parseInt(v, 10) === currentCycle).length;
+  return { total: Math.round(count * 0.1 * 10) / 10 };
 }
 
 // "데이터" 탭 F~M열(송출P 1~6차 + 주간P 1~2차)에서 특정 회원(번호+3행)의 슬롯
@@ -1909,37 +1919,30 @@ async function getReportScore(env, accessToken, fileId, reportRow) {
 // 함께 읽는다. note 조회는 별도 API 호출이라 값이 없는 대부분의 경우엔
 // 건너뛰어 비용을 아낀다. timePenValues(L/M)는 appscript.js daily_calc()의
 // 판정 결과가 그대로 기록되는 슬롯이라 여기서는 그대로 읽기만 한다.
-// 회원별 캐시. 이 값은 관리자가 제보를 승인/취소/삭제할 때만 바뀌는데,
-// 그 경로(handleAdminCaptureDecide 등)는 이미 invalidateMemberCache +
-// invalidateMemberSlotCache(2026-09 추가, KV까지 즉시)를 호출해 즉시
-// 무효화하므로, TTL 자체는 KV 쓰기 예산을 아끼기 위해 대시보드 폴링
-// 주기(30분)의 3분의 1인 10분으로 넉넉히 잡는다.
-async function getOutputPenSlots(env, accessToken, fileId, memberNumber) {
-  return _cachedCompute(env, `outputPenSlots:${fileId}:${memberNumber}`, 10 * 60_000, async () => {
-    const row = parseInt(memberNumber, 10) + 3;
-    const rows = await getSheetValues(env, accessToken, fileId, `'${OUTPUT_PEN_SHEET_NAME}'!F${row}:M${row}`);
-    const slotRow = (rows && rows[0]) || [];
-    const values = OUTPUT_PEN_SLOT_COLUMNS.map((_, i) => parseInt(slotRow[i], 10) || 0);
-    const timePenValues = [parseInt(slotRow[6], 10) || 0, parseInt(slotRow[7], 10) || 0]; // L(1차), M(2차)
+async function _computeOutputPenSlots(env, accessToken, fileId, memberNumber) {
+  const row = parseInt(memberNumber, 10) + 3;
+  const rows = await getSheetValues(env, accessToken, fileId, `'${OUTPUT_PEN_SHEET_NAME}'!F${row}:M${row}`);
+  const slotRow = (rows && rows[0]) || [];
+  const values = OUTPUT_PEN_SLOT_COLUMNS.map((_, i) => parseInt(slotRow[i], 10) || 0);
+  const timePenValues = [parseInt(slotRow[6], 10) || 0, parseInt(slotRow[7], 10) || 0]; // L(1차), M(2차)
 
-    // 🔧 [총 페널티 모달 매칭] "예치금 재납 대상자"가 쓰는 buildSlotHistory와
-    // 동일한 이력(N차 라벨·발생일시·사유·캡처ID)을 개인 대시보드의 "총 페널티"
-    // 모달에서도 그대로 보여주기 위해, F~K뿐 아니라 L~M(주간 P) 주석까지 함께
-    // 읽는다. 채워진 슬롯이 하나도 없으면 굳이 시트를 한 번 더 조회하지 않는다.
-    let outputPenHistory = [];
-    let timePenHistory = [];
-    const hasAnySlot = values.some((v) => v > 0) || timePenValues.some((v) => v > 0);
-    if (hasAnySlot) {
-      const sheetId = await getSheetIdByName(env, accessToken, fileId, OUTPUT_PEN_SHEET_NAME);
-      if (sheetId !== null) {
-        const rowNotes = await getRowNotes(env, accessToken, fileId, sheetId, row - 1, "F", "M");
-        outputPenHistory = buildSlotHistory(values, rowNotes.slice(0, 6), "송출 P");
-        timePenHistory = buildSlotHistory(timePenValues, rowNotes.slice(6, 8), "주간 P");
-      }
+  // 🔧 [총 페널티 모달 매칭] "예치금 재납 대상자"가 쓰는 buildSlotHistory와
+  // 동일한 이력(N차 라벨·발생일시·사유·캡처ID)을 개인 대시보드의 "총 페널티"
+  // 모달에서도 그대로 보여주기 위해, F~K뿐 아니라 L~M(주간 P) 주석까지 함께
+  // 읽는다. 채워진 슬롯이 하나도 없으면 굳이 시트를 한 번 더 조회하지 않는다.
+  let outputPenHistory = [];
+  let timePenHistory = [];
+  const hasAnySlot = values.some((v) => v > 0) || timePenValues.some((v) => v > 0);
+  if (hasAnySlot) {
+    const sheetId = await getSheetIdByName(env, accessToken, fileId, OUTPUT_PEN_SHEET_NAME);
+    if (sheetId !== null) {
+      const rowNotes = await getRowNotes(env, accessToken, fileId, sheetId, row - 1, "F", "M");
+      outputPenHistory = buildSlotHistory(values, rowNotes.slice(0, 6), "송출 P");
+      timePenHistory = buildSlotHistory(timePenValues, rowNotes.slice(6, 8), "주간 P");
     }
+  }
 
-    return { values, timePenValues, outputPenHistory, timePenHistory };
-  });
+  return { values, timePenValues, outputPenHistory, timePenHistory };
 }
 
 // 오전 목표시간 벌금 수식: MAX(0, 3-HOUR(D10))*500 — D10은 1교시 종료
@@ -2163,7 +2166,20 @@ function buildDepositAgainSnapshot(rows) {
 // 클릭하거나 여러 화면(설정/대시보드)이 거의 동시에 조회하는 중복만
 // 제거한다 — 본인이 값을 바꾸면 writeSheetValues가 이 캐시를 즉시
 // 무효화하므로 "방금 쓴 값이 안 보이는" 문제는 생기지 않는다.
-async function getPersonalTabRows(env, accessToken, fileId, memberNumber) {
+// 🔧 [캐싱 통합, 2026-09] 개인 탭 원본(personalStatus)·송출P 슬롯
+// (outputPenSlots)·제보상점(reportScore)은 buildPersonalStatus 한 곳에서만
+// 항상 함께 쓰이는데도(다른 화면이 셋 중 하나만 독립적으로 부르는 경우가
+// 없음) 각자 다른 KV 키로 따로 캐싱되고 있었다 — 대시보드 폴링(30분)마다
+// 회원 1명당 KV put이 3번씩 발생해, 15명 기준 이 셋이 전체 KV 쓰기의
+// 대부분을 차지했다(문서화된 실측 없이 직접 계산: 평균 사용 시나리오
+// 기준 하루 약 500회 절감 추정). 셋을 personalStatusBundle: 하나의 캐시
+// 키로 묶는다 — reportRow(제보상점 조회에 필요한 행 번호)가 개인 탭 42행
+// (C42) 값이라 원래도 personalStatus를 먼저 읽어야만 알 수 있는 순차
+// 의존 관계였으므로, 병렬로 쪼개져 있던 걸 오히려 자연스럽게 합칠 수
+// 있었다. 셋 중 하나라도 무효화되면 셋 다 같이 재계산되지만(전보다
+// 무효화 세밀도가 낮아짐), 그 대가로 생기는 추가 API 호출은 이미 30분
+// 폴링 주기 안에서 일어나는 일이라 무시할 수준이다(사용자 확인 후 진행).
+async function getPersonalStatusBundle(env, accessToken, fileId, memberNumber) {
   // 🔧 [30분→10분 하향, 2026-09] 개인 탭 값은 본인이 이 Worker의 API로
   // 직접 쓰는 경우(반휴 신청, 관리자 처리 등)는 writeSheetValues가 즉시
   // 무효화하므로 문제없지만, 도움봇 study_sw/bot/sheets.py의 set_sheet()가
@@ -2182,18 +2198,27 @@ async function getPersonalTabRows(env, accessToken, fileId, memberNumber) {
   // Worker의 API(handleAdminFineStatus 등)를 통해서만 바뀔 수 있고, 그
   // 경로는 writeSheetValues → invalidatePersonalStatusCache가 그 fileId를
   // 그대로 받아 정확히 무효화하므로, TTL을 2시간으로 늘려도 "관리자가
-  // 방금 처리한 값이 안 보이는" 문제는 생기지 않는다(사용자 확인).
+  // 방금 처리한 값이 안 보이는" 문제는 생기지 않는다(사용자 확인). 같은
+  // 근거(과거 fileId는 절대 안 바뀜)가 outputPenSlots/reportScore에도
+  // 그대로 적용되므로 셋을 같은 TTL 분기로 묶어도 안전하다.
   const ttlMs = fileId === env.GOOGLE_SHEET_FILE_ID ? 10 * 60_000 : 2 * 60 * 60_000;
-  return _cachedCompute(env, `personalStatus:${fileId}:${memberNumber}`, ttlMs, () =>
-    getSheetValues(env, accessToken, fileId, `${memberNumber}!A1:U${ROW_REPORT_SHEET_ROW + 1}`)
-  );
+  return _cachedCompute(env, `personalStatusBundle:${fileId}:${memberNumber}`, ttlMs, async () => {
+    const rows = await getSheetValues(env, accessToken, fileId, `${memberNumber}!A1:U${ROW_REPORT_SHEET_ROW + 1}`);
+    const reportSheetRow = safeNumber((rows[ROW_REPORT_SHEET_ROW] && rows[ROW_REPORT_SHEET_ROW][2]) || 0);
+    const [outputPenSlots, reportScore] = await Promise.all([
+      _computeOutputPenSlots(env, accessToken, fileId, memberNumber),
+      _computeReportScore(env, accessToken, fileId, reportSheetRow),
+    ]);
+    return { rows, outputPenSlots, reportScore };
+  });
 }
 
 // weekOf: 이 조회가 어느 주(백업 파일명 기준 "YYMMDD" 월요일)를 보여주는지 —
 // 실시간(라이브 시트) 조회면 null이며, 이 경우 오늘(KST) 기준 이번 주로
 // 계산한다. 요일별 실제 캘린더 날짜(days[i].date)를 만드는 데 쓰인다.
 async function buildPersonalStatus(env, accessToken, fileId, memberNumber, memberName, weekOf) {
-  const rows = await getPersonalTabRows(env, accessToken, fileId, memberNumber);
+  const bundle = await getPersonalStatusBundle(env, accessToken, fileId, memberNumber);
+  const { rows, outputPenSlots, reportScore } = bundle;
   if (!rows || rows.length <= ROW_MORNING_FINE) {
     throw new Error("개인 탭 데이터를 찾을 수 없습니다.");
   }
@@ -2225,11 +2250,9 @@ async function buildPersonalStatus(env, accessToken, fileId, memberNumber, membe
     (rows[ROW_DEPOSIT_REFUND_ESTIMATE] && rows[ROW_DEPOSIT_REFUND_ESTIMATE][COL_DEPOSIT_REFUND_ESTIMATE]) ||
     "-";
 
-  const reportSheetRow = safeNumber((rows[ROW_REPORT_SHEET_ROW] && rows[ROW_REPORT_SHEET_ROW][2]) || 0);
-  const [{ rank: rawRank }, { total: reportTotal }, outputPenSlots, currentCycle, exitRequestRaw] = await Promise.all([
+  const { total: reportTotal } = reportScore;
+  const [{ rank: rawRank }, currentCycle, exitRequestRaw] = await Promise.all([
     getMeritRank(env, accessToken, fileId, memberNumber),
-    getReportScore(env, accessToken, fileId, reportSheetRow),
-    getOutputPenSlots(env, accessToken, fileId, memberNumber),
     getCurrentPenCycle(env, accessToken, fileId),
     // 🔧 [고지지연 반영] depositRefundBreakdown이 amount 계산에 실제 퇴실
     // 신청일을 반영해야 하므로, 원래 이 아래(구 1758행)에서 뒤늦게 조회하던
@@ -3240,6 +3263,10 @@ async function fetchCloudflareUsage(env) {
     // 읽기 할당량(무료 티어 하루 10만 읽기)을 그대로 소진하는 작업이라 read와
     // 함께 묶지 않으면 실사용량을 과소평가한다(실측 확인: list가 read보다도
     // 호출량이 더 많았음 — 이 저장소의 폴링 화면들이 KV.list()를 자주 쓰기 때문).
+    // 🔧 [사용자 지시] list()는 read와 별도로 하루 1,000회라는 더 빡빡한
+    // 자체 한도(무료 플랜, 2026-08-27 실제 소진 이력)를 쓰므로, kvReadsToday
+    // (read+list 합산, 기존 read 10만 한도 게이지용)와는 별도로 list만의
+    // 오늘 총합도 함께 반환한다.
     const kvGroups = (account.kvOperationsAdaptiveGroups || []).filter(
       (g) => g.dimensions && formatISODate(new Date(g.dimensions.datetimeHour)) === todayUTC
     );
@@ -3248,6 +3275,9 @@ async function fetchCloudflareUsage(env) {
       .reduce((sum, g) => sum + (g.sum ? g.sum.requests : 0), 0);
     const kvWrites = kvGroups
       .filter((g) => ["write", "delete"].includes(g.dimensions.actionType))
+      .reduce((sum, g) => sum + (g.sum ? g.sum.requests : 0), 0);
+    const kvLists = kvGroups
+      .filter((g) => g.dimensions.actionType === "list")
       .reduce((sum, g) => sum + (g.sum ? g.sum.requests : 0), 0);
 
     // namespaceId에 하이픈이 있는/없는 두 표기가 섞여 나올 수 있어 비교 전에
@@ -3270,6 +3300,7 @@ async function fetchCloudflareUsage(env) {
       workersErrorsToday: workers.errors || 0,
       kvReadsToday: kvReads,
       kvWritesToday: kvWrites,
+      kvListsToday: kvLists,
       kvStorage,
     };
   } catch {
@@ -3303,6 +3334,10 @@ async function handleAdminUsageStatus(req, env, origin) {
         workersRequestsPerDay: 100_000,
         kvReadsPerDay: 100_000,
         kvWritesPerDay: 1_000,
+        // 🔧 [사용자 지시] list()는 read 한도(10만)와 별개로 무료 플랜에서
+        // 하루 1,000회라는 훨씬 빡빡한 자체 한도를 쓴다(2026-08-27 실제
+        // 소진 이력) — kvReadsPerDay와 별도 게이지로 보여주기 위한 한도.
+        kvListsPerDay: 1_000,
         kvStorageBytes: 1_000_000_000,
       },
       // 🔧 [KV 쓰기/삭제 추적, 화면별 특정] "어느 화면에서 어떤 기능에
@@ -6700,17 +6735,26 @@ async function listActiveMembersWithExitInfo(env, accessToken, fileId) {
 // listActiveMembersWithExitInfo는 강제퇴실 판정·페널티 집계까지 함께
 // 계산해 이 조회엔 과하므로, batchGet으로 15개 L3(참여상태) 셀만 직접
 // 읽는 훨씬 가벼운 전용 조회를 쓴다.
+// 🔧 [캐싱 추가, 2026-09] "PEN·Money" 탭 "송출 P 대상 처리"(3분→10분 폴링,
+// handleAdminCapturesList)가 이 함수를 매번 캐시 없이 호출해, 부스터디장
+// 임명처럼 아주 가끔만 바뀌는 값을 3분마다 15명 전체 셀을 다시 읽고
+// 있었다(사용자 지적). meta:(스프레드시트 구조, 같은 성격의 저빈도 값)와
+// 동일하게 5분 TTL로 캐싱한다 — 임명/해제(handleAdminSetPartiStatus)가
+// invalidateMemberCache(["partiStatus"])를 호출하므로, 그 그룹에 이 키를
+// 포함시켜 즉시 무효화되게 한다(TTL은 그 무효화가 실패했을 때의 안전망).
 async function getCurrentCoReviewers(env, accessToken, fileId) {
-  const members = await listAllMembers(env, accessToken, fileId);
-  const partiStatusValues = await batchGetSheetValues(
-    env,
-    accessToken,
-    fileId,
-    members.map((m) => `${m.number}!L3`)
-  ).catch(() => []);
-  return members
-    .filter((_, i) => ((partiStatusValues[i] && partiStatusValues[i][0] && partiStatusValues[i][0][0]) || "") === "부스터디장")
-    .map((m) => ({ number: m.number, name: m.name }));
+  return _cachedCompute(env, `coReviewers:${fileId}`, 5 * 60_000, async () => {
+    const members = await listAllMembers(env, accessToken, fileId);
+    const partiStatusValues = await batchGetSheetValues(
+      env,
+      accessToken,
+      fileId,
+      members.map((m) => `${m.number}!L3`)
+    ).catch(() => []);
+    return members
+      .filter((_, i) => ((partiStatusValues[i] && partiStatusValues[i][0] && partiStatusValues[i][0][0]) || "") === "부스터디장")
+      .map((m) => ({ number: m.number, name: m.name }));
+  });
 }
 
 async function handleAdminMembersRoster(req, env, origin) {
