@@ -620,15 +620,16 @@ const _inFlight = new Map(); // key -> Promise<value>
 // 계산 도중 무효화가 끼어들었으면 이번 결과는 호출자에게만 돌려주고
 // 캐시는 건드리지 않아, 다음 요청이 진짜 최신 값을 다시 읽게 한다.
 //
-// invalidateMemberCache는 9개 prefix(members:/meta:/exitStatus:/memberRows:/
-// meritRank:/reportScore:/outputPenSlots:/penSlotGrid:/weeklyPaidFine:)를
-// 항상 통째로(부분적으로가 아니라) 무효화하므로, 이 그룹 전체에 대해 키
-// 하나짜리 전역 카운터만 두면 충분하다 — 회원별로 갈라지는 outputPenSlots:/
-// reportScore:는 아직 계산 중이라 특정 회원 키가 _sheetCache에 존재하지도
-// 않는 시점에 무효화가 끼어들 수 있어(그래서 키별 Map으로는 놓칠 수 있음),
-// "이 그룹에 속하는 키인지"만 판별해 그룹 공통 카운터를 쓰는 편이 더 정확하다.
-// personalStatus:(writeSheetValues가 개별 무효화)처럼 정확히 어떤 키를
-// 지우는지 아는 경우는 키별 Map으로 정밀하게 추적한다.
+// invalidateMemberCache는 10개 prefix(members:/meta:/exitStatus:/memberRows:/
+// meritRank:/reportScore:/outputPenSlots:/penSlotGrid:/weeklyPaidFine:/
+// roster:)를 항상 통째로(부분적으로가 아니라) 무효화하므로, 이 그룹 전체에
+// 대해 키 하나짜리 전역 카운터만 두면 충분하다 — 회원별로 갈라지는
+// outputPenSlots:/reportScore:는 아직 계산 중이라 특정 회원 키가
+// _sheetCache에 존재하지도 않는 시점에 무효화가 끼어들 수 있어(그래서
+// 키별 Map으로는 놓칠 수 있음), "이 그룹에 속하는 키인지"만 판별해 그룹
+// 공통 카운터를 쓰는 편이 더 정확하다. personalStatus:(writeSheetValues가
+// 개별 무효화)처럼 정확히 어떤 키를 지우는지 아는 경우는 키별 Map으로
+// 정밀하게 추적한다.
 const MEMBER_CACHE_PREFIXES = [
   "members:",
   "meta:",
@@ -639,6 +640,7 @@ const MEMBER_CACHE_PREFIXES = [
   "outputPenSlots:",
   "penSlotGrid:",
   "weeklyPaidFine:",
+  "rosterStatus:",
 ];
 let _memberCacheGeneration = 0;
 const _cacheGeneration = new Map(); // key -> generation number (member-cache 그룹 외의 개별 키용)
@@ -945,7 +947,7 @@ async function _readLeaveHistory(env, weekOf) {
 // 이 값을 슬롯에 그대로 기록하므로(applyOutputPenalty 등), 리셋 직후
 // 오래 낡아있으면 잘못된 사이클 번호가 슬롯에 찍힐 위험이 있어 하루
 // 종일 같은 긴 TTL 대신 2시간으로 절충했다.
-const MEMBER_CACHE_UNCONDITIONAL_KEYS = ["members", "meta", "exitStatus", "memberRows", "meritRank", "penSlotGrid", "weeklyPaidFine", "penCycle"];
+const MEMBER_CACHE_UNCONDITIONAL_KEYS = ["members", "meta", "exitStatus", "memberRows", "meritRank", "penSlotGrid", "weeklyPaidFine", "penCycle", "rosterStatus"];
 
 // 🔧 [불필요한 KV 삭제 절감, 2026-09] 호출부가 실제로 건드린 시트 범위에
 // 맞는 그룹만 넘기면, 무관한 캐시까지 매번 함께 지우는 낭비를 피할 수 있다
@@ -954,11 +956,17 @@ const MEMBER_CACHE_UNCONDITIONAL_KEYS = ["members", "meta", "exitStatus", "membe
 // (docs/CACHING_POLICY.md §11 실측 근거).
 const MEMBER_CACHE_GROUPS = {
   // 회원 명단/시트 구조 자체가 바뀌는 저빈도 조작(신규등록/퇴실/번호이동)
-  // 전용 — 9종 전부와 관련 있으므로 groups를 생략(=전체)했을 때와 동일하다.
-  roster: [...MEMBER_CACHE_UNCONDITIONAL_KEYS, "reportScore", "outputPenSlots"], // penCycle 포함 10종 전부
+  // 전용 — 10종 전부와 관련 있으므로 groups를 생략(=전체)했을 때와 동일하다.
+  roster: [...MEMBER_CACHE_UNCONDITIONAL_KEYS, "reportScore", "outputPenSlots"], // penCycle/rosterStatus 포함 11종 전부
   // 제보 승인/취소/반려·유예 — 벌점(outputPenSlots)·제보상점(reportScore)
   // 슬롯만 바뀐다. 다음 슬롯 미리보기(penSlotGrid)와 퇴실 후보 판정
   // (exitStatus)도 이 슬롯을 입력으로 쓰므로 함께 포함한다.
+  //
+  // 🔧 [의도적 방치, 2026-09-10] meritRank(개인 대시보드 순위)는 실제로 이
+  // 그룹의 변경에 영향받지만(집계 F열 수식이 페널티 유무를 조건으로 삼음),
+  // 표시만 최대 30분 지연될 뿐 다른 데이터 정합성엔 영향이 없다고 판단해
+  // 이 그룹에서 의도적으로 뺐다(사용자 확인) — RANK 탭(rosterStatus)도
+  // 같은 값을 노출하므로 동일한 판단을 적용해 여기 포함하지 않는다.
   penalty: ["exitStatus", "penSlotGrid", "outputPenSlots", "reportScore"],
   // 벌금 납부 상태 변경 — 개인 탭 31행(납부확인)만 바뀐다.
   fine: ["exitStatus", "memberRows", "weeklyPaidFine"],
@@ -969,6 +977,9 @@ const MEMBER_CACHE_GROUPS = {
   // 앱스크립트 sheet_reset()이 매주 집계!D25(페널티 사이클)를 갱신한
   // 직후 호출하는 전용 그룹 — penCycle 하나만 좁게 지운다.
   cycle: ["penCycle"],
+  // 🔧 [RANK 탭 캐싱 추가, 2026-09-10] "상금 정산 집행" 마킹(집계!P6)처럼
+  // rosterStatus(buildRosterStatus 결과)에만 영향을 주는 저빈도 조작 전용.
+  rosterOnly: ["rosterStatus"],
 };
 
 // 시트 구조(권한관리·데이터 D~V 등)를 바꾸는 쓰기 작업 뒤에 호출해 캐시가
@@ -5617,11 +5628,25 @@ async function handleSetGoalSchedule(req, env, origin) {
 // --- 전체 대시보드('집계' 시트 요약) ---
 // 로그인한 사람이면 누구나 볼 수 있다 — 이름/순위/타이머/총 상점을 노출한다
 // (상태는 더 이상 프론트에서 쓰지 않지만 응답에는 계속 포함해 하위호환 유지).
-
+//
+// 🔧 [캐싱 추가, 2026-09-10] 캐시 없이 매 요청마다 Sheets API를 4번씩(집계
+// 본문/집계 D20:D24+P6/데이터 F4:M4/집계 D25) 직접 호출하고 있었다 — 로그인한
+// 회원 15명 전원이 같은 파일의 같은 스냅샷을 보는 공용 데이터인데도 개인
+// 대시보드(getMeritRank 등)와 달리 캐시가 하나도 없어, RANK 탭이 열릴
+// 때마다 그대로 쿼터를 소진했다(사용자 지적). meritRank/reportScore와
+// 동일한 원칙(파일당 1개 키, TTL 30분 — "표시만 지연될 뿐 정합성엔 무해"
+// 하다고 이미 확인된 것과 같은 성격의 데이터)으로 파일당 하나의 키에
+// 캐싱한다. 무효화는 "roster" 그룹(신규등록/퇴실 등 명단 자체가 바뀌는
+// 저빈도 이벤트)에 자동 포함되고, "상금 정산 집행" 마킹은 별도로 좁은
+// "rosterOnly" 그룹을 즉시 호출한다(handleAdminPrizeSettle 참고).
 const ROSTER_ROW_START = 3; // 시트 4행(0-indexed 3)부터 15명
 const ROSTER_ROW_END = 17; // 시트 18행(0-indexed 17)까지
 
 async function buildRosterStatus(env, accessToken, fileId) {
+  return _cachedCompute(env, `rosterStatus:${fileId}`, 30 * 60_000, () => _computeRosterStatus(env, accessToken, fileId));
+}
+
+async function _computeRosterStatus(env, accessToken, fileId) {
   const [rows, [moneyRows, prizeSettleRows], studyLeadSlotRows, cycleRows] = await Promise.all([
     getSheetValues(env, accessToken, fileId, "집계!A4:L18"),
     // D20:D24(총 모금액~퇴실예치)와 P6("상금 정산 집행" 마킹, handleAdminPrizeSettle
@@ -5728,7 +5753,17 @@ async function handleRosterStatus(req, env, origin, url) {
     const accessToken = await getServiceAccountAccessToken(env);
     const cycleFileId = url ? url.searchParams.get("cycle") : null;
     const { fileId: targetFileId, weekOf } = await resolveTargetFileId(env, accessToken, cycleFileId);
-    const roster = await buildRosterStatus(env, accessToken, targetFileId);
+    // 🔧 [캐시 오염 방지, 2026-09-10] buildRosterStatus가 이제 30분 캐시를
+    // 쓰면서 반환 객체가 여러 요청·isolate에 걸쳐 재사용될 수 있게 됐다 —
+    // 아래에서 weekRange 병합·depositOuter/settlement 삭제로 이 객체를
+    // 직접 변형(mutate)하면, 그 변형이 캐시된 원본에 그대로 남아 이후
+    // 다른 요청(다른 회원, 다른 cycle 파라미터, 관리자 여부가 다른 요청)
+    // 에까지 잘못 전파된다 — 예를 들어 정산 비공개 시각에 조회한 일반
+    // 회원의 delete roster.settlement가 캐시 원본에 반영되면, 그 뒤 공개
+    // 시각이 지나 조회한 관리자도 캐시 만료 전까지 정산 정보를 못 보게
+    // 된다. 얕은 복사본에만 이후 변형을 적용한다.
+    const cached = await buildRosterStatus(env, accessToken, targetFileId);
+    const roster = { ...cached };
     // 🔧 2026-09: RosterPage("랭킹"/"상금 정산" 타이틀)가 "YYMMDD-YYMMDD
     // 주간"을 병기할 수 있도록 이 조회가 보여주는 주(월~일)의 시작/종료일을
     // 함께 내려준다(사용자 지시).
@@ -6037,8 +6072,13 @@ async function handleAdminFineStatus(req, env, origin) {
 
 // Money 탭 "상금 수령 대상자 처리"의 "상금 정산 집행" 버튼 — 관리자가 이번 주
 // 1~5등 분배를 실제로 지급했다는 걸 시트에 기록하는 단순 마킹. 다른 상태
-// 마킹처럼 셀 하나(집계!P6)에 "완료" 문자열을 쓰기만 한다 — 이 값을 읽어서
-// 판정에 쓰는 기존 로직(예: buildRosterStatus)은 없어 캐시 무효화도 불필요.
+// 마킹처럼 셀 하나(집계!P6)에 "완료" 문자열을 쓰기만 한다.
+// 🔧 [버그 수정, 2026-09-10] 이 값은 buildRosterStatus의 settlementSettled로
+// 이미 읽혀 RANK 탭에 노출되고 있었다 — "판정에 쓰는 기존 로직이 없다"는
+// 이전 주석이 낡아 있었다(buildRosterStatus 도입 당시 갱신을 놓침). RANK
+// 탭에 캐싱(rosterStatus:, 30분)을 새로 추가하면서, 이 마킹도 즉시
+// 무효화해야 "정산 집행 완료" 상태가 최대 30분 늦게 반영되는 걸 막을 수
+// 있다.
 async function handleAdminPrizeSettle(req, env, origin) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
@@ -6047,6 +6087,7 @@ async function handleAdminPrizeSettle(req, env, origin) {
     const accessToken = await getServiceAccountAccessToken(env);
     const fileId = env.GOOGLE_SHEET_FILE_ID;
     await writeSheetValues(env, accessToken, fileId, [{ range: "집계!P6", values: [["완료"]] }]);
+    await invalidateMemberCache(env, ["rosterOnly"], fileId);
     return json({ ok: true }, 200, origin);
   } catch (err) {
     return json({ error: "상금 정산 집행 처리 실패: " + err.message }, 500, origin);

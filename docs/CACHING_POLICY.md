@@ -126,10 +126,10 @@ computeFn)` 형태로 각 파생 계산(주로 여러 셀을 모아 가공한 �
 | `weeklyPaidFine:` | `getWeeklyPaidFineTotal` | 5분(2026-09 상향, 구 60초) | `invalidateMemberCache` |
 | `penSlotGrid:` | `attachNextOccurrence` | 60초(유지) | `invalidateMemberCache` |
 | `exitStatus:` | `getAllExitRelevantStatus` | 60초(유지) | `invalidateMemberCache` |
+| `rosterStatus:` | `buildRosterStatus`(§16, 2026-09-10 신설) | 30분 | `invalidateMemberCache`(`roster` 그룹에 자동 포함, "상금 정산 집행"만 `rosterOnly` 그룹으로 좁게) |
 
-`buildRosterStatus`, `buildPersonalStatus`(개인 탭 조합 계산 자체)는
-`_cachedCompute`를 쓰지 않습니다 — 전자는 매 호출 시트 직접 조회, 후자는
-내부적으로 `getPersonalTabRows`만 캐시를 거칩니다.
+`buildPersonalStatus`(개인 탭 조합 계산 자체)는 `_cachedCompute`를 쓰지
+않습니다 — 내부적으로 `getPersonalTabRows`만 캐시를 거칩니다.
 
 ## 4. 알려진 위험 지점
 
@@ -708,7 +708,41 @@ count}`를 60초 TTL로 저장하는 고정 창(슬라이딩 아님) 방식. 정
 `ApiError` 처리 경로를 그대로 타므로 별도 프론트 수정 없이 에러
 메시지가 그대로 노출된다.
 
-## 16. 관련 문서
+## 16. RANK 탭(`/roster-status`) 캐싱 추가 — 공용 데이터인데 캐시가 하나도 없었음 (2026-09-10)
+
+meritRank(개인 대시보드 순위)의 캐싱 정책을 점검하다가, "여기(RANK 탭)도
+캐싱을 적용해야 하지 않냐"는 지적으로 발견했다. `buildRosterStatus`
+(대시보드 "RANK" 탭 = `RosterPage.tsx`가 부르는 `/roster-status`)는
+`집계!A4:L18`/`집계!D20:D24`+`P6`/`데이터!F4:M4`/`집계!D25`를 요청마다
+직접 4회 조회하고 있었다 — 로그인한 회원 15명 전원이 같은 파일의 같은
+스냅샷을 보는 순수 공용 데이터인데도, `meritRank`/`reportScore`처럼
+`_cachedCompute`로 감싸지 않아 캐시가 전혀 없었다. 이 화면을 열 때마다
+쿼터를 그대로 소진하는 구조였다.
+
+**대응**: `rosterStatus:{fileId}` 키로 파일당 하나씩, TTL 30분(meritRank와
+동일 기준 — "표시만 지연될 뿐 정합성엔 무해"하다고 이미 §5/이번 세션에서
+확인된 것과 같은 성격의 데이터)으로 캐싱했다. `MEMBER_CACHE_UNCONDITIONAL_KEYS`
+에 추가해 `roster` 그룹(신규등록/퇴실 등 명단 구조 변경) 발생 시 자동으로
+함께 무효화되게 했고, "상금 정산 집행" 마킹(`handleAdminPrizeSettle`,
+집계!P6)만 좁게 지우는 `rosterOnly` 그룹을 신설해 그 조작에서도 즉시
+무효화하도록 했다 — 이 조작을 읽어서 쓰는 로직(`buildRosterStatus`의
+`settlementSettled`)이 이미 있는데도 "무효화 불필요"라고 적힌 낡은 주석이
+있었다(buildRosterStatus 도입 당시 갱신을 놓친 것으로 추정).
+
+**정정한 버그**: `handleRosterStatus`가 `buildRosterStatus`의 반환 객체를
+그대로 받아 `Object.assign(roster, weekRange)`/`delete roster.depositOuter`/
+`delete roster.settlement`로 **직접 변형**하고 있었다 — 캐싱 전에는 매
+요청마다 새로 만들어진 객체라 무해했지만, 캐싱 후에는 이 객체가 여러
+요청·isolate에 걸쳐 재사용되는 캐시 원본이라 그대로 두면 심각한 정보
+노출/은닉 버그가 됐다. 예: 정산 비공개 시각에 조회한 일반 회원의
+`delete roster.settlement`가 캐시 원본에 반영되면, 그 직후 공개 시각이
+지나 조회한 관리자·스터디장도 캐시 만료(최대 30분) 전까지 정산 정보를
+못 보게 된다. 반대로 `depositOuterIncluded`가 아닌데도 먼저 조회한
+관리자 응답이 캐시에 남으면 이후 일반 회원에게 `depositOuter`(스터디장
+개인 페널티 정보)가 새 나갈 수도 있었다. `buildRosterStatus` 결과를
+얕은 복사(`{ ...cached }`)한 뒤에만 이후 변형을 적용하도록 고쳤다.
+
+## 17. 관련 문서
 
 - `docs/WEB_ADMIN.md` §3.1 — `applyOutputPenalty`/`applyReportMerit`/
   `applyTimeDeduction`가 실제로 호출되는 관리자 제보 처리 화면·플로우.
