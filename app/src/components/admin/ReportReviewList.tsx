@@ -478,9 +478,13 @@ export function ReportReviewList({
   useRefreshOnVisible(visible, load);
   usePullRefreshListener(visible, load);
   // 탭을 벗어나지 않고 계속 띄워둔 채로도(다른 관리자가 처리한 결과 등)
-  // 몇 분 안에 자동으로 최신 값을 받도록 폴링한다 — 관련 캐시(penSlotGrid:
-  // 60초)의 3배 이상으로 주기를 잡아 캐시 절감 효과를 거의 그대로 유지한다.
-  const refreshProgress = usePollingRefresh(visible, load, 3 * 60_000);
+  // 몇 분 안에 자동으로 최신 값을 받도록 폴링한다.
+  // 🔧 [사용자 지시] 3분→10분으로 하향 — 이 폴링이 부스터디장 목록
+  // (getCurrentCoReviewers)을 매번 캐시 없이 다시 조회하게 했던 원인이라
+  // (사용자 지적), 그 목록을 5분 TTL로 캐싱하면서 폴링 주기도 그 2배인
+  // 10분으로 늘렸다 — penSlotGrid(60초 TTL)의 절감 효과는 여전히 충분히
+  // 유지된다.
+  const refreshProgress = usePollingRefresh(visible, load, 10 * 60_000);
 
   // 부스터디장(공동 검토자) 본인이 위반 수준 의견을 제출한다 — 성공하면
   // 서버에 실제 저장된 값을 다시 불러와 반영한다(다른 회원 임명 변경과
