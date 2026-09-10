@@ -132,7 +132,10 @@ export function PenaltyCandidateList({
           </Alert>
         )}
 
-        {loading && !candidates && <AdminListSkeleton />}
+        {/* 🔧 [버그 수정] ReasonLeaveReviewList와 동일한 재조회 시 빈
+            틈 버그 — 이전 목록이 비어있던 경우까지 로딩 중 스켈레톤을
+            유지한다. */}
+        {loading && (!candidates || candidates.length === 0) && <AdminListSkeleton />}
 
         {!loading && candidates && candidates.length === 0 && <AdminEmptyState>처리 대상이 없습니다.</AdminEmptyState>}
 

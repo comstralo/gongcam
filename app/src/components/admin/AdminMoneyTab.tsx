@@ -251,7 +251,12 @@ function PaidFineList({
         <span className="font-mono text-base font-bold tabular-nums text-ok sm:text-lg">{won(totalAmount)}</span>
       </InfoCard>
 
-      {loading && !records && <AdminListSkeleton />}
+      {/* 🔧 [버그 수정] loading && !records(최초 로딩만 대상)라, 이미
+          빈 목록(records=[])인 상태에서 탭 재진입으로 재조회가 시작되면
+          스켈레톤도 빈 상태 메시지도 안 뜨는 틈이 있었다(사용자 발견,
+          ReasonLeaveReviewList와 동일 버그 — 그쪽 주석 참고). 이전 목록이
+          비어있던 경우까지 로딩 중 스켈레톤을 유지하도록 조건을 넓힌다. */}
+      {loading && (!records || groups.length === 0) && <AdminListSkeleton />}
 
       {!loading && records && groups.length === 0 && <AdminEmptyState>처리 대상이 없습니다.</AdminEmptyState>}
 
@@ -526,7 +531,10 @@ function PrizeRecipientList({
           <span className="font-mono text-base font-bold tabular-nums text-ok sm:text-lg">{won(collectMoney)}</span>
         </InfoCard>
 
-        {loading && !settlement && <AdminListSkeleton />}
+        {/* 🔧 [버그 수정] ReasonLeaveReviewList와 동일한 재조회 시 빈
+            틈 버그 — 이전 목록이 비어있던 경우까지 로딩 중 스켈레톤을
+            유지한다. */}
+        {loading && (!settlement || settlement.length === 0) && <AdminListSkeleton />}
 
         {!loading && settlement && settlement.length === 0 && <AdminEmptyState>이번 주 정산 대상이 없습니다.</AdminEmptyState>}
 
