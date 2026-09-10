@@ -1814,11 +1814,13 @@ async function listAllMembers(env, accessToken, fileId) {
 // 순위는 다른 회원의 상점이 바뀌어야 변하는 값이라 "관리자 혼자 여러 번
 // 조회"로 인한 중복 호출을 캐싱으로 대부분 없앨 수 있다. 상점을 바꾸는 쓰기
 // (제보 승인/취소 등)는 invalidateMemberCache()가 항상 짝으로 따라붙으므로,
-// TTL은 무효화가 놓친 경우의 안전망일 뿐 — 대시보드 폴링 주기(30분)의
-// 3분의 1인 10분으로 늘려 KV 쓰기 빈도를 더 줄인다(2026-09 재조정,
-// docs/CACHING_POLICY.md §5).
+// TTL은 무효화가 놓친 경우의 안전망일 뿐 — 30분으로 늘려 KV 쓰기 빈도를
+// 더 줄인다(2026-09-10 재조정: "주간 상점 순위는 그렇게 중요하지 않다"는
+// 판단 + 동접자가 많을수록(각자 다른 시점에 폴링) TTL 자체가 실제 쓰기
+// 빈도를 그대로 결정하므로 늘린 만큼 효과가 있음을 확인, docs/
+// CACHING_POLICY.md §5).
 async function getMeritRank(env, accessToken, fileId, memberNumber) {
-  const rows = await _cachedCompute(env, `meritRank:${fileId}`, 10 * 60_000, () =>
+  const rows = await _cachedCompute(env, `meritRank:${fileId}`, 30 * 60_000, () =>
     getSheetValues(env, accessToken, fileId, "집계!B4:F18")
   );
   const row = rows.find((r) => (r[0] || "").toString().trim() === String(memberNumber));
