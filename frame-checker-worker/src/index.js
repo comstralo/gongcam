@@ -2137,7 +2137,17 @@ async function getPersonalTabRows(env, accessToken, fileId, memberNumber) {
   // 자기 참여율을 확인하려 할 때 최대 30분 낡은 값을 볼 수 있었다
   // (docs/CACHING_POLICY.md §7). 봇의 실제 쓰기 리듬에 맞춰 10분으로
   // 낮춘다 — 회원 수(15)에 비례하는 캐시라 KV 예산은 여전히 고려 대상.
-  return _cachedCompute(env, `personalStatus:${fileId}:${memberNumber}`, 10 * 60_000, () =>
+  //
+  // 🔧 [과거 fileId TTL 상향, 2026-09-10] 도움봇의 무효화 안 되는 직접 쓰기
+  // 경로는 항상 "지금 진행 중인" 이번 주 시트(env.GOOGLE_SHEET_FILE_ID)에만
+  // 있다 — 과거 백업 파일에는 도움봇도 절대 쓰지 않으므로, 10분을 짧게
+  // 유지해야 할 이유가 과거 fileId에는 없다. 과거 fileId 조회는 이
+  // Worker의 API(handleAdminFineStatus 등)를 통해서만 바뀔 수 있고, 그
+  // 경로는 writeSheetValues → invalidatePersonalStatusCache가 그 fileId를
+  // 그대로 받아 정확히 무효화하므로, TTL을 2시간으로 늘려도 "관리자가
+  // 방금 처리한 값이 안 보이는" 문제는 생기지 않는다(사용자 확인).
+  const ttlMs = fileId === env.GOOGLE_SHEET_FILE_ID ? 10 * 60_000 : 2 * 60 * 60_000;
+  return _cachedCompute(env, `personalStatus:${fileId}:${memberNumber}`, ttlMs, () =>
     getSheetValues(env, accessToken, fileId, `${memberNumber}!A1:U${ROW_REPORT_SHEET_ROW + 1}`)
   );
 }
@@ -5639,11 +5649,22 @@ async function handleSetGoalSchedule(req, env, origin) {
 // (사용자 지적: "MY랑 RANK 둘이 같이 가져오는 걸로 해도 되지 않나?"),
 // getMeritRank가 이 함수를 그대로 재사용하도록 통합했다 — meritRank: 키는
 // 폐지됐다.
+//
+// 🔧 [과거 fileId TTL 상향, 2026-09-10] "과거 주차를 여러 번 토글해도
+// 10~30분마다 재계산·KV 재기입이 반복되는 게 낭비 아니냐"는 지적 —
+// 과거(백업) fileId는 관리자가 이 Worker의 API로 처리하지 않는 한 원본이
+// 절대 바뀌지 않는다. 벌금 납부(handleAdminFineStatus)·상금 정산 집행
+// (handleAdminPrizeSettle)·퇴실 확정(handleAdminExitConfirm)이 과거
+// fileId를 대상으로 쓰기를 하면 각각 invalidateMemberCache에 그 fileId를
+// 정확히 넘겨 즉시 무효화하므로(사용자 확인: "관리자가 쓰기 작업을 해서
+// 과거 시트 값이 갱신되면 캐시가 바로 무효화되는 게 맞다"), TTL을 2시간
+// (현재 시트는 그대로 30분)으로 늘려도 낡은 값이 남는 문제는 생기지 않는다.
 const ROSTER_ROW_START = 3; // 시트 4행(0-indexed 3)부터 15명
 const ROSTER_ROW_END = 17; // 시트 18행(0-indexed 17)까지
 
 async function buildRosterStatus(env, accessToken, fileId) {
-  return _cachedCompute(env, `rosterStatus:${fileId}`, 30 * 60_000, () => _computeRosterStatus(env, accessToken, fileId));
+  const ttlMs = fileId === env.GOOGLE_SHEET_FILE_ID ? 30 * 60_000 : 2 * 60 * 60_000;
+  return _cachedCompute(env, `rosterStatus:${fileId}`, ttlMs, () => _computeRosterStatus(env, accessToken, fileId));
 }
 
 async function _computeRosterStatus(env, accessToken, fileId) {

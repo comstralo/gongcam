@@ -120,12 +120,12 @@ computeFn)` 형태로 각 파생 계산(주로 여러 셀을 모아 가공한 �
 | `members:` | `listAllMembers` | 10분(2026-09-10 재상향, 구 5분/60초) | `invalidateMemberCache` |
 | `reportScore:` | `getReportScore` | 30분 | `invalidateMemberCache` + `invalidateMemberSlotCache`(2026-09-09부터 제보 처리 경로에서 KV까지 즉시) |
 | `outputPenSlots:` | `getOutputPenSlots` | 5분 | `invalidateMemberCache`(회원별 키 — KV는 자연 만료만) |
-| `personalStatus:` | `getPersonalTabRows` | 10분(2026-09 하향, 구 30분) | `writeSheetValues` 내장 정밀 무효화(§7 — 도움봇 직접 쓰기는 무효화 밖) |
+| `personalStatus:` | `getPersonalTabRows` | 10분(현재 시트) / **2시간(과거 fileId, §17 신설)** | `writeSheetValues` 내장 정밀 무효화(§7 — 도움봇 직접 쓰기는 무효화 밖, 과거 fileId엔 도움봇이 쓰지 않아 무관) |
 | `memberRows:` | `getSharedMemberRows` | 60초(유지) | `invalidateMemberCache` |
 | `weeklyPaidFine:` | `getWeeklyPaidFineTotal` | 5분(2026-09 상향, 구 60초) | `invalidateMemberCache` |
 | `penSlotGrid:` | `attachNextOccurrence` | 60초(유지) | `invalidateMemberCache` |
 | `exitStatus:` | `getAllExitRelevantStatus` | 60초(유지) | `invalidateMemberCache` |
-| `rosterStatus:` | `buildRosterStatus`(§16, 2026-09-10 신설) | 30분 | `invalidateMemberCache`(`roster` 그룹에 자동 포함, "상금 정산 집행"만 `rosterOnly` 그룹으로 좁게) |
+| `rosterStatus:` | `buildRosterStatus`(§16, 2026-09-10 신설) | 30분(현재 시트) / **2시간(과거 fileId, §17 신설)** | `invalidateMemberCache`(`roster` 그룹에 자동 포함, "상금 정산 집행"만 `rosterOnly` 그룹으로 좁게) |
 
 `meritRank:`는 폐지됐습니다 — `getMeritRank`(MY 탭 개인 순위)가 읽던
 `집계!B4:F18`이 `rosterStatus:`가 읽는 `집계!A4:L18`의 완전한 부분집합이라,
@@ -755,7 +755,39 @@ meritRank(개인 대시보드 순위)의 캐싱 정책을 점검하다가, "여�
 그룹이 이미 동일(`roster` 그룹에만 자동 포함, `penalty` 그룹에서는
 의도적으로 제외)했기 때문에 합쳐도 정합성 차이가 없다.
 
-## 17. 관련 문서
+## 17. 과거 fileId(백업 사이클) TTL 상향 — 2시간 (2026-09-10)
+
+"MY 탭에서 과거 주차를 여러 번 토글하면 10~30분 TTL이 반복 만료돼 그때마다
+재계산·KV 재기입이 일어나는 게 낭비 아니냐"는 지적으로 시작됐다.
+`personalStatus:{fileId}:{번호}`(개인 탭 원본, 10분)와 `rosterStatus:{fileId}`
+(순위·상점·정산, 30분) 둘 다 이 문제를 갖고 있었다 — 과거(백업) fileId는
+관리자가 이 Worker의 API로 명시적으로 처리하지 않는 한 원본 값이 절대
+바뀌지 않는데도, 현재 시트와 동일한 짧은 TTL을 쓰고 있었다.
+
+**전제 확인**: 과거 fileId에 실제로 쓰기가 일어나는 경로는 세 곳뿐이다 —
+벌금 납부(`handleAdminFineStatus`), 상금 정산 집행(`handleAdminPrizeSettle`),
+퇴실 확정(`handleAdminExitConfirm`, 백업탭 생성 시 `backupTargetFileId`에
+탭 추가/삭제). 앞의 둘은 이미 `writeSheetValues`/`invalidateMemberCache`에
+그 `fileId`를 정확히 넘겨 즉시 무효화하고 있었다. 퇴실 확정은 과거
+fileId에 쓰기는 하지만, 그 대상이 회원 번호 탭이 아니라 별도 이름의
+백업 탭("{이름} (퇴실)")이고 "집계" 탭도 건드리지 않아 —
+`personalStatus:`(`{번호}!A1:U...`만 읽음)·`rosterStatus:`(`집계!...`만
+읽음) 어느 캐시에도 영향이 없다. 즉 세 경로 모두 TTL을 늘려도 "관리자가
+방금 처리한 값이 안 보이는" 문제가 생기지 않는다(사용자 확인: "관리자가
+쓰기 작업을 해서 과거 시트 값이 갱신되면 캐시가 바로 무효화되는 게
+맞다").
+
+도움봇(`study_sw/bot/`)의 무효화 안 되는 직접 쓰기 경로(§7)도 항상
+`env.GOOGLE_SHEET_FILE_ID`(현재 시트)에만 있다 — 과거 백업 파일에는
+도움봇도 절대 쓰지 않으므로, 짧은 TTL을 유지해야 할 이유가 과거 fileId
+에는 원래 없었다.
+
+**대응**: 두 캐시 모두 `fileId === env.GOOGLE_SHEET_FILE_ID`로 분기해,
+현재 시트는 기존 TTL(10분/30분)을 유지하고 과거 fileId는 **2시간**으로
+늘렸다. 무효화 인프라는 이미 fileId 단위로 정확히 동작하므로 추가 구현
+없이 TTL 숫자만 바꿨다.
+
+## 18. 관련 문서
 
 - `docs/WEB_ADMIN.md` §3.1 — `applyOutputPenalty`/`applyReportMerit`/
   `applyTimeDeduction`가 실제로 호출되는 관리자 제보 처리 화면·플로우.
