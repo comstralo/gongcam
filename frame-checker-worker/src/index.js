@@ -2762,9 +2762,9 @@ async function handleReport(req, env, origin) {
     // 접수돼, 봇이 화면에서 존재하지도 않는 이름을 찾느라 캡처 사이클(특히
     // 영상 모드는 더 오래 걸림)을 낭비하고 관리자 검토 목록에는 최종
     // 승인 단계(applyOutputPenalty)에서나 발각되는 처리 불가 항목이
-    // 쌓였다. listAllMembers는 60초 캐시가 있어 매 제보마다 새로 시트를
-    // 읽지 않으므로, 접수 시점에 앞당겨 확인해도 API 호출 부담이 늘지
-    // 않는다.
+    // 쌓였다. listAllMembers는 캐시(현재 10분, members: 참고)가 있어 매
+    // 제보마다 새로 시트를 읽지 않으므로, 접수 시점에 앞당겨 확인해도 API
+    // 호출 부담이 늘지 않는다.
     let members;
     try {
       const accessToken = await getServiceAccountAccessToken(env);
@@ -3747,7 +3747,14 @@ async function handleMyOutputPen(req, env, origin, url) {
 
   try {
     const accessToken = await getServiceAccountAccessToken(env);
-    const member = await findMemberNumberByEmail(env, accessToken, env.GOOGLE_SHEET_FILE_ID, session.email);
+    // 🔧 [캐시 재사용, 2026-09-10] 이 핸들러는 3분마다 폴링되는데도
+    // findMemberNumberByEmail(캐시 없이 매번 데이터!A1:V50 직접 조회)을
+    // 써서, 세션에 이미 memberNumber가 있어도(정상 경로) 그걸 무시하고
+    // 매번 시트를 다시 읽었다 — listAllMembers는 이미 같은 범위를
+    // members:(10분) 캐시로 갖고 있으므로, 여기서 이메일로 찾으면 그
+    // 캐시를 그대로 재사용할 수 있다(사용자 지적).
+    const members = await listAllMembers(env, accessToken, env.GOOGLE_SHEET_FILE_ID);
+    const member = members.find((m) => m.email === (session.email || "").toLowerCase());
     if (!member) return json({ items: [] }, 200, origin);
 
     const data = await proxyToBotDashboard(env, "/captures");
@@ -3822,7 +3829,10 @@ async function handleCaptureTargetRespond(req, env, origin) {
 
   try {
     const accessToken = await getServiceAccountAccessToken(env);
-    const member = await findMemberNumberByEmail(env, accessToken, env.GOOGLE_SHEET_FILE_ID, session.email);
+    // 🔧 [캐시 재사용, 2026-09-10] handleMyOutputPen과 동일한 이유로
+    // listAllMembers(members:, 10분 캐시)를 재사용한다.
+    const members = await listAllMembers(env, accessToken, env.GOOGLE_SHEET_FILE_ID);
+    const member = members.find((m) => m.email === (session.email || "").toLowerCase());
     if (!member) return json({ error: "데이터 시트 명단에서 계정을 찾을 수 없습니다." }, 403, origin);
 
     // 🔧 [버그 수정] data가 null이면(proxyToBotDashboard는 타임아웃/네트워크

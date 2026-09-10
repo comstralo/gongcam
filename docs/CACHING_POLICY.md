@@ -850,7 +850,32 @@ exitedMembers 조합)을 `listAllMembers`와는 별개의 바깥 캐시 키
 `members:`(원본, 20여 곳 공유, 정확성 우선 10분 고정) /
 `adminMemberList:`(드롭다운 전용, 실시간성 불필요, 2시간 고정).
 
-## 18. 관련 문서
+## 18. "내 화각 불량 제보"(`MyOutputPenSection`) — 캐시 없는 이메일 조회를 `members:`로 통합 (2026-09-10)
+
+"내 화각 불량 제보" 화면의 캐싱 정책을 점검하다가 발견했다. 이 화면이
+3분마다 폴링하는 `handleMyOutputPen`이 본인 회원번호·이름을 알아내는 데
+`findMemberNumberByEmail`을 쓰고 있었는데, 이 함수는 `_cachedCompute`를
+전혀 거치지 않고 매번 `데이터!A1:V50`을 직접 읽는다 — 그런데 이 범위는
+`listAllMembers`(`members:`, 10분 캐시)가 이미 캐싱해둔 것과 정확히
+동일하다. 로그인한 사람이 본인 번호를 찾는 대부분의 경로는
+`resolveMemberNumber`(세션에 이미 있는 `memberNumber`를 즉시 반환, 캐시
+필요 없음)를 쓰는데, 이 화면은 그 경로를 안 타고 매번 시트를 다시
+읽고 있었다.
+
+**대응**: `handleMyOutputPen`과 응답 제출 경로인
+`handleCaptureTargetRespond` 둘 다 `findMemberNumberByEmail` 대신
+`listAllMembers`에서 `session.email`로 찾도록 바꿨다 — 3분 폴링마다
+반복되던 불필요한 시트 읽기를 없애고, 이미 캐싱된 회원 명단을
+재사용한다. `findMemberNumberByEmail` 자체는 그대로 남아있다(로그인
+직후처럼 세션에 아직 번호가 없는 극히 드문 폴백 경로에서는 여전히
+필요).
+
+이 점검 과정에서 "내 화각 불량 제보"의 핵심 데이터(`/my-captures`,
+`/my-output-pen`)는 로컬 도움봇으로 매번 실시간 프록시되는 구조라
+캐싱 대상이 아니라는 것도 함께 확인했다 — 90분 응답 시한이 걸린
+민감한 상태라 캐싱하면 오히려 정확성을 해친다.
+
+## 19. 관련 문서
 
 - `docs/WEB_ADMIN.md` §3.1 — `applyOutputPenalty`/`applyReportMerit`/
   `applyTimeDeduction`가 실제로 호출되는 관리자 제보 처리 화면·플로우.
