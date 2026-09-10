@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ListChecks, ChevronDown, CalendarDays, Image as ImageIcon, Trash2, FileText, Clock, Gavel } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -213,6 +213,13 @@ export function MyOutputPenSection({
   // 볼지 — null이면 현재(실시간), 아니면 CycleSwitcher가 넘긴 백업 fileId.
   // 사이클 밖(4주 이상 전)은 기존 CycleSwitcher와 마찬가지로 조회 대상이 아니다.
   const [cycleFileId, setCycleFileId] = useState<string | null>(null);
+  // 🔧 [경쟁 조건 수정, 2026-09-10] 주차 토글을 빠르게 연달아 누르면 매번
+  // load()가 다시 실행되는데, 먼저 시작된 요청(옛 주차)이 나중 요청(새
+  // 주차)보다 늦게 도착하면 "가장 늦게 응답한 것"이 그대로 화면을 덮어써
+  // 선택과 다른 주차 데이터가 보일 수 있었다 — MyStatusContext의 refresh()
+  // 와 동일한 순번 가드를 적용해, 그사이 더 최신 load()가 시작됐으면 이번
+  // 응답은 버린다.
+  const requestIdRef = useRef(0);
   // 관리자 화면(ReportReviewList)과 동일한 이유로, "예상 차감시간"이
   // 미응답 상태에서도 현재 시각 기준으로 계속 늘어나는 걸 보여주려면
   // 1분마다 다시 렌더링해야 한다.
@@ -237,16 +244,24 @@ export function MyOutputPenSection({
   }
 
   function load() {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
     loadOnce(cycleFileId)
       .catch(() => new Promise((resolve) => setTimeout(resolve, 800)).then(() => loadOnce(cycleFileId)))
       .then(([captures, outputPen]) => {
+        if (requestId !== requestIdRef.current) return;
         setSelfCheckItems(captures.items || []);
         setReceivedItems(outputPen.items || []);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "제보 확인 목록을 불러오지 못했습니다."))
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        if (requestId !== requestIdRef.current) return;
+        setError(err instanceof Error ? err.message : "제보 확인 목록을 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (requestId !== requestIdRef.current) return;
+        setLoading(false);
+      });
   }
 
   useEffect(load, [cycleFileId]); // eslint-disable-line react-hooks/exhaustive-deps
