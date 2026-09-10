@@ -69,6 +69,24 @@ export function PeriodAlarmProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
+    // 🔧 [버그 수정] "종소리를 켜놓고 새로고침하면 바로 울린다" — 마운트
+    // 직후 첫 tick은 lastTickAtRef가 방금 초기화된 시각이라 wasAsleep이
+    // 항상 false로 판정되고, lastFiredRef도 아직 null이라 "발화 이력
+    // 없음"으로 취급됐다. 새로고침한 순간이 우연히 어떤 교시의 시작/종료
+    // 분(정수 경계)과 겹치면, 이미 그 이전부터 진행 중이던 교시임에도
+    // "지금 막 시작/종료됐다"고 오판해 즉시 재생됐다(사용자 발견). 마운트
+    // 시점에 lastFiredRef를 "지금 이 순간의 경계는 이미 지나간 것"으로
+    // 미리 채워, 최초 tick에서는 그 경계를 절대 새로 발화하지 않게 한다 —
+    // 이미 진행 중이던 알람은 이 경로로 건너뛸 이유가 없다(정상적으로
+    // 그 페이지를 열어두고 있었다면 setInterval이 이미 그 경계를 처리했을
+    // 것이므로).
+    const mountMinutes = (Date.now() - todayMidnightMs()) / 60_000;
+    const mountMinuteFloor = Math.floor(mountMinutes);
+    for (const period of PERIODS) {
+      if (mountMinuteFloor === period.startMinutes) lastFiredRef.current.startIndex = period.index;
+      if (mountMinuteFloor === period.endMinutes) lastFiredRef.current.endIndex = period.index;
+    }
+
     function tick() {
       const midnight = todayMidnightMs();
       const now = Date.now();
