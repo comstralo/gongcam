@@ -119,7 +119,7 @@ computeFn)` 형태로 각 파생 계산(주로 여러 셀을 모아 가공한 �
 | `meta:` | `getSpreadsheetMeta` | 5분 | `invalidateMemberCache` |
 | `members:` | `listAllMembers` | 5분(2026-09 상향, 구 60초) | `invalidateMemberCache` |
 | `meritRank:` | `getMeritRank` | 30분(2026-09-10 재상향, 구 5분/60초) | `invalidateMemberCache` |
-| `reportScore:` | `getReportScore` | 30분 | `invalidateMemberCache`(회원별 키 — KV는 자연 만료만) |
+| `reportScore:` | `getReportScore` | 30분 | `invalidateMemberCache` + `invalidateMemberSlotCache`(2026-09-09부터 제보 처리 경로에서 KV까지 즉시) |
 | `outputPenSlots:` | `getOutputPenSlots` | 5분 | `invalidateMemberCache`(회원별 키 — KV는 자연 만료만) |
 | `personalStatus:` | `getPersonalTabRows` | 10분(2026-09 하향, 구 30분) | `writeSheetValues` 내장 정밀 무효화(§7 — 도움봇 직접 쓰기는 무효화 밖) |
 | `memberRows:` | `getSharedMemberRows` | 60초(유지) | `invalidateMemberCache` |
@@ -639,7 +639,7 @@ KV 캐시가 아니라 매 요청마다 `proxyToBotDashboard(env, "/status")`로
 | `personalStatus` | 10분 | **10분(유지)** | 도움봇이 교시 종료마다(~10분 간격) 개인 탭에 직접 쓰므로, 그 리듬에 맞춰야 새로고침 시 낡은 값을 안 본다(§7) — 다른 넷과 달리 폴링 주기를 3배로 맞추지 않고 예외로 남겼다 |
 | `meritRank` | 5분 | **10분 → 이후 30분으로 재조정**(§5) | 실제 변경 시 `invalidateMemberCache`가 즉시 무효화하므로 TTL은 안전망일 뿐 — 늘려도 위험 없음. "순위는 안 중요하다" + 동접자 多 시 TTL이 그대로 쓰기 빈도를 결정한다는 점에서 30분까지 추가로 늘림 |
 | `outputPenSlots` | 5분 | **10분** | 위와 동일 + 2026-09-09에 `invalidateMemberSlotCache`로 즉시 무효화까지 추가돼 더 안전 |
-| `reportScore` | 30분 | **10분** | 위와 동일한 이유로 낮춰도 안전(오히려 30분일 때보다 배율이 개선됨) |
+| `reportScore` | 30분 | **10분 → 다시 30분으로 복귀**(2026-09-10) | 즉시 무효화가 있어 TTL은 안전망일 뿐 — meritRank와 같은 이유로 폴링 주기(30분)와 맞춤 |
 | `penCycle` | 5분 | **2시간** | 아래 §14.1 참고 — 성격이 달라 별도로 다룬다 |
 | 폴링 주기(대시보드) | 15분 | **30분** | `MyStatusContext`/`StatusPage` 둘 다 — 10분 TTL의 정확히 3배 |
 

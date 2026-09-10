@@ -1836,12 +1836,12 @@ async function getMeritRank(env, accessToken, fileId, memberNumber) {
 // 회원마다 다른 행(reportRow)을 읽는 회원별 캐시. writeSheetValues가 이
 // 회원의 개인 탭에 쓰기가 일어날 때 personalStatus 캐시를 지우는 것과
 // 같은 이유로, 봇/앱스크립트가 아닌 본인 조작으로 이 값이 바뀔 일은 없어
-// getPersonalTabRows와 같은 10분 TTL로 맞춘다(2026-09: 제보 처리 경로가
-// 이제 invalidateMemberSlotCache로 즉시 무효화하므로, TTL은 안전망일
-// 뿐이라 대시보드 폴링 주기(30분)의 3분의 1로 내려도 안전하다).
+// 제보 처리 경로(handleAdminCaptureDecide 등)가 invalidateMemberSlotCache로
+// 즉시 무효화하므로, TTL은 안전망일 뿐이다 — 30분(2026-09-10 재조정,
+// 대시보드 폴링 주기와 동일)으로 잡아도 위험 없다.
 async function getReportScore(env, accessToken, fileId, reportRow) {
   if (!reportRow) return { total: 0 };
-  return _cachedCompute(env, `reportScore:${fileId}:${reportRow}`, 10 * 60_000, async () => {
+  return _cachedCompute(env, `reportScore:${fileId}:${reportRow}`, 30 * 60_000, async () => {
     const [slotRows, currentCycle] = await Promise.all([
       getSheetValues(env, accessToken, fileId, `데이터!R${reportRow}:V${reportRow}`),
       getCurrentPenCycle(env, accessToken, fileId),
