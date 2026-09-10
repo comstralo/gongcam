@@ -314,7 +314,6 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
                   icon={Flag}
                   title="화각 불량 제보"
                   onRefresh={refresh}
-                  refreshProgress={refreshProgress}
                   iconVariant="tint"
                 />
                 <CollapsiblePanel className="flex flex-col gap-4">
