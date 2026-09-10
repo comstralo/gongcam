@@ -110,10 +110,12 @@ export function RosterView({ members }: { members: RosterMember[] }) {
     <div className="flex flex-col gap-2 sm:gap-2.5">
       {visible.map((m, i) => (
         <InfoCard key={`${m.name}-${i}`} className="flex items-center justify-between gap-3 bg-card sm:gap-4">
-          <span className="flex min-w-0 items-center gap-3 sm:gap-4">
+          <span className="flex min-w-0 items-center gap-2 sm:gap-2.5">
             <RankBadge rank={m.rank} />
-            <User className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-            <span className="truncate text-sm sm:text-base">{m.name}</span>
+            <span className="flex min-w-0 items-center gap-1.25">
+              <User className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
+              <span className="truncate text-sm sm:text-base">{m.name}</span>
+            </span>
           </span>
           <span className="shrink-0 text-sm tabular-nums text-muted-foreground sm:text-base">
             <DividedValue

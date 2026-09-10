@@ -8,6 +8,7 @@ import { RosterView, RosterViewSkeleton, RANK_EMOJI } from "@/components/dashboa
 import { CycleSwitcher } from "@/components/dashboard/CycleSwitcher";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
+import { usePollingRefresh } from "@/hooks/usePollingRefresh";
 import { ICON_STROKE, cn } from "@/lib/utils";
 import type { RosterMember, RosterStatusResponse, SettlementItem } from "@/lib/api/types";
 
@@ -69,6 +70,12 @@ export function RosterPage({
   // 다른 회원들의 타이머·순위·정산은 이 화면을 벗어난 사이에도 계속
   // 바뀐다 — "실시간 랭킹"을 표방하는 화면이라 돌아올 때마다 새로 불러온다.
   useRefreshOnVisible(visible, load);
+  // 🔧 [사용자 지시] "주간 랭킹/정산 쪽에 폴링 주기 게이지가 안 보인다" —
+  // 이 화면은 useRefreshOnVisible(탭 복귀 시 1회)만 쓰고 자동 타이머
+  // 폴링이 없어 SectionHeader에 넘길 refreshProgress 자체가 없었다.
+  // roster-status의 캐시(rosterStatus:, 30분 TTL)와 동일한 주기로,
+  // StatusPage(내 대시보드)와 같은 관용구를 적용한다.
+  const refreshProgress = usePollingRefresh(visible, load, 30 * 60_000);
 
   return (
     // 🔧 2026-09: 이 화면(전체 대시보드 "ALL" 탭)을 감싸던 바깥 Card/
@@ -80,7 +87,7 @@ export function RosterPage({
 
       <SectionCard>
         <Collapsible defaultOpen className="flex flex-col">
-          <SectionHeader icon={Trophy} title="주간 랭킹" loading={loading} onRefresh={load} />
+          <SectionHeader icon={Trophy} title="주간 랭킹" loading={loading} onRefresh={load} refreshProgress={refreshProgress} />
           <CollapsiblePanel className="flex flex-col gap-2 sm:gap-2.5">
             {members ? <RosterView members={members} /> : !error && <RosterViewSkeleton />}
             {error && (
@@ -94,7 +101,7 @@ export function RosterPage({
 
       <SectionCard>
         <Collapsible defaultOpen className="flex flex-col">
-          <SectionHeader icon={PiggyBank} title="주간 정산" loading={loading} onRefresh={load} />
+          <SectionHeader icon={PiggyBank} title="주간 정산" loading={loading} onRefresh={load} refreshProgress={refreshProgress} />
           <CollapsiblePanel className="flex flex-col gap-4">
             {money ? (
               <div className="flex flex-col gap-3 rounded-lg border bg-card p-3.5 shadow-xs sm:p-4.5">
