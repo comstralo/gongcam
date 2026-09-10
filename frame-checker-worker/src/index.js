@@ -3829,8 +3829,14 @@ async function handleCaptureTargetRespond(req, env, origin) {
 
   try {
     const accessToken = await getServiceAccountAccessToken(env);
-    // 🔧 [캐시 재사용, 2026-09-10] handleMyOutputPen과 동일한 이유로
-    // listAllMembers(members:, 10분 캐시)를 재사용한다.
+    // 🔧 [캐시 재사용, 2026-09-10 재적용] 한때 "회원 이름이 방금 바뀌면
+    // 캐시가 옛 이름을 돌려줘 본인 확인이 실패할 수 있다"는 우려로
+    // findMemberNumberByEmail(캐시 없음)로 되돌렸었다 — 하지만 실제로
+    // 확인해보니 "데이터" 시트 이름(C열)을 바꾸는 API 자체가 이 프로젝트
+    // 어디에도 없다(신규 등록 시 한 번 정해지면 이후 변경 불가, 사용자
+    // 확인: "이름을 변경할 일 자체가 없는데"). 즉 그 우려는 실재하지
+    // 않는 시나리오였으므로, handleMyOutputPen과 동일하게 listAllMembers
+    // (members:, 10분 캐시)를 다시 재사용한다.
     const members = await listAllMembers(env, accessToken, env.GOOGLE_SHEET_FILE_ID);
     const member = members.find((m) => m.email === (session.email || "").toLowerCase());
     if (!member) return json({ error: "데이터 시트 명단에서 계정을 찾을 수 없습니다." }, 403, origin);
