@@ -653,6 +653,7 @@ const MEMBER_CACHE_PREFIXES = [
   "weeklyPaidFine:",
   "rosterStatus:",
   "adminMemberList:",
+  "dataSheetRows:",
 ];
 let _memberCacheGeneration = 0;
 const _cacheGeneration = new Map(); // key -> generation number (member-cache 그룹 외의 개별 키용)
@@ -959,7 +960,7 @@ async function _readLeaveHistory(env, weekOf) {
 // 이 값을 슬롯에 그대로 기록하므로(applyOutputPenalty 등), 리셋 직후
 // 오래 낡아있으면 잘못된 사이클 번호가 슬롯에 찍힐 위험이 있어 하루
 // 종일 같은 긴 TTL 대신 2시간으로 절충했다.
-const MEMBER_CACHE_UNCONDITIONAL_KEYS = ["members", "meta", "exitStatus", "memberRows", "penSlotGrid", "weeklyPaidFine", "penCycle", "rosterStatus", "adminMemberList"];
+const MEMBER_CACHE_UNCONDITIONAL_KEYS = ["members", "meta", "exitStatus", "memberRows", "penSlotGrid", "weeklyPaidFine", "penCycle", "rosterStatus", "adminMemberList", "dataSheetRows"];
 
 // 🔧 [불필요한 KV 삭제 절감, 2026-09] 호출부가 실제로 건드린 시트 범위에
 // 맞는 그룹만 넘기면, 무관한 캐시까지 매번 함께 지우는 낭비를 피할 수 있다
@@ -1827,9 +1828,24 @@ async function findMemberNumberByEmail(env, accessToken, fileId, email) {
 // 대시보드" 드롭다운의 2시간 요구사항은 이 함수와 완전히 분리된 별도
 // 바깥 캐시(handleAdminMembers의 adminMemberList:{fileId}, §17.1)로
 // 충족한다 — 여기(members:)는 다시 현재/과거 구분 없이 항상 10분이다.
+// 🔧 [캐싱 통합, 2026-09] "데이터" 시트 원본(A1:V50)을 listAllMembers 외에도
+// handleAdminMembersRoster(상세 패널의 구루미 계정/준비 중인 시험), handleAdminOpenSlots
+// (빈 번호 조회), handleAdminCreateMember(번호 중복 검증)가 각자 캐시 없이
+// 직접 읽고 있었다 — listAllMembers는 이 원본에서 "이메일이 있는 유효 회원"만
+// 걸러 쓰고 나머지 열/행은 버려, 그 버려진 부분이 필요한 화면들은 캐시를
+// 재사용하지 못했다. 원본 로우 자체를 별도 키로 캐싱해 listAllMembers를
+// 포함한 4곳이 모두 재사용하게 한다. members:와 TTL·무효화 그룹을 반드시
+// 함께 맞춘다(MEMBER_CACHE_PREFIXES/MEMBER_CACHE_UNCONDITIONAL_KEYS/
+// MEMBER_CACHE_GROUPS.roster 세 곳 모두에 dataSheetRows: 등록 필요).
+async function getDataSheetRows(env, accessToken, fileId) {
+  return _cachedCompute(env, `dataSheetRows:${fileId}`, 10 * 60_000, () => {
+    return getSheetValues(env, accessToken, fileId, "데이터!A1:V50");
+  });
+}
+
 async function listAllMembers(env, accessToken, fileId) {
   return _cachedCompute(env, `members:${fileId}`, 10 * 60_000, async () => {
-    const rows = await getSheetValues(env, accessToken, fileId, "데이터!A1:V50");
+    const rows = await getDataSheetRows(env, accessToken, fileId);
     const members = [];
     for (const row of rows) {
       const num = (row[1] || "").trim();
@@ -6710,7 +6726,11 @@ async function handleAdminMembersRoster(req, env, origin) {
       // 준비 중인 시험(D~E열)을 보여주기 위해 별도로 조회한다 —
       // listAllMembers는 이메일(D열 앞부분)만 뽑아 쓰고 원본 셀 값 자체를
       // 반환하지 않으므로, 여기서 D~E열을 직접 읽어 회원번호(B열)로 매칭한다.
-      getSheetValues(env, accessToken, env.GOOGLE_SHEET_FILE_ID, "데이터!A1:V50"),
+      // 🔧 [캐싱 통합, 2026-09] listAllMembers와 같은 원본(데이터!A1:V50)을
+      // 매번 직접 다시 읽고 있었다 — getDataSheetRows(members:와 동일한
+      // 10분 TTL·roster 무효화 그룹의 dataSheetRows: 캐시)로 교체해 이
+      // 화면을 열 때마다 같은 범위를 두 번 읽던 걸 하나로 합친다.
+      getDataSheetRows(env, accessToken, env.GOOGLE_SHEET_FILE_ID),
       // 🔧 [시트번호 바로가기] 회원번호 탭의 실제 sheetId(gid)를 알아야
       // "https://docs.google.com/.../edit#gid={sheetId}" 링크를 만들 수
       // 있다 — getSpreadsheetMeta는 5분 캐시라 이 요청 때문에 API 호출이
@@ -7619,7 +7639,14 @@ async function handleAdminOpenSlots(req, env, origin) {
 
   try {
     const accessToken = await getServiceAccountAccessToken(env);
-    const rows = await getSheetValues(env, accessToken, env.GOOGLE_SHEET_FILE_ID, "데이터!A1:V50");
+    // 🔧 [캐싱 통합, 2026-09] listAllMembers/handleAdminMembersRoster와 같은
+    // 원본(데이터!A1:V50)을 매번 직접 다시 읽고 있었다 — getDataSheetRows
+    // (members:와 동일한 10분 TTL·roster 무효화 그룹)로 교체한다. 이 화면은
+    // "폼을 여는 순간의 스냅샷"으로만 쓰이고(재조회 없음) 신규 등록 처리
+    // (handleAdminCreateMember) 쪽에 최종 이메일 배정 여부를 다시 검증하는
+    // 별도 안전장치가 있어, 최대 10분 지연된 스냅샷을 보여줘도 실제 등록
+    // 단계에서 최신 상태로 재확인된다.
+    const rows = await getDataSheetRows(env, accessToken, env.GOOGLE_SHEET_FILE_ID);
     const slots = [];
     for (const row of rows) {
       const num = (row[1] || "").trim();
