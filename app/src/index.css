@@ -234,6 +234,22 @@
     /* 자체 pull-to-refresh(usePullToRefresh)와 브라우저 기본 당김 동작이
        겹쳐 이중으로 새로고침되는 것을 막는다(특히 안드로이드 크롬). */
     overscroll-behavior-y: contain;
+    /* 🔧 [사용자 지시] "PC에서는 마우스로, 모바일에서는 꾹 누르면 텍스트가
+       선택되는데 안되게 하는 법" — 네이티브 앱처럼 버튼/카드를 누를 때마다
+       텍스트가 파랗게 선택되는 게 불편하다는 지적. 기본값을 선택 불가로
+       막고, input/textarea(계좌번호 등 실제로 복사가 필요한 값 입력란)만
+       아래에서 다시 허용한다. -webkit-touch-callout은 iOS 사파리의
+       길게 누르기 컨텍스트 메뉴(복사/공유 등)까지 함께 막는다 — user-select
+       만으로는 iOS에서 그 메뉴가 계속 뜬다. */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  input,
+  textarea {
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
   }
   html {
     @apply font-sans;
