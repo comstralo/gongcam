@@ -132,12 +132,15 @@ export function PenaltyCandidateList({
           </Alert>
         )}
 
-        {/* 🔧 [버그 수정] ReasonLeaveReviewList와 동일한 재조회 시 빈
-            틈 버그 — 이전 목록이 비어있던 경우까지 로딩 중 스켈레톤을
-            유지한다. */}
-        {loading && (!candidates || candidates.length === 0) && <AdminListSkeleton />}
+        {/* 🔧 [버그 수정, 2026-09] ReasonLeaveReviewList와 동일한 근본
+            수정 — 세 조건이 loading에 게이팅돼 있어 재조회 시작 직후
+            (loading=true, candidates=[]) 전부 거짓이 되는 진짜 공백이
+            있었다(Playwright 실측, ~1초 지속). loading을 빼고 candidates의
+            실제 값만으로 렌더링해 재조회 중엔 이전 화면이 그대로
+            유지되게 한다. */}
+        {!candidates && <AdminListSkeleton />}
 
-        {!loading && candidates && candidates.length === 0 && <AdminEmptyState>처리 대상이 없습니다.</AdminEmptyState>}
+        {candidates && candidates.length === 0 && <AdminEmptyState>처리 대상이 없습니다.</AdminEmptyState>}
 
         {candidates && candidates.length > 0 && (
           <div className="flex flex-col gap-2 sm:gap-2.5">

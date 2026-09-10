@@ -813,12 +813,12 @@ export function ReportReviewList({
           </Alert>
         )}
 
-        {/* 🔧 [버그 수정] ReasonLeaveReviewList와 동일한 재조회 시 빈
-            틈 버그 — 이전 목록이 비어있던 경우까지 로딩 중 스켈레톤을
-            유지한다. */}
-        {loading && (!items || items.length === 0) && <AdminListSkeleton />}
+        {/* 🔧 [버그 수정, 2026-09] ReasonLeaveReviewList와 동일한 근본
+            수정 — loading을 빼고 items의 실제 값만으로 렌더링해 재조회
+            중엔 이전 화면이 그대로 유지되게 한다. */}
+        {!items && <AdminListSkeleton />}
 
-        {!loading && items && items.length === 0 && <AdminEmptyState>검토 대기 중인 제보가 없습니다.</AdminEmptyState>}
+        {items && items.length === 0 && <AdminEmptyState>검토 대기 중인 제보가 없습니다.</AdminEmptyState>}
 
         {items && items.length > 0 && (
           <div className="flex flex-col gap-2 sm:gap-2.5">

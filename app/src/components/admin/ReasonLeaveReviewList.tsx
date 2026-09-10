@@ -151,21 +151,18 @@ export function ReasonLeaveReviewList({
           </Alert>
         )}
 
-        {/* 🔧 [사용자 발견] "검토 대기 중인 신청이 없습니다 뜨기 전에
-            영역이 줄었다가 늘어난다" — loading && !items(최초 로딩만
-            대상)라, 이미 items가 빈 배열([])로 채워진 뒤 탭 재진입으로
-            재조회(useRefreshOnVisible)가 시작되면 items는 여전히 []라
-            !items가 false가 되어 스켈레톤이 안 뜨고, 동시에 loading이
-            true라 빈 상태 메시지 쪽 조건(!loading && ...)도 false가 돼
-            두 블록 다 안 그려지는 순간(레이아웃 붕 줄어듦)이 실제로
-            생겼다(Playwright로 재현 확인). 이전 목록이 비어있던 경우
-            (items.length === 0)까지 로딩 중엔 스켈레톤을 유지하도록
-            조건을 넓혀 그 틈을 없앤다 — 이미 목록이 있던 경우(length>0)는
-            기존처럼 목록을 유지한 채 SectionHeader의 loading 표시만
-            돈다(스켈레톤으로 갑자기 안 바뀜). */}
-        {loading && (!items || items.length === 0) && <AdminListSkeleton />}
+        {/* 🔧 [버그 수정, 2026-09] 세 조건(스켈레톤/빈 상태/목록)이 전부
+            loading에 게이팅돼 있어, 재조회(useRefreshOnVisible) 시작 직후
+            (loading=true, items=[]) 셋 다 거짓이 되는 진짜 공백이
+            있었다 — Playwright로 1초 가까이 지속되는 걸 실측 확인(사용자가
+            "짧아졌다 길어진다"고 두 번 지적한 원인). loading을 걷어내고
+            items의 실제 값만으로 무엇을 보여줄지 결정하면, 재조회 중엔
+            이전 렌더링(대개 빈 상태 메시지나 이전 목록)이 그대로 유지돼
+            깜빡임 자체가 없다 — "로딩 중" 티는 SectionHeader의 loading
+            prop(새로고침 아이콘 회전)만으로 충분하다. */}
+        {!items && <AdminListSkeleton />}
 
-        {!loading && items && items.length === 0 && <AdminEmptyState>검토 대기 중인 신청이 없습니다.</AdminEmptyState>}
+        {items && items.length === 0 && <AdminEmptyState>검토 대기 중인 신청이 없습니다.</AdminEmptyState>}
 
         {items && items.length > 0 && (
           <div className="flex flex-col gap-2 sm:gap-2.5">

@@ -251,14 +251,15 @@ function PaidFineList({
         <span className="font-mono text-base font-bold tabular-nums text-ok sm:text-lg">{won(totalAmount)}</span>
       </InfoCard>
 
-      {/* 🔧 [버그 수정] loading && !records(최초 로딩만 대상)라, 이미
-          빈 목록(records=[])인 상태에서 탭 재진입으로 재조회가 시작되면
-          스켈레톤도 빈 상태 메시지도 안 뜨는 틈이 있었다(사용자 발견,
-          ReasonLeaveReviewList와 동일 버그 — 그쪽 주석 참고). 이전 목록이
-          비어있던 경우까지 로딩 중 스켈레톤을 유지하도록 조건을 넓힌다. */}
-      {loading && (!records || groups.length === 0) && <AdminListSkeleton />}
+      {/* 🔧 [버그 수정, 2026-09] ReasonLeaveReviewList와 동일한 근본
+          수정 — 세 조건이 loading에 게이팅돼 있어 재조회 시작 직후
+          (loading=true, records=[]) 전부 거짓이 되는 진짜 공백이
+          있었다(Playwright 실측, ~1초 지속). loading을 빼고 records의
+          실제 값만으로 렌더링해 재조회 중엔 이전 화면이 그대로
+          유지되게 한다. */}
+      {!records && <AdminListSkeleton />}
 
-      {!loading && records && groups.length === 0 && <AdminEmptyState>처리 대상이 없습니다.</AdminEmptyState>}
+      {records && groups.length === 0 && <AdminEmptyState>처리 대상이 없습니다.</AdminEmptyState>}
 
       {groups.length > 0 && (
         <div className="flex flex-col gap-2 sm:gap-2.5">
@@ -531,12 +532,12 @@ function PrizeRecipientList({
           <span className="font-mono text-base font-bold tabular-nums text-ok sm:text-lg">{won(collectMoney)}</span>
         </InfoCard>
 
-        {/* 🔧 [버그 수정] ReasonLeaveReviewList와 동일한 재조회 시 빈
-            틈 버그 — 이전 목록이 비어있던 경우까지 로딩 중 스켈레톤을
-            유지한다. */}
-        {loading && (!settlement || settlement.length === 0) && <AdminListSkeleton />}
+        {/* 🔧 [버그 수정, 2026-09] ReasonLeaveReviewList와 동일한 근본
+            수정 — loading을 빼고 settlement의 실제 값만으로 렌더링해
+            재조회 중엔 이전 화면이 그대로 유지되게 한다. */}
+        {!settlement && <AdminListSkeleton />}
 
-        {!loading && settlement && settlement.length === 0 && <AdminEmptyState>이번 주 정산 대상이 없습니다.</AdminEmptyState>}
+        {settlement && settlement.length === 0 && <AdminEmptyState>이번 주 정산 대상이 없습니다.</AdminEmptyState>}
 
         {settlement && settlement.length > 0 && (
           // §"랭킹"(RosterView)의 카드 출력 형태를 그대로 재활용한다 —
