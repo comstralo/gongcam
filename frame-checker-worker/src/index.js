@@ -620,22 +620,23 @@ const _inFlight = new Map(); // key -> Promise<value>
 // 계산 도중 무효화가 끼어들었으면 이번 결과는 호출자에게만 돌려주고
 // 캐시는 건드리지 않아, 다음 요청이 진짜 최신 값을 다시 읽게 한다.
 //
-// invalidateMemberCache는 10개 prefix(members:/meta:/exitStatus:/memberRows:/
-// meritRank:/reportScore:/outputPenSlots:/penSlotGrid:/weeklyPaidFine:/
-// roster:)를 항상 통째로(부분적으로가 아니라) 무효화하므로, 이 그룹 전체에
-// 대해 키 하나짜리 전역 카운터만 두면 충분하다 — 회원별로 갈라지는
-// outputPenSlots:/reportScore:는 아직 계산 중이라 특정 회원 키가
-// _sheetCache에 존재하지도 않는 시점에 무효화가 끼어들 수 있어(그래서
-// 키별 Map으로는 놓칠 수 있음), "이 그룹에 속하는 키인지"만 판별해 그룹
-// 공통 카운터를 쓰는 편이 더 정확하다. personalStatus:(writeSheetValues가
-// 개별 무효화)처럼 정확히 어떤 키를 지우는지 아는 경우는 키별 Map으로
-// 정밀하게 추적한다.
+// invalidateMemberCache는 9개 prefix(members:/meta:/exitStatus:/memberRows:/
+// reportScore:/outputPenSlots:/penSlotGrid:/weeklyPaidFine:/rosterStatus:)를
+// 항상 통째로(부분적으로가 아니라) 무효화하므로, 이 그룹 전체에 대해 키
+// 하나짜리 전역 카운터만 두면 충분하다 — 회원별로 갈라지는 outputPenSlots:/
+// reportScore:는 아직 계산 중이라 특정 회원 키가 _sheetCache에 존재하지도
+// 않는 시점에 무효화가 끼어들 수 있어(그래서 키별 Map으로는 놓칠 수 있음),
+// "이 그룹에 속하는 키인지"만 판별해 그룹 공통 카운터를 쓰는 편이 더
+// 정확하다. personalStatus:(writeSheetValues가 개별 무효화)처럼 정확히
+// 어떤 키를 지우는지 아는 경우는 키별 Map으로 정밀하게 추적한다.
+// 🔧 [중복 캐시 통합, 2026-09-10] meritRank: 캐시 키는 폐지됐다 —
+// getMeritRank가 rosterStatus:(buildRosterStatus)를 그대로 재사용하도록
+// 바뀌었다(§16 참고). 이 목록에서도 제거.
 const MEMBER_CACHE_PREFIXES = [
   "members:",
   "meta:",
   "exitStatus:",
   "memberRows:",
-  "meritRank:",
   "reportScore:",
   "outputPenSlots:",
   "penSlotGrid:",
@@ -947,7 +948,7 @@ async function _readLeaveHistory(env, weekOf) {
 // 이 값을 슬롯에 그대로 기록하므로(applyOutputPenalty 등), 리셋 직후
 // 오래 낡아있으면 잘못된 사이클 번호가 슬롯에 찍힐 위험이 있어 하루
 // 종일 같은 긴 TTL 대신 2시간으로 절충했다.
-const MEMBER_CACHE_UNCONDITIONAL_KEYS = ["members", "meta", "exitStatus", "memberRows", "meritRank", "penSlotGrid", "weeklyPaidFine", "penCycle", "rosterStatus"];
+const MEMBER_CACHE_UNCONDITIONAL_KEYS = ["members", "meta", "exitStatus", "memberRows", "penSlotGrid", "weeklyPaidFine", "penCycle", "rosterStatus"];
 
 // 🔧 [불필요한 KV 삭제 절감, 2026-09] 호출부가 실제로 건드린 시트 범위에
 // 맞는 그룹만 넘기면, 무관한 캐시까지 매번 함께 지우는 낭비를 피할 수 있다
@@ -956,17 +957,18 @@ const MEMBER_CACHE_UNCONDITIONAL_KEYS = ["members", "meta", "exitStatus", "membe
 // (docs/CACHING_POLICY.md §11 실측 근거).
 const MEMBER_CACHE_GROUPS = {
   // 회원 명단/시트 구조 자체가 바뀌는 저빈도 조작(신규등록/퇴실/번호이동)
-  // 전용 — 10종 전부와 관련 있으므로 groups를 생략(=전체)했을 때와 동일하다.
-  roster: [...MEMBER_CACHE_UNCONDITIONAL_KEYS, "reportScore", "outputPenSlots"], // penCycle/rosterStatus 포함 11종 전부
+  // 전용 — 9종 전부와 관련 있으므로 groups를 생략(=전체)했을 때와 동일하다.
+  roster: [...MEMBER_CACHE_UNCONDITIONAL_KEYS, "reportScore", "outputPenSlots"], // penCycle/rosterStatus 포함 10종 전부
   // 제보 승인/취소/반려·유예 — 벌점(outputPenSlots)·제보상점(reportScore)
   // 슬롯만 바뀐다. 다음 슬롯 미리보기(penSlotGrid)와 퇴실 후보 판정
   // (exitStatus)도 이 슬롯을 입력으로 쓰므로 함께 포함한다.
   //
-  // 🔧 [의도적 방치, 2026-09-10] meritRank(개인 대시보드 순위)는 실제로 이
-  // 그룹의 변경에 영향받지만(집계 F열 수식이 페널티 유무를 조건으로 삼음),
-  // 표시만 최대 30분 지연될 뿐 다른 데이터 정합성엔 영향이 없다고 판단해
-  // 이 그룹에서 의도적으로 뺐다(사용자 확인) — RANK 탭(rosterStatus)도
-  // 같은 값을 노출하므로 동일한 판단을 적용해 여기 포함하지 않는다.
+  // 🔧 [의도적 방치, 2026-09-10] rosterStatus(RANK/MY 탭이 함께 쓰는 상점·
+  // 순위 캐시, §16)는 실제로 이 그룹의 변경에 영향받지만(집계 F열 수식이
+  // 페널티 유무를 조건으로 삼음), 표시만 최대 30분 지연될 뿐 다른 데이터
+  // 정합성엔 영향이 없다고 판단해 이 그룹에서 의도적으로 뺐다(사용자 확인,
+  // 원래는 meritRank: 캐시 단독 논의였으나 §16에서 getMeritRank가
+  // rosterStatus를 재사용하도록 통합되며 이 판단도 함께 적용된다).
   penalty: ["exitStatus", "penSlotGrid", "outputPenSlots", "reportScore"],
   // 벌금 납부 상태 변경 — 개인 탭 31행(납부확인)만 바뀐다.
   fine: ["exitStatus", "memberRows", "weeklyPaidFine"],
@@ -1013,7 +1015,7 @@ function invalidateMemberCache(env, groups, fileId) {
       if (env) kvDeletes.push(env.REPORTS_KV.delete(`${KV_CACHE_PREFIX}${key}`).catch(() => {}));
     }
   }
-  // exitStatus/memberRows/meritRank/members/meta/penSlotGrid/weeklyPaidFine은
+  // exitStatus/memberRows/members/meta/penSlotGrid/weeklyPaidFine/rosterStatus는
   // fileId별로 키가 하나뿐이라 인메모리에 아직 없어도(다른 isolate가 채운
   // KV 항목일 수 있음) KV 쪽은 무조건 지운다 — 이번 호출이 실제로 건드린
   // 그룹에 속하는 것만.
@@ -1824,27 +1826,21 @@ async function listAllMembers(env, accessToken, fileId) {
 
 // 집계 시트 B4:G18에서 회원번호에 해당하는 행의 상점(F열)/순위(G열)를 읽는다.
 // 순위는 집계 시트가 이미 전체 15명을 비교해 계산해두므로, 개인 대시보드가
-// 직접 15개 탭을 다시 조회할 필요 없이 이 한 행만 읽으면 된다.
-// 🔧 [열 이동] 집계 탭에서 상점(구 F열)/순위(구 G열)가 한 칸씩 앞으로
-// 당겨져 각각 E열/F열이 됐다(범위도 G18→F18로 한 칸 줄어듦).
-// 집계!B4:F18은 회원 15명 전체의 상점/순위를 한 범위에 담고 있어, 회원
-// 개인 조회(/status)마다 이 전체 범위를 다시 읽을 필요가 없다 — 파일당
-// 1개 키로 캐싱해 getPersonalTabRows(30분)와 비슷한 원리로 공유한다.
-// 순위는 다른 회원의 상점이 바뀌어야 변하는 값이라 "관리자 혼자 여러 번
-// 조회"로 인한 중복 호출을 캐싱으로 대부분 없앨 수 있다. 상점을 바꾸는 쓰기
-// (제보 승인/취소 등)는 invalidateMemberCache()가 항상 짝으로 따라붙으므로,
-// TTL은 무효화가 놓친 경우의 안전망일 뿐 — 30분으로 늘려 KV 쓰기 빈도를
-// 더 줄인다(2026-09-10 재조정: "주간 상점 순위는 그렇게 중요하지 않다"는
-// 판단 + 동접자가 많을수록(각자 다른 시점에 폴링) TTL 자체가 실제 쓰기
-// 빈도를 그대로 결정하므로 늘린 만큼 효과가 있음을 확인, docs/
-// CACHING_POLICY.md §5).
+// 직접 15개 탭을 다시 조회할 필요 없이 이 값만 찾으면 된다.
+// 🔧 [중복 캐시 통합, 2026-09-10] 원래 이 함수는 집계!B4:F18을 별도의
+// meritRank:{fileId} 키로 캐싱했는데, 이 범위는 RANK 탭이 이미 캐싱해둔
+// rosterStatus:{fileId}(집계!A4:L18, buildRosterStatus)의 완전한 부분집합
+// 이다 — 같은 파일의 같은 상점/순위 데이터를 두 개의 캐시 키로 중복
+// 저장·중복 조회하고 있었다(사용자 지적: "MY랑 RANK 둘이 같이 가져오는
+// 걸로 해도 되지 않나?"). buildRosterStatus를 그대로 재사용한다 — 무효화
+// 그룹(둘 다 roster 그룹에만 즉시 반응, penalty 그룹에선 의도적으로 제외)이
+// 이미 동일해 합쳐도 정합성 차이가 없다. buildRosterStatus가 "빈 시트"
+// 행을 걸러내지만 여기는 항상 실존하는 본인 조회라 그 필터링과 무관하다.
 async function getMeritRank(env, accessToken, fileId, memberNumber) {
-  const rows = await _cachedCompute(env, `meritRank:${fileId}`, 30 * 60_000, () =>
-    getSheetValues(env, accessToken, fileId, "집계!B4:F18")
-  );
-  const row = rows.find((r) => (r[0] || "").toString().trim() === String(memberNumber));
-  if (!row) return { merit: "0", rank: "-" };
-  return { merit: (row[3] || "0").toString(), rank: (row[4] || "-").toString() };
+  const { members } = await buildRosterStatus(env, accessToken, fileId);
+  const member = members.find((m) => m.number === String(memberNumber));
+  if (!member) return { merit: "0", rank: "-" };
+  return { merit: member.merit || "0", rank: member.rank || "-" };
 }
 
 // 🔧 [데이터 시트 통합] 옛 "제보상점" D~L(요일별 점수/K=총점/L=벌점) 구조가
@@ -5631,14 +5627,18 @@ async function handleSetGoalSchedule(req, env, origin) {
 //
 // 🔧 [캐싱 추가, 2026-09-10] 캐시 없이 매 요청마다 Sheets API를 4번씩(집계
 // 본문/집계 D20:D24+P6/데이터 F4:M4/집계 D25) 직접 호출하고 있었다 — 로그인한
-// 회원 15명 전원이 같은 파일의 같은 스냅샷을 보는 공용 데이터인데도 개인
-// 대시보드(getMeritRank 등)와 달리 캐시가 하나도 없어, RANK 탭이 열릴
-// 때마다 그대로 쿼터를 소진했다(사용자 지적). meritRank/reportScore와
-// 동일한 원칙(파일당 1개 키, TTL 30분 — "표시만 지연될 뿐 정합성엔 무해"
-// 하다고 이미 확인된 것과 같은 성격의 데이터)으로 파일당 하나의 키에
-// 캐싱한다. 무효화는 "roster" 그룹(신규등록/퇴실 등 명단 자체가 바뀌는
-// 저빈도 이벤트)에 자동 포함되고, "상금 정산 집행" 마킹은 별도로 좁은
-// "rosterOnly" 그룹을 즉시 호출한다(handleAdminPrizeSettle 참고).
+// 회원 15명 전원이 같은 파일의 같은 스냅샷을 보는 공용 데이터인데도 캐시가
+// 하나도 없어, RANK 탭이 열릴 때마다 그대로 쿼터를 소진했다(사용자 지적).
+// reportScore와 동일한 원칙(파일당 1개 키, TTL 30분 — "표시만 지연될 뿐
+// 정합성엔 무해"하다고 이미 확인된 것과 같은 성격의 데이터)으로 파일당
+// 하나의 키에 캐싱한다. 무효화는 "roster" 그룹(신규등록/퇴실 등 명단 자체가
+// 바뀌는 저빈도 이벤트)에 자동 포함되고, "상금 정산 집행" 마킹은 별도로
+// 좁은 "rosterOnly" 그룹을 즉시 호출한다(handleAdminPrizeSettle 참고).
+// 🔧 [중복 캐시 통합, 2026-09-10] MY 탭의 getMeritRank가 별도로 쓰던
+// meritRank:{fileId} 캐시(집계!B4:F18)는 이 members 배열의 부분집합이라
+// (사용자 지적: "MY랑 RANK 둘이 같이 가져오는 걸로 해도 되지 않나?"),
+// getMeritRank가 이 함수를 그대로 재사용하도록 통합했다 — meritRank: 키는
+// 폐지됐다.
 const ROSTER_ROW_START = 3; // 시트 4행(0-indexed 3)부터 15명
 const ROSTER_ROW_END = 17; // 시트 18행(0-indexed 17)까지
 

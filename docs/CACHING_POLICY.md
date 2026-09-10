@@ -111,14 +111,13 @@ computeFn)` 형태로 각 파생 계산(주로 여러 셀을 모아 가공한 �
 
 ## 3. 읽기 경로 TTL 인벤토리
 
-`_cachedCompute` 12곳 전수조사입니다.
+`_cachedCompute` 11곳 전수조사입니다.
 
 | 캐시 키 prefix | 함수 | TTL | 무효화 경로 |
 |---|---|---|---|
 | `penCycle:` | `getCurrentPenCycle` | 5분(2026-09 상향, 구 60초) | **없음** — Worker가 쓰는 경로가 전혀 없어 의도적으로 무효화 그룹 밖 |
 | `meta:` | `getSpreadsheetMeta` | 5분 | `invalidateMemberCache` |
 | `members:` | `listAllMembers` | 10분(2026-09-10 재상향, 구 5분/60초) | `invalidateMemberCache` |
-| `meritRank:` | `getMeritRank` | 30분(2026-09-10 재상향, 구 5분/60초) | `invalidateMemberCache` |
 | `reportScore:` | `getReportScore` | 30분 | `invalidateMemberCache` + `invalidateMemberSlotCache`(2026-09-09부터 제보 처리 경로에서 KV까지 즉시) |
 | `outputPenSlots:` | `getOutputPenSlots` | 5분 | `invalidateMemberCache`(회원별 키 — KV는 자연 만료만) |
 | `personalStatus:` | `getPersonalTabRows` | 10분(2026-09 하향, 구 30분) | `writeSheetValues` 내장 정밀 무효화(§7 — 도움봇 직접 쓰기는 무효화 밖) |
@@ -127,6 +126,10 @@ computeFn)` 형태로 각 파생 계산(주로 여러 셀을 모아 가공한 �
 | `penSlotGrid:` | `attachNextOccurrence` | 60초(유지) | `invalidateMemberCache` |
 | `exitStatus:` | `getAllExitRelevantStatus` | 60초(유지) | `invalidateMemberCache` |
 | `rosterStatus:` | `buildRosterStatus`(§16, 2026-09-10 신설) | 30분 | `invalidateMemberCache`(`roster` 그룹에 자동 포함, "상금 정산 집행"만 `rosterOnly` 그룹으로 좁게) |
+
+`meritRank:`는 폐지됐습니다 — `getMeritRank`(MY 탭 개인 순위)가 읽던
+`집계!B4:F18`이 `rosterStatus:`가 읽는 `집계!A4:L18`의 완전한 부분집합이라,
+MY 탭과 RANK 탭이 같은 캐시를 공유하도록 통합했습니다(§16 후반부).
 
 `buildPersonalStatus`(개인 탭 조합 계산 자체)는 `_cachedCompute`를 쓰지
 않습니다 — 내부적으로 `getPersonalTabRows`만 캐시를 거칩니다.
@@ -741,6 +744,16 @@ meritRank(개인 대시보드 순위)의 캐싱 정책을 점검하다가, "여�
 관리자 응답이 캐시에 남으면 이후 일반 회원에게 `depositOuter`(스터디장
 개인 페널티 정보)가 새 나갈 수도 있었다. `buildRosterStatus` 결과를
 얕은 복사(`{ ...cached }`)한 뒤에만 이후 변형을 적용하도록 고쳤다.
+
+**뒤이은 통합**: "MY 탭과 RANK 탭 순위를 같이 가져오는 걸로 해도 되지
+않냐"는 지적으로 `meritRank:` 캐시(`getMeritRank`, MY 탭의 개인 순위)를
+다시 보니, 읽던 범위(`집계!B4:F18`)가 `rosterStatus:`가 읽는
+`집계!A4:L18`의 완전한 부분집합이었다 — 두 캐시가 같은 파일의 같은
+상점/순위 데이터를 중복 저장·중복 조회하고 있었던 것. `getMeritRank`가
+`buildRosterStatus`를 그대로 호출해 `members` 배열에서 해당 회원을 찾는
+방식으로 통합하고, `meritRank:` 캐시 키는 폐지했다. 두 캐시의 무효화
+그룹이 이미 동일(`roster` 그룹에만 자동 포함, `penalty` 그룹에서는
+의도적으로 제외)했기 때문에 합쳐도 정합성 차이가 없다.
 
 ## 17. 관련 문서
 
