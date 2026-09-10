@@ -295,6 +295,11 @@ export type CycleListResponse = {
   // 사이클 하나가 최대 몇 주로 구성되는지(현재 3) — weeks.length가 이보다
   // 적으면(아직 3주가 안 지남) 나머지는 비활성화 슬롯으로 채워 보여준다.
   maxWeeks: number;
+  // 🔧 [버그 수정, 2026-09] "이번 주"가 이 사이클에서 몇 번째 주인지(1~maxWeeks)
+  // — 예전엔 프론트가 weeks.length로 역산했는데, weeks.length는 사이클
+  // 경계 판정 결과일 뿐 "이번 주가 몇 주차인지"와 항상 같지 않아 라벨이
+  // 틀리는 경우가 있었다. 서버가 집계!D25(페널티 사이클)를 직접 읽어 내려준다.
+  currentWeekNumber: number;
 };
 
 export type AdminMember = {

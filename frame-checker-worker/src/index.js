@@ -2967,7 +2967,7 @@ async function handleInternalCycleBoundary(req, env, origin) {
   }
   try {
     const accessToken = await getServiceAccountAccessToken(env);
-    const backups = await listCurrentCycleBackups(env, accessToken);
+    const { backups } = await listCurrentCycleBackups(env, accessToken);
     // backups는 최신순 정렬 — 배열의 마지막이 "이번 3주 묶음"에서 가장
     // 과거(=사이클 1주차) 백업이다. 백업이 아직 하나도 없으면(운영 시작
     // 직후 등) 이번 사이클 시작을 판단할 근거가 없으므로 null로 알려
@@ -7767,28 +7767,22 @@ async function listBackupFiles(env, accessToken) {
   return backups;
 }
 
-// 각 백업의 페널티 사이클 값(집계!D25, 1→2→3→1 순환)을 읽는다.
-async function getBackupCycle(env, accessToken, fileId) {
-  const values = await getSheetUnformattedValue(env, accessToken, fileId, "집계!D25");
-  const raw = values[0] && values[0][0];
-  const num = typeof raw === "number" ? raw : parseInt(raw, 10);
-  return [1, 2, 3].includes(num) ? num : null;
-}
-
-// "현재 사이클 묶음"을 찾는다: 최신 백업부터 과거로 훑으면서, 사이클값이 1인
-// 백업을 만나는 지점(포함)까지가 지금 진행 중인 3주 묶음이다. 그 이전(더
-// 과거) 백업은 이전 사이클이므로 제외한다. CYCLE_MAX_LEN은 사이클값이
-// 리셋되지 않는 이상 상황에 대비한 안전장치일 뿐, 정상적으로는 사이클=1을
-// 만나는 즉시 멈춘다.
-async function currentCycleBackups(env, accessToken, backups) {
-  const bundle = [];
-  for (const backup of backups) {
-    if (bundle.length >= CYCLE_MAX_LEN) break;
-    const cycle = await getBackupCycle(env, accessToken, backup.fileId);
-    bundle.push(backup);
-    if (cycle === 1) break;
-  }
-  return bundle;
+// 🔧 [버그 수정, 2026-09] "최신 백업부터 훑다가 사이클값 1을 만나면(포함)
+// 멈춘다"는 이전 로직은 현재 시트가 지금 1주차로 막 시작된 시점에 완전히
+// 틀린 결과를 낸다 — sheet_reset()(appscript.js)은 D25(사이클)를 갱신하기
+// *전에* 백업을 먼저 뜨므로, 백업 파일엔 항상 "그 주가 실제로 몇 주차였는지"
+// 값이 그대로 남는다(1→2→3→1 순환). 즉 지금이 1주차라면 지난 주 백업은
+// 리셋 직전 원본이 3주차였을 때 만들어졌으니 사이클값=3이고, 그 앞은 2, 그
+// 앞(3주 전)에야 1을 만난다 — 옛 로직대로면 "1을 만날 때까지"가 방금 끝난
+// 이전 사이클 3주 전체를 통째로 반환해버려, 1주차인 지금은 아직 이번
+// 사이클의 백업이 하나도 없어야 하는데도 "현재 사이클 백업 3개"로 잘못
+// 응답했다. 현재 시트 자체의 사이클 값(currentCycle)을 먼저 읽어 "이번
+// 사이클에서 이미 지난 주가 몇 주인지"(currentCycle - 1)를 정확히 계산하고,
+// 그 개수만큼만 최신 백업을 모은다 — 1주차면 0개, 2주차면 1개(사이클값=1인
+// 것 하나), 3주차면 2개(사이클값 2, 1인 것 순서대로)를 반환한다.
+function currentCycleBackups(backups, currentCycle) {
+  const wantedCount = Math.min(CYCLE_MAX_LEN - 1, Math.max(0, currentCycle - 1));
+  return backups.slice(0, wantedCount);
 }
 
 // 관리자/일반 구분 없이 누구나 "현재 진행 중인 사이클(최대 3주) 중 이미
@@ -7796,8 +7790,11 @@ async function currentCycleBackups(env, accessToken, backups) {
 // 대상이 아니다. MY/ALL 상단의 "사이클 토글"이 이 목록 + "현재"(실시간,
 // fileId 없음)를 함께 보여준다.
 async function listCurrentCycleBackups(env, accessToken) {
-  const backups = await listBackupFiles(env, accessToken);
-  return currentCycleBackups(env, accessToken, backups);
+  const [backups, currentCycle] = await Promise.all([
+    listBackupFiles(env, accessToken),
+    getCurrentPenCycle(env, accessToken, env.GOOGLE_SHEET_FILE_ID),
+  ]);
+  return { backups: currentCycleBackups(backups, currentCycle), currentCycle };
 }
 
 // GET /cycles — 토글에 뿌릴 선택지 목록. "현재"(fileId: null, 실시간)를
@@ -7815,7 +7812,7 @@ async function handleCycleList(req, env, origin, url) {
 
   try {
     const accessToken = await getServiceAccountAccessToken(env);
-    const backups = await listCurrentCycleBackups(env, accessToken);
+    const { backups, currentCycle } = await listCurrentCycleBackups(env, accessToken);
     const memberParam = url ? url.searchParams.get("member") : null;
 
     let targetMemberNumber = null;
@@ -7844,6 +7841,12 @@ async function handleCycleList(req, env, origin, url) {
         // 채워 보여줄 수 있도록, 사이클 최대 길이를 함께 내려준다(하드코딩
         // 값이 바뀌어도 프론트가 자동으로 따라가게).
         maxWeeks: CYCLE_MAX_LEN,
+        // 🔧 [버그 수정, 2026-09] 프론트(CycleSwitcher)가 "이번 주가 사이클
+        // 몇 번째 주인지"를 weeks.length로 역산하던 방식은, 항상 3칸을
+        // 채운다는 잘못된 가정과 맞물려 1~2주차인데도 "3주차"로 잘못
+        // 표시되는 문제가 있었다 — 서버가 실제 현재 사이클 값을 직접
+        // 내려줘 프론트가 더는 역산하지 않게 한다.
+        currentWeekNumber: currentCycle,
       },
       200,
       origin
@@ -7864,7 +7867,7 @@ async function handleCycleList(req, env, origin, url) {
 // 기준 이번 주"로 직접 계산한다.
 async function resolveTargetFileId(env, accessToken, cycleFileId) {
   if (!cycleFileId) return { fileId: env.GOOGLE_SHEET_FILE_ID, weekOf: null };
-  const backups = await listCurrentCycleBackups(env, accessToken);
+  const { backups } = await listCurrentCycleBackups(env, accessToken);
   const backup = backups.find((b) => b.fileId === cycleFileId);
   if (!backup) throw new Error("현재 사이클에 속하지 않는 기록입니다.");
   return { fileId: backup.fileId, weekOf: backup.weekOf };

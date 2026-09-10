@@ -35,8 +35,8 @@ function thisWeekRange(): { start: string; end: string } {
 // 🔧 [사용자 지시] 원래 슬롯 개수만큼 버튼을 나열해(예: "데이터 없음" ×2 +
 // "이번 주") 슬롯이 늘어날수록 버튼 줄이 옆으로 계속 길어지는 방식이었는데,
 // "N주차 : 08.02 ~ 08.09"처럼 현재 슬롯 하나만 보여주고 </> 로 넘기는
-// 방식으로 바꿨다. N은 이 사이클 안에서 몇 번째 주인지(1~maxWeeks, 여러
-// 사이클을 관통하는 누적 번호는 아니다)이고, 지금 진행 중인 마지막 슬롯
+// 방식으로 바꿨다. N은 이 사이클 안에서 몇 번째 주인지(1~currentWeekNumber,
+// 여러 사이클을 관통하는 누적 번호는 아니다)이고, 지금 진행 중인 마지막 슬롯
 // (실시간, cycle 파라미터 없음)에는 "진행" 뱃지를 따로 붙여 구분한다.
 export function CycleSwitcher({
   selectedFileId,
@@ -56,10 +56,13 @@ export function CycleSwitcher({
 }) {
   const { call } = useApi();
   const [weeks, setWeeks] = useState<CycleWeek[] | null>(null);
-  // 사이클 하나가 최대 몇 주인지(현재 3) — 아직 응답 전이면 기존 버그
-  // ("과거 주차 있어도 응답 오기 전엔 안 보임")를 재현하지 않도록 슬롯을
-  // 아예 안 그린다. 응답이 오면 실제 서버 값으로 갱신된다.
-  const [maxWeeks, setMaxWeeks] = useState(0);
+  // 🔧 [버그 수정, 2026-09] 예전엔 이번 주가 사이클 몇 번째 주인지를
+  // weeks.length(백업 개수)로 역산했다 — 그런데 sheet_reset이 백업을 뜨는
+  // 시점과 사이클 값을 갱신하는 시점이 달라, 이번 주가 사이클 1주차로
+  // 막 시작된 직후엔 weeks.length가 "방금 끝난 이전 사이클"의 개수를 담고
+  // 있어 "3주차"처럼 잘못 표시됐다. 서버가 집계!D25를 직접 읽어 내려주는
+  // currentWeekNumber를 그대로 쓴다(0이면 아직 응답 전).
+  const [currentWeekNumber, setCurrentWeekNumber] = useState(0);
   // 🔧 [실패 시 무피드백 수정] 원래 실패를 그냥 삼켜서(catch(()=>{})) weeks가
   // 계속 null로 남아 토글 전체가 에러 표시 없이 조용히 사라졌다 — 사용자가
   // "지난 주 보기" 기능이 원래 있었는지조차 알 수 없었다. 실패 시 작은
@@ -75,7 +78,7 @@ export function CycleSwitcher({
       .then((data) => {
         if (cancelled) return;
         setWeeks(data.weeks || []);
-        setMaxWeeks(data.maxWeeks || 0);
+        setCurrentWeekNumber(data.currentWeekNumber || 0);
       })
       .catch(() => {
         if (!cancelled) setError(true);
@@ -91,11 +94,15 @@ export function CycleSwitcher({
   // 기준으로 안전하게 굴러가도록 미리 만들어두고, 실제 화면 분기는
   // 아래 JSX에서만 한다.
   const oldestFirst = weeks ? [...weeks].reverse() : [];
-  const missingCount = Math.max(0, maxWeeks - 1 - oldestFirst.length);
+  // "이번 주" 앞에 와야 할 슬롯 수는 currentWeekNumber - 1(예: 2주차 진행
+  // 중이면 1개) — weeks.length가 그보다 적으면(백업 조회 실패 등 드문 경우)
+  // 남는 자리를 빈 슬롯으로 채운다.
+  const missingCount = Math.max(0, currentWeekNumber - 1 - oldestFirst.length);
   const pastSlots: (CycleWeek | null)[] = [...Array(missingCount).fill(null), ...oldestFirst];
-  // "이번 주"(fileId: null)를 항상 마지막 슬롯으로 붙여, 전체를 "1/3주차 →
-  // 2/3주차 → 3/3주차(이번 주)"처럼 시간 순으로 오가는 하나의 트랙으로 만든다.
-  const slots: (CycleWeek | null)[] = maxWeeks > 0 ? [...pastSlots, null] : [];
+  // "이번 주"(fileId: null)를 항상 마지막 슬롯으로 붙인다 — 트랙 길이는
+  // maxWeeks(항상 3칸)가 아니라 currentWeekNumber로 고정한다: 사이클이 아직
+  // 안 끝난 시점에 이번 주 이후 슬롯(미래 주차)은 존재하지 않기 때문이다.
+  const slots: (CycleWeek | null)[] = currentWeekNumber > 0 ? [...pastSlots, null] : [];
   const currentWeekIndex = slots.length - 1;
   const selectedIndex =
     selectedFileId === null ? currentWeekIndex : slots.findIndex((w) => w?.fileId === selectedFileId);
@@ -126,7 +133,7 @@ export function CycleSwitcher({
   // 도착하는 순간 전환 UI가 레이아웃에 갑자기 끼어들어 그 아래 콘텐츠가
   // 훅 밀리는 "짠" 현상이 있었다(사용자 지적) — 실제 카드와 같은 크기의
   // 자리표시자를 먼저 그려 그 자리를 미리 차지해둔다.
-  if (weeks === null || maxWeeks === 0) {
+  if (weeks === null || currentWeekNumber === 0) {
     return <div className="h-11 w-full animate-pulse rounded-full bg-muted/50 sm:h-12" aria-hidden />;
   }
 
