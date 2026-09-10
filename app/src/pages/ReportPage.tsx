@@ -310,12 +310,7 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
                 공용 SectionCard 기본값은 그대로 둠). */}
             <SectionCard className="shadow-sm shadow-black/[0.03]">
               <Collapsible defaultOpen className="flex flex-col">
-                <SectionHeader
-                  icon={Flag}
-                  title="화각 불량 제보"
-                  onRefresh={refresh}
-                  iconVariant="tint"
-                />
+                <SectionHeader icon={Flag} title="화각 불량 제보" iconVariant="tint" />
                 <CollapsiblePanel className="flex flex-col gap-4">
                     <SectionCard className="relative flex flex-col gap-3">
                       {/* 🔧 [사용자 지시] 개별 입력 필드마다 disabled를 거는
