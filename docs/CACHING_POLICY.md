@@ -49,12 +49,25 @@ computeFn)` 형태로 각 파생 계산(주로 여러 셀을 모아 가공한 �
    ```
    인메모리는 세대 카운터를 올리는 것만으로 9종 전체가 즉시 무효화되어
    공짜입니다. **KV 쪽은 그중 파일 전체가 키 하나인 7종(`members:`/`meta:`/
-   `exitStatus:`/`memberRows:`/`meritRank:`/`penSlotGrid:`/`weeklyPaidFine:`)만
+   `exitStatus:`/`memberRows:`/`meritRank:`/`penSlotGrid:`/`weeklyPaidFine:`)을
    무조건 `.delete()`합니다.** 회원별로 키가 갈라지는 `outputPenSlots:{fileId}:
-   {number}`와 `reportScore:{fileId}:{reportRow}`는 그 순간 인메모리에 이미
-   올라와 있던 것만 지우고, KV 쪽은 **자연 TTL 만료를 기다리도록 설계**되어
-   있습니다(주석에 명시된 의도적 트레이드오프 — 회원 수만큼 KV 삭제를 추가로
-   호출하면 KV 쓰기/삭제 예산을 더 많이 쓰기 때문).
+   {number}`와 `reportScore:{fileId}:{reportRow}`는 `invalidateMemberCache`
+   자체는 그 순간 인메모리에 이미 올라와 있던 것만 지우고 KV까지는 손대지
+   않습니다 — 회원 번호를 모르는 채로 호출될 수도 있어 여전히 이렇게
+   둡니다.
+   >
+   > 🔧 **[2026-09-09 재검토] 제보 처리 경로는 예외로 즉시 삭제하도록 변경**
+   > — 원래는 이 2종도 KV는 자연 TTL 만료(5분/30분)를 기다리도록 설계돼
+   > 있었다("회원 수만큼 KV 삭제를 추가로 호출하면 예산을 더 쓴다"는
+   > 우려). 그런데 제보 승인/취소/반려 경로(`handleAdminCaptureCancel`/
+   > `CancelMerit`/`Decide`/`Delete`/`Revert`)는 애초에 그 액션이 건드린
+   > 회원 번호(대상자·제보자, 최대 2명)를 정확히 알고 호출되고, 하루 제보
+   > 처리 건수도 많아야 10건 내외임을 확인해(건당 최대 4개 삭제 → 하루
+   > 40회 미만, KV 예산에 무시할 수준) — 이 6곳에는 `invalidateMemberCache`
+   > 바로 뒤에 `invalidateMemberSlotCache(env, 그_회원번호)`를 추가로 호출해
+   > 그 회원의 outputPenSlots/reportScore도 KV까지 즉시 지운다. "회원 번호를
+   > 모르는" 나머지 호출부(예: `roster` 그룹의 일부 경로)는 그대로 자연 TTL
+   > 만료를 기다린다 — 회원 번호를 확실히 아는 곳에서만 넓혔다.
 
 ## 2. 시트 쓰기 지점 ↔ 무효화 매칭표
 

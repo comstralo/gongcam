@@ -985,16 +985,21 @@ function invalidateMemberCache(env, groups) {
   return Promise.all(kvDeletes);
 }
 
-// 🔧 [번호 재사용 대비, 2026-09] outputPenSlots:/reportScore:는 회원별 키라
-// invalidateMemberCache가 KV를 콕 집어 못 지운다(위 주석 참고) — 대부분의
-// 경로(제보 승인/취소 등)는 같은 회원이 계속 그 번호를 쓰므로 자연 TTL
-// 만료(5분/30분)를 기다려도 무해하다. 다만 퇴실/번호이동으로 어떤 번호가
-// "비워진 뒤 곧바로 다른 사람에게 재배정"되면, 그 사이 다른 isolate가
-// 캐시해둔 옛 회원의 벌점/제보상점 값이 신규 회원에게 그대로 노출될 수
-// 있다 — performExitReset/moveMemberSlot/handleAdminCreateMember처럼
-// "번호 1개당 1회"만 실행되는 저빈도 관리자 조작에서만 호출해, 그 번호에
-// 한해 KV까지 명시적으로 지운다(회원 수만큼 반복되는 게 아니라 KV 예산에
-// 미치는 영향은 미미하다 — docs/CACHING_POLICY.md §9 참고).
+// outputPenSlots:/reportScore:는 회원별 키라 invalidateMemberCache가 KV를
+// 콕 집어 못 지운다(위 주석 참고) — 원래는 performExitReset/moveMemberSlot/
+// handleAdminCreateMember(번호 재사용 대비, 2026-09)처럼 "번호 1개당 1회"만
+// 실행되는 저빈도 관리자 조작에서만 호출해, 그 번호에 한해 KV까지 명시적으로
+// 지웠다.
+//
+// 🔧 [사용자 지시, 2026-09] "제보 승인/취소 후 최대 5분/30분 지연도 즉시
+// 삭제로 바꿔라" — 하루 제보 처리 건수가 많아야 10건 내외임을 확인해(건당
+// 최대 2명 × 2개 캐시 = 하루 40회 미만 추가 삭제, KV 예산에 무시할 수준),
+// applyOutputPenalty/applyReportMerit/cancelOutputPenalty/cancelReportMerit
+// 호출부(handleAdminCaptureCancel/CancelMerit/Decide/Delete/Revert 등
+// invalidateMemberCache(env, ["penalty"]) 호출 6곳)에서도 그 액션이 실제로
+// 건드린 회원 번호(대상자·제보자, 최대 2명)에 한해 이 함수를 함께 호출한다
+// — "번호 재사용" 대비용으로 좁게 쓰이던 함수가 이제 일반적인 제보 처리
+// 경로에서도 쓰인다.
 function invalidateMemberSlotCache(env, memberNumber) {
   if (!env) return Promise.resolve();
   const fileId = env.GOOGLE_SHEET_FILE_ID;
@@ -4329,6 +4334,7 @@ async function handleAdminCaptureCancel(req, env, origin) {
     const accessToken = await getServiceAccountAccessToken(env);
     await cancelOutputPenalty(env, accessToken, env.GOOGLE_SHEET_FILE_ID, number, col, deductedMinutes || 0, dayCol || null);
     await invalidateMemberCache(env, ["penalty"]); // 페널티 슬롯이 바뀌었으므로 관련 캐시만 무효화.
+    await invalidateMemberSlotCache(env, number); // 이 회원의 outputPenSlots/reportScore는 KV까지 즉시.
     return json({ ok: true }, 200, origin);
   } catch (err) {
     return json({ error: "취소 실패: " + err.message }, 500, origin);
@@ -4351,6 +4357,7 @@ async function handleAdminCaptureCancelMerit(req, env, origin) {
     const accessToken = await getServiceAccountAccessToken(env);
     await cancelReportMerit(env, accessToken, env.GOOGLE_SHEET_FILE_ID, number, col);
     await invalidateMemberCache(env, ["penalty"]); // 제보상점 슬롯이 바뀌었으므로 관련 캐시만 무효화.
+    await invalidateMemberSlotCache(env, number); // 이 회원의 outputPenSlots/reportScore는 KV까지 즉시.
     return json({ ok: true }, 200, origin);
   } catch (err) {
     return json({ error: "취소 실패: " + err.message }, 500, origin);
@@ -4502,6 +4509,10 @@ async function handleAdminCaptureDecide(req, env, origin) {
         }
       }
       await invalidateMemberCache(env, ["penalty"]); // 페널티/제보상점 슬롯이 바뀌었으므로 관련 캐시만 무효화.
+      // 대상자(penaltyResult)와 제보자(meritResult)는 서로 다른 회원일 수
+      // 있다 — 둘 다 outputPenSlots/reportScore가 KV까지 즉시 지워지도록.
+      if (penaltyResult?.number) await invalidateMemberSlotCache(env, penaltyResult.number);
+      if (meritResult?.number) await invalidateMemberSlotCache(env, meritResult.number);
     } catch (err) {
       return json({ error: "시트 반영 실패: " + err.message }, 500, origin);
     }
@@ -4599,6 +4610,8 @@ async function handleAdminCaptureDecide(req, env, origin) {
     }
     if (penaltyResult || meritResult || timeDeductionResult) {
       await invalidateMemberCache(env, ["penalty"]);
+      if (penaltyResult?.number) await invalidateMemberSlotCache(env, penaltyResult.number);
+      if (meritResult?.number) await invalidateMemberSlotCache(env, meritResult.number);
     }
     return json({ error: "봇에 연결할 수 없습니다. 시트 반영은 자동으로 되돌렸으니 다시 시도해주세요." }, 502, origin);
   }
@@ -4661,6 +4674,8 @@ async function handleAdminCaptureDelete(req, env, origin) {
         await cancelReportMerit(env, accessToken, fileId, merit.number, merit.col);
       }
       await invalidateMemberCache(env, ["penalty"]); // 페널티/제보상점 슬롯이 바뀌었으므로 관련 캐시만 무효화.
+      if (penalty?.number) await invalidateMemberSlotCache(env, penalty.number);
+      if (merit?.number) await invalidateMemberSlotCache(env, merit.number);
     } catch (err) {
       return json({ error: "시트 반영 취소 실패: " + err.message }, 500, origin);
     }
@@ -4709,6 +4724,7 @@ async function handleAdminCaptureRevert(req, env, origin) {
       const accessToken = await getServiceAccountAccessToken(env);
       await cancelReportMerit(env, accessToken, env.GOOGLE_SHEET_FILE_ID, merit.number, merit.col);
       await invalidateMemberCache(env, ["penalty"]); // 제보상점 슬롯이 바뀌었으므로 관련 캐시만 무효화.
+      await invalidateMemberSlotCache(env, merit.number); // 이 회원의 outputPenSlots/reportScore는 KV까지 즉시.
     } catch (err) {
       return json({ error: "제보상점 회수 실패: " + err.message }, 500, origin);
     }
