@@ -21,6 +21,20 @@
   }
 }
 
+/* 🔧 [사용자 발견] "아이폰에서 좌측 상단이 흐릿하게 나온다" — index.html의
+   apple-mobile-web-app-status-bar-style=black-translucent는 iOS 상태바를
+   반투명 오버레이로 콘텐츠 위에 얹는다. AppShell이 하단 safe-area는 이미
+   챙기면서 상단은 고정 패딩만 써, 헤더 맨 위(eyebrow 라벨)가 상태바
+   영역과 겹쳐 반투명 레이어를 투과해 흐릿하게 비쳤다. 기존 pt-2.5/sm:pt-4
+   값에 safe-area-inset-top을 더해 상태바 아래에서 콘텐츠가 시작하게 한다
+   (PC/Android는 그 값이 0이라 기존과 동일). */
+@utility page-pt-safe {
+  padding-top: calc(0.625rem + env(safe-area-inset-top, 0px)); /* pt-2.5 */
+  @variant sm {
+    padding-top: calc(1rem + env(safe-area-inset-top, 0px)); /* sm:pt-4 */
+  }
+}
+
 /* checker.html처럼 뷰파인더가 있는 넓은 페이지 */
 @utility page-content-wide {
   max-width: 40rem; /* 640px, 기존 max-w-160 */

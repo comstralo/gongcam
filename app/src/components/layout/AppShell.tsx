@@ -37,7 +37,7 @@ export function AppShell({ children, title, titleIcon: TitleIcon, hideEyebrow, f
         // 시각적 구분을 위해 그대로 두고, 가장 바깥 여백만 모바일에서
         // 좁혀 실사용 폭을 확보한다 — sm 이상(태블릿/데스크톱)은 기존
         // p-4 그대로 유지.
-        "flex w-full flex-col items-center gap-4.5 px-2.5 pt-2.5 sm:px-4 sm:pt-4",
+        "flex w-full flex-col items-center gap-4.5 px-2.5 sm:px-4 page-pt-safe",
         fitToScreen
           ? "h-dvh overflow-hidden mobile-landscape:gap-2 mobile-landscape:px-2 mobile-landscape:pt-2 mobile-landscape:pb-2"
           : "min-h-dvh",
@@ -53,6 +53,10 @@ export function AppShell({ children, title, titleIcon: TitleIcon, hideEyebrow, f
       // 네비바에 아래가 가려진다"). 인라인 style은 클래스 특정성/소스
       // 순서 경쟁 자체가 없어 항상 이기므로, paddingBottom을 JS로 직접
       // 계산해 넣어 이 문제를 근본적으로 없앤다.
+      // 🔧 [사용자 발견] "아이폰에서 좌측 상단이 흐릿하게 나온다" — 상단
+      // safe-area 처리는 index.css의 page-pt-safe 유틸리티(className)로
+      // 옮겼다 — sm: 반응형 분기가 필요해 순수 인라인 style로는 표현이
+      // 안 됐다(sm:pt-4가 media query 필요).
       style={
         {
           paddingBottom:
