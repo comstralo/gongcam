@@ -125,6 +125,30 @@ export function HalfDayLeaveDialog({
   const { call } = useApi();
   const [open, setOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // 🔧 [사용자 지시] "모달을 닫았다가 다시 띄우면 30초간은 다시 열지 못하게
+  // 제한" — 열 때마다 /reason-leave-proof를 새로 조회하고 부모의 onOpen이
+  // 전역 /status까지 재조회하므로(위 onOpen 주석 참고), 장난으로 여닫기를
+  // 반복하면 그때마다 API가 계속 호출된다. 마지막으로 닫은 시각을 기억해
+  // 뒀다가, 그로부터 30초 안에는 다시 열지 못하게 막는다 — 실제 사용
+  // 흐름(신청 확인 후 닫기)에서는 30초 안에 다시 열 일이 거의 없어 정상
+  // 사용엔 지장이 없다.
+  const REOPEN_COOLDOWN_MS = 30_000;
+  const lastClosedAtRef = useRef(0);
+  const [reopenCooldownMsg, setReopenCooldownMsg] = useState<string | null>(null);
+
+  function handleOpenChange(next: boolean) {
+    if (next) {
+      const remaining = REOPEN_COOLDOWN_MS - (Date.now() - lastClosedAtRef.current);
+      if (remaining > 0) {
+        setReopenCooldownMsg(`${Math.ceil(remaining / 1000)}초 뒤에 다시 열 수 있어요.`);
+        return;
+      }
+      setReopenCooldownMsg(null);
+    } else {
+      lastClosedAtRef.current = Date.now();
+    }
+    setOpen(next);
+  }
 
   const [status, setStatus] = useState<ReasonLeaveProofStatus | "loading" | "error">("loading");
   const [reason, setReason] = useState("");
@@ -274,7 +298,7 @@ export function HalfDayLeaveDialog({
   const canSubmit = !!selectedFile && !!reason.trim() && proofCount > 0 && !submitting;
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       {/* 🔧 [버그 수정] DialogTrigger가 기본적으로 <button>을 렌더링하는데
           자식으로 또 <Button>(<button>)을 두면 button 안에 button이 중첩돼
           "In HTML, button cannot be a descendant of button" hydration
@@ -286,6 +310,9 @@ export function HalfDayLeaveDialog({
       >
         반일 휴무 신청
       </DialogTrigger>
+      {reopenCooldownMsg && (
+        <p className="mt-1 text-center text-micro text-muted-foreground sm:text-micro-lg">{reopenCooldownMsg}</p>
+      )}
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-1.5">
