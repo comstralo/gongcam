@@ -1783,10 +1783,10 @@ async function findMemberNumberByEmail(env, accessToken, fileId, email) {
 // 각자 listAllMembers()를 부르는 상황이 잦아, 캐시(인메모리+KV)로 중복 호출을
 // 흡수한다. 신규등록/퇴실/재납/이동 등 명단을 바꾸는 쓰기 뒤에는
 // invalidateMemberCache()로 반드시 무효화하므로, TTL은 "무효화가 놓친 경우의
-// 안전망"일 뿐이다 — meta:(5분)와 같은 이유로 5분으로 늘려 KV 읽기 빈도를
-// 줄인다(docs/CACHING_POLICY.md §5, 2026-09).
+// 안전망"일 뿐이다 — meta:와 같은 이유로 10분으로 늘려(2026-09-10 재조정,
+// 구 5분) KV 읽기 빈도를 줄인다(docs/CACHING_POLICY.md §5).
 async function listAllMembers(env, accessToken, fileId) {
-  return _cachedCompute(env, `members:${fileId}`, 5 * 60_000, async () => {
+  return _cachedCompute(env, `members:${fileId}`, 10 * 60_000, async () => {
     const rows = await getSheetValues(env, accessToken, fileId, "데이터!A1:V50");
     const members = [];
     for (const row of rows) {

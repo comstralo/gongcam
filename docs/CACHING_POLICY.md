@@ -117,7 +117,7 @@ computeFn)` 형태로 각 파생 계산(주로 여러 셀을 모아 가공한 �
 |---|---|---|---|
 | `penCycle:` | `getCurrentPenCycle` | 5분(2026-09 상향, 구 60초) | **없음** — Worker가 쓰는 경로가 전혀 없어 의도적으로 무효화 그룹 밖 |
 | `meta:` | `getSpreadsheetMeta` | 5분 | `invalidateMemberCache` |
-| `members:` | `listAllMembers` | 5분(2026-09 상향, 구 60초) | `invalidateMemberCache` |
+| `members:` | `listAllMembers` | 10분(2026-09-10 재상향, 구 5분/60초) | `invalidateMemberCache` |
 | `meritRank:` | `getMeritRank` | 30분(2026-09-10 재상향, 구 5분/60초) | `invalidateMemberCache` |
 | `reportScore:` | `getReportScore` | 30분 | `invalidateMemberCache` + `invalidateMemberSlotCache`(2026-09-09부터 제보 처리 경로에서 KV까지 즉시) |
 | `outputPenSlots:` | `getOutputPenSlots` | 5분 | `invalidateMemberCache`(회원별 키 — KV는 자연 만료만) |
