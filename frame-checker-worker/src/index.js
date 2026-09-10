@@ -416,11 +416,19 @@ async function getSheetValues(env, accessToken, fileId, range) {
 // 이 셀 하나 때문에 30회가 몰려 "분당 60회" 한도를 순식간에 갉아먹는다
 // (2026-08 실제로 RESOURCE_EXHAUSTED 발생) — 매주 1~3만 순환하는 값이고
 // Worker 쪽에서 이 셀에 쓰는 경로가 전혀 없어(앱스크립트 주간 트리거만
-// 갱신) 5분 캐싱해도 신선도 문제가 없다. KV에도 함께 저장해
+// 갱신) 캐싱해도 신선도 문제가 없다. KV에도 함께 저장해
 // (_cacheSetAsync) 다른 사용자·다른 isolate 간에도 이 값이 공유되게 한다
 // (docs/CACHING_POLICY.md §6, 2026-09).
+//
+// 🔧 [사용자 지시, 2026-09] "일주일에 한 번만 바뀌는데 5분마다 재확인하는
+// 게 아깝다" — 앱스크립트 sheet_reset()이 리셋 직후 Worker에 즉시 무효화를
+// 알려주도록 바꿨으니(MEMBER_CACHE_GROUPS.cycle), TTL은 "그 알림이 실패했을
+// 때의 안전망"으로만 기능하면 된다. 2시간으로 크게 늘렸다 — 이 값은
+// 제보 승인 시 슬롯에 그대로 기록되므로(applyOutputPenalty 등), 안전망이
+// 너무 길면(예: 하루) 알림 실패 시 리셋 직후 최대 하루까지 잘못된 사이클
+// 번호가 슬롯에 찍힐 위험이 있어, 그 노출 시간을 2시간으로 절충했다.
 async function getCurrentPenCycle(env, accessToken, fileId) {
-  return _cachedCompute(env, `penCycle:${fileId}`, 5 * 60_000, async () => {
+  return _cachedCompute(env, `penCycle:${fileId}`, 2 * 60 * 60_000, async () => {
     const rows = await getSheetValues(env, accessToken, fileId, "집계!D25");
     return parseInt((rows[0] && rows[0][0]) || "1", 10) || 1;
   });
@@ -922,10 +930,22 @@ async function _readLeaveHistory(env, weekOf) {
   }
 }
 
-// fileId당 키가 하나뿐이라 무조건 KV .delete() 대상이 되는 6종(회원별로
+// fileId당 키가 하나뿐이라 무조건 KV .delete() 대상이 되는 종류(회원별로
 // 갈라지는 outputPenSlots:/reportScore:는 별도 처리 — 아래 함수의 prefix
 // 루프에서 인메모리에 존재하는 것만 지운다).
-const MEMBER_CACHE_UNCONDITIONAL_KEYS = ["members", "meta", "exitStatus", "memberRows", "meritRank", "penSlotGrid", "weeklyPaidFine"];
+//
+// 🔧 [사용자 지시, 2026-09] penCycle 추가 — 매주 앱스크립트 sheet_reset()이
+// 시트에 직접 쓰는 값(집계!D25)이라 Worker 쪽 쓰기 경로가 없어 원래
+// 무효화 그룹 밖이었다. 그러다 보니 "일주일에 한 번만 바뀌는 값"인데도
+// TTL(5분)만큼 자주 재확인·재기록됐다 — 앱스크립트가 리셋 직후
+// `_notifyWorkerCacheInvalidate({groups:["cycle"]})`로 즉시 알려주도록
+// 바꾸고(study_sw/assets/appscript.js), 그 대신 TTL을 2시간으로 크게
+// 늘렸다(getCurrentPenCycle). 알림이 실패해도(네트워크 오류 등) 최악의
+// 경우 2시간 안에는 자연 TTL 만료로 스스로 정정된다 — 제보 승인 시
+// 이 값을 슬롯에 그대로 기록하므로(applyOutputPenalty 등), 리셋 직후
+// 오래 낡아있으면 잘못된 사이클 번호가 슬롯에 찍힐 위험이 있어 하루
+// 종일 같은 긴 TTL 대신 2시간으로 절충했다.
+const MEMBER_CACHE_UNCONDITIONAL_KEYS = ["members", "meta", "exitStatus", "memberRows", "meritRank", "penSlotGrid", "weeklyPaidFine", "penCycle"];
 
 // 🔧 [불필요한 KV 삭제 절감, 2026-09] 호출부가 실제로 건드린 시트 범위에
 // 맞는 그룹만 넘기면, 무관한 캐시까지 매번 함께 지우는 낭비를 피할 수 있다
@@ -935,7 +955,7 @@ const MEMBER_CACHE_UNCONDITIONAL_KEYS = ["members", "meta", "exitStatus", "membe
 const MEMBER_CACHE_GROUPS = {
   // 회원 명단/시트 구조 자체가 바뀌는 저빈도 조작(신규등록/퇴실/번호이동)
   // 전용 — 9종 전부와 관련 있으므로 groups를 생략(=전체)했을 때와 동일하다.
-  roster: [...MEMBER_CACHE_UNCONDITIONAL_KEYS, "reportScore", "outputPenSlots"],
+  roster: [...MEMBER_CACHE_UNCONDITIONAL_KEYS, "reportScore", "outputPenSlots"], // penCycle 포함 10종 전부
   // 제보 승인/취소/반려·유예 — 벌점(outputPenSlots)·제보상점(reportScore)
   // 슬롯만 바뀐다. 다음 슬롯 미리보기(penSlotGrid)와 퇴실 후보 판정
   // (exitStatus)도 이 슬롯을 입력으로 쓰므로 함께 포함한다.
@@ -946,6 +966,9 @@ const MEMBER_CACHE_GROUPS = {
   exitRequest: ["exitStatus"],
   // 참여상태(부스터디장 임명 등, 개인 탭 L3) 변경.
   partiStatus: ["exitStatus"],
+  // 앱스크립트 sheet_reset()이 매주 집계!D25(페널티 사이클)를 갱신한
+  // 직후 호출하는 전용 그룹 — penCycle 하나만 좁게 지운다.
+  cycle: ["penCycle"],
 };
 
 // 시트 구조(권한관리·데이터 D~V 등)를 바꾸는 쓰기 작업 뒤에 호출해 캐시가
@@ -1791,10 +1814,11 @@ async function listAllMembers(env, accessToken, fileId) {
 // 순위는 다른 회원의 상점이 바뀌어야 변하는 값이라 "관리자 혼자 여러 번
 // 조회"로 인한 중복 호출을 캐싱으로 대부분 없앨 수 있다. 상점을 바꾸는 쓰기
 // (제보 승인/취소 등)는 invalidateMemberCache()가 항상 짝으로 따라붙으므로,
-// TTL은 무효화가 놓친 경우의 안전망일 뿐 — 5분으로 늘려 KV 읽기 빈도를
-// 줄인다(docs/CACHING_POLICY.md §5, 2026-09).
+// TTL은 무효화가 놓친 경우의 안전망일 뿐 — 대시보드 폴링 주기(30분)의
+// 3분의 1인 10분으로 늘려 KV 쓰기 빈도를 더 줄인다(2026-09 재조정,
+// docs/CACHING_POLICY.md §5).
 async function getMeritRank(env, accessToken, fileId, memberNumber) {
-  const rows = await _cachedCompute(env, `meritRank:${fileId}`, 5 * 60_000, () =>
+  const rows = await _cachedCompute(env, `meritRank:${fileId}`, 10 * 60_000, () =>
     getSheetValues(env, accessToken, fileId, "집계!B4:F18")
   );
   const row = rows.find((r) => (r[0] || "").toString().trim() === String(memberNumber));
@@ -1810,10 +1834,12 @@ async function getMeritRank(env, accessToken, fileId, memberNumber) {
 // 회원마다 다른 행(reportRow)을 읽는 회원별 캐시. writeSheetValues가 이
 // 회원의 개인 탭에 쓰기가 일어날 때 personalStatus 캐시를 지우는 것과
 // 같은 이유로, 봇/앱스크립트가 아닌 본인 조작으로 이 값이 바뀔 일은 없어
-// getPersonalTabRows와 같은 30분 TTL로 맞춘다.
+// getPersonalTabRows와 같은 10분 TTL로 맞춘다(2026-09: 제보 처리 경로가
+// 이제 invalidateMemberSlotCache로 즉시 무효화하므로, TTL은 안전망일
+// 뿐이라 대시보드 폴링 주기(30분)의 3분의 1로 내려도 안전하다).
 async function getReportScore(env, accessToken, fileId, reportRow) {
   if (!reportRow) return { total: 0 };
-  return _cachedCompute(env, `reportScore:${fileId}:${reportRow}`, 30 * 60_000, async () => {
+  return _cachedCompute(env, `reportScore:${fileId}:${reportRow}`, 10 * 60_000, async () => {
     const [slotRows, currentCycle] = await Promise.all([
       getSheetValues(env, accessToken, fileId, `데이터!R${reportRow}:V${reportRow}`),
       getCurrentPenCycle(env, accessToken, fileId),
@@ -1830,12 +1856,12 @@ async function getReportScore(env, accessToken, fileId, reportRow) {
 // 건너뛰어 비용을 아낀다. timePenValues(L/M)는 appscript.js daily_calc()의
 // 판정 결과가 그대로 기록되는 슬롯이라 여기서는 그대로 읽기만 한다.
 // 회원별 캐시. 이 값은 관리자가 제보를 승인/취소/삭제할 때만 바뀌는데,
-// 그 경로(handleAdminCaptureDecide 등)는 이미 invalidateMemberCache를
-// 호출해 즉시 무효화하므로, TTL 자체는 KV 쓰기 예산을 아끼기 위해
-// 5분으로 넉넉히 잡는다(회원 15명 × 분당 캐시는 KV 하루 쓰기 한도를
-// 압박한다).
+// 그 경로(handleAdminCaptureDecide 등)는 이미 invalidateMemberCache +
+// invalidateMemberSlotCache(2026-09 추가, KV까지 즉시)를 호출해 즉시
+// 무효화하므로, TTL 자체는 KV 쓰기 예산을 아끼기 위해 대시보드 폴링
+// 주기(30분)의 3분의 1인 10분으로 넉넉히 잡는다.
 async function getOutputPenSlots(env, accessToken, fileId, memberNumber) {
-  return _cachedCompute(env, `outputPenSlots:${fileId}:${memberNumber}`, 5 * 60_000, async () => {
+  return _cachedCompute(env, `outputPenSlots:${fileId}:${memberNumber}`, 10 * 60_000, async () => {
     const row = parseInt(memberNumber, 10) + 3;
     const rows = await getSheetValues(env, accessToken, fileId, `'${OUTPUT_PEN_SHEET_NAME}'!F${row}:M${row}`);
     const slotRow = (rows && rows[0]) || [];

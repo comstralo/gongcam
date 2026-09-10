@@ -1199,6 +1199,12 @@ function sheet_reset() {
   // ✅ 5. ‘집계’ 시트 페널티 사이클 값 갱신
   var next_pen_cycle = current_pen_cycle === 1 ? 2 : (current_pen_cycle === 2 ? 3 : 1);
   total_sheet.getRange(pen_cycle_cell).setValue(next_pen_cycle);
+  // 🔧 [Worker 캐시 정합성, 2026-09] penCycle(D25)은 일주일에 한 번만
+  // 바뀌는 값이라 Worker 쪽 TTL을 2시간으로 넉넉히 늘렸다 — 그 대신 이
+  // 리셋 직후 즉시 알려줘야 그 2시간 안전망을 굳이 다 기다리지 않고도
+  // 바로 정확한 값을 돌려줄 수 있다. 실패해도(네트워크 오류 등) 조용히
+  // 넘어가며, 최악의 경우에도 2시간 뒤엔 TTL 자연 만료로 스스로 정정된다.
+  _notifyWorkerCacheInvalidate({ groups: ["cycle"] });
 
   // ✅ 6. '집계' 시트 기타 항목 초기화
   // 🔧 period_omission_cell은 daily_calc()가 매일 밤 읽고 0으로 리셋하는

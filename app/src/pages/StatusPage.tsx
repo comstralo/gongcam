@@ -96,9 +96,10 @@ export function StatusPage({
   // 관리자가 다른 곳에서 처리한 벌금/반휴/페널티 결과가 이 화면을 벗어난
   // 사이에도 바뀔 수 있어, 돌아올 때마다 새로 불러온다.
   useRefreshOnVisible(visible, reload);
-  // buildPersonalStatus가 조합하는 캐시 중 가장 짧은 것(members: 5분)의
-  // 3배 이상 주기로 폴링해, 화면을 계속 띄워둔 채로도 자동 갱신되게 한다.
-  const refreshProgress = usePollingRefresh(visible, reload, 15 * 60_000);
+  // 🔧 [2026-09 재조정] buildPersonalStatus가 조합하는 캐시들의 TTL을
+  // 10분으로 통일하면서, 폴링 주기도 그 3배인 30분으로 늘렸다(기존
+  // 15분 — docs/CACHING_POLICY.md §12.1 참고).
+  const refreshProgress = usePollingRefresh(visible, reload, 30 * 60_000);
 
   return (
     // 🔧 [사용자 지시] "MY도 헤더 제목으로 박스 안에 묶으려고 하거든?" —

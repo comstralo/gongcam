@@ -89,7 +89,7 @@ export function MyStatusProvider({ children, visible = true }: { children: React
   // 이 Provider는 페이지 단위 visible 개념이 없는 앱 전역 캐시라 탭 재방문
   // 감지 대신 세션이 있는 동안 계속 타이머를 돌린다 — /status가 조합하는
   // 캐시 중 가장 짧은 것(5분)의 3배 이상 주기로 폴링해, 앱을 계속 띄워둔
-  // 채로도 자동 갱신되게 한다(docs/CACHING_POLICY.md §14).
+  // 채로도 자동 갱신되게 한다(docs/CACHING_POLICY.md §15).
   // 🔧 [B 방안] 대시보드/설정 화면을 보고 있을 때만(App.tsx가 넘겨주는
   // visible) 이 타이머가 돈다 — 다른 화면에 있는 동안 무관한 캐시를
   // 재작성하던 가장 큰 낭비 원인이었다.
@@ -98,6 +98,8 @@ export function MyStatusProvider({ children, visible = true }: { children: React
   // 🔧 [G 방안] document.hidden과 visible만으로는 "화면은 보이지만
   // 실제로는 안 쓰고 있음"을 구분할 수 없다 — idleTracker(마지막 사용자
   // 조작 시각을 앱 전역에서 추적, 유휴 기준 5분)로 이 경우도 건너뛴다.
+  // 🔧 [2026-09 재조정] /status가 조합하는 캐시들의 TTL을 10분으로
+  // 통일하면서, 폴링 주기도 그 3배인 30분으로 늘렸다(기존 15분).
   useEffect(() => {
     if (!session) return;
     const timer = setInterval(() => {
@@ -105,7 +107,7 @@ export function MyStatusProvider({ children, visible = true }: { children: React
       if (!visible) return;
       if (isIdle()) return;
       refresh();
-    }, 15 * 60_000);
+    }, 30 * 60_000);
     return () => clearInterval(timer);
   }, [session, refresh, visible]);
 
