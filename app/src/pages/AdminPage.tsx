@@ -98,13 +98,15 @@ export function AdminPage({ visible = true }: { visible?: boolean }) {
           열지 않은 탭은 그대로 마운트를 미뤄 불필요한 초기 로드를
           피한다. */}
       <div className="flex w-full flex-col gap-4">
-        <div hidden={view !== "account"}>
+        {/* 🔧 [임시 테스트, 사용자 요청] App.tsx 메인 탭과 동일한 실험 —
+            hidden 토글은 그대로 두고 등장 애니메이션만 얹는다. */}
+        <div hidden={view !== "account"} className="animate-tab-enter">
           {everOpened.current.account && <AdminMemberPenaltyTab visible={visible && view === "account"} />}
         </div>
-        <div hidden={view !== "money"}>
+        <div hidden={view !== "money"} className="animate-tab-enter">
           {everOpened.current.money && <AdminMoneyTab visible={visible && view === "money"} />}
         </div>
-        <div hidden={view !== "botsheet"}>
+        <div hidden={view !== "botsheet"} className="animate-tab-enter">
           {everOpened.current.botsheet && <AdminBotSheetTab visible={visible && view === "botsheet"} />}
         </div>
       </div>

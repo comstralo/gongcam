@@ -65,42 +65,42 @@ function MainViews() {
     // 안전하다.
     <MyStatusProvider visible={path === "/" || path === "/settings"}>
       <PullToRefreshIndicator />
-      <div hidden={path !== "/"}>
+      <div hidden={path !== "/"} className="animate-tab-enter">
         {everVisited.current["/"] && (
           <AppShell title="대시보드" titleIcon={LayoutDashboard}>
             <DashboardPage visible={path === "/"} />
           </AppShell>
         )}
       </div>
-      <div hidden={path !== "/report"}>
+      <div hidden={path !== "/report"} className="animate-tab-enter">
         {everVisited.current["/report"] && (
           <AppShell title="제보" titleIcon={ScanLine}>
             <ReportPage visible={path === "/report"} />
           </AppShell>
         )}
       </div>
-      <div hidden={path !== "/notifications"}>
+      <div hidden={path !== "/notifications"} className="animate-tab-enter">
         {everVisited.current["/notifications"] && (
           <AppShell title="알림" titleIcon={Bell}>
             <NotificationsPage />
           </AppShell>
         )}
       </div>
-      <div hidden={path !== "/links"}>
+      <div hidden={path !== "/links"} className="animate-tab-enter">
         {everVisited.current["/links"] && (
           <AppShell title="링크" titleIcon={Link2}>
             <LinksPage />
           </AppShell>
         )}
       </div>
-      <div hidden={path !== "/settings"}>
+      <div hidden={path !== "/settings"} className="animate-tab-enter">
         {everVisited.current["/settings"] && (
           <AppShell title="설정" titleIcon={Settings}>
             <SettingsPage visible={path === "/settings"} />
           </AppShell>
         )}
       </div>
-      <div hidden={path !== "/admin"}>
+      <div hidden={path !== "/admin"} className="animate-tab-enter">
         {everVisited.current["/admin"] &&
           // 🔧 2026-09: 부스터디장(공동 검토자)도 "관리자" 경로에 들어올 수
           // 있다 — AdminPage 내부가 isAdmin/isCoReviewer를 보고 전체 탭

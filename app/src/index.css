@@ -91,6 +91,27 @@
   }
 }
 
+/* 🔧 [임시 테스트, 사용자 요청] "탭/메뉴 전환 애니메이션 느낌을 보고 싶다" —
+   hidden(display:none) 토글 자체는 그대로 두고, hidden이 풀려 보이기
+   시작하는 프레임에만 짧게 등장 애니메이션을 얹는다. 두 페이지가 동시에
+   화면에 걸치는 구간이 없어 레이아웃 겹침·폭 불일치 같은 위험이 구조적으로
+   생기지 않는다 — App.tsx의 hidden 조건부 렌더링, 폴링, state는 전혀
+   건드리지 않는다. */
+@keyframes tab-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@utility animate-tab-enter {
+  animation: tab-enter 180ms ease-out;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
 @theme inline {
     /* 🔧 [사용자 지시] variable font → 정적 폰트(woff2)로 교체하며
        "Pretendard Variable"이 아니라 "Pretendard"가 실제 font-family
