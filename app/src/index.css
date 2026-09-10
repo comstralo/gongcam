@@ -174,7 +174,17 @@
    OLED 톤(#0a0a0a)으로 바꾸고, 그 위에서도 primary/accent가 튀지
    않도록("엑스레이"/"네온" 지적 이후) 채도를 한 번 더 낮춰 차분하게
    가라앉혔다. 카드/보더 등 표면 톤은 순검정 위에서 구분이 되도록
-   아주 옅은 웜그레이로 최소한의 명도차만 준다. */
+   아주 옅은 웜그레이로 최소한의 명도차만 준다.
+   🔧 [사용자 지시, 2026-09] "형광색 느낌이 많이 난다" — 위 조정 이후에도
+   여전히 남아있던 문제. 원인은 채도가 아니라 명도 대비였다: 배경이
+   #0a0a0a(명도 0%에 가까움)까지 내려간 반면 primary(#bd7157)는 명도
+   74%를 그대로 유지해, 순검정 위에서 상대 대비가 WCAG 5.3까지 벌어져
+   "붕 뜬" 네온처럼 인지됐다(라이트모드는 배경도 밝아 대비가 3.3 수준).
+   같은 색조·채도는 유지하고 명도만 낮춰(HSV V: 74%→62%) 대비를
+   라이트모드와 비슷한 수준(3.8)으로 맞췄다. --primary-foreground는
+   그만큼 어두워진 배경 위에서 여전히 읽히도록 --foreground와 같은 톤
+   (크림색)으로 바꿨다. --accent-foreground/--destructive도 같은 원리로
+   과한 대비만 깎았다(텍스트로도 쓰이므로 라이트모드보다는 여유 있게). */
 .dark {
     --background: #0a0a0a;
     --foreground: #ebe4d8;
@@ -182,28 +192,28 @@
     --card-foreground: #ebe4d8;
     --popover: #161514;
     --popover-foreground: #ebe4d8;
-    --primary: #bd7157;
-    --primary-foreground: #0a0a0a;
+    --primary: #9a5c46;
+    --primary-foreground: #ebe4d8;
     --secondary: #1e1c1a;
     --secondary-foreground: #ebe4d8;
     --muted: #1e1c1a;
     --muted-foreground: #9c9186;
     --accent: #241f1a;
-    --accent-foreground: #cf9276;
-    --destructive: #b8735f;
+    --accent-foreground: #b07c64;
+    --destructive: #9c6251;
     --ok: #7c9a6c;
     --border: #262421;
     --input: #262421;
-    --ring: #bd7157;
+    --ring: #9a5c46;
     --section-header: #201c17;
     --sidebar: #161514;
     --sidebar-foreground: #ebe4d8;
-    --sidebar-primary: #bd7157;
-    --sidebar-primary-foreground: #0a0a0a;
+    --sidebar-primary: #9a5c46;
+    --sidebar-primary-foreground: #ebe4d8;
     --sidebar-accent: #241f1a;
-    --sidebar-accent-foreground: #cf9276;
+    --sidebar-accent-foreground: #b07c64;
     --sidebar-border: #262421;
-    --sidebar-ring: #bd7157;
+    --sidebar-ring: #9a5c46;
 }
 
 @layer base {
