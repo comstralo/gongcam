@@ -79,11 +79,11 @@ AdminPage (app/src/pages/AdminPage.tsx)
 │   └─ PrizeRecipientList      — "상금 수령 처리" (§4.2, 2026-09 "대상" 제거)
 │       └─ (PenaltyCandidateList/PaidFineList 공용) ExitProcessDialog (§3.6)
 └─ [botsheet] AdminBotSheetTab (components/admin/AdminBotSheetTab.tsx) — 🔧 2026-09 순서/이름 변경
-    ├─ BotStatusSection          — "도움봇 오퍼레이터" (§5.2)
+    ├─ BotStatusSection          — "도움봇 오퍼레이터" (§5.2, 스크린샷 클릭 시 Dialog 확대 — 2026-09-10)
     ├─ SpreadsheetOperatorSection — "스프레드시트 오퍼레이터" (§5.3, 새 상위 카드)
     │   └─ MemberReorderSection  — "번호 정렬" (§5.3, 하위 항목으로 편입)
-    ├─ NotifyTestSendSection     — "알림 발송 테스트" (§5.4, 2026-09 신설)
     └─ UsageMonitorSection       — "사용량 모니터링" (§5.1)
+    # NotifyTestSendSection("알림 발송 테스트")은 2026-09-10 제거됨 — §5.4 참고
 
 components/admin/shared.tsx — 공용 프리미티브(§6): SectionCard/SectionHeader,
   ItemTitle/FieldLabel/FieldValue, CapturePreview, PenaltyHistorySection/
@@ -307,6 +307,12 @@ components/admin/shared.tsx — 공용 프리미티브(§6): SectionCard/Section
     가능"하게 설계돼 있어(캡처 id가 추측 불가능한 발급 문자열이라 안전,
     개인 대시보드의 `PenaltyHistoryDetailDialog`도 이미 이 완화된 인가를
     공유) 변경 없이도 부스터디장이 스크린샷을 볼 수 있다.
+  - **🔧 부스터디장 목록 캐싱 (2026-09-10)**: `getCurrentCoReviewers`(현재
+    임명된 부스터디장이 누구인지 — 회원 15명의 개인 탭 L3 셀을
+    `batchGetSheetValues`로 읽음)가 이 화면의 폴링(당시 3분)마다 캐시
+    없이 반복 조회됐다. `coReviewers:{fileId}` 캐시(TTL 5분, 임명/해제 시
+    `partiStatus` 그룹으로 즉시 무효화)로 감싸고, 이 화면의 폴링 주기도
+    **3분 → 10분**으로 하향했다(`docs/CACHING_POLICY.md` §22).
   - **"합의 모드 켬" 상태는 여전히 관리자 로컬 상태다** — 여러 기기 간
     동기화가 필요 없도록, 부스터디장은 관리자가 그 항목에 합의 모드를
     켰는지와 무관하게 아무 대기 항목에나 항상 의견을 낼 수 있다(제출해도
@@ -445,6 +451,14 @@ components/admin/shared.tsx — 공용 프리미티브(§6): SectionCard/Section
 "데이터" 시트 B열(번호)은 있지만 D열(이메일)이 비어 있는 빈 시트번호 목록을
 가져와 드롭다운으로 제공한다.
 
+> 🔧 2026-09-10: `handleAdminOpenSlots`가 `데이터!A1:V50`을 매번 직접 읽던
+> 걸 `getDataSheetRows`(`dataSheetRows:` 캐시, 10분 TTL, `roster` 그룹
+> 무효화)로 교체했다 — `listAllMembers`/"참여 스터디원 목록" 상세 패널과
+> 같은 원본을 공유(`docs/CACHING_POLICY.md` §20). 이 드롭다운은 폼 마운트
+> 시 1회만 조회되고(자동 폴링 없음), 실제 등록 처리
+> (`handleAdminCreateMember`)는 최종 배정 여부를 별도로 재검증하므로 최대
+> 10분 지연된 스냅샷을 보여줘도 등록 단계에서 최신 상태로 걸러진다.
+
 - 참여유형(예: "8시간 교시제")은 `{시간}|{교시제/달성제}` 조합 12개
   (`PARTICIPATION_TYPES`) 중 선택 — 제출 시 `"8H (교시제)"` 형식으로 변환.
 - 구글 계정과 구루미 계정은 시트 D열에 `"구글계정,구루미계정"` 콤마 구분
@@ -511,6 +525,14 @@ components/admin/shared.tsx — 공용 프리미티브(§6): SectionCard/Section
 바로가기 — `getSpreadsheetMeta`의 5분 캐시를 그대로 재사용해 추가 API 호출
 없음), 퇴실 예약일자, 최근 접속일자/IP(`lastLogin:{번호}` KV, `handleVerify`가
 로그인 시 CF-Connecting-IP 헤더로 기록).
+
+> 🔧 2026-09-10: 이 화면이 상세 패널의 구글/구루미 계정·준비 중인 시험을
+> 위해 `데이터!A1:V50`을 `listAllMembers`와 **별도로** 다시 읽던 걸,
+> `getDataSheetRows`(`dataSheetRows:` 캐시)로 교체해 같은 원본을 공유하도록
+> 통합했다 — `listAllMembers`가 이 원본에서 "이메일 있는 유효 회원"만 뽑아
+> 쓰다 보니, 나머지 열이 필요한 이 화면은 캐시를 못 쓰고 원본을 다시
+> 읽고 있었다(`docs/CACHING_POLICY.md` §20). 폴링은 15분(`dataSheetRows:`/
+> `members:` 10분 TTL의 1.5배 — 원칙보다 낮아 개선 여지로 남김).
 
 > 🔧 2026-09: **"가입일자" 값의 기반은 `listActiveMembersWithExitInfo`가
 > 넘겨주는 `s.joinDate`(=개인 탭 I3, "D+n" 상대 표시)이며 이건 의도된
@@ -1088,16 +1110,18 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
 
 > 🔧 2026-09: 실제 표시 순서와 이름이 바뀌었다 — "도움봇 상태" →
 > "도움봇 오퍼레이터"(§5.2, 개명만), "번호 정렬" → 새 상위 카드
-> "스프레드시트 오퍼레이터"의 하위 항목으로 편입(§5.3), 그 아래 "알림
-> 발송 테스트"(§5.4, 신설)를 거쳐 "사용량 모니터링"(§5.1, 순서만 맨 뒤로)
-> 순으로 렌더링된다. 절 번호(§5.1~5.4)는 이전 문서와의 연속성을 위해
-> 그대로 두었으니, **화면 순서는 §2 트리를 기준으로 삼을 것** — 절 번호
-> 순서(5.1→5.2→5.3→5.4)와 실제 렌더링 순서(5.2→5.3→5.4→5.1)가 다르다.
+> "스프레드시트 오퍼레이터"의 하위 항목으로 편입(§5.3), "사용량
+> 모니터링"(§5.1, 순서만 맨 뒤로) 순으로 렌더링된다.
+> **🔧 2026-09-10: "알림 발송 테스트"(§5.4)는 제거됐다** — 남은 3개
+> 섹션의 실제 렌더링 순서는 5.2 → 5.3 → 5.1. 절 번호(§5.1~5.4)는 이전
+> 문서와의 연속성을 위해 그대로 두었으니 **화면 순서는 §2 트리를 기준**으로.
 
 ### 5.2 도움봇 오퍼레이터 (`BotStatusSection`)
 
 > 🔧 2026-09: 화면 제목이 "도움봇 상태"에서 "도움봇 오퍼레이터"로
 > 바뀌었다(컴포넌트/엔드포인트는 그대로).
+> 🔧 2026-09-10: 현재 화면 스크린샷을 클릭하면 제보 캡처 미리보기
+> (`CapturePreview`, §3.1)와 동일한 검은 배경 `Dialog`로 크게 볼 수 있다.
 
 `GET /admin/bot/status` → `handleAdminBotStatus` → `proxyToBotDashboard(env,
 "/status")`. 로컬 도움봇(`study_manager_260418.py`, `docs/HELPERBOT.md`)이
@@ -1107,7 +1131,10 @@ Cloudflare Tunnel로 노출한 로컬 상태 서버를 그때그때 프록시한
 **"재시작"**(`POST /admin/bot/command {command:"restart"}`, `BOT_COMMAND_VALUES =
 ["restart"]`)뿐이다 — 봇이 브라우저를 새로 열고 스터디룸에 재입장한다. 봇이
 꺼져 있으면(`proxyToBotDashboard`가 null) 프론트는 "오프라인"으로만 표시하고
-502가 아니라 200으로 조용히 응답한다.
+502가 아니라 200으로 조용히 응답한다. 이 섹션은 1분 고정 주기로 폴링한다
+(`usePollingRefresh(visible, load, 60_000)`) — 무캐시 프록시라 KV 예산과는
+무관하고, 봇 부하(스크린샷 캡처가 `ctx.lock_element` 락 공유)를 감안한 절충값
+(`docs/CACHING_POLICY.md` §12.2).
 
 ### 5.3 스프레드시트 오퍼레이터 (`SpreadsheetOperatorSection`) — "번호 정렬"을 하위 항목으로 편입
 
@@ -1142,36 +1169,26 @@ Cloudflare Tunnel로 노출한 로컬 상태 서버를 그때그때 프록시한
   같은 "삭제+template 복사" 패턴). "데이터" 시트의 D~V(이메일~제보상점 슬롯)도
   함께 이동시킨다.
 
-### 5.4 알림 발송 테스트 (`NotifyTestSendSection`, 2026-09 신설)
+### 5.4 알림 발송 테스트 (`NotifyTestSendSection`) — 🔧 2026-09-10 제거됨
 
-원래 `components/admin/PushNotificationSection.tsx`라는 별도 파일에 있던
-**완전한 고아 컴포넌트**(어디서도 import되지 않음, `AdminPage` 실제 트리에
-없었음)를 정리하며 발견한 기능 — 재조사 결과 이 파일은 두 기능을 담고
-있었다:
+한 세션 동안 존재했다가 제거된 섹션. 원래 `PushNotificationSection.tsx`라는
+고아 파일에서 "임의 회원을 골라 카테고리별 테스트 발송"만 살려
+`AdminBotSheetTab`에 넣었던 것인데, 실사용 빈도가 낮아 제거했다:
 
-- "본인 브라우저 푸시 구독 상태 표시 + 켜기/테스트 알림" — **완전한
-  중복이라 버렸다.** 관리자도 로그인 회원이라, 설정 탭 `NotifyPrefsCard`
-  (`docs/WEB_SETTINGS.md` §4.2)에서 이미 똑같이 할 수 있다.
-- **"임의 회원을 골라 카테고리별 테스트 발송"(`CategoryTestSend`) — 이건
-  중복이 아니었다.** `NotifyPrefsCard`의 "전송" 버튼은 `sendTestToSelf`로
-  `nickname: name`(로그인한 관리자 자신)에 고정되어 있어(코드 확인,
-  `NotifyPrefsCard.tsx`) **본인 계정 말고는 테스트할 방법이 없다.** "이
-  회원한테 왜 알림이 안 갔지" 같은 문의를 디버깅하려면 임의 회원을 골라
-  보낼 방법이 필요한데, 그게 이 죽은 파일에만 존재했다 — 그래서 이 부분만
-  살려 `AdminBotSheetTab.tsx`의 실제 운영 도구로 옮기고 원본 파일은
-  삭제했다.
+- 관리자 본인 대상 테스트는 설정 탭 `NotifyPrefsCard`(`docs/WEB_SETTINGS.md`
+  §4.2)의 "전송" 버튼으로 여전히 가능하다.
+- "이 회원한테 왜 알림이 안 갔지" 디버깅용 임의 회원 발송은 없어졌다 —
+  필요하면 `POST /admin/push/send-category`를 직접 호출하면 된다.
 
-`GET /admin/members/roster`(전체 회원 이름)와 `GET /notify-prefs`(카테고리
-목록, 관리자 자신의 prefs는 버리고 `categories`만 씀)를 조합해 드롭다운
-2개(수신 대상자/알림 종류)를 만들고, `POST /admin/push/send-category`
-(`handleAdminPushSendCategory`, `docs/WEB_SETTINGS.md`의 표 참고)로 실제
-발송을 트리거한다. 그 회원이 해당 카테고리를 꺼두었으면 `blocked: true`와
-함께 차단 사유가 오고, 그대로 화면에 보여준다 — "설정이 실제로 발송을
-막는지"까지 확인할 수 있다.
+제거된 것: `NotifyTestSendSection` 컴포넌트와, 그것만 쓰던 import
+(`Bell` 아이콘, `Label`/`Select` 컴포넌트, `NotifyCategory`/
+`NotifyPrefsResponse`/`AdminPushSendCategoryResponse`/`AdminMembersRosterResponse`
+타입). 백엔드 `handleAdminPushSendCategory`(`/admin/push/send-category`)는
+`NotifyPrefsCard`가 여전히 써서 유지된다.
 
 ### 5.1 사용량 모니터링 (`UsageMonitorSection`)
 
-> 🔧 2026-09: 화면 표시 순서만 맨 뒤(§5.2/§5.3/§5.4 다음)로 바뀌었다 — 절
+> 🔧 2026-09: 화면 표시 순서만 맨 뒤(§5.2/§5.3 다음)로 바뀌었다 — 절
 > 번호는 이전 문서와의 연속성을 위해 그대로 §5.1이다.
 
 `GET /admin/usage`가 두 종류의 사용량을 한 화면에 보여준다:
@@ -1182,15 +1199,27 @@ Cloudflare Tunnel로 노출한 로컬 상태 서버를 그때그때 프록시한
   isolate가 최근에 직접 본 호출"만 집계한 하한값**이다(콜드스타트마다 리셋). 로컬
   도움봇도 같은 서비스 계정으로 Sheets API를 호출하므로, 봇이 `POST
   /admin/bot-sheets-usage`(`X-Bot-Secret` 인증)로 자신의 호출 수를 5초 간격
-  보고하면 이 카운터에 합산된다 — Worker 자신의 호출만 셌다면 실제 사용량을
-  과소평가하게 되기 때문.
+  보고하면 이 카운터에 합산된다.
 - **Cloudflare(오늘 하루 한도)**: `CF_API_TOKEN`/`CF_ACCOUNT_ID`가 설정돼 있을
-  때만 GraphQL Analytics API로 실측치(Workers 요청·KV 읽기/쓰기·KV 저장 용량)를
-  가져온다. **UTC 자정~자정 단위인 Cloudflare의 date 필터를 KST 자정 기준으로
-  재집계**한다(`datetimeHourToKSTDateString`, 이번 세션 이전에 "클라우드플레어
-  시간도 한국 시간대로" 요청에 따라 구현된 부분) — 그러지 않으면 KST 기준
-  "오늘"이 오전 0~9시엔 실제로는 UTC 기준 "어제" 데이터에 걸쳐 있어 하루 사용량이
-  자정에 정확히 리셋되지 않는다. 토큰 미설정 시 이 부분만 안내 문구로 대체.
+  때만 GraphQL Analytics API로 실측치를 가져온다. `UsageBar`로 4개 게이지:
+  - **Workers 요청** (하루 10만)
+  - **KV 읽기** (하루 10만) — `actionType` `read`+`list` 합산
+  - **KV 쓰기·삭제** (하루 1,000) — `actionType` `write`+`delete` 합산
+  - **KV 목록조회(list)** (하루 1,000) — 🔧 2026-09-10 신설. `list()`는 위 "KV
+    읽기"에도 합산되지만, read 한도(10만)와 **별개로 하루 1,000회**라는 훨씬
+    빡빡한 자체 한도를 쓴다(2026-08-27에 실제로 소진돼 `/admin/members/roster`가
+    500을 낸 이력). `fetchCloudflareUsage`가 `actionType === "list"`만 따로
+    합산해 `kvListsToday`로 반환하고, `limits.kvListsPerDay = 1_000`.
+  - `UsageBar`는 `used`/`limit`이 `undefined`일 때 0으로 방어한다 — 프론트가
+    새 필드를 기대하는데 배포 직후 이전 워커 응답이 잠깐 섞이면
+    `undefined.toLocaleString()`에서 화면 전체가 죽던 문제(Sentry
+    ErrorBoundary "문제가 발생했습니다"로 재현)를 고친 것(2026-09-10).
+  - **UTC 자정~자정 단위인 Cloudflare의 date 필터를 UTC 기준으로 그대로
+    쓴다** — 실제 KV/Workers 할당량 리셋도 UTC 자정 기준이라 이게 맞다.
+- **화면별 breakdown**(`kvWriteBreakdown`): "최근 30분 KV 쓰기·삭제·목록조회 —
+  화면별 (이 서버 기준)". `instrumentKvNamespace`가 `kv_put`/`kv_delete`뿐
+  아니라 `kv_list`도 계측해 `PUT`/`DEL`/`LIST` 행으로 표시(`docs/CACHING_POLICY.md`
+  §13·§23). isolate당 근사치라 정확한 하루 총합은 위 게이지를 신뢰.
 
 ---
 
@@ -1214,22 +1243,32 @@ Cloudflare Tunnel로 노출한 로컬 상태 서버를 그때그때 프록시한
   `TotalPenaltyDialog`)이 동일하게 재사용하는 슬롯 이력 표시 컴포넌트 —
   관리자·회원 화면 양쪽에서 같은 데이터 구조(`PenaltySlotHistoryEntry`)를
   같은 방식으로 보여준다.
+- **`AdminListSkeleton` / `AdminEmptyState`** (2026-09~09-10): 목록 섹션의
+  로딩·빈 상태 프리미티브.
+  - `AdminListSkeleton({rows})` — 응답 전 실제 카드와 비슷한 크기의 펄스
+    스켈레톤을 그려 응답 도착 시 레이아웃이 훅 밀리는 걸 막는다.
+  - `AdminEmptyState({children})` (2026-09-10 신설) — 빈 상태 문구를 InfoCard +
+    `py-8`로 감싸 스켈레톤과의 높이 차이를 줄인다. 이전엔 짧은 텍스트 한 줄
+    (`py-6`)이라, 스켈레톤(카드 3개) → 빈 상태로 확 줄어드는 낙차가 있었다.
+  - **렌더 조건에서 `loading`을 뺐다** (2026-09-10): 관리자 리스트 7곳
+    (제보 검토 / 참여·퇴실 스터디원 목록 / 정산·벌금 / 페널티 대상자 /
+    사유반휴 검토)이 스켈레톤·빈 상태·목록을 전부 `loading`에 게이팅해,
+    탭 재진입 재조회 시작 순간(`loading=true`인데 `items`는 이미 `[]`) 셋
+    다 안 그려지는 ~1초 공백이 있었다(Playwright 실측). `items` 값만으로
+    렌더를 결정하도록 바꿔, 재조회 중엔 이전 화면을 그대로 유지한다 —
+    "로딩 중" 표시는 `SectionHeader`의 새로고침 아이콘 회전만으로 충분.
+    (`docs/CACHING_POLICY.md` §19)
 
 ---
 
 ## 7. 알려진 함정 / 특이사항
 
-- **[해결됨, 2026-09] `PushNotificationSection.tsx`는 완전한 고아
-  컴포넌트였다** — 이 문서가 한때 "기능이 이미 `NotifyPrefsCard`의 '전송'
-  버튼으로 흡수된 것으로 보인다"고 적어뒀던 것은 **절반만 맞는 추측이었다.**
-  재조사 결과 `NotifyPrefsCard`의 "전송"은 `sendTestToSelf`로 로그인한
-  관리자 **본인**에게만 보낼 수 있고, 고아 파일 안의 "임의 회원을 골라
-  카테고리별 테스트 발송" 기능은 흡수된 적이 없었다 — 그래서 겹치는
-  부분(본인 구독 상태 표시)만 버리고 겹치지 않는 부분은 §5.4
-  `NotifyTestSendSection`으로 살려 옮긴 뒤 원본 파일을 삭제했다. 앞으로
-  "이 컴포넌트가 다른 데서 이미 하는 일과 겹치는 것 같다"는 판단이 들어도,
-  실제 호출 파라미터(이 경우 수신 대상이 고정인지 선택 가능한지)까지
-  비교하지 않고 넘겨짚지 말 것 — 이번처럼 절반만 맞을 수 있다.
+- **[이력, 2026-09] `PushNotificationSection.tsx` → `NotifyTestSendSection`
+  → 제거**: 고아 파일이었던 `PushNotificationSection.tsx`에서 "임의 회원
+  카테고리별 테스트 발송"만 살려 `NotifyTestSendSection`으로 옮겼다가
+  (2026-09), 실사용 빈도가 낮아 그 섹션 자체를 다시 제거했다(2026-09-10,
+  §5.4). 백엔드 `handleAdminPushSendCategory`(`/admin/push/send-category`)는
+  `NotifyPrefsCard`(설정 탭)가 여전히 써서 유지된다.
 - **"다른 관리자 의견 반영"(제보 심사, §3.1)은 2026-09부로 실제 구현이다** —
   더 이상 더미가 아니다. "다른 관리자" = 현재 임명된 부스터디장(최대 2명).
   부스터디장은 "관리자" 경로에 들어올 수 있지만 `AdminPage`가 "송출 P 대상

@@ -6,10 +6,12 @@
 > `docs/WEB_REPORT.md`와 같은 목적·형식으로 작성했으며, 구현 명령을 내릴 때 이
 > 문서를 참조점으로 삼습니다. 코드가 바뀌면 이 문서도 함께 갱신해야 합니다.
 >
-> 조사 시점: 2026-09-01. 대상 커밋 기준 `app/src/pages/SettingsPage.tsx`,
-> `app/src/components/session/SessionCard.tsx`,
-> `app/src/components/dashboard/{DepositRefundDialog,PeriodAlarmCard,NotifyPrefsCard}.tsx`,
-> `app/src/lib/periodAlarm/*`, `app/src/hooks/usePushSubscription.ts`,
+> 조사 시점: 2026-09-01. 2026-09-10 갱신(§1·§2·§4.1 — 다크모드·교시 종소리
+> 토글이 설정 화면에서 앱 헤더로 이동). 대상 파일:
+> `app/src/pages/SettingsPage.tsx`, `app/src/components/session/SessionCard.tsx`,
+> `app/src/components/dashboard/{DepositRefundDialog,NotifyPrefsCard,InstallAppCard,StatusMessageCard}.tsx`,
+> `app/src/components/layout/{AppShell,ThemeToggleButton,PeriodAlarmToggleButton}.tsx`,
+> `app/src/lib/periodAlarm/*`, `app/src/hooks/{usePushSubscription,useTheme}.ts`,
 > `app/src/lib/push/*`, `app/public/sw.js`, `frame-checker-worker/src/index.js`.
 
 ## 1. 범위 정의 — "설정" 탭이란
@@ -19,9 +21,20 @@
 한 화면에 세로로 나열된다.
 
 - **계정 관리**(`UserCog` 아이콘) — `SessionCard`(로그인 정보 + 로그아웃) +
+  `InstallAppCard`(PWA 설치 안내) + `StatusMessageCard`(상태 메시지) +
   퇴실신청 카드(`DepositRefundDialog`).
-- **알림 설정**(`BellRing` 아이콘) — `PeriodAlarmCard`(교시 종소리, 순수 클라이언트) +
-  `NotifyPrefsCard`(웹 푸시 구독 on/off, 카테고리별 알림 선호도, 기기별 관리).
+- **알림 설정**(`BellRing` 아이콘) — `NotifyPrefsCard`(웹 푸시 구독 on/off,
+  카테고리별 알림 선호도, 기기별 관리) 하나만.
+
+> 🔧 **2026-09-10: 다크모드·교시 종소리가 설정 화면에서 앱 헤더로 이동**
+> — 원래 "화면 설정"(다크모드 스위치, `ThemeToggleCard`)과 "알림 설정" 첫
+> 항목(교시 종소리, `PeriodAlarmCard`)이었던 두 카드를, 모든 메인 페이지
+> 상단 헤더(`AppShell`)에 공통으로 뜨는 우측 상단 토글 버튼
+> (`ThemeToggleButton` 원형 아이콘 / `PeriodAlarmToggleButton` pill —
+> 남은 시간 텍스트 포함)으로 옮겼다. "화면 설정" 섹션은 통째로 사라졌고,
+> `ThemeToggleCard.tsx`·`PeriodAlarmCard.tsx` 파일도 삭제됐다. 상세는
+> `docs/WEB_DASHBOARD.md`(AppShell 헤더) 참고. §4.1은 이제 그 헤더 버튼을
+> 다룬다.
 
 `SettingsPage`는 앱 전역 캐시(`MyStatusContext`, `docs/WEB_DASHBOARD.md` §3.2)를
 그대로 재사용한다 — 대시보드에서 이미 `/status`를 불러온 상태라면 이 페이지로 넘어와도
@@ -29,10 +42,17 @@
 다시 보일 때마다(관리자가 다른 화면에서 퇴실/예치금을 처리했을 수 있으므로) 최신
 상태를 다시 불러온다.
 
-**포함되지 않는 것(별도 문서 예정)**: 퇴실 신청을 관리자가 확정 처리하는 화면
-(`AdminPage`의 "스터디원 목록"/"퇴실 처리" — `ExitProcessDialog`), 관리자 전용 푸시
-발송 도구(`AdminPage`의 `PushNotificationSection`). 다만 이 문서가 다루는 흐름이 그쪽
-화면의 시작점이므로, 연결 지점만 pointer로 남긴다.
+**설정 화면 데이터는 대부분 "본인만 바꾸는 값"이다** — 퇴실 신청 상태
+(`/exit-request*`), 알림 선호도(`/notify-prefs`), 상태 메시지
+(`/status-message`)는 다른 사람이 몰래 갱신할 여지가 없어 자동 폴링이
+전혀 없고(마운트 시 1회 조회 + 본인이 바꿀 때 응답으로 즉시 반영), 대부분
+`_cachedCompute`(TTL 캐시)가 아니라 KV를 원본 저장소로 직접 쓰는 패턴이라
+"캐시가 낡을 수 있다"는 개념 자체가 적용되지 않는다(캐싱 정책 전수조사에서
+확인 — `docs/CACHING_POLICY.md`).
+
+**포함되지 않는 것**: 퇴실 신청을 관리자가 확정 처리하는 화면
+(`AdminPage`의 "참여 스터디원 목록"/"퇴실 처리" — `ExitProcessDialog`,
+`docs/WEB_ADMIN.md` §3.5/§3.6). 연결 지점만 pointer로 남긴다.
 
 ---
 
@@ -43,12 +63,11 @@ SettingsPage (app/src/pages/SettingsPage.tsx)
 ├─ useMyStatus() — 전역 /status 캐시 재사용 (WEB_DASHBOARD.md §3.2와 동일 인스턴스)
 ├─ "계정 관리"
 │   ├─ SessionCard (components/session/SessionCard.tsx) — 이름/이메일 표시 + 로그아웃
+│   ├─ InstallAppCard (components/dashboard/InstallAppCard.tsx) — PWA 설치 안내 (API 없음)
+│   ├─ StatusMessageCard (components/dashboard/StatusMessageCard.tsx) — 상태 메시지 (/status-message)
 │   └─ DepositRefundDialog (components/dashboard/DepositRefundDialog.tsx) — "퇴실신청" 카드
 │       (status.depositRefundBreakdown이 없으면 다이얼로그 없이 안내 카드만 표시)
 └─ "알림 설정"
-    ├─ PeriodAlarmCard (components/dashboard/PeriodAlarmCard.tsx)
-    │   └─ usePeriodAlarm() → PeriodAlarmContext (App.tsx 최상단에서 전역 마운트)
-    │       └─ lib/periods.ts (고정 교시 시간표, 순수 함수)
     └─ NotifyPrefsCard (components/dashboard/NotifyPrefsCard.tsx)
         ├─ usePushSubscription() (hooks/usePushSubscription.ts)
         │   ├─ lib/push/registerSW.ts → public/sw.js (서비스워커)
@@ -56,6 +75,11 @@ SettingsPage (app/src/pages/SettingsPage.tsx)
         │   └─ lib/push/endpointHash.ts (sha256Hex, 서버와 동일 해시로 "이 기기" 식별)
         ├─ 카테고리별 알림 on/off (5종)
         └─ "알림 받는 기기" 목록 (기기별 on/off · 이름변경 · 삭제)
+
+# 🔧 2026-09-10 이동됨 — 앱 헤더(AppShell)로:
+#   ThemeToggleButton         (components/layout/ThemeToggleButton.tsx)   — useTheme()
+#   PeriodAlarmToggleButton   (components/layout/PeriodAlarmToggleButton.tsx) — usePeriodAlarm() → PeriodAlarmContext
+#     └─ lib/periods.ts (고정 교시 시간표, 순수 함수)
 ```
 
 ---
@@ -149,23 +173,47 @@ SettingsPage (app/src/pages/SettingsPage.tsx)
 
 ## 4. 알림 설정 섹션
 
-### 4.1 `PeriodAlarmCard` — 교시 종소리(순수 클라이언트, API 없음)
+### 4.1 교시 종소리·다크모드 — 앱 헤더 토글 버튼 (🔧 2026-09-10 설정 화면에서 이동)
 
-지금 몇 교시/휴식/운영시간 외인지와 남은 시간을 1초 단위로 보여주고, 켜져 있으면
-교시 시작/종료 시각에 차임벨(mp3)을 자동 재생한다. **API 호출이 전혀 없다** — 모든
-계산이 `lib/periods.ts`의 고정 시간표(1교시 07:20 ~ 14교시 23:30, `study_sw/`의
-`timetable.csv`와 동일 값을 프론트에 하드코딩)와 순수 함수 `getPeriodPhase()`로
-클라이언트에서만 이루어진다.
+두 토글 모두 `AppShell`(모든 메인 페이지 상단 헤더)의 우측 상단에
+공통으로 뜬다 — 설정 화면 안이 아니다.
 
-- **`PeriodAlarmProvider`는 `App.tsx` 최상단에서 한 번만 마운트된다** — `SettingsPage`
-  가 아니라 앱 전역이다. 대시보드/제보 등 다른 탭으로 이동해도 타이머와 차임벨
-  재생이 계속된다(이전엔 카드 안에서 직접 `setInterval`을 돌려 카드가 언마운트되면
-  알람도 멎는 버그가 있었음 — 코드 주석에 명시).
-- **켜짐/꺼짐 상태는 `localStorage`(`periodAlarmSoundEnabled`)에 저장** — 서버에
-  전혀 동기화되지 않는다. 기기를 바꾸면 다시 꺼진 상태(기본값)로 시작한다.
-  `PUSH 알림`(§4.2)과 달리 계정에 귀속되지 않는 순수 브라우저 설정.
-- **잠자기 복귀 시 밀린 알람 스킵**: 직전 tick으로부터 5초 이상 벌어졌으면(맥북
-  잠자기 등) 그 사이 지나간 시작/종료 시각의 차임벨을 재생하지 않고 건너뛴다.
+**교시 종소리 (`PeriodAlarmToggleButton`)**: pill 형태 버튼. 켜짐일 땐
+primary 톤, 꺼짐일 땐 무채색으로 상태가 색으로 구분되고, 옆에 짧은
+남은시간 텍스트("N교시 MM:SS" / "휴식 MM:SS" / "1교시 전 MM:SS")를 함께
+표시해 설정에 다시 들어가지 않아도 현재 교시 상태를 바로 볼 수 있다.
+클릭할 때마다 켬/끔 토글.
+
+- **`PeriodAlarmProvider`는 `App.tsx` 최상단(`HashRouter` 바깥)에서 한 번만
+  마운트**된다 — 로그인 페이지 포함 전 구간에서 `usePeriodAlarm`이 안전.
+  대시보드/제보 등 다른 탭으로 이동해도 타이머와 차임벨 재생이 계속된다.
+- **계산은 전부 클라이언트**: `lib/periods.ts`의 고정 시간표(1교시 07:20 ~
+  14교시 23:30, `study_sw/`의 `timetable.csv`와 동일 값 하드코딩)와 순수
+  함수 `getPeriodPhase()`. **API 호출 없음.**
+- **켜짐/꺼짐 상태는 `localStorage`(`periodAlarmSoundEnabled`)에 저장** —
+  서버에 동기화되지 않는다. 기기를 바꾸면 다시 꺼진 상태(기본값)로 시작.
+- **잠자기 복귀 시 밀린 알람 스킵**: 직전 tick으로부터 5초 이상 벌어졌으면
+  (맥북 잠자기 등) 그 사이 지나간 시작/종료 시각의 차임벨을 건너뛴다.
+- **🔧 [버그 수정, 2026-09-10] 새로고침 순간이 교시 경계와 겹치면 즉시
+  울리던 문제**: 마운트 직후 첫 tick은 `lastTickAtRef`가 방금 초기화된
+  시각이라 `wasAsleep`이 항상 false, `lastFiredRef`도 null이라 "발화 이력
+  없음"으로 취급됐다 — 새로고침한 순간이 우연히 어떤 교시의 시작/종료
+  정각과 겹치면 이미 진행 중이던 교시임에도 "지금 막 시작/종료됐다"고
+  오판해 즉시 재생됐다. 마운트 시점에 `lastFiredRef`를 "지금 이 순간의
+  경계는 이미 지나간 것"으로 미리 채워, 최초 tick에서는 그 경계를 절대
+  새로 발화하지 않게 했다(실제로 페이지를 열어둔 채 교시가 바뀌는 정상
+  흐름은 영향 없음). 순수 로직 시뮬레이션으로 검증.
+- **화면 꺼짐/백그라운드에서는 안 울린다** — PWA(웹) 공통 제약. `setInterval`
+  기반이라 탭/앱이 활성 상태여야 동작하고, iOS는 화면 꺼짐 시 JS 타이머를
+  강하게 스로틀링한다. Vibration API도 iOS Safari는 미지원. "화면 꺼짐에서도
+  울리게" 하려면 서버가 교시 시각마다 Push를 쏘는 구조로 재설계해야 하고,
+  그래도 소리는 커스텀 불가(기본 알림음/진동만).
+
+**다크모드 (`ThemeToggleButton`)**: 테두리 없는 원형 아이콘 버튼(hover 시에만
+옅은 primary 원형 배경). Moon/Sun 아이콘 토글. `useTheme()`(`hooks/useTheme.ts`,
+`localStorage` `theme` 키 + `<html>` `.dark` 클래스). `docs/WEB_DASHBOARD.md`
+"다크모드 팔레트" 참고 — 2026-09-10에 primary 계열 색상의 "형광 느낌"을
+완화(명도만 낮춤)했다.
 
 ### 4.2 `NotifyPrefsCard` — 웹 푸시 구독 + 기기 관리 + 카테고리 선호도
 
@@ -206,6 +254,13 @@ SettingsPage (app/src/pages/SettingsPage.tsx)
   있다 — 서버가 `/push/subscribe` 응답에 실어준 `deviceId`/`deviceLabel`을 그대로
   믿어 프론트 state를 즉시 맞추고, 목록 재조회 시에도 그 값이 아직 없으면
   낙관적으로 맨 앞에 끼워 넣는다(`loadDevices()`의 `unshift`).
+- **🔧 [KV list() 방어, 2026-09-10] `loadDevices()`에 진행 중 가드 추가**:
+  `GET /push/devices`는 `env.PUSH_SUBS_KV.list({prefix: sub:{email}:})`를
+  쓴다 — `list()`는 read와 별개로 하루 1,000회 한도가 있다(`docs/CACHING_POLICY.md`
+  §23). 이 조회는 계정당 호출 빈도가 낮지만(알림을 켤 때·페이지 재마운트
+  시 1회, 이 카드는 언마운트 없이 `hidden`으로만 숨겨져 탭 재진입만으로는
+  재조회 안 됨), 같은 틱에 중복 호출이 겹치는 경우까지 대비해
+  `loadingDevicesRef`(useRef 플래그)로 진행 중이면 새 호출을 무시한다.
 
 **③ 카테고리별 알림 on/off** (`GET`/`POST /notify-prefs`): 5개 카테고리
 (`report_result`, `leave_proof_result`, `fine_status`, `exit_result`,
@@ -231,17 +286,19 @@ SettingsPage (app/src/pages/SettingsPage.tsx)
 
 | 메서드 | 경로 | 핸들러 | 비고 |
 |---|---|---|---|
-| POST | `/exit-request` | `handleSetExitRequest` | 새 신청마다 `agreedAt`을 `null`로 초기화 |
+| POST | `/exit-request` | `handleSetExitRequest` | 새 신청마다 `agreedAt`을 `null`로 초기화. `invalidatePersonalStatusCache` + `invalidateMemberCache(["exitRequest"])` |
 | POST | `/exit-request/agree` | `handleAgreeExitRequest` | `exitDateSettled()` 재검증(서버측 방어) |
-| POST | `/exit-request/cancel` | `handleCancelExitRequest` | 본인 또는(body에 `number` 지정 시) 관리자 |
+| POST | `/exit-request/cancel` | `handleCancelExitRequest` | 본인 또는(body에 `number` 지정 시) 관리자. KV `delete` + 인덱스 갱신 |
+| GET | `/status-message` | `handleGetStatusMessage` | `STATUS_MESSAGE_KV_PREFIX` 직접 저장소(`_cachedCompute` 아님) |
+| POST | `/status-message` | `handleSetStatusMessage` | 빈 문자열이면 KV `delete` |
 | POST | `/push/subscribe` | `handlePushSubscribe` | `deviceId`/`deviceLabel`을 응답에 실어 즉시 신뢰 가능하게 함 |
-| GET | `/push/devices` | `handleListPushDevices` | 본인 이메일 접두 기기만 |
-| POST | `/push/devices/toggle` | `handlePushDeviceToggle` | |
+| GET | `/push/devices` | `handleListPushDevices` | 본인 이메일 접두 기기만. `PUSH_SUBS_KV.list()` 사용 |
+| POST | `/push/devices/toggle` | `handlePushDeviceToggle` | 받은 `id`를 그대로 씀 — `list()` 재호출 없음 |
 | POST | `/push/devices/rename` | `handlePushDeviceRename` | 30자 제한 |
 | POST | `/push/devices/remove` | `handlePushDeviceRemove` | |
-| GET | `/notify-prefs` | `handleGetNotifyPrefs` | |
+| GET | `/notify-prefs` | `handleGetNotifyPrefs` | `NOTIFY_PREF_KV_PREFIX` 직접 저장소 |
 | POST | `/notify-prefs` | `handleSetNotifyPrefs` | |
-| POST | `/admin/push/send-category` | `handleAdminPushSendCategory` | 관리자 전용, 카테고리 차단 테스트용 |
+| POST | `/admin/push/send-category` | `handleAdminPushSendCategory` | 관리자 전용, 카테고리 차단 테스트용. `NotifyPrefsCard`의 "전송" 버튼만 호출(2026-09-10 "알림 발송 테스트" 섹션 제거 후) |
 
 ---
 
@@ -287,19 +344,29 @@ KV 저장 구조(참고, `PUSH_SUBS_KV`): 키 `sub:{email}:{sha256(endpoint)}` �
   이미 신청을 제출한 뒤의 확정 판정(`exitDateSettled`, `depositRefundBreakdown.
   lateNotice`)은 서버의 KST 계산을 그대로 신뢰하므로 영향받지 않는다 — 영향 범위는
   "아직 신청 전, 날짜를 고르는 중"인 좁은 창에 한정된다.
-- **`PeriodAlarmCard`의 시간 계산은 KST를 명시하지 않고 기기 로컬 시간대를 그대로
+- **교시 종소리의 시간 계산은 KST를 명시하지 않고 기기 로컬 시간대를 그대로
   쓴다**(`PeriodAlarmContext.tsx`의 `todayMidnightMs()` → `new Date();
   d.setHours(0,0,0,0)`). 대시보드(`useTodayIndex`)나 백엔드(`nowKST()`)가 항상
   KST를 명시적으로 계산하는 것과 다른 패턴이다 — 참여자가 전부 한국에서 접속한다는
   전제하에선 문제없지만, 기기 시간대가 잘못 설정돼 있거나 해외에서 접속하면 교시
   시작/종료 시각과 차임벨 타이밍이 실제 교시와 어긋난다.
+- **개발 중 HMR로 종소리가 잘못 울릴 수 있다** — Vite dev 서버에서
+  `PeriodAlarmContext.tsx`(또는 그 의존 파일)를 여러 번 저장하면 React Fast
+  Refresh가 `useEffect`를 반복 재실행하며 `setInterval` cleanup 타이밍이
+  겹쳐 타이머가 잠깐 중첩될 수 있다. 프로덕션(페이지 1회 로드 후 코드 불변)
+  에서는 재현되지 않는 dev-only 현상.
 - **서비스워커(`public/sw.js`)에 GitHub Pages 서브패스(`/gongcam/`)가
   하드코딩되어 있다** — 알림 아이콘 경로와 `notificationclick`의 fallback
   `openWindow` 대상. 배포 base 경로가 바뀌면 `vite.config.ts`뿐 아니라 이 파일도
   함께 고쳐야 한다(코드 주석에도 명시).
-- **`usePushSubscription`의 `sendTest()`는 `NotifyPrefsCard`(설정 탭)가 아니라
-  `AdminPage`의 `PushNotificationSection`에서만 쓰인다.** 같은 훅을 두 화면이
-  공유하지만 노출하는 기능은 다르다 — 설정 탭에는 "테스트 발송" 버튼이 없다.
+- **`usePushSubscription`의 `sendTest()`(`POST /push/send-test`)는 현재 어디에서도
+  호출되지 않는 죽은 export다.** `NotifyPrefsCard`는 이 훅을 쓰지만
+  `state`/`enable`/`unsubscribeSelf` 등만 구조분해하고 `sendTest`는 빼놓는다.
+  카테고리별 "전송" 버튼(관리자에게만 노출)은 이 훅이 아니라 컴포넌트 자체 함수
+  `sendTestToSelf` → `POST /admin/push/send-category`(관리자 본인 대상)를 쓴다 —
+  옛 문서가 "`sendTest`는 `PushNotificationSection`에서만 쓰인다"고 적어둔 그
+  화면은 2026-09-10까지의 정리(`PushNotificationSection` → `NotifyTestSendSection`
+  → 제거)로 사라졌다. `WEB_ADMIN.md` §5.4·§7 참고.
 - **기기 삭제(`remove`)는 되돌릴 수 없지만 토글(`toggle`)은 되돌릴 수 있다.**
   "죽은 기기 정리"가 목적이면 toggle로 충분한 경우가 많다 — remove는 그 기기의
   구독 자체(재구독 없이는 복구 불가)를 지운다는 점을 UI 문구 등에서 헷갈리지
@@ -313,6 +380,7 @@ KV 저장 구조(참고, `PUSH_SUBS_KV`): 키 `sub:{email}:{sha256(endpoint)}` �
   `MyStatusContext` 캐시 구조.
 - `docs/WEB_REPORT.md` — `buildDepositCauseItems` 등 공용 헬퍼 재사용,
   `_appendToLiveIndex` 패턴과는 무관(이 문서의 기능들은 KV 단건 저장/조회만 씀).
-- **향후 작성 예정**: 관리자 페이지(퇴실 처리 `ExitProcessDialog`, 푸시 발송 도구
-  `PushNotificationSection`, 스터디원 목록). 이 문서가 다루는 "회원 쪽 신청/동의"·
-  "회원 쪽 알림 on/off"가 그 화면들의 입력값이 된다.
+- `docs/WEB_ADMIN.md` — 관리자 페이지(퇴실 처리 `ExitProcessDialog`, Bot·Sheet
+  탭의 도움봇 오퍼레이터 상태, Cloudflare 사용량 모니터링). 이 문서가 다루는
+  "회원 쪽 신청/동의"·"회원 쪽 알림 on/off"가 그 화면들의 입력값이 된다.
+  임의 회원 대상 푸시 발송 도구(`NotifyTestSendSection`)는 2026-09-10 제거됐다.

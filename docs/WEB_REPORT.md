@@ -180,7 +180,11 @@ ReportPage (app/src/pages/ReportPage.tsx)
 `GET /my-output-pen`)를 요일별 아코디언으로 합쳐 보여준다. 두 API 모두 상단
 `CycleSwitcher`로 고른 사이클(`?cycle=` 쿼리, 없으면 현재 진행 중인 주)에 맞춰
 그 주(월~일, KST) 데이터를 조회한다 — `docs/WEB_DASHBOARD.md` §6의 사이클 토글
-패턴을 그대로 재사용한 것이다. 🔧 2026-09: 날짜 그룹 내부 항목 정렬은 발생
+패턴을 그대로 재사용한 것이다. 재조회는 `useRefreshOnVisible`(탭 복귀 시) +
+`usePollingRefresh(visible, load, 10 * 60_000)`(10분 폴링 — 🔧 2026-09 3분에서
+하향, `penSlotGrid:`/`members:`/`penCycle:` 캐시가 이미 즉시 무효화되므로 폴링은
+무효화를 놓친 경우의 안전망 역할). 섹션 헤더의 수동 새로고침 버튼과 폴링
+진행률 게이지는 2026-09에 제거됐다. 🔧 2026-09: 날짜 그룹 내부 항목 정렬은 발생
 시각(`ts`) 오름차순(오래된 게 위)이고, 날짜 그룹 헤더 우측에 "N건" 뱃지가
 붙는다(주황색 — 내 화각 점검은 건수에서 제외, 받은 제보만 카운트). 항목 카드
 헤더에는 사람 아이콘 대신 시계 아이콘 + 시각만 표시한다(날짜는 이미 그룹
@@ -456,5 +460,8 @@ ReportPage (app/src/pages/ReportPage.tsx)
 - `docs/SHEET_STRUCTURE.md`, `docs/HELPERBOT.md` — 시트 셀 배치, 로컬 봇의
   캡처·상태 서버 구조. 봇 쪽 캡처 소요시간(§3.3의 `EXPECTED_CAPTURE_SEC` 실측
   근거), 텔레그램 캡션 포맷, 스터디룸 입장 로직은 `docs/HELPERBOT.md` 참고.
-- **향후 작성 예정**: 설정 페이지(퇴실 프로세스), 푸시 구독 관리(기기별 on/off,
-  `usePushSubscription`).
+- `docs/WEB_SETTINGS.md` — 푸시 구독 관리(기기별 on/off, `usePushSubscription`/
+  `NotifyPrefsCard`), 퇴실 프로세스. §4의 "PUSH 알림 전송"이 쓰는 구독 데이터의
+  등록·해제 화면이다.
+- `docs/WEB_DASHBOARD.md` §3.4 — "제보" 탭도 공통 `AppShell` 헤더(다크모드·교시
+  종소리 토글, 탭 전환 페이드, 전역 텍스트 선택 차단)를 그대로 쓴다.

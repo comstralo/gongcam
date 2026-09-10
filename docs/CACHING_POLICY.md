@@ -8,11 +8,13 @@
 > 코드가 바뀌면(특히 `writeSheetValues` 호출 지점이나 `_cachedCompute` TTL을
 > 건드리면) 이 문서도 함께 갱신해야 합니다.
 >
-> 조사 시점: 2026-09-09. Cloudflare KV 무료 티어 쓰기/삭제 하루 1,000회 한도를
-> 예민하게 관리해야 한다는 문제의식에서 시작해, "쓰기 시점 무효화가 실제로
-> 필요한 곳을 놓치고 있지는 않은지"(정합성 위험)와 "거의 안 바뀌는데 TTL이
-> 짧아 KV를 불필요하게 자주 두드리고 있지는 않은지"(예산 낭비) 두 방향을
-> 전수조사했습니다.
+> 최초 조사 시점: 2026-09-09. 이후 2026-09-10까지 지속 갱신(§14~§24).
+> Cloudflare KV 무료 티어 쓰기/삭제 하루 1,000회 한도를 예민하게 관리해야
+> 한다는 문제의식에서 시작해, "쓰기 시점 무효화가 실제로 필요한 곳을
+> 놓치고 있지는 않은지"(정합성 위험)와 "거의 안 바뀌는데 TTL이 짧아 KV를
+> 불필요하게 자주 두드리고 있지는 않은지"(예산 낭비) 두 방향을
+> 전수조사했습니다. `_cachedCompute` 캐시 키는 현재 12종이며 전체 목록은
+> §3, 무효화 그룹은 §1·§10 참고.
 
 ## 1. 아키텍처 개요
 
@@ -35,39 +37,45 @@ computeFn)` 형태로 각 파생 계산(주로 여러 셀을 모아 가공한 �
 
 1. **`writeSheetValues`의 내장 정밀 무효화** (index.js:400-430): 쓰는
    range의 시트명이 숫자(회원 개인 탭, 예: `"7!C10"`)이면 그 회원 한 명의
-   `personalStatus:{fileId}:{memberNumber}` 캐시만 인메모리+KV 양쪽에서
+   `personalStatusBundle:{fileId}:{memberNumber}` 캐시만 인메모리+KV 양쪽에서
    즉시 지웁니다(`invalidatePersonalStatusCache`). 개인 탭에만 쓰는 대부분의
    경로는 이것만으로 충분합니다.
-2. **`invalidateMemberCache(env)`** (index.js:837-874): 회원 명단·순위·집계
-   등 "여러 회원을 아우르는 파생 캐시" 9종(`MEMBER_CACHE_PREFIXES`)을 한
-   번에 무효화합니다.
+2. **`invalidateMemberCache(env, groups, fileId)`**: 회원 명단·순위·집계
+   등 "여러 회원을 아우르는 파생 캐시"를 한 번에 무효화합니다.
+   `MEMBER_CACHE_PREFIXES`(인메모리 세대 카운터가 관장하는 prefix 목록)는
+   현재 다음과 같습니다.
    ```js
    const MEMBER_CACHE_PREFIXES = [
-     "members:", "meta:", "exitStatus:", "memberRows:", "meritRank:",
-     "reportScore:", "outputPenSlots:", "penSlotGrid:", "weeklyPaidFine:",
+     "members:", "meta:", "exitStatus:", "memberRows:", "penSlotGrid:",
+     "weeklyPaidFine:", "rosterStatus:", "adminMemberList:", "dataSheetRows:",
+     "coReviewers:",
    ];
    ```
-   인메모리는 세대 카운터를 올리는 것만으로 9종 전체가 즉시 무효화되어
-   공짜입니다. **KV 쪽은 그중 파일 전체가 키 하나인 7종(`members:`/`meta:`/
-   `exitStatus:`/`memberRows:`/`meritRank:`/`penSlotGrid:`/`weeklyPaidFine:`)을
-   무조건 `.delete()`합니다.** 회원별로 키가 갈라지는 `outputPenSlots:{fileId}:
-   {number}`와 `reportScore:{fileId}:{reportRow}`는 `invalidateMemberCache`
-   자체는 그 순간 인메모리에 이미 올라와 있던 것만 지우고 KV까지는 손대지
-   않습니다 — 회원 번호를 모르는 채로 호출될 수도 있어 여전히 이렇게
-   둡니다.
+   > **이력**: `meritRank:`는 폐지(§16 — `getMeritRank`가 `rosterStatus:` 재사용).
+   > `reportScore:`/`outputPenSlots:`도 폐지(§21 — 셋이 `personalStatusBundle:`
+   > 하나로 통합). 그 대신 `rosterStatus:`(§16), `adminMemberList:`(§17.1),
+   > `dataSheetRows:`(§20), `coReviewers:`(§22)가 추가됐다.
+
+   인메모리는 세대 카운터를 올리는 것만으로 위 prefix 전체가 즉시
+   무효화되어 공짜입니다. **KV 쪽은 그중 "파일 전체가 키 하나"인 종류만
+   `MEMBER_CACHE_UNCONDITIONAL_KEYS`(= `members`/`meta`/`exitStatus`/
+   `memberRows`/`penSlotGrid`/`weeklyPaidFine`/`penCycle`/`rosterStatus`/
+   `adminMemberList`/`dataSheetRows`/`coReviewers`)에서 `activeKeys`
+   (호출부가 넘긴 그룹)에 포함되는 것만 `.delete()`합니다.** 회원별로 키가
+   갈라지는 `personalStatusBundle:{fileId}:{number}`는 이 방식으로는
+   못 지웁니다 — 회원 번호를 아는 호출부가 `invalidateMemberSlotCache(env,
+   번호)`(§21에서 이 함수로 통일)나 `invalidatePersonalStatusCache(env,
+   fileId, 번호)`(`writeSheetValues` 내장 무효화)를 명시적으로 호출해
+   그 회원의 번들 캐시를 콕 집어 지웁니다.
    >
-   > 🔧 **[2026-09-09 재검토] 제보 처리 경로는 예외로 즉시 삭제하도록 변경**
-   > — 원래는 이 2종도 KV는 자연 TTL 만료(5분/30분)를 기다리도록 설계돼
-   > 있었다("회원 수만큼 KV 삭제를 추가로 호출하면 예산을 더 쓴다"는
-   > 우려). 그런데 제보 승인/취소/반려 경로(`handleAdminCaptureCancel`/
-   > `CancelMerit`/`Decide`/`Delete`/`Revert`)는 애초에 그 액션이 건드린
-   > 회원 번호(대상자·제보자, 최대 2명)를 정확히 알고 호출되고, 하루 제보
-   > 처리 건수도 많아야 10건 내외임을 확인해(건당 최대 4개 삭제 → 하루
-   > 40회 미만, KV 예산에 무시할 수준) — 이 6곳에는 `invalidateMemberCache`
-   > 바로 뒤에 `invalidateMemberSlotCache(env, 그_회원번호)`를 추가로 호출해
-   > 그 회원의 outputPenSlots/reportScore도 KV까지 즉시 지운다. "회원 번호를
-   > 모르는" 나머지 호출부(예: `roster` 그룹의 일부 경로)는 그대로 자연 TTL
-   > 만료를 기다린다 — 회원 번호를 확실히 아는 곳에서만 넓혔다.
+   > 🔧 **[2026-09-09~09-10 이력] 회원별 캐시의 즉시 삭제**
+   > — 원래 `outputPenSlots:`/`reportScore:`는 KV를 자연 TTL 만료
+   > (5분/30분)로만 두도록 설계돼 있었으나, 제보 처리 경로
+   > (`handleAdminCaptureCancel`/`CancelMerit`/`Decide`/`Delete`/`Revert`)가
+   > 애초에 대상자·제보자 번호를 정확히 알고 호출된다는 점을 이용해 그
+   > 6곳에서 `invalidateMemberSlotCache`를 추가로 호출하도록 넓혔다. §21에서
+   > 이 두 캐시가 `personalStatusBundle:` 하나로 합쳐지며, `invalidateMemberSlotCache`도
+   > 이제 그 번들 캐시 키 하나만 지운다(대상 회원 1명당 KV delete 2→1).
 
 ## 2. 시트 쓰기 지점 ↔ 무효화 매칭표
 
@@ -111,29 +119,31 @@ computeFn)` 형태로 각 파생 계산(주로 여러 셀을 모아 가공한 �
 
 ## 3. 읽기 경로 TTL 인벤토리
 
-`_cachedCompute` 12곳 전수조사입니다.
+`_cachedCompute` 12곳 전수조사입니다(2026-09-10 갱신).
 
 | 캐시 키 prefix | 함수 | TTL | 무효화 경로 |
 |---|---|---|---|
-| `penCycle:` | `getCurrentPenCycle` | 5분(2026-09 상향, 구 60초) | **없음** — Worker가 쓰는 경로가 전혀 없어 의도적으로 무효화 그룹 밖 |
-| `meta:` | `getSpreadsheetMeta` | 5분 | `invalidateMemberCache` |
-| `members:` | `listAllMembers` | 10분(현재/과거 fileId 공통 — §17.1에서 과거만 2시간으로 늘렸다가 원복) | `invalidateMemberCache`(`roster` 그룹 — 신규등록/퇴실/재납/번호이동 5곳이 모두 호출, 항상 현재 시트 대상) |
-| `reportScore:` | `getReportScore` | 30분 | `invalidateMemberCache` + `invalidateMemberSlotCache`(2026-09-09부터 제보 처리 경로에서 KV까지 즉시) |
-| `outputPenSlots:` | `getOutputPenSlots` | 5분 | `invalidateMemberCache`(회원별 키 — KV는 자연 만료만) |
-| `personalStatus:` | `getPersonalTabRows` | 10분(현재 시트) / **2시간(과거 fileId, §17 신설)** | `writeSheetValues` 내장 정밀 무효화(§7 — 도움봇 직접 쓰기는 무효화 밖, 과거 fileId엔 도움봇이 쓰지 않아 무관) |
-| `memberRows:` | `getSharedMemberRows` | 60초(유지) | `invalidateMemberCache` |
-| `weeklyPaidFine:` | `getWeeklyPaidFineTotal` | 5분(2026-09 상향, 구 60초) | `invalidateMemberCache` |
-| `penSlotGrid:` | `attachNextOccurrence` | 60초(유지) | `invalidateMemberCache` |
-| `exitStatus:` | `getAllExitRelevantStatus` | 60초(유지) | `invalidateMemberCache` |
-| `rosterStatus:` | `buildRosterStatus`(§16, 2026-09-10 신설) | 30분(현재 시트) / **2시간(과거 fileId, §17 신설)** | `invalidateMemberCache`(`roster` 그룹에 자동 포함, "상금 정산 집행"만 `rosterOnly` 그룹으로 좁게) |
-| `adminMemberList:` | `handleAdminMembers`(§17.1 재작성, 2026-09-10 신설) | **2시간(현재/과거 fileId 공통)** | `invalidateMemberCache`(`roster` 그룹에 자동 포함) — `listAllMembers`(`members:`)와는 별개의 바깥 캐시 |
+| `penCycle:` | `getCurrentPenCycle` | **2시간**(§14.1 — 앱스크립트 `sheet_reset()`이 즉시 `cycle` 그룹 무효화, TTL은 안전망) | `invalidateMemberCache(["cycle"])` — 앱스크립트 알림 경로만 |
+| `meta:` | `getSpreadsheetMeta` | 5분 | `invalidateMemberCache`(`roster` 그룹) |
+| `dataSheetRows:` | `getDataSheetRows`(§20, 2026-09-10 신설) | 10분(현재/과거 fileId 공통) | `invalidateMemberCache`(`roster` 그룹) — `데이터!A1:V50` 원본 로우, `listAllMembers`가 내부에서 재사용 |
+| `members:` | `listAllMembers` | 10분(현재/과거 fileId 공통 — §17.1 재재정정) | `invalidateMemberCache`(`roster` 그룹 — 신규등록/퇴실/재납/번호이동 5곳이 모두 호출) |
+| `personalStatusBundle:` | `getPersonalStatusBundle`(§21, 2026-09-10 통합) | 10분(현재 시트) / **2시간(과거 fileId)** | `writeSheetValues` 내장 정밀 무효화(개인 탭 쓰기 시) + 제보 처리 경로의 `invalidateMemberSlotCache(env, 번호)` — 개인 탭 원본 + `outputPenSlots` + `reportScore` 셋을 담는 회원별 캐시 |
+| `memberRows:` | `getSharedMemberRows` | 60초(유지) | `invalidateMemberCache`(`fine` 그룹) |
+| `weeklyPaidFine:` | `getWeeklyPaidFineTotal` | 5분 | `invalidateMemberCache`(`fine` 그룹) |
+| `penSlotGrid:` | `attachNextOccurrence` | 60초(유지) | `invalidateMemberCache`(`penalty` 그룹) |
+| `exitStatus:` | `getAllExitRelevantStatus` | 60초(유지) | `invalidateMemberCache`(`penalty`/`fine`/`exitRequest`/`partiStatus` 그룹) |
+| `rosterStatus:` | `buildRosterStatus`(§16) | 30분(현재 시트) / **2시간(과거 fileId, §17)** | `invalidateMemberCache`(`roster`에 자동 포함, "상금 정산 집행"만 `rosterOnly` 그룹으로 좁게) |
+| `adminMemberList:` | `handleAdminMembers`(§17.1 재작성) | **2시간(현재/과거 fileId 공통)** | `invalidateMemberCache`(`roster` 그룹) — `listAllMembers`(`members:`)와는 별개의 바깥 캐시 |
+| `coReviewers:` | `getCurrentCoReviewers`(§22, 2026-09-10 신설) | 5분 | `invalidateMemberCache(["partiStatus"])` — 부스터디장 임명/해제(개인 탭 L3)가 즉시 무효화 |
 
-`meritRank:`는 폐지됐습니다 — `getMeritRank`(MY 탭 개인 순위)가 읽던
-`집계!B4:F18`이 `rosterStatus:`가 읽는 `집계!A4:L18`의 완전한 부분집합이라,
-MY 탭과 RANK 탭이 같은 캐시를 공유하도록 통합했습니다(§16 후반부).
+**폐지된 캐시 키**:
+- `meritRank:` — `getMeritRank`(MY 탭 개인 순위)가 `rosterStatus:`를 재사용(§16 후반부).
+- `reportScore:` / `outputPenSlots:` — `personalStatusBundle:` 하나로 통합(§21). 내부 계산은
+  `_computeReportScore` / `_computeOutputPenSlots` 헬퍼로 남아있지만 독립 캐시 키는 없어졌다.
 
-`buildPersonalStatus`(개인 탭 조합 계산 자체)는 `_cachedCompute`를 쓰지
-않습니다 — 내부적으로 `getPersonalTabRows`만 캐시를 거칩니다.
+`buildPersonalStatus`(개인 대시보드 조합 계산 자체)는 `_cachedCompute`를 직접
+쓰지 않습니다 — `getPersonalStatusBundle` 하나를 거쳐 개인 탭 rows·벌점 슬롯·
+제보상점을 한 번에 받아 조합합니다.
 
 ## 4. 알려진 위험 지점
 
@@ -141,13 +151,15 @@ MY 탭과 RANK 탭이 같은 캐시를 공유하도록 통합했습니다(§16 �
    갱신하는 값이라 실사용상 위험은 낮지만, 관리자가 그 셀을 수동으로 편집하는
    경로가 있다면 최대 60초 동안 옛 사이클 번호가 여러 파생 계산에 전파될 수
    있습니다. 이 캐시 그룹에서 유일하게 무효화 경로가 전무한 키입니다.
-2. **`outputPenSlots:`/`reportScore:`(회원별 키, KV는 자연 TTL 만료에만
-   의존)** — 벌점/제보상점을 승인한 요청을 처리한 isolate는 인메모리가 즉시
-   비워져 정상 반영되지만, 다른 isolate가 그 직전 KV에 채워둔 캐시는 최대
-   5분(`outputPenSlots`)/30분(`reportScore`) 동안 낡은 값을 돌려줄 수
-   있습니다. `personalStatus:`가 이미 겪었던 것과 같은 종류의 gap이며, 코드
-   주석에 알려진 트레이드오프로 명시되어 있습니다(회원별 KV 삭제를 추가하면
-   KV 쓰기 예산을 더 많이 씀).
+2. **`personalStatusBundle:`(회원별 키) — 앱스크립트 `daily_calc()` 일요일
+   주간 P 기록** — 제보 승인/취소 6곳과 개인 탭 직접 쓰기는
+   `invalidateMemberSlotCache`/`writeSheetValues` 내장 무효화가 이 번들 KV를
+   콕 집어 지우므로 정상 반영됩니다(§21로 옛 `outputPenSlots:`/`reportScore:`
+   개별 gap이 오히려 해소됐다). 남은 gap은 `daily_calc()`가 `{groups:["penalty"]}`
+   만 알려 이 회원별 번들은 건드리지 않는 경우 — 라이브 시트 10분 TTL로 자연
+   갱신되고 활동이 없는 시간대(자정)라 §11.1에서 저심각도로 판단해 그대로
+   뒀습니다. 과거 fileId 번들은 2시간 TTL이지만, 과거 백업 파일은 이 Worker의
+   API로만 바뀌고 그 경로가 정확히 무효화하므로 위험 없음(§17).
 
 이 두 위험은 이번 조사에서 "즉시 수정이 필요한 버그"가 아니라 "구조적으로
 남아있는 트레이드오프"로 판단해 현재는 그대로 두기로 했습니다(2026-09-09
@@ -226,8 +238,9 @@ MY 탭과 RANK 탭이 같은 캐시를 공유하도록 통합했습니다(§16 �
   07:20~08:20, 2교시 08:30~09:30) — 즉 회원 관점에서 개인 탭은 최소
   **10분 간격**으로 갱신된다.
 
-`personalStatus:`(`getPersonalTabRows`) 캐시의 옛 30분 TTL은 "교시(60분)
-단위로만 바뀐다"는 전제로 잡혀 있었는데, 실제 갱신 리듬(10분)보다 3배 느슨했다.
+개인 탭 원본 캐시(당시 `personalStatus:`, §21에서 `personalStatusBundle:`로
+통합)의 옛 30분 TTL은 "교시(60분) 단위로만 바뀐다"는 전제로 잡혀 있었는데,
+실제 갱신 리듬(10분)보다 3배 느슨했다.
 그 결과 교시가 끝난 직후 회원이 자기 개인 대시보드를 열어도 최대 30분간
 방금 끝난 교시의 참여율이 반영 안 된 값을 볼 수 있었다 — 회원이 확인하고
 싶어할 시점(교시 종료 직후)과 정확히 충돌하는 사용성 문제였다. 2026-09-09
@@ -371,26 +384,35 @@ isolate 분산과 KV 히트율에 달려 있어 정적 코드 조사만으로는
 
 | 실제 조작 | 영향받는 캐시 | 호출 빈도 |
 |---|---|---|
-| 제보 승인/취소/반려/유예 (6곳) | `outputPenSlots`/`reportScore`/`penSlotGrid`/`exitStatus` (4종) | **가장 빈번** |
+| 제보 승인/취소/반려/유예 (6곳) | `penSlotGrid`/`exitStatus`(그룹) + 대상자·제보자의 `personalStatusBundle`(`invalidateMemberSlotCache`, §21) | **가장 빈번** |
 | 벌금 납부 상태 변경 (1곳) | `exitStatus`/`memberRows`/`weeklyPaidFine` (3종) | 중간 |
-| 퇴실 신청/동의/취소 (3곳) | `exitStatus` (1종) | 중간 |
-| 참여상태(부스터디장) 변경 (1곳) | `exitStatus` (1종) | 낮음 |
-| 회원 명단/시트 구조 변경(신규·퇴실·번호이동, 4곳) | 9종 전부 | **저빈도** |
+| 퇴실 신청/동의/취소 (3곳) | `exitStatus` (1종) + 그 회원 `personalStatusBundle`(`invalidatePersonalStatusCache`) | 중간 |
+| 참여상태(부스터디장) 변경 (1곳) | `exitStatus`/`coReviewers` (2종, §22) | 낮음 |
+| 회원 명단/시트 구조 변경(신규·퇴실·번호이동, 4곳) | `roster` 그룹 전체(`MEMBER_CACHE_UNCONDITIONAL_KEYS` 전부) + 그 회원 `personalStatusBundle` | **저빈도** |
 
-가장 자주 일어나는 제보 처리가 9종 중 무관한 5종(`members`/`meta`/
-`meritRank`/`memberRows`/`reportScore` 일부)까지 매번 함께 지우고
-있었던 것이 핵심 낭비였다.
+가장 자주 일어나는 제보 처리가 무관한 여러 종(`members`/`meta`/`meritRank`/
+`memberRows` 등)까지 매번 함께 지우고 있었던 것이 핵심 낭비였다.
 
-**대응**: `invalidateMemberCache(env, groups)`로 시그니처를 확장해,
-`MEMBER_CACHE_GROUPS`(`roster`/`penalty`/`fine`/`exitRequest`/
-`partiStatus`)에 정의된 좁은 그룹을 호출부가 넘길 수 있게 했다. `groups`를
-생략하면 기존과 완전히 동일하게 9종 전부를 무효화하는 걸 기본값으로 유지해
-(`roster` 그룹과 동일 — 회원 명단/시트 구조가 바뀌는 4곳은 실제로 9종 전부와
-관련 있으므로 그대로 둠) 안전망을 잃지 않는다. 인메모리 무효화(세대
-카운터)는 그룹과 무관하게 **항상 전체를 한 번에** 처리한다 — 이건 공짜라
-좁혀도 이득이 없고, 좁히면 오히려 "이번엔 무효화 안 된 인메모리 키가
-남는" gap 위험만 늘어나기 때문이다. 아끼는 건 오직 KV `.delete()` 호출
+**대응**: `invalidateMemberCache(env, groups, fileId)`로 시그니처를 확장해,
+`MEMBER_CACHE_GROUPS`(`roster`/`penalty`/`fine`/`exitRequest`/`partiStatus`/
+`cycle`/`rosterOnly`)에 정의된 좁은 그룹을 호출부가 넘길 수 있게 했다.
+`groups`를 생략하면 `roster` 그룹(= 회원 명단/시트 구조가 바뀌는 4곳은
+실제로 전부와 관련 있으므로)이 기본값이라 안전망을 잃지 않는다. 인메모리
+무효화(세대 카운터)는 그룹과 무관하게 **항상 전체를 한 번에** 처리한다 —
+이건 공짜라 좁혀도 이득이 없고, 좁히면 오히려 "이번엔 무효화 안 된 인메모리
+키가 남는" gap 위험만 늘어나기 때문이다. 아끼는 건 오직 KV `.delete()` 호출
 수뿐이다.
+
+> **§21 이후 현재 그룹 정의**(index.js):
+> ```
+> roster:      [...MEMBER_CACHE_UNCONDITIONAL_KEYS]   // 11종 전부
+> penalty:     ["exitStatus", "penSlotGrid"]
+> fine:        ["exitStatus", "memberRows", "weeklyPaidFine"]
+> exitRequest: ["exitStatus"]
+> partiStatus: ["exitStatus", "coReviewers"]
+> cycle:       ["penCycle"]
+> rosterOnly:  ["rosterStatus"]
+> ```
 
 18개 호출부를 각각 재분류해 반영한 결과(코드로 시뮬레이션 검증):
 
@@ -417,9 +439,9 @@ isolate 분산과 KV 히트율에 달려 있어 정적 코드 조사만으로는
 ### 11.1 발견
 
 - **`daily_calc()`(매일 자정~1시, 일요일 실행분만)** — 그 주 목표시간/참여율
-  미달을 판정해 "데이터" 시트 L/M열(주간 P 슬롯, `outputPenSlots:`/
-  `reportScore:`/`penSlotGrid:` 캐시가 담는 값)에 관리자 개입 없이 직접
-  벌점을 기록한다. 지금까지 이 세 캐시는 "관리자 조작(제보 승인/취소)으로만
+  미달을 판정해 "데이터" 시트 L/M열(주간 P 슬롯, 당시 `outputPenSlots:`/
+  `reportScore:` — §21에서 `personalStatusBundle:`로 통합 — 및 `penSlotGrid:`
+  캐시가 담는 값)에 관리자 개입 없이 직접 벌점을 기록한다. 지금까지 이 세 캐시는 "관리자 조작(제보 승인/취소)으로만
   바뀌고, 그건 항상 `invalidateMemberCache`가 무효화한다"는 전제였는데
   이 전제가 정확하지 않았다.
 - **`revoke_editor_column_n()`(매주 월 14~15시, 목표시간 마감)** — 개인 탭
@@ -427,8 +449,9 @@ isolate 분산과 KV 히트율에 달려 있어 정적 코드 조사만으로는
   14:00)과 정확히 일치**해, 회원이 마감 직후 반영 여부를 확인하려는
   시점과 정확히 겹치는 매주 반복 시나리오였다.
 - **`revoke_editor_column_o()`(매일 밤 11시~12시, 반휴 마감)** — 개인 탭
-  20행(반휴 사용)에 직접 쓴다. `personalStatus:`가 §7에서 이미 봇의 교시
-  리듬(10분)에 맞춰져 있어 영향은 크지 않지만 같은 성격의 gap.
+  20행(반휴 사용)에 직접 쓴다. 개인 탭 원본 캐시(`personalStatusBundle:`)가
+  §7에서 이미 봇의 교시 리듬(10분)에 맞춰져 있어 영향은 크지 않지만 같은
+  성격의 gap.
 
 셋 다 **정합성(시트에 잘못된 값이 쓰이는 것) 문제는 아니다** — 표시가
 최대 5~30분 낡아 보일 수 있는 사용성 문제였고, 활동이 적은 시간대(자정,
@@ -443,9 +466,10 @@ isolate 분산과 KV 히트율에 달려 있어 정적 코드 조사만으로는
 비해 무시할 수준).
 
 - **새 엔드포인트**: `POST /bot/invalidate-cache`(`handleBotInvalidateCache`,
-  index.js:6171-6189)가 `X-Bot-Secret` 인증 후 `{groups: [...]}` 또는
+  index.js:6682 부근)가 `X-Bot-Secret` 인증 후 `{groups: [...]}` 또는
   `{memberNumbers: [...]}`를 받아 `invalidateMemberCache(env, groups)`
-  또는 회원별 `invalidatePersonalStatusCache`를 호출한다.
+  또는 회원별 `invalidatePersonalStatusCache`(`personalStatusBundle:` 키)를
+  호출한다.
 - **`daily_calc()`**: 주간 P 슬롯을 실제로 채운 경우에만 함수 끝에서
   `_notifyWorkerCacheInvalidate({groups:["penalty"]})`.
 - **`revoke_editor_column_n()`/`revoke_editor_column_o()`**: 실제로 값을
@@ -557,15 +581,15 @@ isolate 분산과 KV 히트율에 달려 있어 정적 코드 조사만으로는
 
 ### 12.2 적용한 화면과 주기
 
-| 화면 | 관련 캐시(TTL) | 폴링 주기 |
+| 화면(메뉴) | 관련 캐시(TTL) | 폴링 주기 |
 |---|---|---|
-| `ReportReviewList`(제보 확인) | `penSlotGrid:` 60초 | 3분 |
-| `PenaltyCandidateList`(예치금 재납 대상자) | `exitStatus:`/`memberRows:` 60초 | 3분 |
-| `AdminMoneyTab`의 `PaidFineList`(벌금 납부 처리) | `memberRows:` 60초/`weeklyPaidFine:` 5분 | 3분(더 짧은 쪽 기준) |
-| `MyOutputPenSection`(내 송출 P 제보 확인) | `penSlotGrid:` 60초 | 3분 |
-| `StatusPage`(다른 회원/과거 사이클 조회) | `members:`/`meritRank:`/`outputPenSlots:`/`penCycle:` 5분, `reportScore:` 30분 | 15분(가장 짧은 쪽 기준) |
-| `MemberRosterList`(참여 스터디원 목록) | `members:`/`meta:` 5분 | 15분 |
-| `MyStatusContext`(내 대시보드, 앱 전역 Provider) | `personalStatus:` 10분 등 §12.1 상동 | 15분, 대시보드/설정 화면일 때만(B) + `document.hidden`(A) + 5분 유휴(G, 절전 오버레이) 모두 적용 |
+| `ReportReviewList`("송출 P 대상 처리") | `penSlotGrid:` 60초 / `coReviewers:` 5분(§22) | **10분**(2026-09-10, 구 3분 — §22에서 `coReviewers:` 캐싱과 함께 하향) |
+| `PenaltyCandidateList`("예치금 재납 대상자") | `exitStatus:` 60초 / `memberRows:` 60초 | 3분 |
+| `AdminMoneyTab`의 벌금 조회(`PaidFineList` 등) | `memberRows:` 60초 / `weeklyPaidFine:` 5분 | 3분(더 짧은 쪽 기준) |
+| `MyOutputPenSection`("내 화각 불량 제보") | `penSlotGrid:` 60초 / `members:` 10분 | **10분**(2026-09-10, 구 3분) |
+| `RosterPage`("RANK") | `rosterStatus:` 30분 | 30분 — **폴링 : TTL 배율이 1:1**이라 캐시가 폴링 중복만 걸러줄 뿐, 자연 만료가 폴링과 겹쳐 매 폴링마다 재계산될 수 있다(개선 여지로 남김) |
+| `StatusPage` / `MyStatusContext`("내 대시보드"·"설정") | `personalStatusBundle:` 10분(현재 시트) 등 §12.1·§21 | 30분(§14) — 대시보드/설정 화면일 때만(B) + `document.hidden`(A) + 5분 유휴(G, 절전 오버레이) 모두 적용 |
+| `MemberRosterList`("참여 스터디원 목록") | `dataSheetRows:`/`members:` 10분 / `meta:` 5분 | 15분 — 폴링 : TTL 배율 1.5배로 원칙(2~3배)보다 낮음(개선 여지) |
 
 `AdminMoneyTab`의 `PrizeRecipientList`(`/roster-status`)는 `buildRosterStatus`
 가 `_cachedCompute` 없이 매번 직접 시트를 조회하는 무캐시 경로라(§3
@@ -640,10 +664,10 @@ KV 캐시가 아니라 매 요청마다 `proxyToBotDashboard(env, "/status")`로
 
 | 캐시 | 이전 TTL | 변경 후 | 비고 |
 |---|---|---|---|
-| `personalStatus` | 10분 | **10분(유지)** | 도움봇이 교시 종료마다(~10분 간격) 개인 탭에 직접 쓰므로, 그 리듬에 맞춰야 새로고침 시 낡은 값을 안 본다(§7) — 다른 넷과 달리 폴링 주기를 3배로 맞추지 않고 예외로 남겼다 |
-| `meritRank` | 5분 | **10분 → 이후 30분으로 재조정**(§5) | 실제 변경 시 `invalidateMemberCache`가 즉시 무효화하므로 TTL은 안전망일 뿐 — 늘려도 위험 없음. "순위는 안 중요하다" + 동접자 多 시 TTL이 그대로 쓰기 빈도를 결정한다는 점에서 30분까지 추가로 늘림 |
-| `outputPenSlots` | 5분 | **10분** | 위와 동일 + 2026-09-09에 `invalidateMemberSlotCache`로 즉시 무효화까지 추가돼 더 안전 |
-| `reportScore` | 30분 | **10분 → 다시 30분으로 복귀**(2026-09-10) | 즉시 무효화가 있어 TTL은 안전망일 뿐 — meritRank와 같은 이유로 폴링 주기(30분)와 맞춤 |
+| `personalStatus` → §21에서 `personalStatusBundle`로 통합 | 10분 | **10분(유지)** | 도움봇이 교시 종료마다(~10분 간격) 개인 탭에 직접 쓰므로, 그 리듬에 맞춰야 새로고침 시 낡은 값을 안 본다(§7) — 폴링 주기를 3배로 맞추지 않고 예외로 남겼다. §21에서 `outputPenSlots`/`reportScore`가 이 번들로 흡수되며 셋이 같은 10분 TTL을 공유한다 |
+| `meritRank` | 5분 | **폐지**(§16 — `getMeritRank`가 `rosterStatus:` 재사용) | — |
+| `outputPenSlots` | 5분→10분 | **폐지**(§21 — `personalStatusBundle`로 통합) | 통합 전 마지막 TTL은 10분 |
+| `reportScore` | 30분 | **폐지**(§21 — `personalStatusBundle`로 통합) | 통합 전 마지막 TTL은 30분 |
 | `penCycle` | 5분 | **2시간** | 아래 §14.1 참고 — 성격이 달라 별도로 다룬다 |
 | 폴링 주기(대시보드) | 15분 | **30분** | `MyStatusContext`/`StatusPage` 둘 다 — 10분 TTL의 정확히 3배 |
 
@@ -896,12 +920,148 @@ exitedMembers 조합)을 `listAllMembers`와는 별개의 바깥 캐시 키
 인지부터 먼저 확인해야 한다 — 코드상 이론적으로 가능해 보이는 값 불일치
 라도, 그 값을 바꾸는 쓰기 경로 자체가 없다면 걱정할 이유가 없다.
 
-## 19. 관련 문서
+## 19. 관리자 리스트 7곳 — 재조회 시 스켈레톤/빈 상태가 둘 다 안 뜨는 순간 (2026-09-10)
+
+캐싱 자체가 아니라 **프론트가 캐시/폴링 응답을 그리는 방식**의 문제였지만,
+KV 예산 논의(관리자 리스트가 3분 폴링으로 재조회를 반복한다는 맥락)에서
+발견됐다. "PEN·Money" 탭 "사유 반휴 신청 처리"가 탭을 벗어났다 돌아올 때
+(`useRefreshOnVisible` 재조회) "검토 대기 중인 신청이 없습니다" 문구 전에
+영역이 잠깐 줄었다가 늘어난다는 지적.
+
+**원인**: 세 렌더 조건(스켈레톤 / 빈 상태 / 목록)이 전부 `loading`에
+게이팅돼 있었다. 재조회가 시작되는 순간 `loading=true`인데 `items`는 이미
+빈 배열(`[]`)이라 — `loading && !items`(스켈레톤)도 `!loading && ...`(빈
+상태)도 `items.length > 0`(목록)도 전부 거짓이 되어, 헤더만 남고 본문이
+완전히 빈 순간이 **약 1초간** 지속됐다(Playwright로 실측 — 88px 높이 구간).
+첫 수정 시도(스켈레톤 조건을 넓혀 `loading && (!items || length===0)`)는
+공백은 없앴지만, 응답이 1초 내외로 빨라 "빈 상태(~142px) → 스켈레톤
+(~306px) → 빈 상태"라는 더 큰 낙차만 만들었다(재실측으로 확인).
+
+**최종 수정**: `loading`을 조건에서 완전히 제거하고 `items`(실제 데이터)의
+존재 여부만으로 무엇을 보여줄지 정하도록 바꿨다 — 재조회 중엔 이전 렌더링
+(빈 상태 메시지든 기존 목록이든)이 그대로 유지돼 화면이 흔들리지 않는다.
+"로딩 중" 표시는 `SectionHeader`의 `loading` prop(새로고침 아이콘 회전)만
+으로 충분하다. 적용 대상: 관리자 리스트 7곳(제보 검토 / 참여·퇴실 스터디원
+목록 / 정산·벌금 / 페널티 대상자 / 사유반휴 검토). 빈 상태 문구도 공용
+`AdminEmptyState`(InfoCard + `py-8`)로 감싸 스켈레톤과의 높이 차이를 줄였다.
+
+## 20. 관리자 "Account" 탭 — "데이터" 시트 원본 조회를 `dataSheetRows:`로 통합 (2026-09-10)
+
+"Account" 탭의 캐싱 정책을 점검하다가, 세 곳이 각자 캐시 없이 정확히
+같은 범위(`데이터!A1:V50`, 전체 회원 명단 원본)를 읽고 있는 걸 발견했다:
+
+- `listAllMembers`(`members:` 캐시, 원래 이 범위를 캐싱하고 있었음)
+- `handleAdminMembersRoster`("참여 스터디원 목록" 상세 패널의 구루미
+  계정·준비 중인 시험 — `listAllMembers`가 이 D~E열을 버리고 계산해서
+  캐시를 재사용 못 하고 원본을 다시 읽었다)
+- `handleAdminOpenSlots`("신규 스터디원 등록"의 빈 번호 드롭다운 —
+  `listAllMembers`가 "이메일 있는 유효 회원"만 걸러 담아, 반대로 "이메일이
+  비어있는 행"을 찾는 이 화면은 캐시를 못 썼다)
+
+**대응**: 원본 로우 배열 자체를 `dataSheetRows:{fileId}` 키로 캐싱하는
+`getDataSheetRows`를 신설하고, `listAllMembers`가 내부에서 이를 재사용하도록
+바꿨다(`listAllMembers`의 반환 형태는 그대로 유지 — 26곳 호출부 영향 없음).
+`handleAdminMembersRoster`·`handleAdminOpenSlots`도 직접 `getSheetValues`
+호출을 `getDataSheetRows`로 교체. TTL은 `members:`와 동일한 10분,
+무효화는 `MEMBER_CACHE_PREFIXES`·`MEMBER_CACHE_UNCONDITIONAL_KEYS` 양쪽에
+`dataSheetRows` 등록해 `roster` 그룹(신규등록/퇴실/번호이동)이 자동으로
+함께 지운다. 순수 로직 시뮬레이션으로 (1) 캐시 재사용, (2) 무효화 시 정확히
+삭제, (3) 무효화 후 최신값 재조회를 검증했다.
+
+`handleAdminCreateMember`의 등록 직전 최종 검증(번호가 진짜 비어있는지
+재확인)은 "동시 등록 방지 안전장치" 성격이라 이번 통합 범위에서 제외했다.
+`computeMemberReorderPlan`("Bot·Sheet" 탭 "번호 정렬")도 같은 범위를 읽지만
+버튼 클릭 시에만 호출되고 폴링이 없어 저빈도라 그대로 뒀다(개선 여지로 남김).
+
+## 21. 내 대시보드 개인 데이터를 `personalStatusBundle:` 하나로 통합 (2026-09-10)
+
+15명 기준 하루 KV 쓰기의 대부분(코드로 직접 계산: 평균 시나리오에서
+약 88%)이 "회원별 캐시" 3종에서 나왔다:
+
+- `personalStatus:{fileId}:{번호}`(개인 탭 `A1:U42` 원본, 10분/현재)
+- `outputPenSlots:{fileId}:{번호}`(송출 P 시트 `F~M` 슬롯, 10분)
+- `reportScore:{fileId}:{reportRow}`(데이터 시트 `R~V` 제보상점 슬롯, 30분)
+
+셋 다 **오직 `buildPersonalStatus` 안에서만, 항상 함께** 조회된다 — 다른
+화면이 셋 중 하나만 독립적으로 부르는 경우가 코드 전체에 없었다. 그런데
+각자 별도 KV 키·별도 TTL이라, `/status` 폴링(30분)마다 회원 1명당 KV put이
+3번씩 발생했다.
+
+**대응**: `getPersonalStatusBundle(env, at, fileId, 번호)` 하나로 묶어
+`{ rows, outputPenSlots, reportScore }`를 한 캐시 키(`personalStatusBundle:`)에
+저장한다. `reportRow`(제보상점 조회에 필요한 행 번호)가 개인 탭 42행(C42)
+값이라 원래도 개인 탭을 먼저 읽어야 알 수 있는 순차 의존 관계였으므로,
+병렬로 쪼개져 있던 걸 오히려 자연스럽게 합칠 수 있었다. `getReportScore`/
+`getOutputPenSlots`는 캐시를 벗긴 `_computeReportScore`/`_computeOutputPenSlots`
+헬퍼로 남겨 내부 로직을 그대로 재사용한다.
+
+- **TTL**: `personalStatus`가 쓰던 분기(현재 10분 / 과거 2시간)를 그대로.
+  "과거 fileId는 절대 안 바뀐다"(§17)는 근거가 세 데이터에 동일하게 적용된다.
+- **무효화 세밀도 트레이드오프**: 지금은 셋이 서로 다른 이유로 독립적으로
+  지워졌는데(개인 탭 쓰기 ↔ 제보 처리), 합치면 어느 한쪽이 바뀌어도 셋 다
+  같이 재계산된다. 정합성은 오히려 더 보수적(교차 오염 없음)이고, 추가로
+  생기는 재조회는 30분 폴링 주기 안에서 일어나는 일이라 무시할 수준
+  (사용자 확인 후 진행).
+- `MEMBER_CACHE_GROUPS.penalty`에서 `outputPenSlots`/`reportScore`가 빠지고
+  `["exitStatus", "penSlotGrid"]`만 남았다 — 제보 처리 호출부는 이미 전부
+  `invalidateMemberSlotCache(env, 대상자·제보자 번호)`를 함께 호출하고,
+  이 함수가 이제 `personalStatusBundle:` 키 하나만 지운다.
+- `roster` 그룹은 `[...MEMBER_CACHE_UNCONDITIONAL_KEYS]`로 단순화됐다
+  (`reportScore`/`outputPenSlots` 명시 항목 제거 — 회원별 키라 어차피
+  `invalidateMemberSlotCache`가 담당).
+
+**절감 추정**(순수 계산, 문서화된 실측 아님): 평균 사용 시나리오(15명이
+활동시간의 절반쯤 앱을 켜둠) 기준 하루 KV 쓰기·삭제 약 853회 → 약 353회
+(약 59% 감소). 절감의 96%가 put 쪽(`/status` 폴링 1회당 3키 → 1키).
+
+## 22. "송출 P 대상 처리" 부스터디장 목록 캐싱 — `coReviewers:` (2026-09-10)
+
+"PEN·Money" 탭 "송출 P 대상 처리"가 3분마다 자동 새로고침되는데, 그때마다
+서버가 "지금 부스터디장으로 임명된 사람이 누구인지"를 확인하려고
+`getCurrentCoReviewers`를 캐시 없이 호출했다 — `listAllMembers`(캐시됨)까지는
+재사용하지만, 그 뒤 `batchGetSheetValues`로 회원 15명의 L3(참여상태) 셀을
+매번 새로 읽었다. 부스터디장 임명은 아주 가끔만 바뀌는 값인데도.
+
+**대응**:
+- `getCurrentCoReviewers`를 `_cachedCompute(env, coReviewers:{fileId}, 5분, ...)`로
+  감쌌다 — `meta:`(스프레드시트 구조, 같은 성격의 저빈도 값)와 동일한 TTL.
+- `MEMBER_CACHE_PREFIXES`·`MEMBER_CACHE_UNCONDITIONAL_KEYS`에 `coReviewers`
+  등록하고, `MEMBER_CACHE_GROUPS.partiStatus`를 `["exitStatus"]` →
+  `["exitStatus", "coReviewers"]`로 확장 — 부스터디장 임명/해제
+  (`handleAdminSetPartiStatus`, 개인 탭 L3 쓰기)가 즉시 무효화한다.
+- 이 화면의 폴링 주기도 3분 → **10분**으로 하향(§12.2) — `coReviewers:`
+  5분 TTL의 2배. `penSlotGrid:`(60초 TTL)의 절감 효과는 여전히 유지된다.
+
+순수 로직 시뮬레이션으로 캐시 재사용·무효화 정확성·재조회 최신성을 검증했다.
+
+## 23. Cloudflare 모니터링 — KV `list()` 사용 횟수 별도 게이지 (2026-09-10)
+
+"Bot·Sheet" 탭 "사용량 모니터링"의 Cloudflare 게이지("KV 읽기" 항목)는
+`kvOperationsAdaptiveGroups`의 `actionType`이 `read`·`list` 둘을 **합산**해
+보여주고 있었다 — `list()`가 몇 번인지 따로 알 수 없었다. `list()`는
+read 한도(하루 10만)와 **별개로 하루 1,000회**라는 훨씬 빡빡한 자체
+한도를 쓰고, 2026-08-27에 실제로 소진돼 `/admin/members/roster`가 500을
+낸 이력이 있다(그 이후 `leaveq:`/`report:` 등을 "전역 인덱스 키 + get 1회"
+방식으로 리팩터링한 계기).
+
+**대응**: `fetchCloudflareUsage`가 `actionType === "list"`만 따로 합산해
+`kvListsToday`로 반환하고, `limits.kvListsPerDay = 1_000`을 추가. 프론트
+`AdminBotSheetTab`에 "KV 목록조회(list)" 게이지를 "KV 쓰기·삭제" 아래에
+추가했다. `UsageBar`는 `used`/`limit`이 `undefined`(배포 직후 옛 워커
+응답이 잠깐 섞이는 경우)일 때 0으로 방어하도록 함께 고쳤다 — 원래는
+`undefined.toLocaleString()`에서 화면 전체가 죽었다(Sentry ErrorBoundary
+"문제가 발생했습니다"로 재현·확인).
+
+이 게이지는 §13의 "최근 30분 KV 쓰기·삭제·목록조회 — 화면별" breakdown
+표(`instrumentKvNamespace`가 `kv_list`도 계측)와 함께 본다 — 게이지는
+"오늘 하루 총합·한도 대비 위험 수준", breakdown은 "어느 화면이 list를
+쓰는지".
+
+## 24. 관련 문서
 
 - `docs/WEB_ADMIN.md` §3.1 — `applyOutputPenalty`/`applyReportMerit`/
   `applyTimeDeduction`가 실제로 호출되는 관리자 제보 처리 화면·플로우.
-- `docs/WEB_DASHBOARD.md` — `buildPersonalStatus`/`getPersonalTabRows`가
+- `docs/WEB_ADMIN.md` §5.1 — "사용량 모니터링" 화면(KV 읽기/쓰기·삭제/
+  목록조회 게이지 + 화면별 breakdown).
+- `docs/WEB_DASHBOARD.md` — `buildPersonalStatus`/`getPersonalStatusBundle`이
   조립하는 개인 대시보드 데이터의 원본.
-- `AdminBotSheetTab.tsx`의 "사용량 모니터링" 섹션 — 이 문서가 다루는 KV
-  읽기/쓰기·삭제 횟수를 Cloudflare Analytics로 실측해 보여주는 화면(§5.1,
-  `docs/WEB_ADMIN.md`).

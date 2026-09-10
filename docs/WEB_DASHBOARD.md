@@ -7,10 +7,13 @@
 >
 > 조사 시점: 2026-09-01(본문), §11에 2026-09-09 갱신 1건 추가(하단
 > "알림" 탭이 종 아이콘 다이얼로그에서 정식 탭으로 승격된 사실 반영,
-> 여전히 더미인 상태는 동일). 대상 커밋 기준
+> 여전히 더미인 상태는 동일). 2026-09-10 갱신: §3.4(공통 AppShell 헤더 —
+> 다크모드·교시 종소리 토글, 전환 페이드, 전역 CSS) 신설, §9의 개인 탭
+> 캐시가 `getPersonalStatusBundle`로 통합된 사실 반영. 대상 커밋 기준
 > `app/src/pages/DashboardPage.tsx`, `app/src/pages/StatusPage.tsx`,
 > `app/src/pages/RosterPage.tsx`, `app/src/components/dashboard/*`,
-> `frame-checker-worker/src/index.js`.
+> `app/src/components/layout/{AppShell,ThemeToggleButton,PeriodAlarmToggleButton}.tsx`,
+> `app/src/App.tsx`, `app/src/index.css`, `frame-checker-worker/src/index.js`.
 
 ## 1. 범위 정의 — "대시보드"란
 
@@ -110,6 +113,54 @@ DashboardPage (app/src/pages/DashboardPage.tsx)
 `/login`으로 리다이렉트한다. 대시보드의 모든 API 호출은 이 `call<T>(path, opts)` 하나를
 거친다.
 
+### 3.4 공통 앱 셸(`AppShell`) — 헤더·전환 페이드·전역 CSS
+
+대시보드를 포함한 모든 메인 라우트("/", "/report", "/notifications", "/links",
+"/settings", "/admin")는 `App.tsx`가 `<AppShell title=... titleIcon=...>`로 감싸
+공통 헤더를 그린다(`components/layout/AppShell.tsx`). 헤더 = eyebrow 라벨
+("공부합시당 캠스터디") + `h1` 제목, 그리고 **우측 상단에 항상 뜨는 토글 버튼 2개**:
+
+- **`PeriodAlarmToggleButton`** (`components/layout/PeriodAlarmToggleButton.tsx`) —
+  교시 종소리 on/off pill. 켜짐이면 남은 시간(`N교시 MM:SS` / `휴식 MM:SS` /
+  `1교시 전 MM:SS`)을 함께 표시. `usePeriodAlarm()` → `PeriodAlarmContext`.
+- **`ThemeToggleButton`** (`components/layout/ThemeToggleButton.tsx`) — 다크/라이트
+  전환. 테두리 없는 원형 아이콘(Moon/Sun). `useTheme()`.
+
+두 기능 모두 원래 설정 화면 카드(`ThemeToggleCard`/`PeriodAlarmCard`)였는데
+2026-09-10에 헤더로 옮겨지고 그 카드 파일은 삭제됐다 — 상세 동작·알려진 한계는
+`docs/WEB_SETTINGS.md` §4.1.
+
+**상단 safe-area**: `AppShell`의 최상위 컨테이너에 `page-pt-safe` 유틸리티
+(`index.css`) — `padding-top: calc(0.625rem + env(safe-area-inset-top))`, `sm`에서
+`1rem`. iOS PWA(`black-translucent` 상태바)에서 eyebrow가 상태바와 겹쳐 흐릿하게
+비치던 문제 대응. 하단 safe-area는 인라인 `paddingBottom`(탭바 높이 + inset)으로
+따로 처리.
+
+**탭 전환 페이드**: `App.tsx`가 각 라우트 래퍼 `<div hidden={path !== ...}>`에
+`className="animate-tab-enter"`(`index.css`, `opacity 0→1` 180ms)를 얹는다. `hidden`
+토글·조건부 마운트·폴링·state는 전혀 건드리지 않는 순수 시각 효과 — `hidden`이
+풀려 보이기 시작하는 프레임에만 재생된다. `prefers-reduced-motion`이면 무효.
+
+**전역 텍스트 선택 차단**: `index.css`의 `body`가 `user-select: none` +
+`-webkit-touch-callout: none`(네이티브 앱처럼 버튼/카드를 눌러도 텍스트가 선택되지
+않게). `input`/`textarea`만 다시 `user-select: text`로 허용한다 — 계좌번호 등 실제
+복사가 필요한 입력란.
+
+#### 다크모드 팔레트 (`index.css` `.dark`)
+
+`.dark` 클래스가 붙으면(`<html>`, `useTheme()` 토글) `index.css`의 `.dark` 블록이
+CSS 변수를 재정의한다. 배경은 순수 OLED 블랙 `#0a0a0a`(웜 브라운 `#1e1b18`을
+시도했다가 사용자가 "너무 못생겼다"며 되돌림), 카드/보더는 순검정 위에서 겨우
+구분되는 아주 옅은 웜그레이(`#161514`/`#262421`).
+
+🔧 2026-09-10: primary 계열(`--primary` `#bd7157` → `#9a5c46`,
+`--primary-foreground`/`--accent-foreground`/`--destructive`/`--ring` 등)의
+"형광 느낌"을 완화했다. 원인은 채도가 아니라 **명도 대비**였다 — 배경이
+`#0a0a0a`까지 내려간 반면 primary는 HSV 명도 74%를 유지해 순검정 위 상대
+대비가 WCAG 5.3까지 벌어져 네온처럼 떠 보였다(라이트모드는 배경도 밝아 대비
+3.3). 색조·채도는 유지하고 명도만 낮춰(V 74%→62%) 라이트모드와 비슷한 대비
+(≈3.8)로 맞췄다.
+
 ---
 
 ## 4. My 탭 — StatusView 요약 타일 레퍼런스
@@ -121,7 +172,7 @@ DashboardPage (app/src/pages/DashboardPage.tsx)
 |---|---|---|---|
 | 목표시간 | `status.goalType` (괄호 제거 표시) | `GoalTypeScheduleDialog`(본인만, edit) | 개인 탭 O3 |
 | 가입일자 | `status.joinDate` ("D+N" 상대값) | 없음 | 개인 탭 I3 |
-| 총 페널티 | `송출P N회 │ 주간P N회` (`formatTotalPenalty`) | `TotalPenaltyDialog` | `countCurrentCyclePen` + `getOutputPenSlots` |
+| 총 페널티 | `송출P N회 │ 주간P N회` (`formatTotalPenalty`) | `TotalPenaltyDialog` | `countCurrentCyclePen` + `_computeOutputPenSlots` |
 | 주간 총 상점 | `+N점 │ 순위` | `MeritBreakdownDialog` | `weeklyMeritBreakdown` 전체 블록 |
 | 주간 학습시간 | `실적 │ 목표` | `StudyTimeDialog` | `weeklyStudyTime`/`weeklyGoalTime`/`periodGrid` |
 | 주간 교시 참여율 | `비율 │ 85%` | `PeriodAttendanceDialog` | `periodAttendanceBreakdown` |
@@ -314,8 +365,8 @@ URL 쿼리 `cycle`로 관리해 두 탭에 전달), 실시간(현재) 값과 "�
   없다.
 - **`GET /admin/members/exited:{이름} (퇴실)`을 선택하면 `buildExitedMemberSnapshot`
   이 응답한다** — `buildPersonalStatus`를 재사용하지 않는다. 그 함수는
-  순위(`getMeritRank`)/제보점수(`getReportScore`)/페널티 슬롯
-  (`getOutputPenSlots`)/현재 사이클(`getCurrentPenCycle`)을 전부 "지금
+  순위(`getMeritRank`)/제보점수(`_computeReportScore`)/페널티 슬롯
+  (`_computeOutputPenSlots`)/현재 사이클(`getCurrentPenCycle`)을 전부 "지금
   살아있는 회원"을 전제로 실시간 재조회하는데, 퇴실자는 그 번호 슬롯이
   이미 초기화됐거나(재사용 전) 새 회원 값으로 덮여있어(재사용 후) 그대로
   재사용하면 엉뚱한 값이 나온다. 대신 백업 탭의 A1:U 범위(개인 탭과 동일
@@ -390,8 +441,16 @@ URL 쿼리 `cycle`로 관리해 두 탭에 전달), 실시간(현재) 값과 "�
 
 ## 9. 핵심 계산 로직 — 어디서 무엇을 계산하는가
 
-전부 `buildPersonalStatus`(index.js, 약 1730행 근처) 안에서 개인 탭 A1:U43 범위
-(`getPersonalTabRows`, 30분 캐시)를 한 번 읽은 뒤 병렬로 보조 조회를 붙이는 구조다.
+전부 `buildPersonalStatus`(index.js, 약 2220행 근처) 안에서 계산된다. 이 함수는
+먼저 `getPersonalStatusBundle(env, accessToken, fileId, memberNumber)`을 호출한다 —
+개인 탭 `A1:U42`(`ROW_REPORT_SHEET_ROW + 1`) 원본 행 + 송출P 슬롯
+(`_computeOutputPenSlots`) + 제보상점(`_computeReportScore`) 셋을
+`personalStatusBundle:{fileId}:{memberNumber}` 캐시 키 하나로 묶어 가져온다(TTL:
+이번 주 라이브 시트는 10분, 과거 백업 fileId는 2시간). 원래 셋이 각자 다른 KV 키
+(`personalStatus:`/`outputPenSlots:`/`reportScore:`)로 따로 캐싱돼 대시보드 폴링마다
+회원 1명당 KV put이 3번씩 발생하던 것을 2026-09-10에 통합했다(상세는
+`docs/CACHING_POLICY.md` §21). 번들을 받은 뒤 순위·현재 사이클·퇴실신청을 병렬로
+덧붙인다.
 
 ### 9.1 총 페널티 (`countCurrentCyclePen`)
 
@@ -405,8 +464,10 @@ URL 쿼리 `cycle`로 관리해 두 탭에 전달), 실시간(현재) 값과 "�
   `TotalPenaltyDialog`의 이력 표시(과거 있었던 일)용일 뿐, 반환액·상점 계산에는 관여하지
   않는다(단, G/H/J는 §9.3 상점 차감에서 별도로 쓰인다).
 
-`getOutputPenSlots`가 슬롯 값과 함께 셀 주석(발생일시·사유·캡처ID)을 `PenaltySlotHistoryEntry[]`
-로 파싱해 `TotalPenaltyDialog`의 "적립 원인" 섹션에 그대로 전달된다.
+`_computeOutputPenSlots`(구 `getOutputPenSlots` — 이제 `getPersonalStatusBundle`이
+감싸는 내부 헬퍼)가 슬롯 값과 함께 셀 주석(발생일시·사유·캡처ID)을
+`PenaltySlotHistoryEntry[]`로 파싱해 `TotalPenaltyDialog`의 "적립 원인" 섹션에
+그대로 전달된다.
 
 ### 9.2 예치금 반환 예상액 (`depositRefundBreakdown`)
 
