@@ -6711,10 +6711,19 @@ const EXIT_KIND_VALUES = ["forced", "admin_forced", "settle", "deposit_again"];
 // 가 이미 "현재 사이클(1~3주차) 밖의 임의 fileId"를 거부하므로, 사이클을
 // 벗어난 파일을 계산 근거로 쓸 위험은 없다. settle의 자동 판정이 있으면
 // 그걸 그대로 우선한다 — 회원 스스로 신청한 exitDate가 더 정확하다.
-// 실제 참여상태 변경·탭 정리(performExitReset/performDepositAgainReset)는
-// 이 값과 무관하게 항상 현재 시트(fileId)에만 쓴다 — "지금 이 사람이
-// 활동 중인지"는 항상 현재 기준이어야 하기 때문이다(앱스크립트 원본
-// _exit_define도 항상 현재 시트에만 쓰고, 일요일 발생분은 표시만 남긴다).
+//
+// 🔧 [사용자 지시, 2026-09-10 재정정] 앱스크립트 원본(op/sh 이원 구조)을
+// 다시 확인한 결과, "실제 참여상태 변경·탭 정리는 항상 현재 시트에만 쓴다"는
+// 이전 설명은 틀렸다 — 원본은 관리자가 그 순간 실제로 연 파일(op, 리셋 이후
+// 처리라면 지난 주 백업 파일일 수 있음)에 백업 탭·처리결과를 남기고, 고정
+// ID로 연 이번 주 공유 시트(sh)에는 슬롯 청소(권한 회수·N번 리셋·데이터
+// 초기화)만 별도로 적용한다. performExitReset이 이 구조를 재현한다 —
+// sourceFileId(=이 함수가 반환하는 sourceFileId)가 fileId와 다르면(상황 B,
+// 지난 주 백업) 백업 탭·감사 스냅샷이 그 백업 파일에 생성되고, 이번 주
+// 공유 시트에서는 슬롯 청소만 일어난다. performDepositAgainReset(예치금
+// 재납 확정)은 다르다 — 재납은 "지금도 활동 중인 회원"의 처리라 그 회원의
+// 탭 자체가 항상 이번 주 시트에 존재하므로, sourceFileId 분리 없이 항상
+// fileId만 쓴다.
 async function resolveExitSourceFileId(env, accessToken, fileId, number, kind, cycleFileId) {
   if (kind === "settle") {
     const exitRequestRaw = await env.REPORTS_KV.get(`${EXIT_REQUEST_KV_PREFIX}${number}`).catch(() => null);
@@ -6966,33 +6975,50 @@ async function rewriteBackupAuditFormulas(env, accessToken, fileId, backupSheetN
 
 // 앱스크립트 _set_sheet_init()의 "퇴실자" 분기를 재현한다: 백업 탭 생성 후
 // 원 슬롯을 template으로 리셋하고, 권한관리/제보상점/Drive 권한을 정리한다.
-// sourceFileId: 퇴실자 백업 탭을 만들 때 회원 시트를 가져올 원본 — 보통은
+//
+// 🔧 [사용자 지시, 2026-09-10] 앱스크립트 원본의 op/sh 이원 구조를 다시
+// 들여다보면 — get_op_spreadsheet()는 "관리자가 그 순간 실제로 열어서 실행
+// 중인 파일"이라, 리셋이 지난 뒤(예: 일요일 미납을 월요일 이후 처리) 관리자가
+// 지난 주 백업 파일을 직접 열어 처리하면 op가 곧 그 백업 파일이 된다. 이때
+// 백업 탭("{이름} (퇴실)")과 처리결과 박스는 그 op(=백업 파일) 쪽에 생성되고,
+// sh(고정 ID = 이번 주 공유 시트)에는 _sunday 분기로 슬롯 청소(권한 회수·
+// N번 리셋·데이터 초기화)만 별도로 적용된다 — 백업 탭은 안 만든다. 즉 "그
+// 사람의 마지막 활동이 속한 시점의 파일에 결과 기록을 남기고, 현재 공유
+// 시트에서는 접근 차단과 슬롯 청소만 한다"가 원래 의도였다.
+//
+// sourceFileId: 계산 근거이자 이제는 백업 탭의 생성 위치이기도 하다 — 보통은
 // fileId와 같지만, sheet_reset이 이미 지난 뒤 정산 확정 처리를 하는 경우
 // (computeExitResult의 resolveExitSourceFileId 참고) "지난 주 자동 백업
-// 파일"이 되어, 원본(이미 초기화됨)이 아니라 리셋 전 값을 그대로 담은
-// 백업에서 시트를 가져온다(사용자 지시). 원본의 회원 번호 슬롯 자체는
-// sourceFileId와 무관하게 항상 이 함수가 template으로 새로 만든다.
+// 파일"이 되어, 백업 탭·감사 스냅샷 모두 그 백업 파일 쪽에 생성된다. 원본의
+// 회원 번호 슬롯(N번 리셋)·권한 회수·데이터 시트 초기화는 sourceFileId와
+// 무관하게 항상 fileId(이번 주 공유 시트)에 적용한다.
 async function performExitReset(env, accessToken, fileId, member, resultMsg, kindLabel, sourceFileId) {
   const rowNumber = parseInt(member.number, 10) + 3;
   const backupName = `${member.name} (퇴실)`;
   const effectiveSourceFileId = sourceFileId || fileId;
+  const backupTargetFileId = effectiveSourceFileId; // 백업 탭·감사 스냅샷의 실제 생성 위치.
 
+  // 같은 파일이면(상황 A) ids 조회 하나에 backupName까지 함께 담아 끝내고,
+  // 다른 파일이면(상황 B, 지난 주 백업) fileId 쪽은 member.number/template만,
+  // backupTargetFileId(=effectiveSourceFileId) 쪽은 member.number/backupName을
+  // 따로 조회한다 — 기존 백업 탭 존재 여부는 항상 backupTargetFileId 기준.
+  const sameFile = effectiveSourceFileId === fileId;
   const [ids, sourceIds] = await Promise.all([
-    getSheetIdsByNames(env, accessToken, fileId, [backupName, member.number, "template"]),
-    effectiveSourceFileId === fileId
-      ? Promise.resolve(null)
-      : getSheetIdsByNames(env, accessToken, effectiveSourceFileId, [member.number]),
+    getSheetIdsByNames(env, accessToken, fileId, sameFile ? [member.number, "template", backupName] : [member.number, "template"]),
+    sameFile ? Promise.resolve(null) : getSheetIdsByNames(env, accessToken, effectiveSourceFileId, [member.number, backupName]),
   ]);
-  const existingBackupId = ids[backupName];
   const memberSheetId = ids[member.number];
   const templateSheetId = ids["template"];
   // 백업 탭의 원본은 sourceFileId 쪽 회원 시트 sheetId — 같은 파일이면 위에서
   // 이미 찾은 memberSheetId를 그대로 쓰고, 다른 파일(지난 주 백업)이면 그
   // 파일 안에서 따로 찾은 sheetId를 쓴다.
   const backupSourceSheetId = sourceIds ? sourceIds[member.number] : memberSheetId;
+  const existingBackupId = sameFile ? ids[backupName] : sourceIds[backupName];
 
-  if (existingBackupId !== null) {
-    await spreadsheetBatchUpdate(env, accessToken, fileId, [{ deleteSheet: { sheetId: existingBackupId } }]);
+  if (existingBackupId !== null && existingBackupId !== undefined) {
+    await spreadsheetBatchUpdate(env, accessToken, backupTargetFileId, [
+      { deleteSheet: { sheetId: existingBackupId } },
+    ]);
   }
   if (memberSheetId === null) throw new Error(`시트 ${member.number}를 찾을 수 없습니다.`);
   if (templateSheetId === null) throw new Error("template 시트를 찾을 수 없습니다.");
@@ -7005,10 +7031,10 @@ async function performExitReset(env, accessToken, fileId, member, resultMsg, kin
     accessToken,
     effectiveSourceFileId,
     backupSourceSheetId,
-    fileId,
+    backupTargetFileId,
     backupName
   );
-  await writeExitResultBox(env, accessToken, fileId, backupSheetId, resultMsg);
+  await writeExitResultBox(env, accessToken, backupTargetFileId, backupSheetId, resultMsg);
 
   // 🔧 [데이터 감사] "데이터" 원본 행을 초기화하기 전에, 그 시점의 값을
   // "데이터 (감사)"에 스냅샷으로 남기고, 백업 탭의 수식이 원본 대신 이
@@ -7016,15 +7042,27 @@ async function performExitReset(env, accessToken, fileId, member, resultMsg, kin
   // (앱스크립트 _set_sheet_init()의 동작을 그대로 재현, 2026-09 추가:
   // 원래 웹 경로엔 이 로직이 없어 번호가 재사용되면 백업 탭 수식이
   // 새 회원 값을 잘못 참조할 위험이 있었다).
-  const auditRow = await appendDataAuditSnapshot(env, accessToken, fileId, rowNumber, member.name, "퇴실").catch(
-    () => 0
-  );
+  //
+  // 🔧 [백업 파일 분리, 2026-09-10] 백업 탭이 backupTargetFileId(지난 주
+  // 백업 파일일 수 있음)에 생성되므로, 감사 스냅샷도 같은 파일의 "데이터"/
+  // "데이터 (감사)"에 남겨야 백업 탭 수식(INDIRECT 참조)이 실제로 존재하는
+  // 자리를 가리킨다 — fileId(이번 주 시트)에 남기면 그 파일엔 애초에 이
+  // rowNumber의 원본 행이 이미 초기화되어 있거나(재사용 전) 다른 회원 값이
+  // 들어있어(재사용 후) 스냅샷 자체가 무의미해진다.
+  const auditRow = await appendDataAuditSnapshot(
+    env,
+    accessToken,
+    backupTargetFileId,
+    rowNumber,
+    member.name,
+    "퇴실"
+  ).catch(() => 0);
   if (auditRow > 0) {
-    await rewriteBackupAuditFormulas(env, accessToken, fileId, backupName, auditRow).catch(() => {});
+    await rewriteBackupAuditFormulas(env, accessToken, backupTargetFileId, backupName, auditRow).catch(() => {});
   }
 
   const ownerEmail = env.ADMIN_EMAIL;
-  await protectSheetForOwnerAndService(env, accessToken, fileId, backupSheetId, ownerEmail);
+  await protectSheetForOwnerAndService(env, accessToken, backupTargetFileId, backupSheetId, ownerEmail);
 
   await spreadsheetBatchUpdate(env, accessToken, fileId, [{ deleteSheet: { sheetId: memberSheetId } }]);
   const newSheetId = await copySheetWithName(env, accessToken, fileId, templateSheetId, member.number);

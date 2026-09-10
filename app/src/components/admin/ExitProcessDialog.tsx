@@ -476,8 +476,10 @@ export function ExitProcessDialog({
                     <span className="text-sm font-semibold sm:text-base">주의사항</span>
                   </div>
                   <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
-                    확정하면 현재 시트가 백업 탭으로 옮겨지고 원래 슬롯이 초기화됩니다. 되돌릴 수 없으니
-                    내용을 다시 확인한 뒤 진행하세요.
+                    {preview.fromBackup
+                      ? "확정하면 지난 주 백업 시트 쪽에 백업 탭이 생성되고, 이번 주 공유 시트에서는 접근 권한 해제와 슬롯 초기화만 적용됩니다."
+                      : "확정하면 현재 시트가 백업 탭으로 옮겨지고 원래 슬롯이 초기화됩니다."}{" "}
+                    되돌릴 수 없으니 내용을 다시 확인한 뒤 진행하세요.
                   </p>
                 </InfoCard>
               )}
