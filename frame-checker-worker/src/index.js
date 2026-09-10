@@ -360,8 +360,18 @@ function instrumentKvNamespace(kv, requestPath) {
   return {
     ...kv,
     get: kv.get.bind(kv),
-    list: kv.list.bind(kv),
     getWithMetadata: kv.getWithMetadata ? kv.getWithMetadata.bind(kv) : undefined,
+    // 🔧 [사용량 모니터링에 list() 추가] KV list()는 무료 플랜 하루
+    // 1,000회 한도가 있고(put/delete와는 별도 할당량), 2026-08-27 실제로
+    // 소진된 이력이 있다(leaveq:/report: 등을 인덱스 방식으로 리팩터링한
+    // 계기) — put/delete와 동일하게 (prefix, 요청 경로)별로 세어 "Bot·Sheet"
+    // 탭에서 어느 화면이 list()를 얼마나 자주 쓰는지 보이게 한다.
+    list(opts) {
+      const prefix = _kvKeyPrefix((opts && opts.prefix) || "(전체)");
+      _bumpKvUsageCounter("kv_list", prefix, requestPath);
+      console.log(`[kv list] path=${requestPath || "(cron/기타)"} prefix=${(opts && opts.prefix) || "(전체)"}`);
+      return kv.list(opts);
+    },
     put(key, value, opts) {
       const prefix = _kvKeyPrefix(key);
       _bumpKvUsageCounter("kv_put", prefix, requestPath);

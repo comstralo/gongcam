@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Bell, Check, Pencil, Smartphone, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,7 +66,14 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
   const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState("");
 
+  // 🔧 [KV list() 호출 방어] 기기 목록 조회는 Cloudflare KV list()를
+  // 쓴다 — 계정당 호출 빈도는 낮지만(알림을 켤 때 1회), 같은 틱에 중복
+  // 호출이 겹치는 경우까지 대비해 진행 중일 땐 새 호출을 무시한다.
+  const loadingDevicesRef = useRef(false);
+
   function loadDevices() {
+    if (loadingDevicesRef.current) return;
+    loadingDevicesRef.current = true;
     call<ListPushDevicesResponse>("/push/devices")
       .then((data) => {
         const list = data.devices || [];
@@ -79,7 +86,10 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
         }
         setDevices(list);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        loadingDevicesRef.current = false;
+      });
   }
 
   useEffect(() => {

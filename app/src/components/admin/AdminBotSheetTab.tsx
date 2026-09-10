@@ -200,17 +200,22 @@ function UsageMonitorSection({ visible }: { visible: boolean }) {
                         대조), kind로 어떤 캐시인지 바로 알 수 있다
                         (isolate당 근사치 — 정확한 하루 총합은 위 게이지를
                         신뢰). 개별 이벤트 단위까지 보려면 wrangler tail의
-                        [kv put]/[kv delete] 로그를 함께 참고. */}
+                        [kv put]/[kv delete] 로그를 함께 참고.
+                        🔧 [list() 계측 추가] KV list()는 put/delete와는
+                        별도의 하루 1,000회 한도(무료 플랜)를 쓰고
+                        2026-08-27에 실제로 소진된 이력이 있어(§docs/
+                        CACHING_POLICY.md), 위 게이지엔 합산하지 않되 같은
+                        breakdown 표에 "LIST" 행으로 함께 보여준다. */}
                     {usage.kvWriteBreakdown.length > 0 && (
                       <div className="flex flex-col gap-0.5">
-                        <FieldLabel>최근 30분 KV 쓰기·삭제 — 화면별 (이 서버 기준)</FieldLabel>
+                        <FieldLabel>최근 30분 KV 쓰기·삭제·목록조회 — 화면별 (이 서버 기준)</FieldLabel>
                         {usage.kvWriteBreakdown.map(({ op, kind, path, count }) => (
                           <div
                             key={`${op}|${kind}|${path}`}
                             className="flex items-center justify-between gap-2 pl-2"
                           >
                             <span className="truncate text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
-                              {op === "kv_put" ? "PUT" : "DEL"} {path} · {kind}
+                              {op === "kv_put" ? "PUT" : op === "kv_delete" ? "DEL" : "LIST"} {path} · {kind}
                             </span>
                             <span className="shrink-0 text-micro-lg font-semibold tabular-nums sm:text-xs">
                               {count}
