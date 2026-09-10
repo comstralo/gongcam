@@ -56,6 +56,25 @@ function ForcedExitChecklist({ checks }: { checks: ExitCheckItem[] }) {
   );
 }
 
+// 🔧 [사용자 지시] "스켈레톤 UI 적용이 안된 부분" — "미리보기 계산"을
+// 누르면 "계산 중..." 텍스트 한 줄만 뜨다가, 응답이 오면 카드 3~4개
+// (반환 예치금·차감 원인·처리 결과·시트 변동사항)가 한꺼번에 나타나
+// 레이아웃이 훅 밀렸다. AdminListSkeleton/RosterViewSkeleton과 같은
+// 이유로 만든 전용 스켈레톤 — rows는 실제 카드가 몇 개 뜨는 분기인지에
+// 맞춰 호출부가 지정한다(admin_forced=4, settle=3).
+function ExitPreviewSkeleton({ rows }: { rows: number }) {
+  return (
+    <div className="flex flex-col gap-2 sm:gap-2.5" aria-hidden>
+      {Array.from({ length: rows }).map((_, i) => (
+        <InfoCard key={i} className="flex animate-pulse flex-col gap-1.5">
+          <span className="h-3.5 w-24 rounded bg-muted sm:h-4 sm:w-28" />
+          <span className="h-3 w-full rounded bg-muted sm:h-3.5" />
+        </InfoCard>
+      ))}
+    </div>
+  );
+}
+
 export function ExitProcessDialog({
   candidate,
   onConfirmed,
@@ -270,9 +289,7 @@ export function ExitProcessDialog({
                 </Label>
               </InfoCard>
 
-              {previewing && !preview && (
-                <p className="py-4 text-center text-sm text-muted-foreground sm:text-base">계산 중...</p>
-              )}
+              {previewing && !preview && <ExitPreviewSkeleton rows={4} />}
 
               {/* 🔧 정산(settle) 미리보기와 동일한 카드 구성 — 직권 P도
                   반환율이 이미 0%로 고정돼 있을 뿐, 계산 결과 형태는
@@ -372,9 +389,7 @@ export function ExitProcessDialog({
             </>
           ) : isSettleOnly ? (
             <>
-              {previewing && !preview && (
-                <p className="py-4 text-center text-sm text-muted-foreground sm:text-base">계산 중...</p>
-              )}
+              {previewing && !preview && <ExitPreviewSkeleton rows={3} />}
 
               {preview && (
                 <InfoCard className="flex items-center justify-between gap-2">
