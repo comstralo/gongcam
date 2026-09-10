@@ -128,24 +128,64 @@ export function HalfDayLeaveDialog({
   // 🔧 [사용자 지시] "모달을 닫았다가 다시 띄우면 30초간은 다시 열지 못하게
   // 제한" — 열 때마다 /reason-leave-proof를 새로 조회하고 부모의 onOpen이
   // 전역 /status까지 재조회하므로(위 onOpen 주석 참고), 장난으로 여닫기를
-  // 반복하면 그때마다 API가 계속 호출된다. 마지막으로 닫은 시각을 기억해
-  // 뒀다가, 그로부터 30초 안에는 다시 열지 못하게 막는다 — 실제 사용
-  // 흐름(신청 확인 후 닫기)에서는 30초 안에 다시 열 일이 거의 없어 정상
-  // 사용엔 지장이 없다.
+  // 반복하면 그때마다 API가 계속 호출된다. 마지막으로 닫은 시각을 요일별로
+  // localStorage에 남겨(사용자 지적: "새로고침 하면 제한이 풀려버리는데" —
+  // 컴포넌트 메모리(useRef)만으론 새로고침에 날아가므로), 그로부터 30초
+  // 안에는 다시 열지 못하게 막는다 — 실제 사용 흐름(신청 확인 후 닫기)에는
+  // 지장이 없다. 트리거 버튼 자체에 남은 초를 실시간으로 보여준다.
   const REOPEN_COOLDOWN_MS = 30_000;
-  const lastClosedAtRef = useRef(0);
-  const [reopenCooldownMsg, setReopenCooldownMsg] = useState<string | null>(null);
+  const REOPEN_COOLDOWN_STORAGE_PREFIX = "halfDayLeaveModalClosedAt:";
+  const cooldownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [cooldownRemainingSec, setCooldownRemainingSec] = useState(0);
+
+  function readLastClosedAt(): number {
+    try {
+      const raw = localStorage.getItem(REOPEN_COOLDOWN_STORAGE_PREFIX + day);
+      return raw ? parseInt(raw, 10) || 0 : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  function tickCooldown() {
+    const remaining = Math.ceil((REOPEN_COOLDOWN_MS - (Date.now() - readLastClosedAt())) / 1000);
+    if (remaining > 0) {
+      setCooldownRemainingSec(remaining);
+    } else {
+      setCooldownRemainingSec(0);
+      if (cooldownTimerRef.current) {
+        clearInterval(cooldownTimerRef.current);
+        cooldownTimerRef.current = null;
+      }
+    }
+  }
+
+  function startCooldownTicker() {
+    tickCooldown();
+    if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current);
+    cooldownTimerRef.current = setInterval(tickCooldown, 1000);
+  }
+
+  // 마운트 시(또는 요일을 바꿔 이 컴포넌트가 재사용될 때) 이미 진행 중인
+  // 쿨다운이 남아있으면(예: 새로고침 직후) 이어서 카운트다운을 표시한다.
+  useEffect(() => {
+    startCooldownTicker();
+    return () => {
+      if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [day]);
 
   function handleOpenChange(next: boolean) {
     if (next) {
-      const remaining = REOPEN_COOLDOWN_MS - (Date.now() - lastClosedAtRef.current);
-      if (remaining > 0) {
-        setReopenCooldownMsg(`${Math.ceil(remaining / 1000)}초 뒤에 다시 열 수 있어요.`);
-        return;
-      }
-      setReopenCooldownMsg(null);
+      if (cooldownRemainingSec > 0) return;
     } else {
-      lastClosedAtRef.current = Date.now();
+      try {
+        localStorage.setItem(REOPEN_COOLDOWN_STORAGE_PREFIX + day, String(Date.now()));
+      } catch {
+        // localStorage 접근 불가(사생활 보호 모드 등) — 이 경우 쿨다운 없이 그냥 허용.
+      }
+      startCooldownTicker();
     }
     setOpen(next);
   }
@@ -306,13 +346,12 @@ export function HalfDayLeaveDialog({
           DialogTrigger가 직접 이 Button 엘리먼트에 트리거 역할을 위임하게
           한다(base-ui 표준 패턴, 이중 <button> 없이 동일하게 동작). */}
       <DialogTrigger
-        render={<Button variant="outline" className="w-full sm:h-11 sm:text-base" />}
+        render={
+          <Button variant="outline" className="w-full sm:h-11 sm:text-base" disabled={cooldownRemainingSec > 0} />
+        }
       >
-        반일 휴무 신청
+        {cooldownRemainingSec > 0 ? `${cooldownRemainingSec}초 후 재시도` : "반일 휴무 신청"}
       </DialogTrigger>
-      {reopenCooldownMsg && (
-        <p className="mt-1 text-center text-micro text-muted-foreground sm:text-micro-lg">{reopenCooldownMsg}</p>
-      )}
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-1.5">
