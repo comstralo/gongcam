@@ -642,6 +642,7 @@ const MEMBER_CACHE_PREFIXES = [
   "penSlotGrid:",
   "weeklyPaidFine:",
   "rosterStatus:",
+  "adminMemberList:",
 ];
 let _memberCacheGeneration = 0;
 const _cacheGeneration = new Map(); // key -> generation number (member-cache 그룹 외의 개별 키용)
@@ -948,7 +949,7 @@ async function _readLeaveHistory(env, weekOf) {
 // 이 값을 슬롯에 그대로 기록하므로(applyOutputPenalty 등), 리셋 직후
 // 오래 낡아있으면 잘못된 사이클 번호가 슬롯에 찍힐 위험이 있어 하루
 // 종일 같은 긴 TTL 대신 2시간으로 절충했다.
-const MEMBER_CACHE_UNCONDITIONAL_KEYS = ["members", "meta", "exitStatus", "memberRows", "penSlotGrid", "weeklyPaidFine", "penCycle", "rosterStatus"];
+const MEMBER_CACHE_UNCONDITIONAL_KEYS = ["members", "meta", "exitStatus", "memberRows", "penSlotGrid", "weeklyPaidFine", "penCycle", "rosterStatus", "adminMemberList"];
 
 // 🔧 [불필요한 KV 삭제 절감, 2026-09] 호출부가 실제로 건드린 시트 범위에
 // 맞는 그룹만 넘기면, 무관한 캐시까지 매번 함께 지우는 낭비를 피할 수 있다
@@ -958,7 +959,7 @@ const MEMBER_CACHE_UNCONDITIONAL_KEYS = ["members", "meta", "exitStatus", "membe
 const MEMBER_CACHE_GROUPS = {
   // 회원 명단/시트 구조 자체가 바뀌는 저빈도 조작(신규등록/퇴실/번호이동)
   // 전용 — 9종 전부와 관련 있으므로 groups를 생략(=전체)했을 때와 동일하다.
-  roster: [...MEMBER_CACHE_UNCONDITIONAL_KEYS, "reportScore", "outputPenSlots"], // penCycle/rosterStatus 포함 10종 전부
+  roster: [...MEMBER_CACHE_UNCONDITIONAL_KEYS, "reportScore", "outputPenSlots"], // penCycle/rosterStatus/adminMemberList 포함 11종 전부
   // 제보 승인/취소/반려·유예 — 벌점(outputPenSlots)·제보상점(reportScore)
   // 슬롯만 바뀐다. 다음 슬롯 미리보기(penSlotGrid)와 퇴실 후보 판정
   // (exitStatus)도 이 슬롯을 입력으로 쓰므로 함께 포함한다.
@@ -5953,6 +5954,21 @@ async function listExitedMemberEntries(env, accessToken, fileId) {
     .map((m) => ({ number: `${EXITED_MEMBER_PREFIX}${m[0]}`, name: m[0], email: "" }));
 }
 
+// 🔧 [드롭다운 전용 캐시, 2026-09-10] "다른 회원 보기" 드롭다운(/admin/members)
+// 은 거의 바뀌지 않는 화면인데도 listAllMembers(제보 이름 매칭, 퇴실 후보
+// 판정 등 20곳 이상이 공유하는 원본 캐시, TTL 10분)를 그대로 썼다 — 이
+// 드롭다운만 2시간으로 늘리고 싶다는 요청에 listAllMembers의 TTL 자체를
+// 올리면, 이름 매칭처럼 "무효화가 어쩌다 한 번 놓쳤을 때의 노출 시간"이
+// 중요한 다른 20곳의 안전망까지 함께 12배로 늘어난다(사용자 확인 후
+// 분리하기로 함). 그래서 listAllMembers는 건드리지 않고, 이 핸들러의
+// 최종 응답(members+exitedMembers 조합) 자체를 별도 키
+// (adminMemberList:{fileId})로 한 번 더 감싼다 — 원본이 10분 만에
+// 무효화돼도 이 바깥 캐시는 2시간 동안 그 스냅샷을 그대로 돌려주므로,
+// listAllMembers 쪽 정확성 요구사항과는 완전히 분리된다. invalidateMemberCache
+// 의 roster 그룹에 이미 이 prefix를 추가해뒀으므로(§MEMBER_CACHE_UNCONDITIONAL_KEYS),
+// 신규등록/퇴실이 발생하면 2시간을 기다리지 않고 즉시 무효화된다 — 드롭다운을
+// 열 때(onOpenChange)마다 재조회하는 프론트 로직과 합쳐지면 "평소엔 캐시로
+// 아끼고, 실제로 바뀌면 다음 클릭에 바로 최신값"이 된다.
 async function handleAdminMembers(req, env, origin, url) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
@@ -5961,24 +5977,20 @@ async function handleAdminMembers(req, env, origin, url) {
     const accessToken = await getServiceAccountAccessToken(env);
     const cycleFileId = url ? url.searchParams.get("cycle") : null;
     const { fileId: targetFileId } = await resolveTargetFileId(env, accessToken, cycleFileId);
-    const [members, exitedMembers] = await Promise.all([
-      listAllMembers(env, accessToken, targetFileId),
-      // 🔧 2026-09: "다른 회원 보기"에 퇴실자도 "{이름} (퇴실)"로 포함시켜
-      // 관리자가 마지막 참여 시점 기록을 웹에서 조회할 수 있게 한다 —
-      // 이전엔 이 탭이 구글 시트를 직접 열어야만 확인 가능했다. 원본
-      // 조회일 때만(과거 사이클 백업 파일엔 이 탭이 없음).
-      cycleFileId ? Promise.resolve([]) : listExitedMemberEntries(env, accessToken, targetFileId),
-    ]);
-    return json(
-      {
-        members: [
-          ...members.map((m) => ({ number: m.number, name: m.name, email: m.email })),
-          ...exitedMembers,
-        ],
-      },
-      200,
-      origin
-    );
+    // 현재/과거 fileId 구분 없이 2시간 — 드롭다운은 실시간성이 필요 없고,
+    // 신규등록·퇴실 발생 시 즉시 무효화되므로(아래 주석) 굳이 나눌 이유가 없다.
+    const responseMembers = await _cachedCompute(env, `adminMemberList:${targetFileId}`, 2 * 60 * 60_000, async () => {
+      const [members, exitedMembers] = await Promise.all([
+        listAllMembers(env, accessToken, targetFileId),
+        // 🔧 2026-09: "다른 회원 보기"에 퇴실자도 "{이름} (퇴실)"로 포함시켜
+        // 관리자가 마지막 참여 시점 기록을 웹에서 조회할 수 있게 한다 —
+        // 이전엔 이 탭이 구글 시트를 직접 열어야만 확인 가능했다. 원본
+        // 조회일 때만(과거 사이클 백업 파일엔 이 탭이 없음).
+        cycleFileId ? Promise.resolve([]) : listExitedMemberEntries(env, accessToken, targetFileId),
+      ]);
+      return [...members.map((m) => ({ number: m.number, name: m.name, email: m.email })), ...exitedMembers];
+    });
+    return json({ members: responseMembers }, 200, origin);
   } catch (err) {
     return json({ error: "회원 목록 조회 실패: " + err.message }, 500, origin);
   }

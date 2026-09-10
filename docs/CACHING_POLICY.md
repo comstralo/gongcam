@@ -111,7 +111,7 @@ computeFn)` 형태로 각 파생 계산(주로 여러 셀을 모아 가공한 �
 
 ## 3. 읽기 경로 TTL 인벤토리
 
-`_cachedCompute` 11곳 전수조사입니다.
+`_cachedCompute` 12곳 전수조사입니다.
 
 | 캐시 키 prefix | 함수 | TTL | 무효화 경로 |
 |---|---|---|---|
@@ -126,6 +126,7 @@ computeFn)` 형태로 각 파생 계산(주로 여러 셀을 모아 가공한 �
 | `penSlotGrid:` | `attachNextOccurrence` | 60초(유지) | `invalidateMemberCache` |
 | `exitStatus:` | `getAllExitRelevantStatus` | 60초(유지) | `invalidateMemberCache` |
 | `rosterStatus:` | `buildRosterStatus`(§16, 2026-09-10 신설) | 30분(현재 시트) / **2시간(과거 fileId, §17 신설)** | `invalidateMemberCache`(`roster` 그룹에 자동 포함, "상금 정산 집행"만 `rosterOnly` 그룹으로 좁게) |
+| `adminMemberList:` | `handleAdminMembers`(§17.1 재작성, 2026-09-10 신설) | **2시간(현재/과거 fileId 공통)** | `invalidateMemberCache`(`roster` 그룹에 자동 포함) — `listAllMembers`(`members:`)와는 별개의 바깥 캐시 |
 
 `meritRank:`는 폐지됐습니다 — `getMeritRank`(MY 탭 개인 순위)가 읽던
 `집계!B4:F18`이 `rosterStatus:`가 읽는 `집계!A4:L18`의 완전한 부분집합이라,
@@ -816,11 +817,27 @@ fileId의 회원 명단은 애초에 무효화될 이유가 없는 불변 데이
 `loadMembers()`로 분리하고, `Select`의 `onOpenChange`가 열릴 때(open
 ===true)마다 이를 호출하도록 추가했다 — `ReportPage`의 참여자 선택
 드롭다운이 이미 쓰던 동일한 관용구(같은 파일, 349번 줄 근처)를 그대로
-재사용한 것이라 새로운 패턴은 아니다. `members:` 캐시(10분/과거
-2시간, TTL은 그대로) 덕분에 매번 열 때마다 실제 Sheets API가 다시
-불리는 게 아니라, 캐시가 아직 유효하면 그 값을 즉시 반환하고 TTL이
-지났을 때만 실제로 재조회된다 — "열 때마다 최신 여부를 확인"하는
-효과와 "불필요한 쿼터 소모 방지"를 동시에 달성한다.
+재사용한 것이라 새로운 패턴은 아니다.
+
+**§17.1 재정정 — `adminMemberList:` 별도 캐시 분리 (같은 날, 두 번째
+후속)**: "현재 시트도 어차피 자주 안 바뀌니 2시간으로 걸고 싶다"는
+요청이 다시 들어왔다. 하지만 `listAllMembers`(`members:`)는 이
+드롭다운 하나만 쓰는 게 아니라 **20곳 이상**이 공유하는 원본 함수다 —
+그중 `snapshotNextOccurrence`(제보 이름→회원번호 매칭)나
+`listExitCandidates`(퇴실 후보 판정)처럼 "무효화가 어쩌다 한 번
+놓쳤을 때 얼마나 오래 낡은 값을 쓰게 되는지"가 정확성에 직결되는
+곳들도 같은 캐시를 쓴다. `listAllMembers` 자체의 TTL을 2시간으로
+올리면 드롭다운뿐 아니라 이 20여 곳의 안전망도 함께 12배(10분→2시간)
+늘어나므로, 대신 `handleAdminMembers`의 **최종 응답**(members+
+exitedMembers 조합)을 `listAllMembers`와는 별개의 바깥 캐시 키
+`adminMemberList:{fileId}`로 한 번 더 감쌌다 — `listAllMembers`
+자체는 손대지 않고 그대로(현재 10분/과거 2시간) 둔다. `roster`
+그룹(`MEMBER_CACHE_UNCONDITIONAL_KEYS`)에 이 prefix를 추가해, 신규
+등록·퇴실이 발생하면 2시간을 기다리지 않고 그 즉시 무효화된다.
+`onOpenChange` 재조회(위 후속 대응)와 합쳐지면 "평소엔 2시간 캐시로
+아끼고, 실제로 명단이 바뀌면 다음 클릭에 바로 최신값"이 정확히
+드롭다운에만 적용되고, 이름 매칭·퇴실 판정 등 정확성이 중요한 다른
+호출부의 10분 안전망은 그대로 유지된다.
 
 ## 18. 관련 문서
 
