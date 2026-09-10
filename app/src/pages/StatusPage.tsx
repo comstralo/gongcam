@@ -167,41 +167,46 @@ export function StatusPage({
         </Alert>
       )}
 
-      <StatusView
-        status={status}
-        allowGoalSchedule={!isViewingCycle && selected === SELF_VALUE}
-        isViewingCycle={isViewingCycle}
-        onLeaveApplied={(day, type, delta) => {
-          const applyLeaveDelta = (prev: StatusResponse | null) => {
-            if (!prev) return prev;
-            const usedField = type === "normal" ? "normalLeaveUsed" : "reasonLeaveUsed";
-            const leftField = type === "normal" ? "normalLeaveLeft" : "reasonLeaveLeft";
-            // 신청(delta > 0)은 잔여량을 그만큼 줄이고, 취소(delta < 0)는
-            // 그만큼 되돌린다 — 새로고침 없이 "반휴권 잔여량" 카드가 즉시
-            // 맞아떨어지게 한다. left는 문자열(시트 표시값)이라 숫자로
-            // 변환해 계산한 뒤 다시 문자열로 되돌린다.
-            const nextLeft = Math.max(0, Number(prev[leftField] || 0) - delta);
-            return {
-              ...prev,
-              [leftField]: String(nextLeft),
-              days: prev.days.map((d) =>
-                d.day === day ? { ...d, [usedField]: Math.max(0, d[usedField] + delta) } : d
-              ),
+      <div className="relative">
+        <StatusView
+          status={status}
+          allowGoalSchedule={!isViewingCycle && selected === SELF_VALUE}
+          isViewingCycle={isViewingCycle}
+          onLeaveApplied={(day, type, delta) => {
+            const applyLeaveDelta = (prev: StatusResponse | null) => {
+              if (!prev) return prev;
+              const usedField = type === "normal" ? "normalLeaveUsed" : "reasonLeaveUsed";
+              const leftField = type === "normal" ? "normalLeaveLeft" : "reasonLeaveLeft";
+              // 신청(delta > 0)은 잔여량을 그만큼 줄이고, 취소(delta < 0)는
+              // 그만큼 되돌린다 — 새로고침 없이 "반휴권 잔여량" 카드가 즉시
+              // 맞아떨어지게 한다. left는 문자열(시트 표시값)이라 숫자로
+              // 변환해 계산한 뒤 다시 문자열로 되돌린다.
+              const nextLeft = Math.max(0, Number(prev[leftField] || 0) - delta);
+              return {
+                ...prev,
+                [leftField]: String(nextLeft),
+                days: prev.days.map((d) =>
+                  d.day === day ? { ...d, [usedField]: Math.max(0, d[usedField] + delta) } : d
+                ),
+              };
             };
-          };
-          if (usingMyStatus) {
-            myStatus.setStatus(applyLeaveDelta);
-          } else {
-            setOtherStatus(applyLeaveDelta);
-          }
-        }}
-        onReasonLeaveSubmitted={reload}
-      />
-      {loading && (
-        <div className="flex items-center justify-center py-2">
-          <Loader2 className="size-4 animate-spin text-muted-foreground sm:size-5" />
-        </div>
-      )}
+            if (usingMyStatus) {
+              myStatus.setStatus(applyLeaveDelta);
+            } else {
+              setOtherStatus(applyLeaveDelta);
+            }
+          }}
+          onReasonLeaveSubmitted={reload}
+        />
+        {loading && status && (
+          <div
+            className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-background/60 backdrop-blur-[1px]"
+            aria-hidden="true"
+          >
+            <Loader2 className="size-5 animate-spin text-muted-foreground" />
+          </div>
+        )}
+      </div>
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
