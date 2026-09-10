@@ -260,9 +260,12 @@ export function MyOutputPenSection({
   // 사이 관리자가 처리한 최신 상태가 자동으로 반영되게 하는 게 원래 이
   // 훅의 목적이었다.
   useRefreshOnVisible(visible, load);
-  // 관련 캐시(penSlotGrid: 60초)의 3배 이상 주기로 폴링해, 화면을 계속
-  // 띄워둔 채로도 관리자가 방금 처리한 결과가 몇 분 안에 자동 반영된다.
-  const refreshProgress = usePollingRefresh(visible, load, 3 * 60_000);
+  // 🔧 [사용자 지시, 2026-09-10] 3분 → 10분으로 하향 — 관리자가 실제로
+  // 처리한 결과는 penalty 그룹 무효화로 이미 즉시 반영되므로(§관련
+  // penSlotGrid:/members:/penCycle: 캐시), 이 폴링은 "무효화를 놓쳤을
+  // 때의 안전망"일 뿐이다. 화면을 계속 띄워둔 채로도 몇 분 안에 자동
+  // 반영되면 충분하다는 판단.
+  const refreshProgress = usePollingRefresh(visible, load, 10 * 60_000);
   useEffect(() => {
     if (refreshSignal) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
