@@ -1808,18 +1808,17 @@ async function findMemberNumberByEmail(env, accessToken, fileId, email) {
 // 안전망"일 뿐이다 — meta:와 같은 이유로 10분으로 늘려(2026-09-10 재조정,
 // 구 5분) KV 읽기 빈도를 줄인다(docs/CACHING_POLICY.md §5).
 //
-// 🔧 [과거 fileId TTL 상향, 2026-09-10] "내 대시보드 드롭다운도 과거
-// fileId면 2시간으로 늘리고, 신규등록/퇴실 시 캐시 무효화가 되는 게
-// 맞지 않냐"는 지적 — 무효화는 이미 위 5곳(handleAdminCreateMember/
-// handleAdminExitConfirm/performExitReset/performDepositAgainReset/
-// handleAdminMemberReorderPreview)이 모두 groups:["roster"]를 호출해
-// members가 항상 함께 지워지므로 추가 구현이 필요 없었다. personalStatus:/
-// rosterStatus:와 동일한 원칙(§17)으로 TTL만 과거 fileId에서 2시간으로
-// 늘린다 — 과거 fileId는 이 다섯 경로가 항상 그 fileId를 정확히 넘겨
-// 무효화하므로(관리자 조작이 있으면 즉시 반영) 안전하다.
+// 🔧 [과거 fileId 분기 되돌림, 2026-09-10] 한때 과거 fileId만 2시간으로
+// 늘렸었다(§17) — 하지만 listAllMembers는 이 함수 하나만 쓰는 게 아니라
+// 제보 이름→회원번호 매칭(snapshotNextOccurrence 등)·퇴실 후보 판정
+// (listExitCandidates) 등 20곳 이상이 공유하는 원본이라, "드롭다운만
+// 2시간으로 하고 싶다"는 의도와 달리 정확성이 중요한 다른 호출부의
+// 안전망까지 함께 늘어나는 부작용이 있었다(사용자 확인 후 원복). "내
+// 대시보드" 드롭다운의 2시간 요구사항은 이 함수와 완전히 분리된 별도
+// 바깥 캐시(handleAdminMembers의 adminMemberList:{fileId}, §17.1)로
+// 충족한다 — 여기(members:)는 다시 현재/과거 구분 없이 항상 10분이다.
 async function listAllMembers(env, accessToken, fileId) {
-  const ttlMs = fileId === env.GOOGLE_SHEET_FILE_ID ? 10 * 60_000 : 2 * 60 * 60_000;
-  return _cachedCompute(env, `members:${fileId}`, ttlMs, async () => {
+  return _cachedCompute(env, `members:${fileId}`, 10 * 60_000, async () => {
     const rows = await getSheetValues(env, accessToken, fileId, "데이터!A1:V50");
     const members = [];
     for (const row of rows) {

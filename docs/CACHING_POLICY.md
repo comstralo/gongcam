@@ -117,7 +117,7 @@ computeFn)` 형태로 각 파생 계산(주로 여러 셀을 모아 가공한 �
 |---|---|---|---|
 | `penCycle:` | `getCurrentPenCycle` | 5분(2026-09 상향, 구 60초) | **없음** — Worker가 쓰는 경로가 전혀 없어 의도적으로 무효화 그룹 밖 |
 | `meta:` | `getSpreadsheetMeta` | 5분 | `invalidateMemberCache` |
-| `members:` | `listAllMembers` | 10분(현재 시트) / **2시간(과거 fileId, §17 확장)** | `invalidateMemberCache`(`roster` 그룹 — 신규등록/퇴실/재납/번호이동 5곳이 모두 호출, 항상 현재 시트 대상) |
+| `members:` | `listAllMembers` | 10분(현재/과거 fileId 공통 — §17.1에서 과거만 2시간으로 늘렸다가 원복) | `invalidateMemberCache`(`roster` 그룹 — 신규등록/퇴실/재납/번호이동 5곳이 모두 호출, 항상 현재 시트 대상) |
 | `reportScore:` | `getReportScore` | 30분 | `invalidateMemberCache` + `invalidateMemberSlotCache`(2026-09-09부터 제보 처리 경로에서 KV까지 즉시) |
 | `outputPenSlots:` | `getOutputPenSlots` | 5분 | `invalidateMemberCache`(회원별 키 — KV는 자연 만료만) |
 | `personalStatus:` | `getPersonalTabRows` | 10분(현재 시트) / **2시간(과거 fileId, §17 신설)** | `writeSheetValues` 내장 정밀 무효화(§7 — 도움봇 직접 쓰기는 무효화 밖, 과거 fileId엔 도움봇이 쓰지 않아 무관) |
@@ -830,14 +830,25 @@ fileId의 회원 명단은 애초에 무효화될 이유가 없는 불변 데이
 올리면 드롭다운뿐 아니라 이 20여 곳의 안전망도 함께 12배(10분→2시간)
 늘어나므로, 대신 `handleAdminMembers`의 **최종 응답**(members+
 exitedMembers 조합)을 `listAllMembers`와는 별개의 바깥 캐시 키
-`adminMemberList:{fileId}`로 한 번 더 감쌌다 — `listAllMembers`
-자체는 손대지 않고 그대로(현재 10분/과거 2시간) 둔다. `roster`
+`adminMemberList:{fileId}`로 한 번 더 감쌌다. `roster`
 그룹(`MEMBER_CACHE_UNCONDITIONAL_KEYS`)에 이 prefix를 추가해, 신규
 등록·퇴실이 발생하면 2시간을 기다리지 않고 그 즉시 무효화된다.
 `onOpenChange` 재조회(위 후속 대응)와 합쳐지면 "평소엔 2시간 캐시로
 아끼고, 실제로 명단이 바뀌면 다음 클릭에 바로 최신값"이 정확히
 드롭다운에만 적용되고, 이름 매칭·퇴실 판정 등 정확성이 중요한 다른
-호출부의 10분 안전망은 그대로 유지된다.
+호출부의 안전망은 그대로 유지된다.
+
+**§17.1 재재정정 — `members:` 과거 fileId 분기 원복 (같은 날, 세 번째
+후속)**: 위 두 번째 후속에서 `listAllMembers` 자체는 "그대로(현재
+10분/과거 2시간)" 둔다고 적었는데, 이 과거 2시간 분기는 §17에서
+먼저 걸어둔 것이었다 — "과거도 10분으로 돌려놔, 드롭다운에 대해서만
+2시간 정책을 과거·현재 모두 적용하도록 해"라는 명시적 지시로
+`listAllMembers`의 `fileId === env.GOOGLE_SHEET_FILE_ID` 분기를
+제거했다. 이제 `members:`는 현재/과거 구분 없이 **항상 10분**이고,
+드롭다운의 "과거/현재 모두 2시간"은 오직 `adminMemberList:`(바깥
+캐시, 위 문단)로만 구현된다 — 두 캐시의 책임이 완전히 분리됐다:
+`members:`(원본, 20여 곳 공유, 정확성 우선 10분 고정) /
+`adminMemberList:`(드롭다운 전용, 실시간성 불필요, 2시간 고정).
 
 ## 18. 관련 문서
 
