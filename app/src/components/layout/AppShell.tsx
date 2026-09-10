@@ -1,6 +1,8 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { TabBar } from "./TabBar";
+import { ThemeToggleButton } from "./ThemeToggleButton";
+import { PeriodAlarmToggleButton } from "./PeriodAlarmToggleButton";
 import { useAuth } from "@/lib/auth/useAuth";
 import { cn, ICON_STROKE } from "@/lib/utils";
 
@@ -61,17 +63,29 @@ export function AppShell({ children, title, titleIcon: TitleIcon, hideEyebrow, f
     >
       {title && (
         <header className="flex w-full page-content flex-col gap-0.5">
-          {!hideEyebrow && (
-            <span className="text-xs font-semibold tracking-tight text-primary sm:text-sm">
-              공부합시당 캠스터디
-            </span>
-          )}
-          <h1 className="flex items-center gap-2 text-xl font-bold sm:text-2xl">
-            {TitleIcon && (
-              <TitleIcon className="size-5 text-primary sm:size-6" strokeWidth={ICON_STROKE.default} />
-            )}
-            {title}
-          </h1>
+          <div className="flex items-end justify-between gap-2">
+            <div className="flex flex-col gap-0.5">
+              {!hideEyebrow && (
+                <span className="text-xs font-semibold tracking-tight text-primary sm:text-sm">
+                  공부합시당 캠스터디
+                </span>
+              )}
+              <h1 className="flex items-center gap-2 text-xl font-bold sm:text-2xl">
+                {TitleIcon && (
+                  <TitleIcon className="size-5 text-primary sm:size-6" strokeWidth={ICON_STROKE.default} />
+                )}
+                {title}
+              </h1>
+            </div>
+            {/* 🔧 [사용자 지시] "설정의 다크모드는 메뉴를 없애고 앱의 우측
+                상단에 토글 아이콘 식으로" / "교시 종소리도 앱 우측 상단의
+                여백으로 만들어줘" — eyebrow 라벨 유무와 무관하게 버튼들이
+                항상 h1과 같은 줄 높이에 오도록 items-end로 맞춘다. */}
+            <div className="flex shrink-0 items-center gap-0.5">
+              <PeriodAlarmToggleButton />
+              <ThemeToggleButton />
+            </div>
+          </div>
         </header>
       )}
       {children}
