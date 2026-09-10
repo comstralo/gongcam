@@ -695,6 +695,9 @@ export type CloudflareUsage = {
   workersErrorsToday: number;
   kvReadsToday: number;
   kvWritesToday: number;
+  // 🔧 [사용자 지시] list()는 kvReadsToday(read+list 합산)에도 포함되지만,
+  // 하루 1,000회라는 더 빡빡한 자체 한도(무료 플랜)를 쓰므로 별도로 표기한다.
+  kvListsToday: number;
   kvStorage: {
     reportsKv: KvNamespaceStorage;
     pushSubsKv: KvNamespaceStorage;
@@ -716,6 +719,7 @@ export type AdminUsageResponse = {
     workersRequestsPerDay: number;
     kvReadsPerDay: number;
     kvWritesPerDay: number;
+    kvListsPerDay: number;
     kvStorageBytes: number;
   };
   // 🔧 [KV 쓰기/삭제 추적, 화면별 특정] 이 Worker isolate가 최근 30분간

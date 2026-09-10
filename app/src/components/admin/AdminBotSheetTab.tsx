@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRightLeft, Bell, Bot, Database, Gauge, RotateCw } from "lucide-react";
+import { ArrowRightLeft, Bot, Database, Gauge, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
+import { Dialog, DialogTrigger, DialogContent } from "@/components/ui/dialog";
 import { InfoCard } from "@/components/dashboard/shared";
 import { SectionHeader, SectionCard, ItemTitle, FieldLabel, FieldValue } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
@@ -14,16 +13,12 @@ import { usePullRefreshListener } from "@/hooks/usePullToRefresh";
 import { ApiError } from "@/lib/api/client";
 import { cn, ICON_STROKE } from "@/lib/utils";
 import type {
-  AdminMembersRosterResponse,
-  AdminPushSendCategoryResponse,
   AdminUsageResponse,
   BotStatusResponse,
   BotCommandResponse,
   MemberReorderPlanItem,
   MemberReorderPreviewResponse,
   MemberReorderResponse,
-  NotifyCategory,
-  NotifyPrefsResponse,
 } from "@/lib/api/types";
 
 // 도움봇(study_manager_260418.py)은 로컬 PC에서 상시 실행되는 Selenium
@@ -60,14 +55,21 @@ function formatBytes(bytes: number): string {
 }
 
 function UsageBar({ label, used, limit, unit }: { label: string; used: number; limit: number; unit: string }) {
-  const tone = usageTone(used, limit);
-  const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 1000) / 10) : 0;
+  // 🔧 [버그 수정] 프론트가 새 필드(kvListsToday 등)를 기대하는 배포 직후,
+  // 아직 그 필드를 안 내려주는 이전 워커 응답이 잠깐 섞이면 used/limit이
+  // undefined로 들어와 toLocaleString()에서 화면 전체가 죽었다("갑자기
+  // 문제가 발생했습니다", Sentry ErrorBoundary로 재현·확인). 배포 타이밍
+  // 차이는 늘 있을 수 있으므로 값이 없으면 0으로 방어한다.
+  const safeUsed = used ?? 0;
+  const safeLimit = limit ?? 0;
+  const tone = usageTone(safeUsed, safeLimit);
+  const pct = safeLimit > 0 ? Math.min(100, Math.round((safeUsed / safeLimit) * 1000) / 10) : 0;
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center justify-between gap-2">
         <FieldLabel>{label}</FieldLabel>
         <FieldValue className={TONE_TEXT_CLASS[tone]}>
-          {used.toLocaleString()} / {limit.toLocaleString()} {unit}
+          {safeUsed.toLocaleString()} / {safeLimit.toLocaleString()} {unit}
         </FieldValue>
       </div>
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-border">
@@ -186,6 +188,19 @@ function UsageMonitorSection({ visible }: { visible: boolean }) {
                       label="KV 쓰기·삭제"
                       used={usage.cloudflare.kvWritesToday}
                       limit={usage.limits.kvWritesPerDay}
+                      unit="회"
+                    />
+                    {/* 🔧 [사용자 지시] "Cloudflare 모니터링 쪽에서 list
+                        사용 횟수도 표기해줘" — list()는 위 "KV 읽기" 게이지
+                        (read+list 합산, 하루 10만 한도)에도 이미 포함돼
+                        있지만, 실제로는 무료 플랜에서 하루 1,000회라는
+                        훨씬 빡빡한 자체 한도를 쓴다(2026-08-27 실제 소진
+                        이력) — 별도 게이지로 그 한도 대비 사용량을 바로
+                        볼 수 있게 한다. */}
+                    <UsageBar
+                      label="KV 목록조회(list)"
+                      used={usage.cloudflare.kvListsToday}
+                      limit={usage.limits.kvListsPerDay}
                       unit="회"
                     />
                     {/* 🔧 [사용자 지시] "해당 로그를 남겨서 어디서 누수가
@@ -381,11 +396,25 @@ function BotStatusSection({ visible }: { visible: boolean }) {
           )}
 
           {status?.screenshot && (
-            <img
-              src={`data:image/png;base64,${status.screenshot}`}
-              alt="도움봇 화면"
-              className="w-full rounded-lg border border-border"
-            />
+            // 🔧 [사용자 지시] "이미지를 클릭하면 크게 띄워지도록" — 제보
+            // 캡처 미리보기(CapturePreview)와 동일한 Dialog 확대 패턴을
+            // 재사용한다.
+            <Dialog>
+              <DialogTrigger className="block w-full overflow-hidden rounded-lg border border-border outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+                <img
+                  src={`data:image/png;base64,${status.screenshot}`}
+                  alt="도움봇 화면"
+                  className="w-full cursor-zoom-in"
+                />
+              </DialogTrigger>
+              <DialogContent className="max-w-3xl bg-black p-2 [&>button]:rounded-full [&>button]:bg-black/60 [&>button]:text-white [&>button]:opacity-100">
+                <img
+                  src={`data:image/png;base64,${status.screenshot}`}
+                  alt="도움봇 화면 확대"
+                  className="w-full rounded-lg object-contain"
+                />
+              </DialogContent>
+            </Dialog>
           )}
 
           <InfoCard className="flex flex-col gap-2.5 bg-card">
@@ -526,123 +555,6 @@ function MemberReorderSection() {
   );
 }
 
-// 🔧 2026-09: 원래 components/admin/PushNotificationSection.tsx라는 파일에
-// 있었으나 어디서도 import되지 않는 완전한 고아 컴포넌트였다(재조사로 확인).
-// 그 파일은 두 기능을 담고 있었는데, "본인 브라우저 구독 상태 표시 +
-// 켜기/테스트" 부분은 관리자도 로그인 회원이라 설정 탭 NotifyPrefsCard의
-// 자기 자신 대상 "전송" 버튼과 완전히 중복이라 버렸다. 하지만 이 아래
-// "다른 회원을 골라 카테고리별 테스트 발송" 기능은 중복이 아니었다 —
-// NotifyPrefsCard의 "전송"은 `nickname: name`(로그인한 관리자 자신)으로
-// 고정돼 있어 본인 계정 말고는 테스트할 수 없다. "이 회원한테 왜 알림이
-// 안 갔지" 같은 문의를 디버깅하려면 임의 회원을 골라 보낼 방법이 필요한데,
-// 그게 이 죽은 파일에만 있었다 — 그래서 이 부분만 살려 실제 운영 도구로
-// 옮긴다(파일은 삭제).
-function NotifyTestSendSection() {
-  const { call } = useApi();
-  const [members, setMembers] = useState<string[] | null>(null);
-  const [categories, setCategories] = useState<Record<NotifyCategory, string> | null>(null);
-  const [nickname, setNickname] = useState("");
-  const [category, setCategory] = useState<NotifyCategory | "">("");
-  const [sending, setSending] = useState(false);
-  const [result, setResult] = useState<{ text: string; type: "error" | "ok" } | null>(null);
-
-  useEffect(() => {
-    call<AdminMembersRosterResponse>("/admin/members/roster")
-      .then((data) => setMembers((data.members || []).map((m) => m.name)))
-      .catch(() => setMembers([]));
-    // 카테고리 목록은 회원 개인용 API를 그대로 재사용 — 관리자도 로그인 회원이므로
-    // 자신의 prefs가 함께 오지만 여기서는 categories만 사용한다.
-    call<NotifyPrefsResponse>("/notify-prefs")
-      .then((data) => setCategories(data.categories))
-      .catch(() => setCategories(null));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function handleSend() {
-    if (!nickname) {
-      setResult({ text: "수신 대상자를 선택해주세요.", type: "error" });
-      return;
-    }
-    if (!category) {
-      setResult({ text: "알림 종류를 선택해주세요.", type: "error" });
-      return;
-    }
-    setSending(true);
-    setResult(null);
-    try {
-      const data = await call<AdminPushSendCategoryResponse>("/admin/push/send-category", {
-        method: "POST",
-        body: { nickname, category },
-      });
-      if (data.blocked) {
-        setResult({ text: data.message || "회원이 해당 종류를 꺼두어 발송하지 않았습니다.", type: "error" });
-      } else {
-        setResult({ text: `${nickname}님에게 테스트 알림을 보냈습니다.`, type: "ok" });
-      }
-    } catch (err) {
-      setResult({ text: err instanceof ApiError ? err.message : "네트워크 오류입니다.", type: "error" });
-    } finally {
-      setSending(false);
-    }
-  }
-
-  return (
-    <SectionCard>
-      <Collapsible defaultOpen className="flex flex-col">
-        <SectionHeader icon={Bell} title="알림 발송 테스트" />
-        <CollapsiblePanel className="flex flex-col gap-3">
-          <p className="text-xs text-muted-foreground sm:text-sm">
-            특정 회원이 카테고리별 알림을 실제로 받는지(꺼둔 종류는 차단되는지) 확인합니다.
-          </p>
-
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-xs font-semibold text-muted-foreground sm:text-sm">수신 대상자</Label>
-            <Select value={nickname} onValueChange={(v) => setNickname(v ?? "")} disabled={!members || members.length === 0}>
-              <SelectTrigger className="w-full data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base">
-                <SelectValue placeholder={!members || members.length === 0 ? "등록된 회원이 없습니다" : "회원을 선택하세요"} />
-              </SelectTrigger>
-              <SelectContent>
-                {(members || []).map((name) => (
-                  <SelectItem key={name} value={name} className="sm:text-base">
-                    {name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-xs font-semibold text-muted-foreground sm:text-sm">알림 종류</Label>
-            <Select value={category} onValueChange={(v) => setCategory((v as NotifyCategory) ?? "")} disabled={!categories}>
-              <SelectTrigger className="w-full data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base">
-                <SelectValue placeholder="종류를 선택하세요" />
-              </SelectTrigger>
-              <SelectContent>
-                {categories &&
-                  (Object.keys(categories) as NotifyCategory[]).map((key) => (
-                    <SelectItem key={key} value={key} className="sm:text-base">
-                      {categories[key]}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <Button variant="outline" disabled={sending} onClick={handleSend} className="w-full sm:h-12 sm:text-base">
-            {sending ? "보내는 중..." : "테스트 발송"}
-          </Button>
-
-          {result && (
-            <Alert variant={result.type === "error" ? "destructive" : "default"}>
-              <AlertDescription>{result.text}</AlertDescription>
-            </Alert>
-          )}
-        </CollapsiblePanel>
-      </Collapsible>
-    </SectionCard>
-  );
-}
-
 // "스프레드시트 오퍼레이터" — 공유 스프레드시트 자체를 직접 조작하는 관리
 // 기능들을 모으는 상위 섹션. 지금은 "번호 정렬" 하나만 하위 항목으로
 // 담지만, 향후 시트 관련 기능이 늘어나면 같은 카드 안에 나란히 추가한다.
@@ -675,7 +587,6 @@ export function AdminBotSheetTab({ visible }: { visible: boolean }) {
     <div className="flex flex-col gap-4">
       <BotStatusSection visible={visible} />
       <SpreadsheetOperatorSection />
-      <NotifyTestSendSection />
       <UsageMonitorSection visible={visible} />
     </div>
   );
