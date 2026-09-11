@@ -1,13 +1,14 @@
 export function drawGrid(ctx: CanvasRenderingContext2D, w: number, h: number) {
   ctx.save();
-  // 🔧 [사용자 지시] "격자를 좀 더 얇게" — lineWidth를 1→0.5로만 낮췄을 때는
-  // 캔버스가 서브픽셀 선을 정수 좌표에 맞춰 안티앨리어싱하는 과정에서
-  // 브라우저에 따라 1px과 거의 구분이 안 갔다(사용자 확인: "딱히 바뀐건지
-  // 모르겠는데"). lineWidth는 1로 되돌리고 대신 불투명도를 확 낮춰(0.4→0.18)
-  // 선 자체가 확실히 옅고 가늘어 보이게 한다 — 두께가 아니라 존재감을 줄이는
-  // 방향.
-  ctx.strokeStyle = "rgba(238,240,234,0.18)";
+  // 🔧 [사용자 지시 이력] "격자를 좀 더 얇게" → lineWidth 1, 불투명도만
+  // 0.4→0.18로 낮췄더니 이번엔 "너무 희미해서 안 보인다"는 반대 피드백.
+  // 선 두께(lineWidth: 1, 얇음)는 유지하되, 밝은 배경/어두운 배경 화면
+  // 어디서나 인식되도록 회색 계열로 불투명도를 올리고 옅은 그림자로
+  // 테두리 대비를 더해 존재감만 키운다 — 두께가 아니라 색/대비로 해결.
+  ctx.strokeStyle = "rgba(148,148,148,0.55)";
   ctx.lineWidth = 1;
+  ctx.shadowColor = "rgba(0,0,0,0.35)";
+  ctx.shadowBlur = 1;
   for (let i = 1; i < 4; i++) {
     const x = (w / 4) * i;
     ctx.beginPath();

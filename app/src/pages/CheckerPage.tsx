@@ -20,6 +20,9 @@ import { useFrameCapture } from "@/hooks/useFrameCapture";
 import { useFitViewfinder } from "@/hooks/useFitViewfinder";
 import { InfoCard } from "@/components/dashboard/shared";
 import { ThemeToggleButton } from "@/components/layout/ThemeToggleButton";
+import { PeriodAlarmToggleButton } from "@/components/layout/PeriodAlarmToggleButton";
+import { LinksHeaderButton } from "@/components/layout/LinksHeaderButton";
+import { useAuth } from "@/lib/auth/useAuth";
 
 // "화각 불량 제보"/"PUSH 알림 전송"의 주의사항과 동일한 패턴 — 배열이라
 // 문구가 늘어나도 목록에 항목만 추가하면 된다.
@@ -29,6 +32,7 @@ const CHECKER_CAUTIONS = [
 ];
 
 export function CheckerPage() {
+  const { session } = useAuth();
   const stageRef = useRef<HTMLDivElement>(null);
   const liveCanvasRef = useRef<HTMLCanvasElement>(null);
   const resultCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -76,12 +80,14 @@ export function CheckerPage() {
           뷰파인더/버튼 영역과 높이가 안 맞는 원인 중 하나였다. 제목은
           세로모드에서만 보이고 가로모드에서는 아예 렌더링하지 않는다. */}
       {/* 🔧 [사용자 지시] "화각체커 우측 상단에도 다크모드 토글 버튼은
-          출력하도록 해. (나머진 회원용이니까 출력 X)" — 다른 메인 페이지는
-          AppShell이 공통 헤더에 PeriodAlarmToggleButton/LinksHeaderButton/
-          ThemeToggleButton을 함께 렌더링하지만, 체커는 로그인 회원이 아닌
-          사람도 접근 가능한 "누구나" 페이지(LoginPage 참고)라 자체 헤더를
-          쓴다 — 그중 다크모드 토글만 가져와 우측에 둔다. */}
-      <header className="flex w-full shrink-0 page-content items-baseline justify-between gap-3 mobile-landscape:hidden">
+          출력하도록 해. (나머진 회원용이니까 출력 X)" → 이후 "우측 상단에
+          표시되는 버튼 및 영역을 로그인한 사용자면 다른 메뉴에서와 동일하게
+          보여주고, 비로그인이라면 다크모드 토글만 보여줘" — 체커는 로그인
+          회원이 아닌 사람도 접근 가능한 "누구나" 페이지(LoginPage 참고)라
+          자체 헤더를 쓴다. 다른 메인 페이지(AppShell)와 동일하게, 로그인
+          세션이 있으면 PeriodAlarmToggleButton/LinksHeaderButton도 함께
+          보여주고, 비로그인이면 다크모드 토글 하나만 남긴다. */}
+      <header className="flex w-full shrink-0 page-content items-end justify-between gap-3 mobile-landscape:hidden">
         <div className="flex flex-col gap-0.5">
           <Link to="/" className="text-xs font-semibold tracking-tight text-primary sm:text-sm">
             공부합시당 캠스터디
@@ -91,7 +97,15 @@ export function CheckerPage() {
             화각 체커
           </h1>
         </div>
-        <ThemeToggleButton />
+        <div className="flex shrink-0 items-center gap-0.5">
+          {session && (
+            <>
+              <PeriodAlarmToggleButton />
+              <LinksHeaderButton />
+            </>
+          )}
+          <ThemeToggleButton />
+        </div>
       </header>
 
       {/* 🔧 뷰파인더+썸네일+버튼을 가로모드에서 나란히 배치하기 위한 행.
@@ -176,14 +190,39 @@ export function CheckerPage() {
               {/* HUD: 촬영 시작 전 카운트다운 오버레이 — 🔧 [사용자 지시]
                   숫자만 덩그러니 있으면 무슨 카운트다운인지 맥락이 없어
                   "N초 후 촬영 시작" 문구로 보여준다(숫자를 문구 안에만
-                  담아 중복 표시하지 않는다). 노란색으로 눈에 띄게 강조. */}
+                  담아 중복 표시하지 않는다). 노란색으로 눈에 띄게 강조.
+                  🔧 [사용자 지시] "뷰파인더 가용 공간만큼 키워서 출력" →
+                  "한 줄로 출력 가능한 선에서 해줘야지" → "N초 후 / 촬영
+                  시작으로 개행을 해주던지" — "N초 후"/"촬영 시작" 두 줄로
+                  나눠 각 줄의 글자 수를 줄인다.
+                  글자 폭을 정밀하게 역산해 폰트 크기를 최대한 키우는 시도
+                  (실측 em값 기반)는 매번 양옆이 살짝 넘쳤다(스크린샷으로
+                  반복 확인) — 실측 폰트와 실제 렌더 폰트가 미묘히 다르고
+                  안전마진을 아무리 늘려도 근본적으로 불안정했다. 대신
+                  컨테이너 폭의 16%를 폰트 크기로 쓰는 넉넉한 비율로 확실히
+                  안쪽에 들어가게 한다("촬영 시작" 5자 기준 텍스트 폭이
+                  컨테이너의 약 65%에 그쳐 여유가 크다). */}
               {isCountingDown && (
-                <div className="absolute inset-0 z-7 flex items-center justify-center bg-black/40">
+                <div className="absolute inset-0 z-7 flex flex-col items-center justify-center gap-1 bg-black/40 px-4">
                   <span
-                    className="font-mono text-2xl font-bold tabular-nums text-yellow-400 sm:text-3xl"
-                    style={{ textShadow: "0 2px 8px rgba(0,0,0,0.8)" }}
+                    className="block w-full text-center font-mono font-bold tabular-nums text-yellow-400"
+                    style={{
+                      fontSize: size ? Math.round(size.width * 0.16) : undefined,
+                      textShadow: "0 2px 8px rgba(0,0,0,0.8)",
+                      lineHeight: 1.15,
+                    }}
                   >
-                    {capture.startCountdown}초 후 촬영 시작
+                    {capture.startCountdown}초 후
+                  </span>
+                  <span
+                    className="block w-full text-center font-mono font-bold tabular-nums text-yellow-400"
+                    style={{
+                      fontSize: size ? Math.round(size.width * 0.16) : undefined,
+                      textShadow: "0 2px 8px rgba(0,0,0,0.8)",
+                      lineHeight: 1.15,
+                    }}
+                  >
+                    촬영 시작
                   </span>
                 </div>
               )}
@@ -344,7 +383,7 @@ export function CheckerPage() {
                   aria-label="카메라 전환"
                   disabled={!canSwitchCamera}
                   onClick={camera.switchFacing}
-                  className="flex size-9.5 shrink-0 items-center justify-center rounded-full border bg-card text-foreground disabled:opacity-40 sm:size-11 mobile-landscape:size-8"
+                  className="flex size-9.5 shrink-0 items-center justify-center rounded-full border border-yellow-600 bg-card text-yellow-600 disabled:opacity-40 sm:size-11 mobile-landscape:size-8 dark:border-yellow-500 dark:text-yellow-500"
                 >
                   <SwitchCamera className="size-3.5 sm:size-4" />
                 </button>
@@ -364,7 +403,7 @@ export function CheckerPage() {
                   aria-pressed={camera.mirrored}
                   disabled={!camera.enabled || !canToggleCamera}
                   onClick={camera.toggleMirror}
-                  className="flex size-9.5 shrink-0 items-center justify-center rounded-full border bg-card text-foreground disabled:opacity-40 sm:size-11 mobile-landscape:size-8"
+                  className="flex size-9.5 shrink-0 items-center justify-center rounded-full border border-yellow-600 bg-card text-yellow-600 disabled:opacity-40 sm:size-11 mobile-landscape:size-8 dark:border-yellow-500 dark:text-yellow-500"
                 >
                   <FlipHorizontal2
                     className={cn("size-3.5 sm:size-4 transition-transform", camera.mirrored && "scale-x-[-1]")}
