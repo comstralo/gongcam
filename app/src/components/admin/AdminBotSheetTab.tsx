@@ -239,6 +239,56 @@ function UsageMonitorSection({ visible }: { visible: boolean }) {
                         ))}
                       </div>
                     )}
+                    {/* 🔧 [사용량 모니터링 고도화] 위 kvWriteBreakdown(30분·
+                        isolate 근사치)과 달리 "오늘 하루(KST 자정 기준)
+                        누적·관리자+학생 모두 포함·Durable Object 영구
+                        저장" 기준이라 서버 재시작에도 유지된다. path별로
+                        묶고 그 안에서 email별로 PUT/DEL/LIST 합계를 보여줘
+                        "어느 화면을 누가 얼마나 썼는지" 한눈에 보이게
+                        한다. 최근 5분 이내 발생분은 cron 배치 전이라 아직
+                        안 보일 수 있다.
+                        🔧 [사용자 지시] "내역이 없어도 기본으로 제목이라도
+                        보여줘" — 기존 kvWriteBreakdown처럼 데이터가 없으면
+                        섹션 자체를 숨기면, 이 섹션이 존재한다는 사실 자체를
+                        (그리고 "아직 집계 전"이라는 상태를) 알 수 없었다.
+                        라벨은 항상 렌더링하고, 목록이 비었을 때만 안내
+                        문구로 대체한다. */}
+                    <div className="flex flex-col gap-1.5">
+                      <FieldLabel>오늘 KV 쓰기·삭제·목록조회 — 화면별·사용자별 (하루 누적)</FieldLabel>
+                      {usage.dailyUsage.length === 0 ? (
+                        <p className="pl-2 text-micro-lg text-muted-foreground/70 sm:text-xs">
+                          아직 집계된 기록이 없습니다(5분마다 갱신).
+                        </p>
+                      ) : (
+                        Object.entries(
+                          usage.dailyUsage.reduce<Record<string, Record<string, { put: number; del: number; list: number }>>>(
+                            (byPath, { path, email, op, count }) => {
+                              const byEmail = (byPath[path] ??= {});
+                              const ops = (byEmail[email] ??= { put: 0, del: 0, list: 0 });
+                              if (op === "kv_put") ops.put += count;
+                              else if (op === "kv_delete") ops.del += count;
+                              else ops.list += count;
+                              return byPath;
+                            },
+                            {}
+                          )
+                        ).map(([path, byEmail]) => (
+                          <div key={path} className="flex flex-col gap-0.5">
+                            <span className="truncate text-micro-lg font-medium sm:text-xs">{path}</span>
+                            {Object.entries(byEmail).map(([email, { put, del, list }]) => (
+                              <div key={email} className="flex items-center justify-between gap-2 pl-2">
+                                <span className="truncate text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
+                                  {email}
+                                </span>
+                                <span className="shrink-0 text-micro-lg font-semibold tabular-nums sm:text-xs">
+                                  PUT {put} / DEL {del} / LIST {list}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        ))
+                      )}
+                    </div>
                     {usage.cloudflare.workersErrorsToday > 0 && (
                       <p className="text-micro-lg text-destructive sm:text-xs">
                         오늘 Workers 오류 {usage.cloudflare.workersErrorsToday}건

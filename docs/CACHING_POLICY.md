@@ -1996,7 +1996,65 @@ Durable Object가 반환하는 `Date.now() - this.updatedAt > 60초`로
 막지 않고, 최악의 경우 다음 재시작 때만 이 버그가 재발하는 정도로
 영향이 제한적이다.
 
-## 45. 관련 문서
+## 45. 사용량 모니터링 고도화 — 하루/화면/사용자별 KV 쓰기·삭제·list 집계 (2026-09-11)
+
+관리자 Bot·Sheet 탭 "사용량 모니터링"의 `kvWriteBreakdown`(30분,
+isolate 인메모리 근사치, §화면별 특정 KV 추적 관련 주석 참고)을 "하루
+동안, 어느 메뉴(API 경로)에서, 어느 사용자(관리자+학생 모두)에 의해"
+발생했는지까지 보여주도록 확장했다. 목적은 KV 쓰기·삭제 절감 작업(§10
+이하 전반)을 이어갈 때 병목을 더 정확히 찾기 위함이다.
+
+**저장소**: 새 Durable Object `UsageStats`(index.js, `ParticipantsRoster`
+클래스 바로 뒤)를 신설했다. `ParticipantsRoster`가 `new_sqlite_classes`로
+등록돼 있지만 실제로는 `state.storage.get/put`(단순 key-value)만 쓰고
+SQL API 전례가 없어(§44에서 재확인), `UsageStats`도 동일한 key-value
+패턴(`blockConcurrencyWhile`로 재시작 시 전량 복구)을 따른다 — 회원
+15명·관리자 3명 규모에서 SQL은 과함. 키는
+`"{date}|{path}|{email}|{op}"`(date는 `todayKSTDateString()`과 동일한
+KST YYYY-MM-DD). `wrangler.toml`에 `USAGE_STATS_DO` 바인딩과 `v2`
+마이그레이션(`v1`은 그대로 유지)을 추가했다. `/flush`(배치 반영 시 7일
+이전 키 정리) / `/today`(해당 날짜 조회) 두 엔드포인트만 둔다.
+
+**이메일 계측 — 핵심 설계 결정**: 처음엔 전역 변수(mutable box)에
+세션 이메일을 담아 `verifySession` 내부에서 채우는 방식을 검토했으나
+**기각**했다 — `verifySession`(index.js:65) 내부에 `await
+crypto.subtle.verify` 등 비동기 지점이 있어, 같은 isolate가 요청을
+인터리빙 처리할 때 요청 A가 대기 중 요청 B가 전역을 재할당하면
+이메일이 다른 사람 것으로 뒤섞이거나 유실될 위험이 실재했다(2차 조사로
+확인). 이 코드베이스는 이미 "모듈 스코프 가변 상태는 요청 간 신뢰
+불가"라는 원칙을 여러 곳에서 지키고 있다(§287, §425-430, §6389 등).
+75곳 이상의 `verifySession`/`requireAdmin` 호출부를 일일이 고치는
+방식도 침습 범위가 커서 기각했다. 대신 **`fetch(rawReq, rawEnv)`
+최상단에서 Authorization 헤더를 먼저 파싱해 한 번만 선제적으로
+`verifySession`을 호출**해 얻은 이메일을 요청마다 새로 생성되는 지역
+변수(`requestEmail`, 전역이 아니므로 동시성 문제 없음)에 담아
+`instrumentKvNamespace`에 넘긴다. 각 핸들러 내부의 기존 재검증(실제
+권한 판정용)은 그대로 둔다 — HMAC 검증 자체가 가벼워 중복 호출 비용은
+무시할 수준이다.
+
+**전송 방식**: 매 KV 호출마다 DO에 실시간 전송하지 않는다(오버헤드 +
+"감시가 감시 대상 할당량을 갉아먹는" 역설 방지, §33 이하에서 반복
+확인된 원칙과 동일 맥락). `_bumpKvUsageCounter`가 기존 30분짜리
+`_kvUsageCounters`와 별개로 `_dailyUsageBuffer`(하루 누적용 임시
+버퍼)에도 함께 쌓고, 기존 5분 cron(`scheduled`, 이미 90분 위반인정
+만료 처리를 하고 있었음)에 `flushDailyUsageStats` 단계를 추가해
+배치로만 DO에 전송한다. `ctx`(ExecutionContext)가 `fetch`/`scheduled`
+시그니처에 없어 `waitUntil`을 못 쓴다는 제약을 확인했으나, cron
+핸들러는 애초에 막을 응답이 없어 문제되지 않는다.
+
+**프론트**: `AdminUsageResponse.dailyUsage` 필드를 추가하고,
+`AdminBotSheetTab.tsx`의 기존 `kvWriteBreakdown` 리스트 바로 아래에
+path별로 묶고 그 안에서 email별로 PUT/DEL/LIST 합계를 보여주는 섹션을
+추가했다(데이터 없으면 숨김, 기존 패턴과 동일).
+
+**2차 검증**: 선제 `verifySession`이 토큰 없는 요청(비로그인, 봇
+X-Bot-Secret 전용 엔드포인트 등)에서 암호 연산 없이 조기 반환됨을
+확인, `/flush`·`/today`의 키 파싱(`split("|")`)이 path(URL 경로)·
+email(구글 계정) 어디에도 `|` 문자가 올 수 없어 안전함을 확인,
+7일 보관 정책이 실제 코드에 구현돼 있음을 재확인, `wrangler.toml`의
+`v2` 마이그레이션이 `v1`과 충돌 없이 공존함을 확인.
+
+## 46. 관련 문서
 
 - `docs/WEB_ADMIN.md` §3.1 — `applyOutputPenalty`/`applyReportMerit`/
   `applyTimeDeduction`가 실제로 호출되는 관리자 제보 처리 화면·플로우.

@@ -325,7 +325,16 @@ function _getUsageCounter(kind, minutesAgo = 0) {
 const _kvUsageCounters = new Map(); // "kv_put|sheetCache:exitStatus:|/admin/captures:2026-09-09T12:34" -> count
 const KV_USAGE_WINDOW_MIN = 30;
 
-function _bumpKvUsageCounter(op, prefix, path) {
+// 🔧 [사용량 모니터링 고도화, 2026-09-11] "하루 동안, 어느 메뉴에서, 어느
+// 사용자에 의해"까지 보려면 30분 창짜리 _kvUsageCounters(isolate 재시작
+// 시 리셋)로는 부족하다 — 이 버퍼는 5분 cron(scheduled)이 UsageStats
+// Durable Object로 배치 전송(flushDailyUsageStats)한 뒤 비우는 임시
+// 중계소일 뿐이다. 매 KV 호출마다 DO에 실시간 전송하면 "감시 기능이
+// 감시 대상 KV 할당량을 갉아먹는" 역설이 생기므로, DO에도 배치로만
+// 보낸다(DO 자체는 KV 할당량과 무관하지만 오버헤드 자체를 줄이는 목적).
+const _dailyUsageBuffer = new Map(); // "{date}|{path}|{email}|{op}" -> count
+
+function _bumpKvUsageCounter(op, prefix, path, email) {
   const minuteKey = new Date().toISOString().slice(0, 16); // "YYYY-MM-DDTHH:MM"
   const key = `${op}|${prefix}|${path || "(cron/기타)"}:${minuteKey}`;
   _kvUsageCounters.set(key, (_kvUsageCounters.get(key) || 0) + 1);
@@ -338,6 +347,9 @@ function _bumpKvUsageCounter(op, prefix, path) {
       if (new Date(minuteKey2 + ":00Z").getTime() < cutoff) _kvUsageCounters.delete(k);
     }
   }
+
+  const dailyKey = `${todayKSTDateString()}|${path || "(cron/기타)"}|${email || "(익명)"}|${op}`;
+  _dailyUsageBuffer.set(dailyKey, (_dailyUsageBuffer.get(dailyKey) || 0) + 1);
 }
 
 // "최근 5분간 kv_put:sheetCache:9 라고 찍혀" — 콜론 1개까지만 잘라
@@ -356,7 +368,11 @@ function _kvKeyPrefix(key) {
   return secondIdx === -1 ? key : key.slice(0, secondIdx + 1);
 }
 
-function instrumentKvNamespace(kv, requestPath) {
+// 🔧 [사용량 모니터링 고도화, 2026-09-11] requestEmail은 fetch 최상단에서
+// 딱 한 번 선제적으로 verifySession한 결과다(§fetch 진입부 주석 참고) —
+// 각 핸들러 내부의 실제 권한 판정(requireAdmin 등)과는 별개로, "누가
+// 이 KV 호출을 유발했는지" 집계용으로만 쓰인다.
+function instrumentKvNamespace(kv, requestPath, requestEmail) {
   return {
     ...kv,
     get: kv.get.bind(kv),
@@ -368,19 +384,19 @@ function instrumentKvNamespace(kv, requestPath) {
     // 탭에서 어느 화면이 list()를 얼마나 자주 쓰는지 보이게 한다.
     list(opts) {
       const prefix = _kvKeyPrefix((opts && opts.prefix) || "(전체)");
-      _bumpKvUsageCounter("kv_list", prefix, requestPath);
+      _bumpKvUsageCounter("kv_list", prefix, requestPath, requestEmail);
       console.log(`[kv list] path=${requestPath || "(cron/기타)"} prefix=${(opts && opts.prefix) || "(전체)"}`);
       return kv.list(opts);
     },
     put(key, value, opts) {
       const prefix = _kvKeyPrefix(key);
-      _bumpKvUsageCounter("kv_put", prefix, requestPath);
+      _bumpKvUsageCounter("kv_put", prefix, requestPath, requestEmail);
       console.log(`[kv put] path=${requestPath || "(cron/기타)"} key=${key}`);
       return kv.put(key, value, opts);
     },
     delete(key) {
       const prefix = _kvKeyPrefix(key);
-      _bumpKvUsageCounter("kv_delete", prefix, requestPath);
+      _bumpKvUsageCounter("kv_delete", prefix, requestPath, requestEmail);
       console.log(`[kv delete] path=${requestPath || "(cron/기타)"} key=${key}`);
       return kv.delete(key);
     },
@@ -3248,6 +3264,17 @@ async function handleAdminUsageStatus(req, env, origin) {
 
   const cloudflare = await fetchCloudflareUsage(env);
 
+  // 🔧 [사용량 모니터링 고도화, 2026-09-11] UsageStats DO에서 오늘(KST)
+  // 하루치 (경로·사용자·연산)별 누적 집계를 읽어온다 — 5분 cron이 배치로
+  // 채워둔 값이라 최근 5분 이내 발생분은 아직 반영 전일 수 있다(§
+  // flushDailyUsageStats). DO 조회 자체가 실패해도(신규 배포 직후 등)
+  // 전체 응답이 죽지 않도록 빈 배열로 대체한다.
+  const dailyUsage = await getUsageStatsStub(env)
+    .fetch(`https://do/today?date=${encodeURIComponent(todayKSTDateString())}`)
+    .then((r) => r.json())
+    .then((d) => d.items || [])
+    .catch(() => []);
+
   return json(
     {
       sheets: {
@@ -3281,6 +3308,11 @@ async function handleAdminUsageStatus(req, env, origin) {
       // [kv put]/[kv delete] 로그(경로+전체 키 포함)와 함께 보면 개별
       // 이벤트 단위까지 확인 가능하다.
       kvWriteBreakdown: _getKvWriteBreakdown(),
+      // 🔧 [사용량 모니터링 고도화, 2026-09-11] 위 kvWriteBreakdown과 달리
+      // "하루(KST 자정 기준) 누적 · 관리자+학생 모두 포함 · DO 영구 저장"
+      // 기준이라 isolate 재시작에도 사라지지 않는다. 최근 5분 이내
+      // 발생분은 cron 배치 전이라 아직 안 보일 수 있다.
+      dailyUsage,
     },
     200,
     origin
@@ -8559,6 +8591,109 @@ export class ParticipantsRoster {
   }
 }
 
+// 🔧 [사용량 모니터링 고도화, 2026-09-11] "하루 동안, 어느 메뉴에서, 어느
+// 사용자에 의해 KV 쓰기·삭제·목록조회가 발생했는지"를 재시작에도 유지되게
+// 기록하는 전용 DO. ParticipantsRoster(참여자 명단/락/공지/쿨다운)와는
+// 책임이 달라 별도 클래스로 뒀다 — 이 DO는 SQL API 없이
+// ParticipantsRoster의 updatedAt과 동일한 단순 key-value 패턴만 쓴다
+// (회원 15명·관리자 3명 규모에서 SQL은 과함). 키는
+// "{date}|{path}|{email}|{op}"(date는 todayKSTDateString과 동일한
+// KST YYYY-MM-DD), 값은 누적 카운트 정수. 매 KV 호출마다 이 DO에 실시간
+// fetch하지 않고(오버헤드 + "감시가 감시 대상을 갉아먹는" 역설 방지),
+// index.js의 _dailyUsageBuffer가 5분 cron에서 배치로 /flush를 호출한다.
+export class UsageStats {
+  constructor(state) {
+    this.state = state;
+    this.counts = new Map(); // "{date}|{path}|{email}|{op}" -> count
+    // ParticipantsRoster의 updatedAt 복구 패턴과 동일 — 재시작 시 영구
+    // 저장소에서 전량 복원한다. 항목 수가 (보관 정책상 최대 7일)×(경로
+    // 수십 개)×(사용자 15명 안팎)×(연산 3종) 수준이라 전량 로드에 무리가
+    // 없다.
+    this.state.blockConcurrencyWhile(async () => {
+      const stored = await this.state.storage.list();
+      for (const [key, value] of stored) {
+        if (typeof value === "number") this.counts.set(key, value);
+      }
+    });
+  }
+
+  async fetch(req) {
+    const url = new URL(req.url);
+    if (req.method === "POST" && url.pathname === "/flush") {
+      const { entries, today } = await req.json();
+      const puts = [];
+      for (const { date, path, email, op, count } of entries || []) {
+        const key = `${date}|${path}|${email}|${op}`;
+        const next = (this.counts.get(key) || 0) + count;
+        this.counts.set(key, next);
+        puts.push(this.state.storage.put(key, next));
+      }
+      // 보관 정책: 오늘(today, 호출부가 todayKSTDateString()로 계산해
+      // 넘김) 기준 7일보다 오래된 키는 함께 정리한다 — DO 저장 공간이
+      // 무한정 쌓이지 않게 하는 목적. 문자열 YYYY-MM-DD는 사전순 비교가
+      // 날짜순 비교와 일치해 Date 파싱 없이 바로 비교 가능하다.
+      if (today) {
+        const cutoffDate = new Date(today);
+        cutoffDate.setDate(cutoffDate.getDate() - 7);
+        const cutoff = cutoffDate.toISOString().slice(0, 10);
+        for (const key of this.counts.keys()) {
+          const keyDate = key.slice(0, key.indexOf("|"));
+          if (keyDate < cutoff) {
+            this.counts.delete(key);
+            puts.push(this.state.storage.delete(key));
+          }
+        }
+      }
+      await Promise.all(puts);
+      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+    }
+    if (req.method === "GET" && url.pathname === "/today") {
+      const date = url.searchParams.get("date") || "";
+      const prefix = `${date}|`;
+      const items = [];
+      for (const [key, count] of this.counts) {
+        if (!key.startsWith(prefix)) continue;
+        const rest = key.slice(prefix.length);
+        const parts = rest.split("|");
+        const op = parts.pop();
+        const email = parts.pop();
+        const path = parts.join("|");
+        items.push({ path, email, op, count });
+      }
+      return new Response(JSON.stringify({ items }), { headers: { "Content-Type": "application/json" } });
+    }
+    return new Response("method not allowed", { status: 405 });
+  }
+}
+
+function getUsageStatsStub(env) {
+  const id = env.USAGE_STATS_DO.idFromName("usage-stats");
+  return env.USAGE_STATS_DO.get(id);
+}
+
+// _dailyUsageBuffer(index.js 상단)를 UsageStats DO로 배치 전송하고 비운다.
+// 5분 cron(scheduled)에서만 호출된다 — 매 요청마다 부르면 DO fetch
+// 오버헤드가 쌓인다.
+async function flushDailyUsageStats(env) {
+  if (_dailyUsageBuffer.size === 0) return;
+  const entries = [];
+  for (const [key, count] of _dailyUsageBuffer) {
+    const parts = key.split("|");
+    const op = parts.pop();
+    const email = parts.pop();
+    const date = parts.shift();
+    const path = parts.join("|");
+    entries.push({ date, path, email, op, count });
+  }
+  const stub = getUsageStatsStub(env);
+  const res = await stub.fetch("https://do/flush", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ entries, today: todayKSTDateString() }),
+  });
+  if (res.ok) _dailyUsageBuffer.clear();
+}
+
 // key(닉네임 등)별로 fn()을 상호 배타적으로 실행한다 — DO가 죽거나 acquire가
 // 예외를 던지는 극단적 상황에서도 fn() 자체가 멈추지 않도록, 락 획득
 // 자체가 실패하면(예: DO 일시 장애) 잠금 없이 그냥 진행한다 — 락은 레이스를
@@ -9655,7 +9790,19 @@ export default {
     // 아래의 req/env는 이 감싸진 버전을 쓴다.
     const req = rawReq;
     const url = new URL(req.url);
-    const env = { ...rawEnv, REPORTS_KV: instrumentKvNamespace(rawEnv.REPORTS_KV, url.pathname) };
+    // 🔧 [사용량 모니터링 고도화, 2026-09-11] "어느 사용자에 의해"까지
+    // 집계하려면 이메일이 필요하다. 각 핸들러 내부의 verifySession/
+    // requireAdmin(75곳 이상)을 전부 손대는 대신, 여기서 딱 한 번
+    // 선제적으로 검증해 얻은 이메일을 지역 변수(요청마다 새로 생성되는
+    // fetch 스코프 — 전역이 아니므로 동시 요청끼리 섞일 위험이 없다)에
+    // 담아 계측 프록시에 넘긴다. 각 핸들러의 기존 재검증(실제 권한
+    // 판정용)은 그대로 둔다 — HMAC 검증 자체가 가벼워 중복 호출 비용은
+    // 무시할 수준이다. 세션이 없거나 만료됐으면 null(집계 시 "(익명)").
+    const authHeader = req.headers.get("Authorization") || "";
+    const token = authHeader.replace(/^Bearer\s+/i, "");
+    const requestSession = token ? await verifySession(token, rawEnv.SESSION_SECRET) : null;
+    const requestEmail = requestSession ? requestSession.email : null;
+    const env = { ...rawEnv, REPORTS_KV: instrumentKvNamespace(rawEnv.REPORTS_KV, url.pathname, requestEmail) };
     const origin = resolveOrigin(req, env);
 
     if (req.method === "OPTIONS") {
@@ -9941,7 +10088,16 @@ export default {
   // 크론이 이미 처리해 둔 항목은 targetResponse가 채워져 있어 그 경로의
   // 필터(!item.targetResponse)에 걸리지 않으므로 중복 처리 위험이 없다.
   async scheduled(event, rawEnv) {
-    const env = { ...rawEnv, REPORTS_KV: instrumentKvNamespace(rawEnv.REPORTS_KV, "(cron)") };
+    const env = { ...rawEnv, REPORTS_KV: instrumentKvNamespace(rawEnv.REPORTS_KV, "(cron)", null) };
+    // 🔧 [사용량 모니터링 고도화, 2026-09-11] 하루 누적 버퍼(_dailyUsageBuffer)
+    // 를 UsageStats DO로 배치 전송한다 — 기존 90분 위반인정 로직과는 별도
+    // try/catch로 분리해, flush 실패가 그 아래 기존 크론 작업을 막지
+    // 않게 한다.
+    try {
+      await flushDailyUsageStats(env);
+    } catch (e) {
+      console.error("[cron] usage flush 실패:", e);
+    }
     const data = await proxyToBotDashboard(env, "/captures");
     if (!data) return; // 봇 연결 불가 — 다음 크론 실행이나 화면 조회 시 안전망이 재시도.
     await applyAutoRecognitionForExpired(env, data.items || []);

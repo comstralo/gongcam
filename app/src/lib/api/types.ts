@@ -728,6 +728,11 @@ export type AdminUsageResponse = {
   // path:"/admin/captures", count:5}]. isolate당 근사치라 정확한 하루
   // 총합은 아니다.
   kvWriteBreakdown: { op: string; kind: string; path: string; count: number }[];
+  // 🔧 [사용량 모니터링 고도화] 위 kvWriteBreakdown과 달리 "하루(KST 자정
+  // 기준) 누적 · 관리자+학생 모두 포함 · Durable Object 영구 저장" 기준이라
+  // isolate 재시작에도 유지된다. email은 세션이 없는 요청이면 "(익명)".
+  // 최근 5분 이내 발생분은 cron 배치 전이라 아직 반영 안 됐을 수 있다.
+  dailyUsage: { path: string; email: string; op: string; count: number }[];
 };
 
 export type BotCommand = "restart";
