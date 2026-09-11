@@ -111,49 +111,83 @@ function UsageBreakdownGroup({
     },
     {}
   );
+  // 🔧 [사용자 지시] "PUT (쓰기) 옆에 토글 텍스트로 30분, 일일 을 넣고
+  // 클릭하면 그에 맞는 값을 필터링 해서 보여줘" — 30분(이 서버 기준)과
+  // 일일(DO 영구 저장) 두 목록을 늘 같이 보여주면 항목이 길어져 스캔하기
+  // 어려웠다. 기본은 "일일"(더 정확한 값)로 시작하고, 클릭한 쪽만 보여준다.
+  const [range, setRange] = useState<"recent" | "daily">("daily");
   return (
     <div className="flex flex-col gap-1.5 border-l-2 border-border pl-2">
-      <span className="text-micro-lg font-semibold sm:text-xs">{opLabel}</span>
-      {recentRows.length > 0 && (
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-micro-lg font-semibold sm:text-xs">{opLabel}</span>
+        <div className="flex items-center gap-2 text-micro-lg sm:text-xs">
+          <button
+            type="button"
+            onClick={() => setRange("recent")}
+            className={cn(
+              "underline-offset-2 hover:underline",
+              range === "recent" ? "font-semibold text-foreground" : "text-muted-foreground"
+            )}
+          >
+            30분
+          </button>
+          <button
+            type="button"
+            onClick={() => setRange("daily")}
+            className={cn(
+              "underline-offset-2 hover:underline",
+              range === "daily" ? "font-semibold text-foreground" : "text-muted-foreground"
+            )}
+          >
+            일일
+          </button>
+        </div>
+      </div>
+      {range === "recent" ? (
         <div className="flex flex-col gap-0.5">
           <FieldLabel>최근 30분 · 사용자별 (이 서버 기준)</FieldLabel>
-          {Object.entries(byEmailRecent).map(([email, rows]) => (
-            <div key={email} className="flex flex-col gap-0.5 pl-2">
-              <span className="truncate text-micro-lg font-medium sm:text-xs">[{email}]</span>
-              {rows.map(({ path, kind, count }) => (
-                <div key={`${path}|${kind}`} className="flex items-center justify-between gap-2 pl-2">
-                  <span className="truncate text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
-                    {path} - {kind}
-                  </span>
-                  <span className="shrink-0 text-micro-lg font-semibold tabular-nums sm:text-xs">{count}</span>
-                </div>
-              ))}
-            </div>
-          ))}
+          {recentRows.length === 0 ? (
+            <p className="pl-2 text-micro-lg text-muted-foreground/70 sm:text-xs">아직 집계된 기록이 없습니다.</p>
+          ) : (
+            Object.entries(byEmailRecent).map(([email, rows]) => (
+              <div key={email} className="flex flex-col gap-0.5 pl-2">
+                <span className="truncate text-micro-lg font-medium sm:text-xs">[{email}]</span>
+                {rows.map(({ path, kind, count }) => (
+                  <div key={`${path}|${kind}`} className="flex items-center justify-between gap-2 pl-2">
+                    <span className="truncate text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
+                      {path} - {kind}
+                    </span>
+                    <span className="shrink-0 text-micro-lg font-semibold tabular-nums sm:text-xs">{count}</span>
+                  </div>
+                ))}
+              </div>
+            ))
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-0.5">
+          <FieldLabel>오늘 하루 · 화면별·사용자별</FieldLabel>
+          {dailyRows.length === 0 ? (
+            <p className="pl-2 text-micro-lg text-muted-foreground/70 sm:text-xs">
+              아직 집계된 기록이 없습니다.
+            </p>
+          ) : (
+            Object.entries(byPath).map(([path, byEmail]) => (
+              <div key={path} className="flex flex-col gap-0.5 pl-2">
+                <span className="truncate text-micro-lg font-medium sm:text-xs">{path}</span>
+                {Object.entries(byEmail).map(([email, count]) => (
+                  <div key={email} className="flex items-center justify-between gap-2 pl-2">
+                    <span className="truncate text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
+                      {email}
+                    </span>
+                    <span className="shrink-0 text-micro-lg font-semibold tabular-nums sm:text-xs">{count}</span>
+                  </div>
+                ))}
+              </div>
+            ))
+          )}
         </div>
       )}
-      <div className="flex flex-col gap-0.5">
-        <FieldLabel>오늘 하루 · 화면별·사용자별</FieldLabel>
-        {dailyRows.length === 0 ? (
-          <p className="pl-2 text-micro-lg text-muted-foreground/70 sm:text-xs">
-            아직 집계된 기록이 없습니다.
-          </p>
-        ) : (
-          Object.entries(byPath).map(([path, byEmail]) => (
-            <div key={path} className="flex flex-col gap-0.5 pl-2">
-              <span className="truncate text-micro-lg font-medium sm:text-xs">{path}</span>
-              {Object.entries(byEmail).map(([email, count]) => (
-                <div key={email} className="flex items-center justify-between gap-2 pl-2">
-                  <span className="truncate text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
-                    {email}
-                  </span>
-                  <span className="shrink-0 text-micro-lg font-semibold tabular-nums sm:text-xs">{count}</span>
-                </div>
-              ))}
-            </div>
-          ))
-        )}
-      </div>
     </div>
   );
 }
