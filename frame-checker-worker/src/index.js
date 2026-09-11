@@ -730,33 +730,51 @@ async function _cachedCompute(env, key, ttlMs, compute) {
 // 전환한다.
 const LEAVEQ_INDEX_KEY = "leaveqIndex:current";
 
+// 🔧 [2차 점검, 2026-09-11] exitRequestIndex(§37)와 구조적으로 동일한
+// 문제 — 모든 회원의 pending 신청 id가 이 하나의 배열에 섞여 있는데 락
+// 없이 "읽기→배열 조작→쓰기"만 한다. 추가(학생 본인 신청)와 삭제(학생
+// 철회, 봇 재기동 flush, 관리자 승인/반려 — 총 4곳)가 서로 다른 회원에
+// 대해 거의 동시에 일어나면(예: 학생 A가 신청하는 순간 관리자가 학생 B를
+// 승인/반려) 나중 쓰기가 먼저 반영을 덮어써 유령 pending이 남거나 실존
+// 항목이 사라질 수 있었다(경쟁 조건 재검증 완료). §36의 `leave:${회원}`
+// 락은 승인 시 시트 카운트 셀만 감싸고 이 인덱스 갱신은 명시적으로 락
+// 밖에 있어 부족하다 — 여러 회원 id가 섞인 전역 배열이라 회원 단위
+// 락으로는 서로 다른 회원 간 경쟁을 막을 수 없으므로, exitRequestIndex와
+// 동일하게 전역 락(`leaveQueueIndex:global`)으로 함수 내부를 감싼다.
+// 호출부(신청/철회/flush/승인/반려 총 6곳) 수정 없이 이 두 함수만으로
+// 전부 보호된다. 신청/처리는 회원 생애주기에 많아야 수 회, KV get/put
+// 각 1회 수준이라 직렬화로 인한 체감 지연은 무시할 만하다.
 async function _addToLeaveQueueIndex(env, item) {
-  const raw = await env.REPORTS_KV.get(LEAVEQ_INDEX_KEY);
-  let items = [];
-  if (raw) {
-    try {
-      items = JSON.parse(raw);
-    } catch {
-      items = [];
+  await withMemberLock(env, "leaveQueueIndex:global", async () => {
+    const raw = await env.REPORTS_KV.get(LEAVEQ_INDEX_KEY);
+    let items = [];
+    if (raw) {
+      try {
+        items = JSON.parse(raw);
+      } catch {
+        items = [];
+      }
     }
-  }
-  items.push(item);
-  await env.REPORTS_KV.put(LEAVEQ_INDEX_KEY, JSON.stringify(items));
+    items.push(item);
+    await env.REPORTS_KV.put(LEAVEQ_INDEX_KEY, JSON.stringify(items));
+  });
 }
 
 async function _removeFromLeaveQueueIndex(env, id) {
-  const raw = await env.REPORTS_KV.get(LEAVEQ_INDEX_KEY);
-  if (!raw) return;
-  let items;
-  try {
-    items = JSON.parse(raw);
-  } catch {
-    return;
-  }
-  const next = items.filter((it) => it.id !== id);
-  if (next.length !== items.length) {
-    await env.REPORTS_KV.put(LEAVEQ_INDEX_KEY, JSON.stringify(next));
-  }
+  await withMemberLock(env, "leaveQueueIndex:global", async () => {
+    const raw = await env.REPORTS_KV.get(LEAVEQ_INDEX_KEY);
+    if (!raw) return;
+    let items;
+    try {
+      items = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    const next = items.filter((it) => it.id !== id);
+    if (next.length !== items.length) {
+      await env.REPORTS_KV.put(LEAVEQ_INDEX_KEY, JSON.stringify(next));
+    }
+  });
 }
 
 async function _readLeaveQueueIndex(env) {
@@ -5625,18 +5643,34 @@ async function handleAdminLeaveProofDecide(req, env, origin) {
 
     // 승인 — handleSetLeaveApply(count 지정)와 동일한 시트 반영 로직을 재사용한다.
     const colLetter = String.fromCharCode("A".charCodeAt(0) + col);
-    const [cellRows, leftRows] = await Promise.all([
-      getSheetValues(env, accessToken, env.GOOGLE_SHEET_FILE_ID, `${memberNumber}!${colLetter}${ROW_REASON_LEAVE_USE + 1}`).catch(() => []),
-      getSheetValues(env, accessToken, env.GOOGLE_SHEET_FILE_ID, `${memberNumber}!C${ROW_REASON_LEAVE_LEFT + 1}`).catch(() => []),
-    ]);
-    const prevCount = parseLeaveCount((cellRows[0] && cellRows[0][0]) || "");
-    const left = safeNumber((leftRows[0] && leftRows[0][0]) || 0);
-    const nextCount = Math.min(MAX_LEAVES_PER_DAY_LIMIT, prevCount + count);
-    if (nextCount - prevCount > left) return json({ error: "사유반휴 잔여량이 없습니다." }, 400, origin);
+    // 🔧 [2차 점검, 2026-09-11] "같은 회원+같은 요일" 중복 pending 신청을
+    // 막는 검사가 어디에도 없어(신청 시점도, 봇 큐도), 학생이 같은 요일에
+    // 두 번 신청하면 별개 항목 2건이 관리자 목록에 그대로 쌓인다. 관리자
+    // 두 명이 그 두 건을 거의 동시에 승인하면 이 "읽기(prevCount/left)→
+    // 계산→쓰기"가 락 없는 read-modify-write라 나중 쓰기가 먼저 반영을
+    // 덮어써 사용량 한 건이 조용히 소실되고, left 검증도 낡은 스냅샷
+    // 기준이라 실제 잔여보다 초과 승인될 수 있었다(경쟁 조건 재검증 완료).
+    // left(C41, 잔여량)는 요일과 무관하게 회원 전체가 공유하는 값이라,
+    // 같은 회원의 다른 요일 승인과도 경쟁할 수 있어 락 범위를 요일이 아닌
+    // 회원 단위(`leave:${memberNumber}`)로 잡는다 — 읽기·검증·쓰기 세
+    // 단계 전부를 락 안에 넣어야 안전하므로, 그 뒤에 이어지는 큐 삭제·봇
+    // 동기화·이력 기록(카운트 셀과 무관)은 락 밖에 그대로 둔다.
+    const lockResult = await withMemberLock(env, `leave:${memberNumber}`, async () => {
+      const [cellRows, leftRows] = await Promise.all([
+        getSheetValues(env, accessToken, env.GOOGLE_SHEET_FILE_ID, `${memberNumber}!${colLetter}${ROW_REASON_LEAVE_USE + 1}`).catch(() => []),
+        getSheetValues(env, accessToken, env.GOOGLE_SHEET_FILE_ID, `${memberNumber}!C${ROW_REASON_LEAVE_LEFT + 1}`).catch(() => []),
+      ]);
+      const prevCount = parseLeaveCount((cellRows[0] && cellRows[0][0]) || "");
+      const left = safeNumber((leftRows[0] && leftRows[0][0]) || 0);
+      const nextCount = Math.min(MAX_LEAVES_PER_DAY_LIMIT, prevCount + count);
+      if (nextCount - prevCount > left) return { failure: true };
 
-    await writeSheetValues(env, accessToken, env.GOOGLE_SHEET_FILE_ID, [
-      { range: `${memberNumber}!${colLetter}${ROW_REASON_LEAVE_USE + 1}`, values: [[nextCount]] },
-    ]);
+      await writeSheetValues(env, accessToken, env.GOOGLE_SHEET_FILE_ID, [
+        { range: `${memberNumber}!${colLetter}${ROW_REASON_LEAVE_USE + 1}`, values: [[nextCount]] },
+      ]);
+      return { failure: false };
+    });
+    if (lockResult.failure) return json({ error: "사유반휴 잔여량이 없습니다." }, 400, origin);
 
     if (isQueued) {
       // 봇을 거치지 않고 처리했으므로 큐에서 지우면 끝나지만, 큐 확인과
@@ -6423,33 +6457,51 @@ const EXIT_REQUEST_INDEX_KEY = "exitRequestIndex:current";
 // 눌러야 하고, 그 동의가 있어야만 관리자 쪽 "정산" 버튼이 활성화된다(사용자
 // 지시). 인덱스에도 ts(신청일자)/agreedAt(동의일자, 안 했으면 null)을 함께
 // 둔다.
+// 🔧 [2차 점검, 2026-09-11] 15명 전원의 신청 정보가 이 하나의 KV 키(맵)에
+// 몰려있어, 락 없이 "읽기→수정→쓰기"만 하면 회원 A가 신청/동의를 제출하는
+// 순간 관리자가 회원 B를 취소/확정하는 것처럼 서로 다른 회원의 항목을
+// 거의 동시에 건드릴 때 나중 쓰기가 먼저 반영을 통째로 덮어써 그 회원의
+// 항목이 에러 없이 조용히 사라질 수 있었다(경쟁 조건 재검증 완료). 신청/
+// 동의는 회원 본인이, 취소/확정은 주로 관리자가 트리거해 실제로 겹칠 수
+// 있는 조합이다. 회원별 개별 키로 구조를 바꾸면 전체 조회(listExitRequests)
+// 가 다시 KV list()를 필요로 해 §22에서 이미 겪은 할당량 소진 문제가
+// 재발하므로(위 EXIT_REQUEST_INDEX_KEY 주석 참고), 구조는 그대로 두고
+// withMemberLock으로 이 인덱스 전체를 하나의 임계구역으로 직렬화한다 —
+// 회원별 항목이 전부 같은 맵 안에 있어 회원 단위 락으로는 A/B 간 경쟁을
+// 막을 수 없으므로 고정 키(전역 락)를 쓴다. 신청/동의/취소/확정은 회원
+// 생애주기에서 많아야 몇 번뿐이고 KV get/put 각 1회 수준이라 직렬화로
+// 인한 체감 지연은 무시할 만하다.
 async function _setExitRequestIndexEntry(env, memberNumber, exitDate, ts, agreedAt) {
-  const raw = await env.REPORTS_KV.get(EXIT_REQUEST_INDEX_KEY);
-  let map = {};
-  if (raw) {
-    try {
-      map = JSON.parse(raw);
-    } catch {
-      map = {};
+  await withMemberLock(env, "exitRequestIndex:global", async () => {
+    const raw = await env.REPORTS_KV.get(EXIT_REQUEST_INDEX_KEY);
+    let map = {};
+    if (raw) {
+      try {
+        map = JSON.parse(raw);
+      } catch {
+        map = {};
+      }
     }
-  }
-  map[memberNumber] = { exitDate: exitDate || null, ts: ts || null, agreedAt: agreedAt ?? null };
-  await env.REPORTS_KV.put(EXIT_REQUEST_INDEX_KEY, JSON.stringify(map));
+    map[memberNumber] = { exitDate: exitDate || null, ts: ts || null, agreedAt: agreedAt ?? null };
+    await env.REPORTS_KV.put(EXIT_REQUEST_INDEX_KEY, JSON.stringify(map));
+  });
 }
 
 async function _removeExitRequestIndexEntry(env, memberNumber) {
-  const raw = await env.REPORTS_KV.get(EXIT_REQUEST_INDEX_KEY);
-  if (!raw) return;
-  let map;
-  try {
-    map = JSON.parse(raw);
-  } catch {
-    return;
-  }
-  if (memberNumber in map) {
-    delete map[memberNumber];
-    await env.REPORTS_KV.put(EXIT_REQUEST_INDEX_KEY, JSON.stringify(map));
-  }
+  await withMemberLock(env, "exitRequestIndex:global", async () => {
+    const raw = await env.REPORTS_KV.get(EXIT_REQUEST_INDEX_KEY);
+    if (!raw) return;
+    let map;
+    try {
+      map = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    if (memberNumber in map) {
+      delete map[memberNumber];
+      await env.REPORTS_KV.put(EXIT_REQUEST_INDEX_KEY, JSON.stringify(map));
+    }
+  });
 }
 
 async function handleSetExitRequest(req, env, origin) {
@@ -6895,8 +6947,25 @@ async function handleAdminMembersRoster(req, env, origin) {
 }
 
 // 부스터디장 임명/해제 — 개인 탭 L3(참여상태) 셀을 "부스터디장"/"스터디원"으로
-// 직접 바꿔쓴다. 인원 제한 없이 여러 명을 동시에 부스터디장으로 둘 수 있다.
-// 스터디장은 이 API로 건드리지 않는다(퇴실 처리 등 별도 경로로만 관리).
+// 직접 바꿔쓴다. 스터디장은 이 API로 건드리지 않는다(퇴실 처리 등 별도
+// 경로로만 관리).
+// 🔧 [2차 점검, 2026-09-11] "인원 제한 없이 여러 명을 동시에 부스터디장으로
+// 둘 수 있다"던 이전 설계는 실제로는 버그였다 — `getCurrentCoReviewers`/
+// "송출 P 대상 처리"(ReportReviewList) 등 코드 전반이 "부스터디장 최대
+// 2명"을 전제로 짜여 있는데(사용자 확인 사항, §22), 정작 임명하는 이
+// 함수엔 그 상한을 강제하는 검증이 전혀 없었다. 3명 이상이 임명돼도
+// UI가 즉시 깨지지는 않지만(배열 길이에 하드코딩된 로직은 없음, 동적
+// 순회), "부스터디장 2명 합의"라는 운영 규칙 자체가 조용히 깨진다.
+// appoint===true일 때만 검증한다(해제는 인원이 줄어드는 방향이라 안전).
+// "조회→검증→쓰기"가 그대로면 관리자 둘이 서로 다른 회원을 거의 동시에
+// 임명할 때 둘 다 "현재 1명"을 보고 통과해 3명이 될 수 있어(경쟁 조건
+// 재검증 완료), withMemberLock으로 전체를 감싼다 — 부스터디장은 시트
+// 전체에서 최대 2명이라는 전역 제약이라 회원 단위가 아닌 고정 키
+// ("viceLeader:global")로 직렬화한다. 이미 부스터디장인 회원을 다시
+// appoint:true로 호출하는 재임명(no-op)은 alreadyViceLeader로 걸러
+// 상한 검증에 걸리지 않는다 — "A를 B로 교체"도 UI가 해제→임명 2회의
+// 독립 호출이라(전용 교체 API 없음, MemberRosterList.tsx 토글 방식)
+// A 해제가 먼저 반영되면 정상적으로 통과된다.
 async function handleAdminSetPartiStatus(req, env, origin) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
@@ -6927,8 +6996,25 @@ async function handleAdminSetPartiStatus(req, env, origin) {
     }
 
     const nextStatus = appoint ? "부스터디장" : "스터디원";
-    await writeSheetValues(env, accessToken, fileId, [{ range: `${member.number}!L3`, values: [[nextStatus]] }]);
-    await invalidateMemberCache(env, ["partiStatus"]); // 참여상태(L3)가 바뀌었으므로 관련 캐시만 무효화.
+    const lockResult = await withMemberLock(env, "viceLeader:global", async () => {
+      if (appoint) {
+        // withMemberLock은 "실행 순서"만 뮤텍스로 강제할 뿐, 그 안에서
+        // 읽는 coReviewers: 캐시(TTL 10분) 자체는 여전히 KV 최종 일관성을
+        // 따른다 — 다른 리전에서 방금 처리된 임명이 아직 이 리전의 KV
+        // 로컬 복제본에 반영 안 됐을 수 있어(§35에서 재확인한 패턴과
+        // 동일), 상한 검증 직전에 강제로 지우고 다시 계산해야 정확하다.
+        await invalidateMemberCache(env, ["partiStatus"]);
+        const coReviewers = await getCurrentCoReviewers(env, accessToken, fileId);
+        const alreadyViceLeader = coReviewers.some((m) => m.number === member.number);
+        if (!alreadyViceLeader && coReviewers.length >= 2) {
+          return { failure: true };
+        }
+      }
+      await writeSheetValues(env, accessToken, fileId, [{ range: `${member.number}!L3`, values: [[nextStatus]] }]);
+      await invalidateMemberCache(env, ["partiStatus"]); // 참여상태(L3)가 바뀌었으므로 관련 캐시만 무효화.
+      return { failure: false };
+    });
+    if (lockResult.failure) return json({ error: "부스터디장은 최대 2명까지 임명할 수 있습니다." }, 400, origin);
     return json({ ok: true, partiStatus: nextStatus }, 200, origin);
   } catch (err) {
     return json({ error: "참여상태 변경 실패: " + err.message }, 500, origin);
