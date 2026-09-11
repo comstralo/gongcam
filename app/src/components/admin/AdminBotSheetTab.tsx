@@ -143,9 +143,11 @@ function UsageBreakdownGroup({
           </button>
         </div>
       </div>
+      {/* 🔧 [사용자 지시] "PUT (쓰기) 아래에 제목은 지워. 기록만 깔끔하게
+          출력해줘" — opLabel과 30분/일일 토글이 이미 위에 있어 "최근 30분
+          · 사용자별"/"오늘 하루 · 화면별·사용자별" 소제목은 중복이었다. */}
       {range === "recent" ? (
         <div className="flex flex-col gap-0.5">
-          <FieldLabel>최근 30분 · 사용자별 (이 서버 기준)</FieldLabel>
           {recentRows.length === 0 ? (
             <p className="pl-2 text-micro-lg text-muted-foreground/70 sm:text-xs">아직 집계된 기록이 없습니다.</p>
           ) : (
@@ -166,7 +168,6 @@ function UsageBreakdownGroup({
         </div>
       ) : (
         <div className="flex flex-col gap-0.5">
-          <FieldLabel>오늘 하루 · 화면별·사용자별</FieldLabel>
           {dailyRows.length === 0 ? (
             <p className="pl-2 text-micro-lg text-muted-foreground/70 sm:text-xs">
               아직 집계된 기록이 없습니다.
