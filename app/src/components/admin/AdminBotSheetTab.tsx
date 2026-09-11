@@ -120,6 +120,7 @@ function UsageBreakdownGroup({
     <div className="flex flex-col gap-1.5 border-l-2 border-border pl-2">
       <div className="flex items-center gap-2">
         <span className="text-micro-lg font-semibold sm:text-xs">{opLabel}</span>
+        <span aria-hidden className="h-3 w-px bg-border" />
         <div className="flex items-center gap-2 text-micro-lg sm:text-xs">
           <button
             type="button"
