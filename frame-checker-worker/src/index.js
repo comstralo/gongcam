@@ -5301,6 +5301,31 @@ async function handleSetReasonLeaveProof(req, env, origin) {
     const left = safeNumber((leftRows[0] && leftRows[0][0]) || 0);
     if (left < count) return json({ error: "사유반휴 잔여량이 없습니다." }, 400, origin);
 
+    // 🔧 [2차 점검, 2026-09-11] 이 `left` 검증은 시트의 잔여량만 볼 뿐, 이미
+    // 큐/봇에 쌓인 같은 회원+같은 요일의 pending 신청 개수는 전혀 감안하지
+    // 않았다 — 같은 학생이 두 기기(휴대폰+PC)에서 거의 동시에 신청하면 둘
+    // 다 같은 left 스냅샷을 보고 통과해 중복 pending이 쌓일 수 있었다.
+    // §36 락(승인 단계)은 "동시 읽기로 인한 계산 오류"만 막을 뿐, 애초에
+    // "같은 요일 중복 신청"을 막는 검사가 신청 단계 자체에 없었던 건 락만
+    // 추가해도 고쳐지지 않는 별개의 로직 결함이었다 — 두 요청이 순서대로
+    // 처리돼도 "기존 pending 없음"을 똑같이 확인하고 각자 추가하기 때문.
+    // handleGetReasonLeaveProof가 이미 쓰는 것과 동일한 두 경로(봇에 이미
+    // 전달된 pending, KV 큐에 대기 중인 pending)를 모두 확인해 기존 신청이
+    // 있으면 거절한다. 봇 조회(proxyToBotDashboard, 최대 8초)는
+    // LOCK_WAIT_TIMEOUT_MS(15초) 여유가 빠듯해지므로 락 밖에서 먼저
+    // 확인하고, "KV 큐 확인 + 큐 등록"만 §36과 동일한 `leave:${memberNumber}`
+    // 락으로 원자적으로 묶어 두 기기의 요청이 순차 처리되게 한다.
+    const existingBotStatus = await proxyToBotDashboard(
+      env,
+      "/leave-proof?number=" + encodeURIComponent(memberNumber)
+    ).catch(() => null);
+    const existingBotPending = ((existingBotStatus && existingBotStatus.items) || []).some(
+      (item) => item.day === day && item.reviewStatus === "pending"
+    );
+    if (existingBotPending) {
+      return json({ error: "이미 처리 대기 중인 신청이 있습니다." }, 409, origin);
+    }
+
     const entry = {
       memberNumber,
       memberName,
@@ -5312,41 +5337,52 @@ async function handleSetReasonLeaveProof(req, env, origin) {
       count,
     };
 
-    const data = await proxyToBotDashboard(env, "/leave-proof/new", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(entry),
-    });
-    if (data) return json(data, 200, origin);
+    const lockResult = await withMemberLock(env, `leave:${memberNumber}`, async () => {
+      if (await hasQueuedReasonLeaveProof(env, memberNumber, day)) {
+        return { failure: true };
+      }
 
-    // 🔧 [봇 오프라인 대기열] 봇이 꺼져 있으면 신청 자체를 실패시키지 않고
-    // KV에 임시 보관했다가, 봇이 다시 켜져 handleBotRegisterUrl을 호출하는
-    // 시점에 자동으로 흘려보낸다(flushQueuedReasonLeaveProofs). 학생 화면에는
-    // 큐에 있든 봇에 이미 전달됐든 동일하게 "관리자 확인 중"으로 보인다
-    // (handleGetReasonLeaveProof가 큐도 함께 조회).
-    const queueId = crypto.randomUUID();
-    const ts = Date.now();
-    // 🔧 [N+1 → list() 완전 제거] 처음엔 metadata 기반 list()로 N+1(list 후
-    // 매 키마다 get())만 없앴는데, list() 자체가 buildPersonalStatus를 거쳐
-    // /status를 열 때마다(useRefreshOnVisible 도입 이후 빈도 증가) 호출돼
-    // KV list() 하루 한도(1,000회)를 실제로 소진시킨 주된 원인이었다(2026-08-27
-    // 실측: "/admin/members/roster" 500 에러로 발견). cooldown:/notice:처럼
-    // 인덱스(LEAVEQ_INDEX_KEY)에 요약을 남겨 list() 없이 조회한다. metadata는
-    // (imageBase64 없이) 디버깅/전환기 안전망 목적으로 계속 남겨둔다. KV
-    // metadata는 1024바이트 제한이 있어 memberName/requesterEmail도 짧게 자른다.
-    const summary = {
-      id: queueId,
-      memberNumber,
-      memberName: (memberName || "").slice(0, 50),
-      day,
-      reason: (reason || "").slice(0, 200),
-      requesterEmail: (session.email || "").slice(0, 100),
-      count,
-      ts,
-    };
-    await env.REPORTS_KV.put(`leaveq:${queueId}`, JSON.stringify({ ...entry, ts }), { metadata: summary });
-    await _addToLeaveQueueIndex(env, summary);
-    return json({ ok: true, id: queueId, queued: true }, 200, origin);
+      const data = await proxyToBotDashboard(env, "/leave-proof/new", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(entry),
+      });
+      if (data) return { data };
+
+      // 🔧 [봇 오프라인 대기열] 봇이 꺼져 있으면 신청 자체를 실패시키지 않고
+      // KV에 임시 보관했다가, 봇이 다시 켜져 handleBotRegisterUrl을 호출하는
+      // 시점에 자동으로 흘려보낸다(flushQueuedReasonLeaveProofs). 학생 화면에는
+      // 큐에 있든 봇에 이미 전달됐든 동일하게 "관리자 확인 중"으로 보인다
+      // (handleGetReasonLeaveProof가 큐도 함께 조회).
+      const queueId = crypto.randomUUID();
+      const ts = Date.now();
+      // 🔧 [N+1 → list() 완전 제거] 처음엔 metadata 기반 list()로 N+1(list 후
+      // 매 키마다 get())만 없앴는데, list() 자체가 buildPersonalStatus를 거쳐
+      // /status를 열 때마다(useRefreshOnVisible 도입 이후 빈도 증가) 호출돼
+      // KV list() 하루 한도(1,000회)를 실제로 소진시킨 주된 원인이었다(2026-08-27
+      // 실측: "/admin/members/roster" 500 에러로 발견). cooldown:/notice:처럼
+      // 인덱스(LEAVEQ_INDEX_KEY)에 요약을 남겨 list() 없이 조회한다. metadata는
+      // (imageBase64 없이) 디버깅/전환기 안전망 목적으로 계속 남겨둔다. KV
+      // metadata는 1024바이트 제한이 있어 memberName/requesterEmail도 짧게 자른다.
+      const summary = {
+        id: queueId,
+        memberNumber,
+        memberName: (memberName || "").slice(0, 50),
+        day,
+        reason: (reason || "").slice(0, 200),
+        requesterEmail: (session.email || "").slice(0, 100),
+        count,
+        ts,
+      };
+      await env.REPORTS_KV.put(`leaveq:${queueId}`, JSON.stringify({ ...entry, ts }), { metadata: summary });
+      await _addToLeaveQueueIndex(env, summary);
+      return { queueId };
+    });
+    if (lockResult.failure) {
+      return json({ error: "이미 처리 대기 중인 신청이 있습니다." }, 409, origin);
+    }
+    if (lockResult.data) return json(lockResult.data, 200, origin);
+    return json({ ok: true, id: lockResult.queueId, queued: true }, 200, origin);
   } catch (err) {
     return json({ error: "사유반휴 신청 실패: " + err.message }, 500, origin);
   }
@@ -9191,24 +9227,35 @@ async function putPushDeviceIndex(env, email, devices) {
   await env.PUSH_SUBS_KV.put(`subIndex:${email}`, JSON.stringify(devices));
 }
 
-// 토글/이름변경 공용 — 인덱스에서 해당 기기 항목 하나만 찾아 updater로
-// 고친 뒤 다시 저장한다. id가 인덱스에 없으면(드묾 — sub: 키는 있는데
-// 인덱스만 어긋난 경우) 조용히 넘어간다 — 실제 구독 상태(sub: 키)는
-// 호출부가 이미 따로 갱신했으므로 표시용 인덱스 하나 어긋나는 정도는
-// 다음 자체 복구(getPushDeviceIndex의 list() 폴백은 인덱스가 아예 없을
-// 때만 동작하므로, 이 경우는 다음 배포/재구독 때 자연히 맞춰진다).
+// 🔧 [2차 점검, 2026-09-11] getPushDeviceIndex/putPushDeviceIndex를 쓰는
+// "읽기→배열 수정→쓰기"가 전부 락 없는 read-modify-write였다 — 같은
+// 사람이 두 기기에서 거의 동시에 구독/토글/이름변경/삭제를 시도하면
+// 나중 쓰기가 먼저 반영을 덮어써 한쪽의 변경이 조용히 사라질 수 있었다.
+// 더 나쁜 건 getPushDeviceIndex의 list() 자체 복구 폴백이 "subIndex:{이메일}
+// 키가 아예 없을 때만" 동작해(9198행 근처), 첫 구독 이후로는 인덱스가
+// 항상 존재하므로 이후 손상은 다시는 스스로 복구되지 않는다는 점이었다
+// (경쟁 조건 재검증 완료). 실제 발송(handlePushSendTest/handlePushSendToMember)
+// 도 오직 이 인덱스만 순회하므로, 인덱스에서 빠진 기기는 원본(sub:{이메일}:
+// {endpoint})이 KV에 남아있어도 알림을 영영 못 받는다. 공용 헬퍼 두 개만
+// withMemberLock(env, `push:${email}`, ...)으로 감싸면 toggle/rename/remove
+// 호출부는 수정 없이 전부 보호된다 — "첫 구독"(handlePushSubscribe)의
+// 읽기→쓰기 구간도 같은 락 키로 별도 감싼다.
 async function updatePushDeviceIndexEntry(env, email, id, updater) {
-  const devices = await getPushDeviceIndex(env, email);
-  const idx = devices.findIndex((d) => d.id === id);
-  if (idx === -1) return;
-  updater(devices[idx]);
-  await putPushDeviceIndex(env, email, devices);
+  await withMemberLock(env, `push:${email}`, async () => {
+    const devices = await getPushDeviceIndex(env, email);
+    const idx = devices.findIndex((d) => d.id === id);
+    if (idx === -1) return;
+    updater(devices[idx]);
+    await putPushDeviceIndex(env, email, devices);
+  });
 }
 
 async function removePushDeviceIndexEntry(env, email, id) {
-  const devices = await getPushDeviceIndex(env, email);
-  const next = devices.filter((d) => d.id !== id);
-  if (next.length !== devices.length) await putPushDeviceIndex(env, email, next);
+  await withMemberLock(env, `push:${email}`, async () => {
+    const devices = await getPushDeviceIndex(env, email);
+    const next = devices.filter((d) => d.id !== id);
+    if (next.length !== devices.length) await putPushDeviceIndex(env, email, next);
+  });
 }
 
 async function handlePushSubscribe(req, env, origin) {
@@ -9232,12 +9279,18 @@ async function handlePushSubscribe(req, env, origin) {
   // 🔧 [KV list() 제거, 2026-09-11] subIndex:{이메일}도 함께 갱신한다 —
   // 같은 기기(endpoint)가 재구독하면 같은 key로 덮어써지므로 교체, 새
   // 기기면 추가한다.
-  const devices = await getPushDeviceIndex(env, session.email);
-  const idx = devices.findIndex((d) => d.id === key);
-  const entry = { id: key, deviceLabel, enabled: true, savedAt };
-  if (idx >= 0) devices[idx] = entry;
-  else devices.push(entry);
-  await putPushDeviceIndex(env, session.email, devices);
+  // 🔧 [2차 점검, 2026-09-11] 같은 사람이 두 기기에서 거의 동시에 구독을
+  // 시도하면 이 읽기→쓰기가 락 없이 경쟁해 한쪽의 등록이 인덱스에서
+  // 누락될 수 있었다(§updatePushDeviceIndexEntry 주석 참고) — 다른 인덱스
+  // 헬퍼(toggle/rename/remove)와 동일한 `push:${email}` 락으로 감싼다.
+  await withMemberLock(env, `push:${session.email}`, async () => {
+    const devices = await getPushDeviceIndex(env, session.email);
+    const idx = devices.findIndex((d) => d.id === key);
+    const entry = { id: key, deviceLabel, enabled: true, savedAt };
+    if (idx >= 0) devices[idx] = entry;
+    else devices.push(entry);
+    await putPushDeviceIndex(env, session.email, devices);
+  });
 
   // 🔧 [알림 켜기 직후 상태가 안 바뀌던 문제 수정] 프론트가 구독 등록
   // 직후 곧바로 /push/devices를 다시 조회해 "이 기기가 서버에도 있는지"
