@@ -318,24 +318,29 @@ function _getUsageCounter(kind, minutesAgo = 0) {
 // fetch 핸들러 진입 시 env.REPORTS_KV 자체를 이 얇은 프록시로 한 번만
 // 감싸 이후의 모든 호출을 자동으로 잡는다(호출부 수정 0건) — 그 프록시를
 // 만들 때 현재 요청의 url.pathname을 클로저로 넘겨받아 매 호출마다 함께
-// 기록한다. sheets_read/write 카운터(_usageCounters, 분당 60 한도 확인용
-// — "이번 분"/"직전 분"만 보면 충분해 5분 창)와는 목적이 다르므로(이건
-// "주기적으로 반복되는 패턴"을 보는 게 목적이라 더 긴 관찰 창이 필요)
-// 별도 Map으로 분리하고 청소 창도 30분으로 늘렸다.
-const _kvUsageCounters = new Map(); // "kv_put|sheetCache:exitStatus:|/admin/captures|user@example.com:2026-09-09T12:34" -> count
+// 기록한다.
 const KV_USAGE_WINDOW_MIN = 30;
 
 // 🔧 [사용량 모니터링 고도화, 2026-09-11] "하루 동안, 어느 메뉴에서, 어느
-// 사용자에 의해"까지 보려면 30분 창짜리 _kvUsageCounters(isolate 재시작
-// 시 리셋)로는 부족하다 — 이 버퍼는 5분 cron(scheduled)이 UsageStats
-// Durable Object로 배치 전송(flushDailyUsageStats)한 뒤 비우는 임시
-// 중계소일 뿐이다. 매 KV 호출마다 DO에 실시간 전송하면 "감시 기능이
+// 사용자에 의해"까지 보려면 이 버퍼가 필요하다 — 5분 cron(scheduled)이
+// UsageStats Durable Object로 배치 전송(flushDailyUsageStats)한 뒤 비우는
+// 임시 중계소일 뿐이다. 매 KV 호출마다 DO에 실시간 전송하면 "감시 기능이
 // 감시 대상 KV 할당량을 갉아먹는" 역설이 생기므로, DO에도 배치로만
 // 보낸다(DO 자체는 KV 할당량과 무관하지만 오버헤드 자체를 줄이는 목적).
 const _dailyUsageBuffer = new Map(); // "{date}|{path}|{email}|{op}" -> count
 
-// 🔧 [사용자 지시] "이메일 말고 사용자 이름을 적고" — 집계 키(_kvUsageCounters/
-// _dailyUsageBuffer/UsageStats DO)는 계속 email을 유일 식별자로 쓰되(이름은
+// 🔧 [사용자 지시] "일일 중에서 30분내로 발생한것만 추려서 보여주면
+// 되잖아" — 원래는 isolate 로컬 메모리(_kvUsageCounters)로 "최근 30분"을
+// 별도 집계했는데, Cloudflare가 요청을 여러 서버로 분산 처리하면 한
+// isolate가 직접 겪은 것만 보여 "일일"보다 훨씬 적게 보이는 구조적
+// 한계가 있었다. 이제 위 _dailyUsageBuffer와 동일하게 DO로 배치
+// 전송하되, DO 쪽에 분단위 키로 따로 저장해두고 "그중 최근 30분 것만"
+// 필터링해 보여준다(§UsageStats DO의 /flush-recent, /recent) — isolate
+// 무관하게 항상 완전한 값이 나온다.
+const _minuteUsageBuffer = new Map(); // "{minuteKey}|{kind}|{path}|{email}|{op}" -> count
+
+// 🔧 [사용자 지시] "이메일 말고 사용자 이름을 적고" — 집계 키(_dailyUsageBuffer/
+// _minuteUsageBuffer/UsageStats DO)는 계속 email을 유일 식별자로 쓰되(이름은
 // 동명이인 가능성이 있어 키로 부적합), 화면에 보여줄 때만 이름으로 바꿔
 // 치환할 수 있도록 세션에 이미 담겨 있는 memberName(로그인 시점에 회원
 // 시트에서 조회해 고정된 값 — 별도 시트 재조회 불필요)을 email과 함께
@@ -345,20 +350,12 @@ const _emailNameMap = new Map(); // email -> memberName
 function _bumpKvUsageCounter(op, prefix, path, email, name) {
   if (email && name) _emailNameMap.set(email, name);
   const minuteKey = new Date().toISOString().slice(0, 16); // "YYYY-MM-DDTHH:MM"
-  const key = `${op}|${prefix}|${path || "(cron/기타)"}|${email || "(익명)"}:${minuteKey}`;
-  _kvUsageCounters.set(key, (_kvUsageCounters.get(key) || 0) + 1);
-  // 오래된 분 버킷은 청소한다 — 30분 창만 유지하면 충분하다. path/email까지
-  // 조합에 들어가 카디널리티가 늘었으니 sheets 카운터보다 넉넉히 잡는다.
-  if (_kvUsageCounters.size > 2000) {
-    const cutoff = Date.now() - KV_USAGE_WINDOW_MIN * 60_000;
-    for (const k of _kvUsageCounters.keys()) {
-      const minuteKey2 = k.slice(-16);
-      if (new Date(minuteKey2 + ":00Z").getTime() < cutoff) _kvUsageCounters.delete(k);
-    }
-  }
 
   const dailyKey = `${todayKSTDateString()}|${path || "(cron/기타)"}|${email || "(익명)"}|${op}`;
   _dailyUsageBuffer.set(dailyKey, (_dailyUsageBuffer.get(dailyKey) || 0) + 1);
+
+  const minuteBucketKey = `${minuteKey}|${prefix}|${path || "(cron/기타)"}|${email || "(익명)"}|${op}`;
+  _minuteUsageBuffer.set(minuteBucketKey, (_minuteUsageBuffer.get(minuteBucketKey) || 0) + 1);
 }
 
 // email을 화면 표시용 이름으로 바꾼다 — 매핑이 없으면(isolate 재시작 직후
@@ -490,26 +487,6 @@ const _PATH_MENU_NAMES = {
 function _menuNameForPath(path) {
   if (!path) return "(cron/기타)";
   return _PATH_MENU_NAMES[path] || path;
-}
-
-// 최근 minutesWindow분(기본 30분) 동안의 (연산·캐시종류·요청경로·사용자)별
-// 집계 — 어느 화면(경로)을 누가 얼마나 자주 쓰기/삭제하는지 한눈에 보여준다.
-function _getKvWriteBreakdown(minutesWindow = KV_USAGE_WINDOW_MIN) {
-  const cutoff = Date.now() - minutesWindow * 60_000;
-  const totals = new Map(); // "kv_put|sheetCache:exitStatus:|/admin/captures|user@example.com" -> count
-  for (const [key, count] of _kvUsageCounters) {
-    const minuteKey = key.slice(-16);
-    const ts = Date.parse(minuteKey + ":00Z");
-    if (Number.isNaN(ts) || ts < cutoff) continue;
-    const groupKey = key.slice(0, key.length - 17); // ":" + minuteKey(16자) 제거
-    totals.set(groupKey, (totals.get(groupKey) || 0) + count);
-  }
-  return [...totals.entries()]
-    .map(([groupKey, count]) => {
-      const [op, kind, path, email] = groupKey.split("|");
-      return { op, kind, path: _menuNameForPath(path), email: _displayNameForEmail(email), count };
-    })
-    .sort((a, b) => b.count - a.count);
 }
 
 // fileId를 명시적으로 받는다 — 원본 시트뿐 아니라 지난 기록(Drive 백업 파일)도
@@ -3364,20 +3341,35 @@ async function handleAdminUsageStatus(req, env, origin) {
     console.error("[admin/usage] flush 실패:", e);
   }
 
-  // UsageStats DO에서 오늘(KST) 하루치 (경로·사용자·연산)별 누적 집계를
-  // 읽어온다. DO 조회 자체가 실패해도(신규 배포 직후 등) 전체 응답이
-  // 죽지 않도록 빈 배열로 대체한다.
+  // UsageStats DO에서 오늘(KST) 하루치 (경로·사용자·연산)별 누적 집계와
+  // 최근 30분치 (캐시종류·경로·사용자·연산)별 집계를 함께 읽어온다. DO
+  // 조회 자체가 실패해도(신규 배포 직후 등) 전체 응답이 죽지 않도록 빈
+  // 배열로 대체한다.
   // 🔧 [사용자 지시] "알아먹기 쉽게 실제 메뉴명을 적어줘. 그리고 이메일
   // 말고 사용자 이름을 적고" — DO는 원본 경로/이메일을 저장하므로(집계
   // 키 자체는 안정적으로 유지), 응답 직전에만 메뉴명·이름으로 치환한다.
   // 이름 매핑은 이 isolate가 최근에 본 사용자만 알 수 있어(_emailNameMap),
   // 모르는 이메일은 이메일 그대로 표시된다(집계 값 자체는 항상 정확).
-  const dailyUsage = await getUsageStatsStub(env)
+  const usageStub = getUsageStatsStub(env);
+  const dailyUsage = await usageStub
     .fetch(`https://do/today?date=${encodeURIComponent(todayKSTDateString())}`)
     .then((r) => r.json())
     .then((d) => d.items || [])
     .then((items) =>
       items.map((it) => ({ ...it, path: _menuNameForPath(it.path), email: _displayNameForEmail(it.email) }))
+    )
+    .catch(() => []);
+  // 🔧 [사용자 지시] "일일 중에서 30분내로 발생한것만 추려서 보여주면
+  // 되잖아" — 기존 _getKvWriteBreakdown()(isolate 로컬 _kvUsageCounters)
+  // 대신 DO의 /recent(모든 isolate의 기록을 모아 30분만 필터링)를 쓴다.
+  const kvWriteBreakdown = await usageStub
+    .fetch("https://do/recent")
+    .then((r) => r.json())
+    .then((d) => d.items || [])
+    .then((items) =>
+      items
+        .map((it) => ({ ...it, path: _menuNameForPath(it.path), email: _displayNameForEmail(it.email) }))
+        .sort((a, b) => b.count - a.count)
     )
     .catch(() => []);
 
@@ -3404,20 +3396,21 @@ async function handleAdminUsageStatus(req, env, origin) {
         kvStorageBytes: 1_000_000_000,
       },
       // 🔧 [KV 쓰기/삭제 추적, 화면별 특정] "어느 화면에서 어떤 기능에
-      // 의해 쓰기·삭제가 주기적으로 발생하는지" — 이 isolate가 콜드스타트된
-      // 이후 최근 30분간 실제로 KV.put/delete를 호출한 (연산·캐시종류·
-      // 요청경로) 조합별 집계, 예: [{op:"kv_put", kind:"sheetCache:
-      // exitStatus:", path:"/admin/captures", count:5}, ...]. path로
-      // "어느 화면"인지(§docs/CACHING_POLICY.md §12.2의 화면↔엔드포인트
-      // 매핑과 대조), kind로 "어떤 캐시"인지 바로 알 수 있다. isolate당
-      // 근사치라 정확한 하루 총합은 아니지만, wrangler tail의
-      // [kv put]/[kv delete] 로그(경로+전체 키 포함)와 함께 보면 개별
-      // 이벤트 단위까지 확인 가능하다.
-      kvWriteBreakdown: _getKvWriteBreakdown(),
+      // 의해 쓰기·삭제가 주기적으로 발생하는지" — 최근 30분간 실제로
+      // KV.put/delete/list를 호출한 (연산·캐시종류·요청경로·사용자) 조합별
+      // 집계, 예: [{op:"kv_put", kind:"sheetCache:exitStatus:",
+      // path:"화각 불량 제보 처리", email:"재희", count:5}, ...].
+      // 🔧 [사용자 지시] "일일 중에서 30분내로 발생한것만 추려서 보여주면
+      // 되잖아" — 예전엔 이 isolate가 콜드스타트된 이후 직접 겪은 것만
+      // 보여줘(isolate 로컬 _kvUsageCounters) Cloudflare가 요청을 여러
+      // 서버로 분산 처리하면 "일일"보다 훨씬 적게 보였다. 이제 DO에 저장된
+      // "모든 isolate의 기록"에서 최근 30분치만 필터링해 보여주므로 항상
+      // 완전한 값이다.
+      kvWriteBreakdown,
       // 🔧 [사용량 모니터링 고도화, 2026-09-11] 위 kvWriteBreakdown과 달리
-      // "하루(KST 자정 기준) 누적 · 관리자+학생 모두 포함 · DO 영구 저장"
-      // 기준이라 isolate 재시작에도 사라지지 않는다. 최근 5분 이내
-      // 발생분은 cron 배치 전이라 아직 안 보일 수 있다.
+      // "하루(KST 자정 기준) 누적 · 관리자+학생 모두 포함" 기준이다. 둘 다
+      // 이제 같은 Durable Object에 저장되므로 isolate 재시작·분산 처리와
+      // 무관하게 항상 완전한 값을 보여준다.
       dailyUsage,
     },
     200,
@@ -8743,11 +8736,37 @@ export class UsageStats {
         cutoffDate.setDate(cutoffDate.getDate() - 7);
         const cutoff = cutoffDate.toISOString().slice(0, 10);
         for (const key of this.counts.keys()) {
+          if (key.startsWith("m|")) continue; // 분단위 키는 아래 /flush-recent가 별도 정리
           const keyDate = key.slice(0, key.indexOf("|"));
           if (keyDate < cutoff) {
             this.counts.delete(key);
             puts.push(this.state.storage.delete(key));
           }
+        }
+      }
+      await Promise.all(puts);
+      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+    }
+    // 🔧 [사용자 지시] "일일 중에서 30분내로 발생한것만 추려서 보여주면
+    // 되잖아" — /flush와 별개 엔드포인트로 분단위(m|{minuteKey}|...) 키를
+    // 반영하고, 30분보다 오래된 분단위 키는 여기서 함께 정리한다(daily
+    // 키와 달리 자정 넘어가는 걸 기다릴 필요 없이 즉시 정리 가능).
+    if (req.method === "POST" && url.pathname === "/flush-recent") {
+      const { entries } = await req.json();
+      const puts = [];
+      for (const { minuteKey, kind, path, email, op, count } of entries || []) {
+        const key = `m|${minuteKey}|${kind}|${path}|${email}|${op}`;
+        const next = (this.counts.get(key) || 0) + count;
+        this.counts.set(key, next);
+        puts.push(this.state.storage.put(key, next));
+      }
+      const cutoff = Date.now() - KV_USAGE_WINDOW_MIN * 60_000;
+      for (const key of this.counts.keys()) {
+        if (!key.startsWith("m|")) continue;
+        const minuteKey = key.slice(2, 18); // "m|" 제거 후 "YYYY-MM-DDTHH:MM"(16자)
+        if (new Date(minuteKey + ":00Z").getTime() < cutoff) {
+          this.counts.delete(key);
+          puts.push(this.state.storage.delete(key));
         }
       }
       await Promise.all(puts);
@@ -8768,6 +8787,30 @@ export class UsageStats {
       }
       return new Response(JSON.stringify({ items }), { headers: { "Content-Type": "application/json" } });
     }
+    // 🔧 최근 30분(KV_USAGE_WINDOW_MIN) 이내 분단위 키만 (path·email·op)로
+    // 합산해 반환한다 — isolate 로컬이던 기존 "30분" 뷰와 달리 모든
+    // isolate의 기록을 DO 하나로 모은 뒤 필터링하므로 항상 완전한 값이다.
+    if (req.method === "GET" && url.pathname === "/recent") {
+      const cutoff = Date.now() - KV_USAGE_WINDOW_MIN * 60_000;
+      const totals = new Map(); // "{kind}|{path}|{email}|{op}" -> count
+      for (const [key, count] of this.counts) {
+        if (!key.startsWith("m|")) continue;
+        const minuteKey = key.slice(2, 18);
+        const ts = Date.parse(minuteKey + ":00Z");
+        if (Number.isNaN(ts) || ts < cutoff) continue;
+        const groupKey = key.slice(19); // "m|" + minuteKey(16) + "|" 제거
+        totals.set(groupKey, (totals.get(groupKey) || 0) + count);
+      }
+      const items = [...totals.entries()].map(([groupKey, count]) => {
+        const parts = groupKey.split("|");
+        const op = parts.pop();
+        const email = parts.pop();
+        const kind = parts.shift();
+        const path = parts.join("|");
+        return { kind, path, email, op, count };
+      });
+      return new Response(JSON.stringify({ items }), { headers: { "Content-Type": "application/json" } });
+    }
     return new Response("method not allowed", { status: 405 });
   }
 }
@@ -8784,23 +8827,48 @@ function getUsageStatsStub(env) {
 // 반환하므로(위 if문) 이 엔드포인트를 호출하는 관리자 화면(1분 폴링) 정도
 // 빈도에서는 DO fetch 오버헤드가 무시할 만하다).
 async function flushDailyUsageStats(env) {
-  if (_dailyUsageBuffer.size === 0) return;
-  const entries = [];
-  for (const [key, count] of _dailyUsageBuffer) {
-    const parts = key.split("|");
-    const op = parts.pop();
-    const email = parts.pop();
-    const date = parts.shift();
-    const path = parts.join("|");
-    entries.push({ date, path, email, op, count });
-  }
   const stub = getUsageStatsStub(env);
-  const res = await stub.fetch("https://do/flush", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ entries, today: todayKSTDateString() }),
-  });
-  if (res.ok) _dailyUsageBuffer.clear();
+
+  if (_dailyUsageBuffer.size > 0) {
+    const entries = [];
+    for (const [key, count] of _dailyUsageBuffer) {
+      const parts = key.split("|");
+      const op = parts.pop();
+      const email = parts.pop();
+      const date = parts.shift();
+      const path = parts.join("|");
+      entries.push({ date, path, email, op, count });
+    }
+    const res = await stub.fetch("https://do/flush", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entries, today: todayKSTDateString() }),
+    });
+    if (res.ok) _dailyUsageBuffer.clear();
+  }
+
+  // 🔧 [사용자 지시] "일일 중에서 30분내로 발생한것만 추려서 보여주면
+  // 되잖아" — _minuteUsageBuffer(분단위 델타)도 같은 배치 타이밍에 DO로
+  // 보내 모든 isolate의 기록을 하나로 모은다. DO가 30분 지난 분단위
+  // 키를 스스로 정리하므로(위 /flush-recent) 여기서는 그냥 델타만 보낸다.
+  if (_minuteUsageBuffer.size > 0) {
+    const recentEntries = [];
+    for (const [key, count] of _minuteUsageBuffer) {
+      const parts = key.split("|");
+      const op = parts.pop();
+      const email = parts.pop();
+      const minuteKey = parts.shift();
+      const kind = parts.shift();
+      const path = parts.join("|");
+      recentEntries.push({ minuteKey, kind, path, email, op, count });
+    }
+    const recentRes = await stub.fetch("https://do/flush-recent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entries: recentEntries }),
+    });
+    if (recentRes.ok) _minuteUsageBuffer.clear();
+  }
 }
 
 // key(닉네임 등)별로 fn()을 상호 배타적으로 실행한다 — DO가 죽거나 acquire가
