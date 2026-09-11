@@ -36,6 +36,7 @@ export function StatusPage({
   const [otherStatus, setOtherStatus] = useState<StatusResponse | null>(null);
   const [otherError, setOtherError] = useState<string | null>(null);
   const [otherLoading, setOtherLoading] = useState(false);
+  const [otherLoadedAt, setOtherLoadedAt] = useState<number | null>(null);
 
   const isViewingCycle = !!cycleFileId;
   // "내 대시보드 · 현재 사이클" 조회는 앱 전역 캐시(MyStatusContext)를 그대로
@@ -45,6 +46,7 @@ export function StatusPage({
   const status = usingMyStatus ? myStatus.status : otherStatus;
   const loading = usingMyStatus ? myStatus.loading : otherLoading;
   const error = usingMyStatus ? myStatus.error : otherError;
+  const loadedAt = usingMyStatus ? myStatus.lastLoadedAt : otherLoadedAt;
 
   // 관리자만 다른 스터디원을 선택할 수 있으므로, 관리자일 때만 회원 목록을 불러온다.
   // 🔧 [과거 주차 회원 전환 지원] 이전엔 isViewingCycle이면 아예 건너뛰어
@@ -85,7 +87,10 @@ export function StatusPage({
     const path = selected === SELF_VALUE ? `/status${cycleParam}` : `/admin/members/${encodeURIComponent(selected)}${cycleParam}`;
     call<StatusResponse>(path)
       .then((data) => {
-        if (!cancelled) setOtherStatus(data);
+        if (!cancelled) {
+          setOtherStatus(data);
+          setOtherLoadedAt(Date.now());
+        }
       })
       .catch((err) => {
         if (!cancelled) setOtherError(err instanceof Error ? err.message : "상태를 불러오지 못했습니다.");
@@ -107,6 +112,27 @@ export function StatusPage({
   // 15분 — docs/CACHING_POLICY.md §12.1 참고).
   const refreshProgress = usePollingRefresh(visible, reload, 30 * 60_000);
 
+  // 🔧 [사용자 지시, 2026-09-11] "새로고침 버튼은 TTL이 만료됐을 때만
+  // 누를 수 있게" — 백엔드 personalStatusBundle: 캐시 TTL(현재 시트
+  // 10분 / 과거 사이클 2시간, index.js getPersonalStatusBundle과 동일
+  // 분기)이 안 지났으면 버튼을 눌러도 서버가 같은 캐시값을 그대로
+  // 돌려줄 뿐이라, 그 구간엔 버튼 자체를 비활성화한다. 1초 틱으로
+  // "지금" 시각을 갱신해 TTL이 지나는 순간 자동으로 다시 눌릴 수
+  // 있게 만든다 — 화면이 보이는 동안만 돈다(비용은 리렌더뿐, 네트워크
+  // 요청 없음).
+  const ttlMs = isViewingCycle ? 2 * 60 * 60_000 : 10 * 60_000;
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!visible) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [visible]);
+  const remainingMs = loadedAt === null ? 0 : Math.max(0, ttlMs - (now - loadedAt));
+  const refreshDisabled = remainingMs > 0;
+  const refreshDisabledReason = refreshDisabled
+    ? `${Math.ceil(remainingMs / 60_000)}분 후 새로고침 가능 — 그 전엔 캐시된 값과 동일합니다`
+    : undefined;
+
   return (
     // 🔧 [사용자 지시] "MY도 헤더 제목으로 박스 안에 묶으려고 하거든?" —
     // 원래는 안쪽 StatusView가 이미 SummaryTile(각자 자체 카드)과 요일별
@@ -122,6 +148,8 @@ export function StatusPage({
           loading={loading}
           onRefresh={reload}
           refreshProgress={refreshProgress}
+          refreshDisabled={refreshDisabled}
+          refreshDisabledReason={refreshDisabledReason}
           iconVariant="tint"
           trailing={
             isAdmin ? (

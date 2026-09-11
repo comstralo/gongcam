@@ -133,6 +133,8 @@ export function SectionHeader({
   loading,
   onRefresh,
   refreshProgress,
+  refreshDisabled,
+  refreshDisabledReason,
   iconVariant = "plain",
   trailing,
 }: {
@@ -141,6 +143,13 @@ export function SectionHeader({
   loading?: boolean;
   onRefresh?: () => void;
   refreshProgress?: number;
+  /** true면 로딩 중이 아니어도 버튼을 비활성화한다 — 서버 캐시 TTL이 아직
+   * 안 지나 눌러도 같은 캐시값만 돌아오는 구간을 걸러내는 용도(예:
+   * "내 대시보드"의 personalStatusBundle: TTL). 생략하면 기존 동작과
+   * 동일(loading일 때만 비활성화). */
+  refreshDisabled?: boolean;
+  /** refreshDisabled가 true일 때 보여줄 이유(버튼 title 툴팁). */
+  refreshDisabledReason?: string;
   /** "tint"면 아이콘을 원형 틴트 배지로 감싼다(사용자 지시: "디자인이
    * 딱딱해 보인다" — 우선 제보 화면에서만 사용). 기본은 기존과 동일한
    * 맨 아이콘(plain). */
@@ -195,7 +204,15 @@ export function SectionHeader({
       {trailing && <span className="flex-1" aria-hidden="true" />}
       {trailing}
       {onRefresh ? (
-        <Button variant="outline" size="icon-sm" className="shrink-0" onClick={onRefresh} disabled={loading} aria-label="새로고침">
+        <Button
+          variant="outline"
+          size="icon-sm"
+          className="shrink-0"
+          onClick={onRefresh}
+          disabled={loading || refreshDisabled}
+          aria-label="새로고침"
+          title={!loading && refreshDisabled ? refreshDisabledReason : undefined}
+        >
           <RotateCw className={cn("size-3.5", loading && "animate-spin")} strokeWidth={ICON_STROKE.default} />
         </Button>
       ) : (

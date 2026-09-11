@@ -531,8 +531,10 @@ components/admin/shared.tsx — 공용 프리미티브(§6): SectionCard/Section
 > `getDataSheetRows`(`dataSheetRows:` 캐시)로 교체해 같은 원본을 공유하도록
 > 통합했다 — `listAllMembers`가 이 원본에서 "이메일 있는 유효 회원"만 뽑아
 > 쓰다 보니, 나머지 열이 필요한 이 화면은 캐시를 못 쓰고 원본을 다시
-> 읽고 있었다(`docs/CACHING_POLICY.md` §20). 폴링은 15분(`dataSheetRows:`/
-> `members:` 10분 TTL의 1.5배 — 원칙보다 낮아 개선 여지로 남김).
+> 읽고 있었다(`docs/CACHING_POLICY.md` §20). 🔧 2026-09-11: 폴링을
+> 15분→**30분**으로, `meta:`도 5분→10분으로 올려 `dataSheetRows:`/`meta:`
+> 둘 다 정확히 3배 배율을 맞췄다(§17.3) — `members:`는 2시간(§17.2)이라
+> 이 화면의 병목이 아니다.
 
 > 🔧 2026-09: **"가입일자" 값의 기반은 `listActiveMembersWithExitInfo`가
 > 넘겨주는 `s.joinDate`(=개인 탭 I3, "D+n" 상대 표시)이며 이건 의도된

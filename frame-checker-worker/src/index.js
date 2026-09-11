@@ -1010,6 +1010,17 @@ const MEMBER_CACHE_GROUPS = {
   // 🔧 [RANK 탭 캐싱 추가, 2026-09-10] "상금 정산 집행" 마킹(집계!P6)처럼
   // rosterStatus(buildRosterStatus 결과)에만 영향을 주는 저빈도 조작 전용.
   rosterOnly: ["rosterStatus"],
+  // 🔧 [members: TTL 상향 대응, 2026-09-11] members:가 10분→2시간으로 늘면서,
+  // 제보 승인(applyOutputPenalty)/제보상점 지급(applyReportMerit)이 "이
+  // 닉네임/이메일이 몇 번 회원인지"를 낡은 명단으로 잘못 확정해 벌점을
+  // 엉뚱한 회원(번호 재사용 시)에게 적을 위험이 생긴다 — 하루 10건 미만인
+  // 저빈도 액션이라, listAllMembers 호출 직전에 이 좁은 그룹만 무효화해
+  // 그 즉시 최신 명단으로 다시 계산되게 한다(§members 참고). members는
+  // dataSheetRows에서 파생되므로 dataSheetRows도 함께 지워야 "새로
+  // 계산하지만 재료는 낡은" 상태를 피할 수 있다. exitStatus/penSlotGrid
+  // 등 무관한 캐시까지 지우는 기본 roster 그룹보다 좁게 잡아 불필요한
+  // KV 삭제를 아낀다.
+  memberIdentity: ["members", "dataSheetRows"],
 };
 
 // 시트 구조(권한관리·데이터 D~V 등)를 바꾸는 쓰기 작업 뒤에 호출해 캐시가
@@ -1088,10 +1099,14 @@ function invalidateMemberSlotCache(env, memberNumber) {
 // 스프레드시트 메타(모든 탭의 sheetId/title)를 가져온다. 시트 복사/삭제/서식
 // 지정은 이름이 아니라 숫자 sheetId를 요구하므로, 이름→sheetId 매핑에 쓰인다.
 // sheetId는 시트를 삭제·재생성(회원 등록/퇴실 시)해야만 바뀌고 그때마다
-// invalidateMemberCache가 무효화하므로, 그 사이엔 몇 분을 캐싱해도 안전하다
-// — KV 쓰기 예산을 아끼기 위해 5분으로 넉넉히 잡는다.
+// invalidateMemberCache가 무효화하므로, 그 사이엔 몇 분을 캐싱해도 안전하다.
+// 🔧 [2026-09-11] 5분→10분 — 유일한 정기 폴링 소비처(MemberRosterList,
+// "참여 스터디원 목록")의 폴링을 30분으로 늘리면서, 같이 의존하는
+// dataSheetRows:(10분)와 배율을 맞췄다. 애초에 5분이었을 때도 15분 폴링이
+// 이미 5분보다 훨씬 길어 TTL이 쓰기 횟수의 병목이 아니었으므로(폴링 빈도가
+// 병목), 10분으로 올려도 신선도·쓰기 횟수 둘 다 사실상 그대로다.
 async function getSpreadsheetMeta(env, accessToken, fileId) {
-  return _cachedCompute(env, `meta:${fileId}`, 5 * 60_000, async () => {
+  return _cachedCompute(env, `meta:${fileId}`, 10 * 60_000, async () => {
     _bumpUsageCounter("sheets_read");
     const res = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${fileId}?fields=sheets.properties`,
@@ -1834,8 +1849,7 @@ async function findMemberNumberByEmail(env, accessToken, fileId, email) {
 // 각자 listAllMembers()를 부르는 상황이 잦아, 캐시(인메모리+KV)로 중복 호출을
 // 흡수한다. 신규등록/퇴실/재납/이동 등 명단을 바꾸는 쓰기 뒤에는
 // invalidateMemberCache()로 반드시 무효화하므로, TTL은 "무효화가 놓친 경우의
-// 안전망"일 뿐이다 — meta:와 같은 이유로 10분으로 늘려(2026-09-10 재조정,
-// 구 5분) KV 읽기 빈도를 줄인다(docs/CACHING_POLICY.md §5).
+// 안전망"일 뿐이다.
 //
 // 🔧 [과거 fileId 분기 되돌림, 2026-09-10] 한때 과거 fileId만 2시간으로
 // 늘렸었다(§17) — 하지만 listAllMembers는 이 함수 하나만 쓰는 게 아니라
@@ -1845,7 +1859,23 @@ async function findMemberNumberByEmail(env, accessToken, fileId, email) {
 // 안전망까지 함께 늘어나는 부작용이 있었다(사용자 확인 후 원복). "내
 // 대시보드" 드롭다운의 2시간 요구사항은 이 함수와 완전히 분리된 별도
 // 바깥 캐시(handleAdminMembers의 adminMemberList:{fileId}, §17.1)로
-// 충족한다 — 여기(members:)는 다시 현재/과거 구분 없이 항상 10분이다.
+// 충족했었다 — 이때는 members:를 다시 현재/과거 구분 없이 항상 10분으로
+// 되돌렸다.
+//
+// 🔧 [TTL 재상향 + 승인 경로 방어, 2026-09-11] 위 되돌림의 핵심 우려는
+// "제보 승인(applyOutputPenalty)/제보상점 지급(applyReportMerit)이 낡은
+// 명단으로 닉네임→번호를 잘못 확정해, 번호가 재사용된 경우 엉뚱한
+// 회원에게 벌점이 적힐 수 있다"는 것이었다 — 이건 실제로 심각한 위험이라
+// TTL을 길게 잡는 것만으로는 해결이 안 됐다. 지금은 그 두 함수 호출
+// 직전에 좁은 그룹(memberIdentity: members+dataSheetRows)만 무효화해,
+// "명단이 실제로 바뀐 적이 있든 없든 승인 순간엔 무조건 방금 확인한
+// 최신값을 쓴다"고 강제한다(하루 승인 건수가 10건 미만이라 이 무효화가
+// 추가하는 KV 쓰기·삭제는 무시할 수준 — 사용자 확인). 이 방어가 생겼으니
+// 나머지(대시보드 드롭다운 포함 20여 곳 전부)는 다시 10분에 묶어둘 이유가
+// 없어져, members:도 dataSheetRows:/adminMemberList:와 같은 선상에서
+// 2시간으로 늘린다 — adminMemberList:(§17.1)의 존재 이유(드롭다운 전용
+// 별도 캐시)도 이제 옅어졌지만, 이미 분리돼 있고 건드릴 필요가 없어 그대로
+// 둔다.
 // 🔧 [캐싱 통합, 2026-09] "데이터" 시트 원본(A1:V50)을 listAllMembers 외에도
 // handleAdminMembersRoster(상세 패널의 구루미 계정/준비 중인 시험), handleAdminOpenSlots
 // (빈 번호 조회), handleAdminCreateMember(번호 중복 검증)가 각자 캐시 없이
@@ -1862,7 +1892,7 @@ async function getDataSheetRows(env, accessToken, fileId) {
 }
 
 async function listAllMembers(env, accessToken, fileId) {
-  return _cachedCompute(env, `members:${fileId}`, 10 * 60_000, async () => {
+  return _cachedCompute(env, `members:${fileId}`, 2 * 60 * 60_000, async () => {
     const rows = await getDataSheetRows(env, accessToken, fileId);
     const members = [];
     for (const row of rows) {
@@ -4268,6 +4298,13 @@ async function applyTimeDeduction(env, accessToken, fileId, memberNumber, ts, se
 // 동일 대상자에 대한 슬롯 배정은 항상 순차 실행되도록 한다.
 async function applyOutputPenalty(env, accessToken, fileId, nickname, reason, ts, sendTime, replyTime, captureId) {
   return withMemberLock(env, `pen:${nickname}`, async () => {
+    // 🔧 [members: TTL 2시간 상향 대응, 2026-09-11] 닉네임→번호 확정이 여기서
+    // 벌점 슬롯에 실제로 기록되는 결정적 순간이다 — 번호가 재사용된 회원이
+    // 있는데 members:가 낡아있으면 엉뚱한 회원에게 벌점이 적힐 수 있어,
+    // 조회 직전에 좁은 그룹(members+dataSheetRows)만 무효화해 무조건 방금
+    // 확인한 최신 명단으로 계산되게 한다(하루 승인 10건 미만이라 이 무효화
+    // 추가 비용은 무시할 수준).
+    await invalidateMemberCache(env, ["memberIdentity"], fileId);
     const [members, sheetId] = await Promise.all([
       listAllMembers(env, accessToken, fileId),
       getSheetIdByName(env, accessToken, fileId, OUTPUT_PEN_SHEET_NAME),
@@ -4360,6 +4397,10 @@ async function applyOutputPenalty(env, accessToken, fileId, nickname, reason, ts
 // 넘기지 않고 명시적 에러를 던진다.
 async function applyReportMerit(env, accessToken, fileId, reporterEmail, reason, ts, captureId) {
   return withMemberLock(env, `merit:${(reporterEmail || "").toLowerCase()}`, async () => {
+    // 🔧 [members: TTL 2시간 상향 대응, 2026-09-11] applyOutputPenalty와 동일한
+    // 이유 — 제보자 이메일→번호 확정이 여기서 상점 슬롯에 실제로 기록되는
+    // 결정적 순간이라, 조회 직전에 좁은 그룹만 무효화해 최신 명단을 보장한다.
+    await invalidateMemberCache(env, ["memberIdentity"], fileId);
     const [members, sheetId] = await Promise.all([
       listAllMembers(env, accessToken, fileId),
       getSheetIdByName(env, accessToken, fileId, OUTPUT_PEN_SHEET_NAME),
@@ -5813,11 +5854,17 @@ async function handleSetGoalSchedule(req, env, origin) {
 // 본문/집계 D20:D24+P6/데이터 F4:M4/집계 D25) 직접 호출하고 있었다 — 로그인한
 // 회원 15명 전원이 같은 파일의 같은 스냅샷을 보는 공용 데이터인데도 캐시가
 // 하나도 없어, RANK 탭이 열릴 때마다 그대로 쿼터를 소진했다(사용자 지적).
-// reportScore와 동일한 원칙(파일당 1개 키, TTL 30분 — "표시만 지연될 뿐
-// 정합성엔 무해"하다고 이미 확인된 것과 같은 성격의 데이터)으로 파일당
-// 하나의 키에 캐싱한다. 무효화는 "roster" 그룹(신규등록/퇴실 등 명단 자체가
-// 바뀌는 저빈도 이벤트)에 자동 포함되고, "상금 정산 집행" 마킹은 별도로
-// 좁은 "rosterOnly" 그룹을 즉시 호출한다(handleAdminPrizeSettle 참고).
+// reportScore와 동일한 원칙(파일당 1개 키 — "표시만 지연될 뿐 정합성엔
+// 무해"하다고 이미 확인된 것과 같은 성격의 데이터)으로 파일당 하나의 키에
+// 캐싱한다. 무효화는 "roster" 그룹(신규등록/퇴실 등 명단 자체가 바뀌는
+// 저빈도 이벤트)에 자동 포함되고, "상금 정산 집행" 마킹은 별도로 좁은
+// "rosterOnly" 그룹을 즉시 호출한다(handleAdminPrizeSettle 참고).
+// 🔧 [TTL 하향, 2026-09-11] RANK 탭 폴링(30분)과 TTL이 30분으로 같아
+// "폴링:TTL = 1:1"이 되어 매 폴링마다 캐시가 이미 만료돼 있어 재계산되는
+// 문제가 있었다(§12.1의 "폴링은 TTL의 3배 이상" 원칙 미달). 10분으로
+// 낮춰 3:1을 맞춘다 — 회원 수와 무관한 파일당 1개 키라 TTL을 낮춰도 KV
+// 쓰기 증가는 미미하다(최악 하루 30분→10분 기준 KV put 48회→144회
+// 수준이지만, 실제로는 대부분 인메모리/다른 isolate의 캐시로 흡수됨).
 // 🔧 [중복 캐시 통합, 2026-09-10] MY 탭의 getMeritRank가 별도로 쓰던
 // meritRank:{fileId} 캐시(집계!B4:F18)는 이 members 배열의 부분집합이라
 // (사용자 지적: "MY랑 RANK 둘이 같이 가져오는 걸로 해도 되지 않나?"),
@@ -5837,7 +5884,7 @@ const ROSTER_ROW_START = 3; // 시트 4행(0-indexed 3)부터 15명
 const ROSTER_ROW_END = 17; // 시트 18행(0-indexed 17)까지
 
 async function buildRosterStatus(env, accessToken, fileId) {
-  const ttlMs = fileId === env.GOOGLE_SHEET_FILE_ID ? 30 * 60_000 : 2 * 60 * 60_000;
+  const ttlMs = fileId === env.GOOGLE_SHEET_FILE_ID ? 10 * 60_000 : 2 * 60 * 60_000;
   return _cachedCompute(env, `rosterStatus:${fileId}`, ttlMs, () => _computeRosterStatus(env, accessToken, fileId));
 }
 

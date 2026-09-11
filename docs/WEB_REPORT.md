@@ -336,7 +336,13 @@ ReportPage (app/src/pages/ReportPage.tsx)
    "deferred"|"rejected"`)로 내린다 — 4가지 결정의 의미는
    `docs/WEB_ADMIN.md` §3.1c 참고.
 4. **승인 시 페널티 반영** (`applyOutputPenalty`, `decision === "approved"`일 때
-   `handleAdminCaptureDecide` 내부 호출): "데이터" 시트(회원번호+3행) F~K열
+   `handleAdminCaptureDecide` 내부 호출): 🔧 2026-09-11부터 이 함수는
+   닉네임→회원번호를 확정하는 `listAllMembers` 조회 **직전에** 회원 명단
+   캐시(`members:`/`dataSheetRows:`)를 먼저 무효화한다 — `members:` 자체가
+   2시간 캐시로 늘어났는데(`docs/CACHING_POLICY.md` §17.2), 벌점을 실제로
+   써넣는 이 결정적 순간만큼은 번호 재사용 등으로 명단이 낡아있을 위험
+   없이 항상 최신 상태를 보장해야 하기 때문이다(`applyReportMerit`도 동일).
+   "데이터" 시트(회원번호+3행) F~K열
    (송출P 1~6차) 중 **값이 0인 첫 칸**을 찾아 현재 페널티 사이클 번호(`집계!D25`)
    를 써넣고, 같은 칸에 "발생일시 · 사유 [cap:캡처ID]" 주석을 남긴다. I열(4차)·
    K열(6차)에 기록되면 이게 바로 `docs/WEB_DASHBOARD.md` §9.1/§10에서 다룬

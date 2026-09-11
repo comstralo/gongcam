@@ -124,15 +124,15 @@ computeFn)` 형태로 각 파생 계산(주로 여러 셀을 모아 가공한 �
 | 캐시 키 prefix | 함수 | TTL | 무효화 경로 |
 |---|---|---|---|
 | `penCycle:` | `getCurrentPenCycle` | **2시간**(§14.1 — 앱스크립트 `sheet_reset()`이 즉시 `cycle` 그룹 무효화, TTL은 안전망) | `invalidateMemberCache(["cycle"])` — 앱스크립트 알림 경로만 |
-| `meta:` | `getSpreadsheetMeta` | 5분 | `invalidateMemberCache`(`roster` 그룹) |
+| `meta:` | `getSpreadsheetMeta` | **10분**(2026-09-11 상향, 구 5분) | `invalidateMemberCache`(`roster` 그룹) |
 | `dataSheetRows:` | `getDataSheetRows`(§20, 2026-09-10 신설) | 10분(현재/과거 fileId 공통) | `invalidateMemberCache`(`roster` 그룹) — `데이터!A1:V50` 원본 로우, `listAllMembers`가 내부에서 재사용 |
-| `members:` | `listAllMembers` | 10분(현재/과거 fileId 공통 — §17.1 재재정정) | `invalidateMemberCache`(`roster` 그룹 — 신규등록/퇴실/재납/번호이동 5곳이 모두 호출) |
+| `members:` | `listAllMembers` | **2시간**(현재/과거 fileId 공통 — §17.2, 2026-09-11 재상향, 구 10분) | `invalidateMemberCache`(`roster` 그룹 — 신규등록/퇴실/재납/번호이동 5곳) + 제보 승인/상점 지급 직전 `memberIdentity` 그룹(좁게, §17.2) |
 | `personalStatusBundle:` | `getPersonalStatusBundle`(§21, 2026-09-10 통합) | 10분(현재 시트) / **2시간(과거 fileId)** | `writeSheetValues` 내장 정밀 무효화(개인 탭 쓰기 시) + 제보 처리 경로의 `invalidateMemberSlotCache(env, 번호)` — 개인 탭 원본 + `outputPenSlots` + `reportScore` 셋을 담는 회원별 캐시 |
 | `memberRows:` | `getSharedMemberRows` | 60초(유지) | `invalidateMemberCache`(`fine` 그룹) |
 | `weeklyPaidFine:` | `getWeeklyPaidFineTotal` | 5분 | `invalidateMemberCache`(`fine` 그룹) |
 | `penSlotGrid:` | `attachNextOccurrence` | 60초(유지) | `invalidateMemberCache`(`penalty` 그룹) |
 | `exitStatus:` | `getAllExitRelevantStatus` | 60초(유지) | `invalidateMemberCache`(`penalty`/`fine`/`exitRequest`/`partiStatus` 그룹) |
-| `rosterStatus:` | `buildRosterStatus`(§16) | 30분(현재 시트) / **2시간(과거 fileId, §17)** | `invalidateMemberCache`(`roster`에 자동 포함, "상금 정산 집행"만 `rosterOnly` 그룹으로 좁게) |
+| `rosterStatus:` | `buildRosterStatus`(§16) | **10분**(현재 시트, 2026-09-11 하향 — 구 30분) / **2시간(과거 fileId, §17)** | `invalidateMemberCache`(`roster`에 자동 포함, "상금 정산 집행"만 `rosterOnly` 그룹으로 좁게) |
 | `adminMemberList:` | `handleAdminMembers`(§17.1 재작성) | **2시간(현재/과거 fileId 공통)** | `invalidateMemberCache`(`roster` 그룹) — `listAllMembers`(`members:`)와는 별개의 바깥 캐시 |
 | `coReviewers:` | `getCurrentCoReviewers`(§22, 2026-09-10 신설) | 5분 | `invalidateMemberCache(["partiStatus"])` — 부스터디장 임명/해제(개인 탭 L3)가 즉시 무효화 |
 
@@ -403,15 +403,16 @@ isolate 분산과 KV 히트율에 달려 있어 정적 코드 조사만으로는
 키가 남는" gap 위험만 늘어나기 때문이다. 아끼는 건 오직 KV `.delete()` 호출
 수뿐이다.
 
-> **§21 이후 현재 그룹 정의**(index.js):
+> **§17.2 이후 현재 그룹 정의**(index.js):
 > ```
-> roster:      [...MEMBER_CACHE_UNCONDITIONAL_KEYS]   // 11종 전부
-> penalty:     ["exitStatus", "penSlotGrid"]
-> fine:        ["exitStatus", "memberRows", "weeklyPaidFine"]
-> exitRequest: ["exitStatus"]
-> partiStatus: ["exitStatus", "coReviewers"]
-> cycle:       ["penCycle"]
-> rosterOnly:  ["rosterStatus"]
+> roster:         [...MEMBER_CACHE_UNCONDITIONAL_KEYS]   // 11종 전부
+> penalty:        ["exitStatus", "penSlotGrid"]
+> fine:           ["exitStatus", "memberRows", "weeklyPaidFine"]
+> exitRequest:    ["exitStatus"]
+> partiStatus:    ["exitStatus", "coReviewers"]
+> cycle:          ["penCycle"]
+> rosterOnly:     ["rosterStatus"]
+> memberIdentity: ["members", "dataSheetRows"]   // §17.2, 제보 승인/상점 지급 직전 전용
 > ```
 
 18개 호출부를 각각 재분류해 반영한 결과(코드로 시뮬레이션 검증):
@@ -586,10 +587,10 @@ isolate 분산과 KV 히트율에 달려 있어 정적 코드 조사만으로는
 | `ReportReviewList`("송출 P 대상 처리") | `penSlotGrid:` 60초 / `coReviewers:` 5분(§22) | **10분**(2026-09-10, 구 3분 — §22에서 `coReviewers:` 캐싱과 함께 하향) |
 | `PenaltyCandidateList`("예치금 재납 대상자") | `exitStatus:` 60초 / `memberRows:` 60초 | 3분 |
 | `AdminMoneyTab`의 벌금 조회(`PaidFineList` 등) | `memberRows:` 60초 / `weeklyPaidFine:` 5분 | 3분(더 짧은 쪽 기준) |
-| `MyOutputPenSection`("내 화각 불량 제보") | `penSlotGrid:` 60초 / `members:` 10분 | **10분**(2026-09-10, 구 3분) |
-| `RosterPage`("RANK") | `rosterStatus:` 30분 | 30분 — **폴링 : TTL 배율이 1:1**이라 캐시가 폴링 중복만 걸러줄 뿐, 자연 만료가 폴링과 겹쳐 매 폴링마다 재계산될 수 있다(개선 여지로 남김) |
+| `MyOutputPenSection`("내 화각 불량 제보") | `penSlotGrid:` 60초 / `members:` 2시간(§17.2) | **10분**(2026-09-10, 구 3분) |
+| `RosterPage`("RANK") | `rosterStatus:` 10분(2026-09-11 하향, 구 30분) | 30분 — 폴링 : TTL 배율 **3:1**로 원칙(3배 이상) 충족(2026-09-11 이전엔 1:1이었다) |
 | `StatusPage` / `MyStatusContext`("내 대시보드"·"설정") | `personalStatusBundle:` 10분(현재 시트) 등 §12.1·§21 | 30분(§14) — 대시보드/설정 화면일 때만(B) + `document.hidden`(A) + 5분 유휴(G, 절전 오버레이) 모두 적용 |
-| `MemberRosterList`("참여 스터디원 목록") | `dataSheetRows:`/`members:` 10분 / `meta:` 5분 | 15분 — 폴링 : TTL 배율 1.5배로 원칙(2~3배)보다 낮음(개선 여지) |
+| `MemberRosterList`("참여 스터디원 목록") | `dataSheetRows:` 10분 / `meta:` 10분(2026-09-11, 구 5분) / `members:` 2시간(§17.2) | **30분**(2026-09-11, 구 15분) — `dataSheetRows:`/`meta:` 기준 정확히 3배로 원칙 충족(`members:`는 더 길어 병목 아님) |
 
 `AdminMoneyTab`의 `PrizeRecipientList`(`/roster-status`)는 `buildRosterStatus`
 가 `_cachedCompute` 없이 매번 직접 시트를 조회하는 무캐시 경로라(§3
@@ -619,6 +620,36 @@ KV 캐시가 아니라 매 요청마다 `proxyToBotDashboard(env, "/status")`로
 재조회가 안 되는 상태였다(다른 탭들과의 불일치). `visible`을
 `MemberRosterList`까지 실제로 전달하도록 고치고, `useRefreshOnVisible`도
 함께 추가했다 — 폴링 설계 과정에서 발견한 부수적 버그 수정.
+
+### 12.4 "내 대시보드" 새로고침 버튼을 TTL 만료 전엔 비활성화 (2026-09-11)
+
+이 절 도입부의 문제("새로고침 버튼을 눌러도 서버 캐시 TTL이 안 지났으면
+낡은 값을 그대로 받는다")를 폴링으로 우회하는 대신, **MY 탭(`StatusPage`,
+헤더 "내 대시보드")에 한해 그 버튼 자체를 TTL이 지나기 전엔 못 누르게
+막는 방식**으로 직접 해결했다 — "캐시를 무시하고 강제로 다시 읽기"(§12
+도입부에서 기각된 방안)의 반대 방향: 캐시를 우회시키는 게 아니라, 우회할
+수 없다는 걸 버튼 상태로 드러낸다.
+
+- **기준 TTL**: 백엔드 `getPersonalStatusBundle`과 동일한 분기(현재 시트
+  10분 / 과거 사이클(cycle 파라미터) 2시간, §21)를 프론트에서 그대로
+  재현한다(`StatusPage.tsx`의 `ttlMs = isViewingCycle ? 2h : 10min`).
+- **기준 시각**: 서버에서 실제로 새 응답을 받은 시각만 기준으로 삼는다.
+  `MyStatusContext`에 `lastLoadedAt`(ms epoch)을 추가해 `refresh()` 성공
+  시점에만 갱신한다 — 반휴 신청 성공 시의 낙관적 업데이트(`setStatus`)는
+  실제 서버 재조회가 아니므로 이 시각을 갱신하지 않는다(갱신하면 방금
+  캐시가 무효화돼 다음 클릭이 진짜 최신값을 받을 수 있는 상황인데도
+  버튼이 다시 잠겨버린다).
+- **다른 회원/과거 사이클 조회**: `MyStatusContext`를 안 타는 경로라
+  `StatusPage`가 로컬 `otherLoadedAt`으로 동일한 방식을 별도 추적한다.
+- **재활성화**: 1초 간격 틱(`visible`일 때만 동작, 네트워크 요청 없이
+  리렌더만)으로 TTL이 지나는 순간 자동으로 버튼이 풀린다. 비활성화
+  중에는 버튼 `title` 툴팁에 "N분 후 새로고침 가능"을 보여준다.
+- **적용 범위**: `SectionHeader`(20여 곳이 공유하는 컴포넌트)에 옵션
+  prop `refreshDisabled`/`refreshDisabledReason`을 추가하는 형태로
+  구현해, 값을 넘기지 않는 기존 호출부(관리자 리스트 등)는 동작이
+  전혀 바뀌지 않는다 — 이번 요청은 "내 대시보드"에만 한정됐기 때문에
+  다른 화면(예: RANK 탭, 관리자 리스트들)의 새로고침 버튼은 여전히
+  `loading` 중에만 비활성화된다.
 
 ## 13. 화면별 KV 쓰기/삭제 추적 로그 (2026-09-09 신설)
 
@@ -780,6 +811,12 @@ meritRank(개인 대시보드 순위)의 캐싱 정책을 점검하다가, "여�
 그룹이 이미 동일(`roster` 그룹에만 자동 포함, `penalty` 그룹에서는
 의도적으로 제외)했기 때문에 합쳐도 정합성 차이가 없다.
 
+> 🔧 **[TTL 하향, 2026-09-11]** RANK 탭 폴링(30분)과 이 30분 TTL이 같아
+> "폴링:TTL = 1:1"이 되어 §12.1의 "폴링은 TTL의 3배 이상" 원칙을 유일하게
+> 못 지키고 있었다(§12.2에서 개선 여지로 남겨둔 항목). `rosterStatus:`가
+> 파일당 1개 키(회원 수와 무관)라 TTL을 낮춰도 KV 쓰기 증가가 작다는 점을
+> 근거로 10분으로 낮췄다 — 폴링:TTL = 3:1로 원칙을 충족한다(§3에 반영).
+
 ## 17. 과거 fileId(백업 사이클) TTL 상향 — 2시간 (2026-09-10)
 
 "MY 탭에서 과거 주차를 여러 번 토글하면 10~30분 TTL이 반복 만료돼 그때마다
@@ -874,7 +911,42 @@ exitedMembers 조합)을 `listAllMembers`와는 별개의 바깥 캐시 키
 `members:`(원본, 20여 곳 공유, 정확성 우선 10분 고정) /
 `adminMemberList:`(드롭다운 전용, 실시간성 불필요, 2시간 고정).
 
-## 18. "내 화각 불량 제보"(`MyOutputPenSection`) — 캐시 없는 이메일 조회를 `members:`로 통합 (2026-09-10)
+**§17.2 — `members:` 2시간 재상향 + 결정적 경로(승인) 방어 (2026-09-11)**:
+위 "재재정정"에서 `members:`를 10분 고정으로 되돌린 핵심 이유는 "무효화가
+어쩌다 놓쳤을 때 `applyOutputPenalty`/`applyReportMerit`(제보 승인/제보상점
+지급 — 닉네임·이메일을 번호로 확정해 그 번호 슬롯에 실제로 벌점/상점을
+써넣는 결정적 순간)가 번호 재사용 시 엉뚱한 회원에게 잘못 기록할 위험"
+이었다. 이번엔 그 위험 자체를 없애는 방식으로 접근했다 — TTL을 길게
+유지해도 안전하도록, **그 두 함수가 `listAllMembers`를 호출하기 직전에
+좁은 그룹(`memberIdentity: ["members", "dataSheetRows"]`, 신설)만 무효화**
+해서 "지금 명단이 실제로 바뀌었는지와 무관하게, 벌점을 쓰는 순간엔 항상
+방금 확인한 최신값을 쓴다"고 강제한다. `dataSheetRows`도 함께 지우는 이유는
+`members:`가 그 원본에서 파생되는 값이라, `dataSheetRows`가 여전히
+캐시돼 있으면 "새로 계산은 하지만 재료는 낡은" 상태가 되기 때문이다.
+기존 `roster` 그룹(9개 키 전체)을 쓰지 않고 이 둘만 지우는 좁은 그룹을
+새로 만든 이유는, 벌점 승인 하나 때문에 상관없는 벌금·순위 캐시까지
+매번 지울 이유가 없어서다.
+
+이 방어가 생기면서 "무효화를 못 믿어서 TTL을 짧게 유지"할 이유가
+없어져, `members:` 자체도 `dataSheetRows:`/`adminMemberList:`와 같은
+선상에서 **2시간**으로 올렸다(현재/과거 fileId 공통, 분기 없음 — §17.1
+재재정정과 동일하게 유지). 하루 제보 승인 건수가 10건 미만임을
+확인했고(사용자 제시), 이 좁은 무효화가 추가하는 KV 쓰기/삭제(승인당
+최대 4건 — `members`/`dataSheetRows` 삭제 2건 + 재계산 시 재기입 2건)는
+그 빈도에서 무시할 수준이다. `adminMemberList:`(드롭다운 전용 바깥
+캐시)는 이제 존재 이유가 옅어졌지만 이미 분리돼 있어 그대로 둔다 —
+제거할 이유도 없다.
+
+**§17.3 — `MemberRosterList` 폴링 배율 원칙 충족 (2026-09-11)**: §12.2에서
+"참여 스터디원 목록"의 폴링(15분) 대 `dataSheetRows:` TTL(10분) 배율이
+1.5배로 원칙(3배 이상)에 못 미친다고 개선 여지로 남겨뒀던 것을 여기서
+해결했다. `meta:`를 5분→10분으로 올리고(§17 문단, 위 표에 반영) 폴링도
+15분→30분으로 늘려, `dataSheetRows:`/`meta:` 둘 다 정확히 3배가 되도록
+맞췄다 — `members:`는 §17.2로 이미 2시간이라 이 화면의 병목이 아니다.
+`meta:`를 10분으로 올려도 신선도 손실이 사실상 없는 이유는 §5에서 이미
+확인한 대로다: 이 화면(유일한 정기 폴링 소비처)의 폴링 간격이 옛 TTL(5분)
+보다도 이미 훨씬 길어, TTL이 아니라 폴링 빈도 자체가 쓰기 횟수의
+병목이었기 때문이다.
 
 "내 화각 불량 제보" 화면의 캐싱 정책을 점검하다가 발견했다. 이 화면이
 3분마다 폴링하는 `handleMyOutputPen`이 본인 회원번호·이름을 알아내는 데

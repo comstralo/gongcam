@@ -11,6 +11,10 @@ export type MyStatusContextValue = {
   error: string | null;
   refresh: () => void;
   setStatus: (updater: StatusResponse | ((prev: StatusResponse | null) => StatusResponse | null)) => void;
+  /** 서버에서 실제로 새 응답을 받은 시각(ms epoch) — 낙관적 업데이트(setStatus)로는
+   * 갱신되지 않는다. StatusPage가 "personalStatusBundle: TTL이 지나기 전엔 새로고침
+   * 버튼을 눌러도 어차피 같은 캐시값이라 비활성화"할 때 기준으로 쓴다. */
+  lastLoadedAt: number | null;
 };
 
 export const MyStatusContext = createContext<MyStatusContextValue | null>(null);
@@ -41,6 +45,7 @@ export function MyStatusProvider({ children, visible = true }: { children: React
   const [status, setStatusState] = useState<StatusResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastLoadedAt, setLastLoadedAt] = useState<number | null>(null);
   const loadedRef = useRef(false);
   // 🔧 [경쟁 조건 수정] refresh()에 순서 보장이 없어, 먼저 시작된 요청이
   // 늦게 도착하면 "최신 도착"이라는 이유만으로 화면을 덮어썼다 — 예를 들어
@@ -61,6 +66,7 @@ export function MyStatusProvider({ children, visible = true }: { children: React
         if (requestId !== requestIdRef.current) return;
         loadedRef.current = true;
         setStatusState(data);
+        setLastLoadedAt(Date.now());
       })
       .catch((err) => {
         if (requestId !== requestIdRef.current) return;
@@ -135,7 +141,7 @@ export function MyStatusProvider({ children, visible = true }: { children: React
   }
 
   return (
-    <MyStatusContext.Provider value={{ status, loading, error, refresh, setStatus }}>
+    <MyStatusContext.Provider value={{ status, loading, error, refresh, setStatus, lastLoadedAt }}>
       {children}
     </MyStatusContext.Provider>
   );

@@ -78,10 +78,17 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
   usePullRefreshListener(true, load);
   // 이 탭으로 돌아올 때마다 다시 불러오고(신규등록/퇴실/번호이동은 다른
-  // 화면에서 처리되므로), 계속 띄워둔 채로도 관련 캐시(members:/meta: 5분)
-  // 의 3배 이상 주기로 폴링해 자동 갱신되게 한다.
+  // 화면에서 처리되므로), 계속 띄워둔 채로도 관련 캐시의 3배 이상 주기로
+  // 폴링해 자동 갱신되게 한다.
+  // 🔧 [2026-09-11 재조정] 원래 15분이었는데, 의존 캐시 중 dataSheetRows:
+  // (10분)와의 배율이 1.5배로 원칙(3배 이상, docs/CACHING_POLICY.md §12.1)
+  // 에 못 미쳤다 — meta:(당시 5분)까지 감안하면 최대 3배였지만 최소 기준인
+  // dataSheetRows:엔 못 미쳤던 것. meta:를 10분으로 올리고(아래
+  // getSpreadsheetMeta) 폴링도 30분으로 늘려, 이제 dataSheetRows:/meta:
+  // 둘 다 10분 기준 정확히 3배를 맞춘다(members:는 2시간으로 더 길어
+  // 병목이 아님, §17.2).
   useRefreshOnVisible(visible, load);
-  const refreshProgress = usePollingRefresh(visible, load, 15 * 60_000);
+  const refreshProgress = usePollingRefresh(visible, load, 30 * 60_000);
 
   return (
     <Collapsible defaultOpen className="flex flex-col">
