@@ -482,9 +482,12 @@ export function ReportReviewList({
   // 🔧 [사용자 지시] 3분→10분으로 하향 — 이 폴링이 부스터디장 목록
   // (getCurrentCoReviewers)을 매번 캐시 없이 다시 조회하게 했던 원인이라
   // (사용자 지적), 그 목록을 5분 TTL로 캐싱하면서 폴링 주기도 그 2배인
-  // 10분으로 늘렸다 — penSlotGrid(60초 TTL)의 절감 효과는 여전히 충분히
-  // 유지된다.
-  const refreshProgress = usePollingRefresh(visible, load, 10 * 60_000);
+  // 10분으로 늘렸다.
+  // 🔧 [사용자 지시, 2026-09-11] 10분→20분 — penSlotGrid:가 60초에서
+  // 5분으로 늘어나면서(§ attachNextOccurrence, "내 제보 확인"과 공유하는
+  // 캐시), 배율을 10:5(2배)에서 20:5(4배)로 넉넉하게 맞추기 위함.
+  // coReviewers:(5분)도 함께 10:5→20:5로 개선된다.
+  const refreshProgress = usePollingRefresh(visible, load, 20 * 60_000);
 
   // 부스터디장(공동 검토자) 본인이 위반 수준 의견을 제출한다 — 성공하면
   // 서버에 실제 저장된 값을 다시 불러와 반영한다(다른 회원 임명 변경과

@@ -93,7 +93,7 @@ function normalizeView(raw: string | null): ReportView {
 export function ReportPage({ visible = true }: { visible?: boolean }) {
   const { call } = useApi();
   const { isAdmin, session } = useAuth();
-  const { members: allMembers, stale, hint, refresh, refreshProgress } = useRosterPolling();
+  const { members: allMembers, stale, hint, refresh } = useRosterPolling();
   // "내 화각 점검" 기능이 따로 있으므로 일반 회원에게는 제보 대상자
   // 드롭다운에서 본인을 아예 안 보여준다(사용자 결정) — 관리자는 기능
   // 테스트를 위해 계속 자기 자신도 선택할 수 있어야 하므로 예외로 둔다.
@@ -481,7 +481,14 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
                         <Button
                           className="w-full sm:h-12 sm:text-base"
                           variant="outline"
-                          disabled={submittingSelfCheck || stale || isWithinReconnectWindow(SCREENSHOT_LEAD_SEC)}
+                          // 🔧 [사용자 지시] noMembers("현재 접속 중인 참여자가
+                          // 없습니다")면 본인도 스터디룸에 입장하지 않은
+                          // 상태라는 뜻이므로, "내 화각 점검"(본인 화면을
+                          // 캡처하는 기능)도 함께 막는다 — 대상자 Select
+                          // (disabled={stale || noMembers})와 동일한 기준.
+                          disabled={
+                            submittingSelfCheck || stale || noMembers || isWithinReconnectWindow(SCREENSHOT_LEAD_SEC)
+                          }
                           onClick={handleSelfCheck}
                         >
                           내 화각 점검
@@ -522,16 +529,16 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
 
       <div className="w-full" hidden={view !== "notice"}>
         {everOpened.current.notice && (
+          // 🔧 [사용자 지시] "PUSH 알림 전송"을 "화각 불량 제보" 기준으로
+          // 통일 — 그쪽 외곽 SectionHeader는 onRefresh/refreshProgress가
+          // 없다(대상자 드롭다운을 열 때마다 refresh()하는 것으로 충분).
+          // 제목도 탭 라벨("PUSH 알림 전송")과 정확히 맞춘다("PUSH 알림"
+          // 이었음 — 화각 불량 제보는 탭 라벨과 헤더 제목이 이미 동일).
           <SectionCard className="shadow-sm shadow-black/[0.03]">
             <Collapsible defaultOpen className="flex flex-col">
-              <SectionHeader
-                icon={Bell}
-                title="PUSH 알림"
-                onRefresh={refresh}
-                refreshProgress={refreshProgress}
-              />
+              <SectionHeader icon={Bell} title="PUSH 알림 전송" />
               <CollapsiblePanel className="flex flex-col gap-4">
-                <SimpleNoticeSection members={members} noMembers={noMembers} stale={stale} />
+                <SimpleNoticeSection members={members} noMembers={noMembers} stale={stale} refresh={refresh} />
               </CollapsiblePanel>
             </Collapsible>
           </SectionCard>

@@ -142,9 +142,14 @@ export function SectionHeader({
   loading?: boolean;
   onRefresh?: () => void;
   refreshProgress?: number;
-  /** true면 로딩 중이 아니어도 버튼을 비활성화한다 — 서버 캐시 TTL이 아직
-   * 안 지나 눌러도 같은 캐시값만 돌아오는 구간을 걸러내는 용도(예:
-   * "내 대시보드"의 personalStatusBundle: TTL). 생략하면 기존 동작과
+  /** true면 로딩 중이 아니어도 버튼을 비활성화한다 — "지금 눌러도 의미
+   * 없다"는 신호를 통일된 방식으로 준다. 두 가지 근거로 쓰인다: (1) 서버
+   * 캐시 TTL이 아직 안 지나 눌러도 같은 캐시값만 돌아오는 경우(예: "내
+   * 대시보드"의 personalStatusBundle: TTL, 시간 기반 예측) — 기본은
+   * 비활성화가 아니라 활성화이고 TTL 안에서만 비활성화된다. (2) 캐시가
+   * 없어 시간으로 신선도를 예측할 수 없는 화면에서, 배경 폴링이 "새로
+   * 볼 게 있다"를 감지했을 때만 활성화하는 경우(예: "내 제보 확인") —
+   * 기본이 비활성화이고 감지됐을 때만 활성화된다. 생략하면 기존 동작과
    * 동일(loading일 때만 비활성화). */
   refreshDisabled?: boolean;
   /** refreshDisabled가 true일 때 보여줄 이유(버튼 title 툴팁). */

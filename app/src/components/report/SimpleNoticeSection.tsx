@@ -30,10 +30,12 @@ export function SimpleNoticeSection({
   members,
   noMembers,
   stale,
+  refresh,
 }: {
   members: string[];
   noMembers: boolean;
   stale: boolean;
+  refresh: () => void;
 }) {
   const { call } = useApi();
   const [nickname, setNickname] = useState("");
@@ -89,19 +91,33 @@ export function SimpleNoticeSection({
 
   return (
     <div className="flex flex-col gap-4">
-      <SectionCard className="flex flex-col gap-3">
+      <SectionCard className="relative flex flex-col gap-3">
+        {/* 🔧 [사용자 지시] "화각 불량 제보"와 동일하게, 도움봇이 꺼져있으면
+            (stale) 카드 전체를 반투명 오버레이로 덮어 문구를 보여주고 클릭
+            자체를 막는다. PUSH는 "교시 임박" 개념이 없어 stale만 조건. */}
+        {stale && (
+          <div
+            className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1.5 rounded-xl bg-background/85 px-6 text-center backdrop-blur-[1px]"
+            aria-hidden="true"
+          >
+            <TriangleAlert className="size-5 shrink-0 text-muted-foreground sm:size-6" />
+            <span className="text-sm font-semibold text-foreground sm:text-base">도움봇이 가동중이지 않습니다.</span>
+          </div>
+        )}
         <div className="flex flex-col gap-1.5">
-          {/* 🔧 [사용자 지시] "PUSH 알림 전송" 탭을 "화각 불량 제보" 탭
-              기준으로 통일 — 라벨이 text-xs font-semibold text-muted-
-              foreground sm:text-sm로 "제보 대상자"(ReportPage, text-sm
-              font-bold sm:text-base, muted 없이 기본 전경색)보다 한 단계
-              작고 얇았다. */}
           <Label className="flex items-center gap-1.25 text-sm font-bold sm:text-base">
             <User className="size-3 shrink-0 text-muted-foreground sm:size-3.5" />
             수신 대상자
           </Label>
-          <Select value={nickname} onValueChange={(v) => setNickname(v ?? "")} disabled={stale || noMembers}>
-            <SelectTrigger className="w-full data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base">
+          <Select
+            value={nickname}
+            onValueChange={(v) => setNickname(v ?? "")}
+            disabled={stale || noMembers}
+            onOpenChange={(open) => {
+              if (open) refresh();
+            }}
+          >
+            <SelectTrigger className="w-full data-[size=default]:h-8 sm:data-[size=default]:h-12 pl-3.5 sm:pl-4.5 sm:text-base">
               <SelectValue
                 placeholder={
                   stale
@@ -130,9 +146,16 @@ export function SimpleNoticeSection({
             <MessageSquareWarning className="size-3 shrink-0 text-muted-foreground sm:size-3.5" />
             전송 원인
           </Label>
-          <Select value={reason} onValueChange={(v) => setReason(v ?? "")} disabled={stale}>
-            <SelectTrigger id="notice-reason" className="w-full data-[size=default]:h-8 sm:data-[size=default]:h-12 sm:text-base">
-              <SelectValue placeholder="원인을 선택해 주세요." />
+          {/* 🔧 [사용자 지시] "화각 불량 제보"의 원인 선택과 동일하게, 대상자를
+              먼저 골라야 원인 선택이 의미가 있으므로 대상자 미선택 시 비활성화. */}
+          <Select value={reason} onValueChange={(v) => setReason(v ?? "")} disabled={stale || !nickname}>
+            <SelectTrigger
+              id="notice-reason"
+              className="w-full data-[size=default]:h-8 sm:data-[size=default]:h-12 pl-3.5 sm:pl-4.5 sm:text-base"
+            >
+              <SelectValue
+                placeholder={!nickname ? "수신 대상자를 먼저 선택해주세요." : "원인을 선택해 주세요."}
+              />
             </SelectTrigger>
             <SelectContent>
               {NOTICE_REASON_OPTIONS.map((opt) => (
@@ -147,7 +170,7 @@ export function SimpleNoticeSection({
         <Button
           className="w-full sm:h-12 sm:text-base"
           variant="outline"
-          disabled={sending || stale}
+          disabled={sending || stale || !nickname}
           onClick={handleSend}
         >
           {sending ? "보내는 중..." : "알림 전송"}

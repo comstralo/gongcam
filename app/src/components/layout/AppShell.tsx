@@ -3,6 +3,7 @@ import type { LucideIcon } from "lucide-react";
 import { TabBar } from "./TabBar";
 import { ThemeToggleButton } from "./ThemeToggleButton";
 import { PeriodAlarmToggleButton } from "./PeriodAlarmToggleButton";
+import { LinksHeaderButton } from "./LinksHeaderButton";
 import { useAuth } from "@/lib/auth/useAuth";
 import { cn, ICON_STROKE } from "@/lib/utils";
 
@@ -39,7 +40,7 @@ export function AppShell({ children, title, titleIcon: TitleIcon, hideEyebrow, f
         // p-4 그대로 유지.
         "flex w-full flex-col items-center gap-4.5 px-2.5 sm:px-4 page-pt-safe",
         fitToScreen
-          ? "h-dvh overflow-hidden mobile-landscape:gap-2 mobile-landscape:px-2 mobile-landscape:pt-2 mobile-landscape:pb-2"
+          ? "mobile-landscape:h-dvh mobile-landscape:overflow-hidden mobile-landscape:gap-2 mobile-landscape:px-2 mobile-landscape:pt-2 mobile-landscape:pb-2"
           : "min-h-dvh",
         session && fitToScreen && "mobile-portrait:pb-(--shell-pb-portrait)"
       )}
@@ -87,6 +88,7 @@ export function AppShell({ children, title, titleIcon: TitleIcon, hideEyebrow, f
                 항상 h1과 같은 줄 높이에 오도록 items-end로 맞춘다. */}
             <div className="flex shrink-0 items-center gap-0.5">
               <PeriodAlarmToggleButton />
+              <LinksHeaderButton />
               <ThemeToggleButton />
             </div>
           </div>

@@ -18,7 +18,7 @@ export function ThemeToggleButton() {
       type="button"
       aria-label={dark ? "라이트 모드로 전환" : "다크 모드로 전환"}
       onClick={() => setDark(!dark)}
-      className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary active:bg-primary/15"
+      className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-primary"
     >
       {dark ? (
         <Sun className="size-4.5" strokeWidth={ICON_STROKE.default} />

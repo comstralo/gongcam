@@ -203,6 +203,18 @@ export function MyOutputPenSection({
 
   const [selfCheckItems, setSelfCheckItems] = useState<MyCaptureItem[] | null>(null);
   const [receivedItems, setReceivedItems] = useState<MyOutputPenItem[] | null>(null);
+  // 🔧 [사용자 지시, 2026-09-11] "새로고침 버튼도 새 접수 내역이 있을 때만
+  // 활성화" — 대시보드의 TTL 기반 비활성화(refreshDisabled)와 같은 시각
+  // 언어를 쓰되, 신선도를 "시간"이 아니라 "감지"로 판단한다(이 화면은
+  // 캐시가 없어 시간만으로는 신선도를 예측할 수 없음). 폴링을 두 단계로
+  // 분리했다:
+  // - 20분 "렌더" 폴링(load, 아래) — 실제로 목록을 갱신하고, 갱신한
+  //   순간엔 더 이상 안 보여준 게 없으므로 버튼을 다시 비활성화한다.
+  // - 5분 "감지" 폴링(detectNew, 아래) — /my-output-pen만 가볍게 불러와
+  //   지금 화면에 렌더된 id와 비교, 새 id가 있으면 버튼만 활성화한다
+  //   (목록 자체는 안 바꿈 — 사용자가 직접 새로고침을 눌러야 반영).
+  // 기본값 false(비활성화)로 시작 — 아직 아무것도 감지된 게 없으므로.
+  const [hasNewReceived, setHasNewReceived] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
@@ -253,6 +265,9 @@ export function MyOutputPenSection({
         if (requestId !== requestIdRef.current) return;
         setSelfCheckItems(captures.items || []);
         setReceivedItems(outputPen.items || []);
+        // 방금 전체를 새로 받아와 화면에 그대로 반영했으니, 더 이상
+        // "안 보여준 새 항목"은 없다 — 버튼을 다시 비활성화한다.
+        setHasNewReceived(false);
       })
       .catch((err) => {
         if (requestId !== requestIdRef.current) return;
@@ -261,6 +276,24 @@ export function MyOutputPenSection({
       .finally(() => {
         if (requestId !== requestIdRef.current) return;
         setLoading(false);
+      });
+  }
+
+  // 🔧 [사용자 지시, 2026-09-11] "감지" 전용 — /my-output-pen만 가볍게
+  // 불러와 지금 렌더된 receivedItems의 id와 비교한다. 다른 것(로딩 상태,
+  // selfCheckItems, 목록 자체)은 전혀 안 건드린다 — 새 항목이 있다는
+  // 사실만 새로고침 버튼에 반영한다.
+  function detectNew() {
+    const cycleParam = cycleFileId ? `?cycle=${encodeURIComponent(cycleFileId)}` : "";
+    call<MyOutputPenResponse>(`/my-output-pen${cycleParam}`)
+      .then((data) => {
+        const currentIds = new Set((receivedItems || []).map((it) => it.id));
+        const hasNew = (data.items || []).some((it) => !currentIds.has(it.id));
+        if (hasNew) setHasNewReceived(true);
+      })
+      .catch(() => {
+        // 감지 실패는 조용히 넘어간다 — 다음 감지 틱이나 20분 렌더
+        // 폴링이 알아서 다시 시도한다.
       });
   }
 
@@ -280,7 +313,17 @@ export function MyOutputPenSection({
   // penSlotGrid:/members:/penCycle: 캐시), 이 폴링은 "무효화를 놓쳤을
   // 때의 안전망"일 뿐이다. 화면을 계속 띄워둔 채로도 몇 분 안에 자동
   // 반영되면 충분하다는 판단.
-  const refreshProgress = usePollingRefresh(visible, load, 10 * 60_000);
+  // 🔧 [사용자 지시, 2026-09-11] 10분 → 20분 — 실제 목록 갱신(렌더)은
+  // 이 폴링이 맡고, "새 항목이 왔는지"는 아래 더 짧은 감지 폴링이 대신
+  // 맡도록 역할을 분리했다. penSlotGrid:도 60초→5분으로 늘어(§
+  // attachNextOccurrence) 20분 폴링 기준 배율이 4배로 넉넉해졌다.
+  const refreshProgress = usePollingRefresh(visible, load, 20 * 60_000);
+  // 🔧 [사용자 지시, 2026-09-11] "새로고침 버튼도 새 접수 내역이 있을
+  // 때만 활성화" — 렌더 폴링(20분)과 별개로, 훨씬 짧은 주기(5분)로 가볍게
+  // "새 게 있는지"만 확인한다. penSlotGrid:도 5분 TTL이라 배율 1:1이지만,
+  // attachNextOccurrence가 pending 건이 없으면 그 캐시 자체를 안 건드리게
+  // 고쳐져 있어(백엔드) 실제 트리거 빈도는 낮다.
+  usePollingRefresh(visible, detectNew, 5 * 60_000);
   useEffect(() => {
     if (refreshSignal) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -339,6 +382,8 @@ export function MyOutputPenSection({
           loading={loading}
           onRefresh={load}
           refreshProgress={refreshProgress}
+          refreshDisabled={!hasNewReceived}
+          refreshDisabledReason="새로 접수된 내역이 없습니다"
         />
         <CollapsiblePanel className="flex flex-col gap-4">
           <CycleSwitcher selectedFileId={cycleFileId} onSelect={setCycleFileId} memberNumber="self" />

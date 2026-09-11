@@ -6,7 +6,6 @@ export function useCamera() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [facing, setFacing] = useState<FacingMode>("user");
-  const [status, setStatus] = useState("카메라를 시작하려면 브라우저 권한을 허용해주세요.");
   const [isReady, setIsReady] = useState(false);
   // 전면 카메라는 거울처럼 보이는 게 자연스러워 기본 ON, 후면은 기본 OFF.
   // 카메라를 전환할 때마다 그 방향의 관례적인 기본값으로 재설정된다.
@@ -21,7 +20,6 @@ export function useCamera() {
         streamRef.current.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
       }
-      setStatus("카메라 연결 중...");
       setIsReady(false);
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -37,12 +35,9 @@ export function useCamera() {
           videoRef.current.srcObject = stream;
           await videoRef.current.play();
         }
-        setStatus("준비 완료. 촬영 시작을 누르세요.");
         setIsReady(true);
-      } catch (err) {
+      } catch {
         if (cancelled) return;
-        const message = err instanceof Error ? err.message : String(err);
-        setStatus(`카메라 접근 실패: ${message} (다른 카메라로 전환해보세요)`);
         setIsReady(false);
       }
     }
@@ -72,5 +67,5 @@ export function useCamera() {
     setMirrored((prev) => !prev);
   }
 
-  return { videoRef, status, setStatus, isReady, switchFacing, facing, mirrored, toggleMirror };
+  return { videoRef, isReady, switchFacing, facing, mirrored, toggleMirror };
 }

@@ -2639,7 +2639,10 @@ const SELF_CHECK_REASON = "본인 화각 점검";
 const SELF_CHECK_COOLDOWN_SEC = 20 * 60;
 // handleReport가 report:{id}를 최초로 KV에 쓸 때와 handleRequeueReport가
 // 안전망 폴링에서 스킵된 항목을 재등록할 때 동일하게 참조하는 TTL.
-const REPORT_TTL_SEC = 60 * 60 * 6;
+// 🔧 [2026-09-11] 6시간→12시간 — 봇이 오래 꺼져 있어도(직접 푸시 실패 +
+// 10분 안전망 폴링도 그동안 못 도는 경우) 더 긴 유예를 두기 위함. TTL만
+// 늘리는 변경이라 KV 쓰기/삭제 횟수에는 영향 없음(그대로 접수 1건).
+const REPORT_TTL_SEC = 60 * 60 * 12;
 
 async function handleReport(req, env, origin) {
   const { token, nickname, reason, mode, selfCheck } = await req.json();
@@ -3313,23 +3316,38 @@ async function proxyToBotDashboardRaw(env, path) {
 // F4:K18을 한 번에 읽어 닉네임→회원번호 매핑으로 계산한다. 제보자 이메일
 // (reporterEmail)도 같은 명단으로 이름을 찾아 reporterName으로 함께 붙인다
 // — UI가 이메일 대신 이름을 보여줘야 하기 때문.
+// 🔧 [비용 절감, 2026-09-11] nextOccurrence/weeklyMinorPenaltyCount는
+// 프론트에서 "penalty?.occurrence ?? nextOccurrence"(확정)/
+// "deferredOccurrence ?? nextOccurrence"(유예) 형태로 쓰인다 — 즉 이미
+// 확정 시점 스냅샷이 있는 건(approved/deferred)은 그 스냅샷을 우선하고,
+// nextOccurrence는 **아직 pending이라 스냅샷이 없는 건에서만** 실제로
+// 화면에 쓰인다(반려는 페널티 자체가 없어 애초에 안 씀 — 프론트 코드
+// 확인 완료). pending 건이 하나도 없는 배치는 penSlotGrid:/penCycle: 조회
+// 자체를 건너뛴다 — reporterName은 pending 여부와 무관하게 관리자 화면이
+// 확정 건에도 표시하므로 members:(이미 2시간 캐시)는 그대로 조회한다.
 async function attachNextOccurrence(env, items) {
   if (!items.length) return items;
   const accessToken = await getServiceAccountAccessToken(env);
   const fileId = env.GOOGLE_SHEET_FILE_ID;
+  const needsSlotPreview = items.some((it) => it.reviewStatus === "pending");
   const [members, dataRows, currentCycle] = await Promise.all([
     listAllMembers(env, accessToken, fileId),
-    _cachedCompute(env, `penSlotGrid:${fileId}`, 60_000, () =>
-      getSheetValues(env, accessToken, fileId, `'${OUTPUT_PEN_SHEET_NAME}'!F4:K18`)
-    ),
-    getCurrentPenCycle(env, accessToken, fileId),
+    needsSlotPreview
+      ? _cachedCompute(env, `penSlotGrid:${fileId}`, 5 * 60_000, () =>
+          getSheetValues(env, accessToken, fileId, `'${OUTPUT_PEN_SHEET_NAME}'!F4:K18`)
+        )
+      : Promise.resolve(null),
+    needsSlotPreview ? getCurrentPenCycle(env, accessToken, fileId) : Promise.resolve(null),
   ]);
   const memberByName = new Map(members.map((m) => [m.name, m]));
   const memberByEmail = new Map(members.map((m) => [m.email.toLowerCase(), m]));
 
   return items.map((item) => {
-    const member = memberByName.get(item.nickname);
     const reporter = memberByEmail.get((item.reporterEmail || "").toLowerCase());
+    if (!needsSlotPreview) {
+      return { ...item, nextOccurrence: null, weeklyMinorPenaltyCount: 0, reporterName: reporter ? reporter.name : null };
+    }
+    const member = memberByName.get(item.nickname);
     const row = member ? dataRows[parseInt(member.number, 10) - 1] || [] : [];
     const slotValues = OUTPUT_PEN_SLOT_COLUMNS.map((_, i) => parseInt(row[i], 10) || 0);
     const nextOccurrence = (() => {

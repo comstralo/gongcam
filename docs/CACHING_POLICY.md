@@ -130,7 +130,7 @@ computeFn)` 형태로 각 파생 계산(주로 여러 셀을 모아 가공한 �
 | `personalStatusBundle:` | `getPersonalStatusBundle`(§21, 2026-09-10 통합) | 10분(현재 시트) / **2시간(과거 fileId)** | `writeSheetValues` 내장 정밀 무효화(개인 탭 쓰기 시) + 제보 처리 경로의 `invalidateMemberSlotCache(env, 번호)` — 개인 탭 원본 + `outputPenSlots` + `reportScore` 셋을 담는 회원별 캐시 |
 | `memberRows:` | `getSharedMemberRows` | 60초(유지) | `invalidateMemberCache`(`fine` 그룹) |
 | `weeklyPaidFine:` | `getWeeklyPaidFineTotal` | 5분 | `invalidateMemberCache`(`fine` 그룹) |
-| `penSlotGrid:` | `attachNextOccurrence` | 60초(유지) | `invalidateMemberCache`(`penalty` 그룹) |
+| `penSlotGrid:` | `attachNextOccurrence` | **5분**(2026-09-11 상향, 구 60초 — §24.6) | `invalidateMemberCache`(`penalty` 그룹) |
 | `exitStatus:` | `getAllExitRelevantStatus` | 60초(유지) | `invalidateMemberCache`(`penalty`/`fine`/`exitRequest`/`partiStatus` 그룹) |
 | `rosterStatus:` | `buildRosterStatus`(§16) | **10분**(현재 시트, 2026-09-11 하향 — 구 30분) / **2시간(과거 fileId, §17)** | `invalidateMemberCache`(`roster`에 자동 포함, "상금 정산 집행"만 `rosterOnly` 그룹으로 좁게) |
 | `adminMemberList:` | `handleAdminMembers`(§17.1 재작성) | **2시간(현재/과거 fileId 공통)** | `invalidateMemberCache`(`roster` 그룹) — `listAllMembers`(`members:`)와는 별개의 바깥 캐시 |
@@ -190,14 +190,16 @@ computeFn)` 형태로 각 파생 계산(주로 여러 셀을 모아 가공한 �
   바뀝니다. 무효화 경로가 원래 없는 캐시라, TTL만이 유일한 신선도
   파라미터인데도 60초로 잡혀 있던 것이 가장 명백한 낭비였습니다.
 
-`exitStatus:`/`memberRows:`/`penSlotGrid:`(각 60초, 유지)는 같은 "무효화가
+`exitStatus:`/`memberRows:`/`penSlotGrid:`(각 60초, 당시 유지)는 같은 "무효화가
 이미 정확함" 논리가 적용되지만, 관리자가 실시간성을 기대하며 자주
 새로고침하는 목록/미리보기 화면(퇴실 후보 목록, 납부 상태, 제보 처리 화면의
 다음 슬롯 미리보기)이라 **사용성 관점에서 보수적으로 유지**했습니다 —
 방금 다른 관리자가 처리한 결과나 자신이 방금 처리한 다음 항목의 미리보기가
 1분보다 오래 지연되면 체감 지연이 생길 수 있는 화면들입니다. 데이터
 정합성만 보면 늘려도 안전하지만, "사용성을 해치지 않는 선"이라는 조건에서
-제외했습니다.
+당시엔 제외했습니다. `penSlotGrid:`는 2026-09-11에 이 조건이 재검토돼
+5분으로 상향됐습니다(§24.6) — `exitStatus:`/`memberRows:`는 아직 60초
+그대로입니다.
 
 ## 6. 다음 단계 (미착수)
 
@@ -206,10 +208,10 @@ computeFn)` 형태로 각 파생 계산(주로 여러 셀을 모아 가공한 �
 - `outputPenSlots:`/`reportScore:` 위험 지점(회원별 키라 KV가 자연 TTL
   만료에만 의존)은 별도 이슈로 인지만 하고, 당장은 그대로 유지(KV 삭제를
   늘리는 방향은 예산을 오히려 압박하므로 우선순위 낮음).
-- `exitStatus:`/`memberRows:`/`penSlotGrid:`는 정합성만 보면 TTL을 늘릴
-  여지가 있지만, 관리자 화면의 체감 실시간성을 해치지 않기 위해 의도적으로
-  보류(§5 참고) — 사용 패턴이 바뀌어 이 화면들의 재조회 빈도가 문제가 되면
-  재검토.
+- `exitStatus:`/`memberRows:`는 정합성만 보면 TTL을 늘릴 여지가 있지만,
+  관리자 화면의 체감 실시간성을 해치지 않기 위해 의도적으로 보류(§5 참고)
+  — 사용 패턴이 바뀌어 이 화면들의 재조회 빈도가 문제가 되면 재검토.
+  `penSlotGrid:`는 2026-09-11에 이 보류를 재검토해 5분으로 상향했다(§24.6).
 
 ## 7. 도움봇(`study_sw/bot/`)의 시트 직접 쓰기와 캐시 리듬 정합
 
@@ -584,10 +586,11 @@ isolate 분산과 KV 히트율에 달려 있어 정적 코드 조사만으로는
 
 | 화면(메뉴) | 관련 캐시(TTL) | 폴링 주기 |
 |---|---|---|
-| `ReportReviewList`("송출 P 대상 처리") | `penSlotGrid:` 60초 / `coReviewers:` 5분(§22) | **10분**(2026-09-10, 구 3분 — §22에서 `coReviewers:` 캐싱과 함께 하향) |
+| `ReportReviewList`("화각 불량 제보 처리") | `penSlotGrid:` 5분(§24.6) / `coReviewers:` 5분(§22) | **20분**(2026-09-11, 구 10분 — `penSlotGrid:` 상향에 맞춰 배율 4배 유지, §24.6) |
 | `PenaltyCandidateList`("예치금 재납 대상자") | `exitStatus:` 60초 / `memberRows:` 60초 | 3분 |
 | `AdminMoneyTab`의 벌금 조회(`PaidFineList` 등) | `memberRows:` 60초 / `weeklyPaidFine:` 5분 | 3분(더 짧은 쪽 기준) |
-| `MyOutputPenSection`("내 화각 불량 제보") | `penSlotGrid:` 60초 / `members:` 2시간(§17.2) | **10분**(2026-09-10, 구 3분) |
+| `MyOutputPenSection`("내 제보 확인") — 렌더(`load`) | `penSlotGrid:` 5분(§24.6) / `members:` 2시간(§17.2) | **20분**(2026-09-11, 구 10분·3분 — §24.6) |
+| `MyOutputPenSection`("내 제보 확인") — 감지(`detectNew`, 신설) | `/my-output-pen` 응답의 id만 비교, 캐시 아님 | **5분**(§24.6, 새로고침 버튼 활성화 전용) |
 | `RosterPage`("RANK") | `rosterStatus:` 10분(2026-09-11 하향, 구 30분) | 30분 — 폴링 : TTL 배율 **3:1**로 원칙(3배 이상) 충족(2026-09-11 이전엔 1:1이었다) |
 | `StatusPage` / `MyStatusContext`("내 대시보드"·"설정") | `personalStatusBundle:` 10분(현재 시트) 등 §12.1·§21 | 30분(§14) — 대시보드/설정 화면일 때만(B) + `document.hidden`(A) + 5분 유휴(G, 절전 오버레이) 모두 적용 |
 | `MemberRosterList`("참여 스터디원 목록") | `dataSheetRows:` 10분 / `meta:` 10분(2026-09-11, 구 5분) / `members:` 2시간(§17.2) | **30분**(2026-09-11, 구 15분) — `dataSheetRows:`/`meta:` 기준 정확히 3배로 원칙 충족(`members:`는 더 길어 병목 아님) |
@@ -1257,6 +1260,63 @@ DO로 옮겼다 — 알림과 완전히 같은 패턴이다. 같은 `Participant
 | 쓰기(write, 하루 1,000회 공유) | 기기 등록/토글/이름변경/삭제 시 `subIndex:` 갱신으로 각 +1건(저빈도 이벤트라 무시할 수준). 알림 전송·제보 접수의 쓰기는 그대로 발생하지만 **KV가 아니라 DO**로 이동해 KV 쓰기 한도에서 완전히 빠짐(제보 접수는 3건→`report:` 1건만 남고 나머지 2건은 DO로) |
 | 삭제(delete) | "제보 즉시 처리 완료 시 `report:{id}` 삭제"만 KV에 남음(그 자체가 안전망 큐의 정상 소비 동작) — 그 외 변화 없음 |
 | 읽기(read, 하루 10만 회) | 화면별로 증감이 있으나 예산 여유가 커 무의미 |
+
+### 24.6 `penSlotGrid:` TTL 상향 + `attachNextOccurrence` pending 필터링 +
+"내 제보 확인" 렌더/감지 폴링 이원화 (2026-09-11)
+
+"내 제보 확인"에서 새로고침 버튼을 대시보드처럼 "지금 눌러볼 만한지"를
+알려주는 신호로 통일하려다가, 세 가지가 얽힌 개선으로 이어졌다.
+
+**① `attachNextOccurrence`가 붙이는 `nextOccurrence`/`weeklyMinorPenaltyCount`는
+pending 건에서만 실제로 쓰인다.** 프론트 코드(`MyOutputPenSection.tsx`/
+`ReportReviewList.tsx`)를 확인한 결과, 확정(approved)/유예(deferred) 건은
+`penalty?.occurrence ?? nextOccurrence` / `deferredOccurrence ?? nextOccurrence`
+형태로 **확정 시점 스냅샷을 항상 우선**하고, 반려는 애초에 페널티가 없어
+이 값 자체가 안 쓰인다. 그런데 `attachNextOccurrence`는 배치에 pending
+건이 하나도 없어도 무조건 `penSlotGrid:`(F4:K18 전체)를 조회했다 —
+받은 제보가 이미 전부 처리 완료된 상태에서도 매번 헛돈을 쓰고 있었던
+것. **대응**: `items.some((it) => it.reviewStatus === "pending")`이
+false면 `penSlotGrid:`/`penCycle:` 조회를 통째로 건너뛰고 `null`
+placeholder를 채운다(`reporterName`은 pending 여부와 무관하게 필요하므로
+`members:`는 그대로 조회).
+
+**② `penSlotGrid:` TTL 60초→5분 상향.** §5에서 이미 "정합성만 보면 늘려도
+안전하다"고 확인해뒀던 캐시다 — 실제 승인(`applyOutputPenalty`)은 이
+캐시를 전혀 안 쓰고 결정 시점에 직접 시트를 다시 읽으므로, `penSlotGrid:`
+가 얼마나 낡았든 실제 벌점 반영 결과에는 영향이 없다. 60초로 유지했던
+유일한 이유(관리자가 연속 처리할 때 체감 실시간성)는 여전히 유효하지만,
+①의 pending 필터링과 합치면 이 캐시를 실제로 건드리는 빈도 자체가 낮아져
+5분까지는 재조회 배율을 넉넉히 지키면서도 체감 지연이 크지 않을 걸로
+판단했다(사용자 확인).
+
+**③ "내 제보 확인" 폴링을 "렌더"(20분)/"감지"(5분) 두 단계로 분리.**
+당초 "새 항목이 오면 새로고침 버튼에 강조를 준다"는 기능을 만들었다가,
+`usePollingRefresh`가 `visible=false`일 때 타이머 자체를 멈춘다는 사실을
+뒤늦게 확인해 — 탭을 벗어나 있으면 폴링이 전혀 안 돎 — 그 방식(직전에
+"본" id와 비교)은 사용자가 그 신호를 볼 수 있는 시점엔 이미
+`useRefreshOnVisible`이 최신 데이터를 자동으로 보여준 뒤라서 **절대
+발동하지 않는 죽은 기능**이었다. 최종적으로는 대시보드의
+`refreshDisabled`(TTL 기반 비활성화)와 **같은 prop을 반대 방향으로**
+재사용해 통일했다 — 대시보드는 "기본 활성화, TTL 안엔 비활성화"이고
+여기는 "기본 비활성화, 감지되면 활성화":
+
+- **렌더**(`load`, 20분): `/my-captures`+`/my-output-pen`을 불러와 화면을
+  실제로 갱신. 갱신 직후엔 안 보여준 새 항목이 없으므로 버튼을 다시
+  비활성화한다.
+- **감지**(`detectNew`, 5분, 신설): `/my-output-pen`만 가볍게 불러와 현재
+  **렌더된** `receivedItems`의 id와 비교 — 화면은 안 건드리고 새 id가
+  있으면 버튼만 활성화한다.
+
+이 분리가 실제로 의미 있는 이유는 **탭을 계속 보고 있는 동안(20분 렌더
+사이)의 갭을 5분 감지가 메운다**는 것이다 — 예전 방식과 달리 "탭을 벗어나
+있는 동안"이 아니라 "탭을 보고 있는 동안"을 겨냥하므로 실제로 발동한다.
+`SectionHeader`의 `refreshHighlight`(글로우) prop은 이 과정에서 도입했다가
+바로 제거했다 — 코드에 남기지 않는다.
+
+**배율 재확인**: `ReportReviewList`(같은 `penSlotGrid:` 공유)도 10분→20분으로
+함께 올려, 20:5=4배로 원칙을 넉넉히 지킨다. "내 제보 확인"의 5분 감지 자체는
+`penSlotGrid:` 기준 1:1이지만 ①의 pending 필터링으로 실제 트리거 빈도가
+낮아 허용 가능하다고 판단했다(사용자 확인).
 
 ## 25. 관련 문서
 

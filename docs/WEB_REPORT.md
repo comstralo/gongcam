@@ -129,30 +129,37 @@ ReportPage (app/src/pages/ReportPage.tsx)
    즉 `reason` 문자열만으로는 "기타(자유기재)"였는지 구분할 표식이 없다 —
    `MyOutputPenSection`(§3.4)이 고정 5개 목록에 없는 값을 "기타(자유기재)"로
    간주해 "기타 (관리자 문의)"로 대신 표시하는 이유다.
-2. **20분 쿨다운**(`REPORT_COOLDOWN_SEC = 20*60`): 같은 닉네임(`cooldown:{nickname}`
-   KV 키, TTL 20분)에 이미 진행 중인 제보가 있으면 429. **스크린샷/영상 모드와
-   무관하게 닉네임 기준으로 공유** — 모드를 바꿔 우회하지 못하게 막는다. 관리자
-   (`session.email === ADMIN_EMAIL`)는 이 쿨다운(429 차단)을 우회하지만, **같은
-   대상에게 짧은 간격으로 연달아 제보하면 예전엔 첫 캡처가 아직 진행 중일 때
-   두 번째가 조용히 무시됐다**(봇의 `thread_id`가 닉네임 기준으로 공유돼 중복
-   실행을 막는 구조였기 때문) — 지금은 관리자 제보에 한해 `entry.isAdmin` 플래그를
+2. **20분 쿨다운**(`REPORT_COOLDOWN_SEC = 20*60`): 같은 닉네임에 이미 진행
+   중인 제보가 있으면 429. 🔧 2026-09-11: 판정 저장소가 KV(`cooldown:{nickname}`)
+   에서 **`ParticipantsRoster` Durable Object**로 바뀌었다(`checkReportCooldown`,
+   §7) — 쿨다운 문자열 키(`cooldown:{nickname}`) 자체는 그대로 재사용한다.
+   **스크린샷/영상 모드와 무관하게 닉네임 기준으로 공유** — 모드를 바꿔
+   우회하지 못하게 막는다. 관리자(`session.email === ADMIN_EMAIL`)는 이
+   쿨다운(429 차단)을 우회하지만, **같은 대상에게 짧은 간격으로 연달아
+   제보하면 예전엔 첫 캡처가 아직 진행 중일 때 두 번째가 조용히
+   무시됐다**(봇의 `thread_id`가 닉네임 기준으로 공유돼 중복 실행을 막는
+   구조였기 때문) — 지금은 관리자 제보에 한해 `entry.isAdmin` 플래그를
    봇에 함께 전달해, 봇이 `report_id`를 섞어 매 요청마다 다른 `thread_id`를
    만들도록 고쳤다(`docs/HELPERBOT.md` §5 참고). 일반 제보는 20분 쿨다운으로
    이미 중복이 걸러지므로 기존 방식 그대로다.
-3. `report:{uuid}` KV(6시간 TTL)에 제보 원본 저장, 쿨다운 키 기록, 그리고
-   `_appendToLiveIndex(COOLDOWN_INDEX_KEY, ...)`로 "진행 중인 제보" 목록용 공유
-   인덱스에도 즉시 반영. 이 인덱스 항목에는 `id`/`mode`/`startedAt`/
-   `capturedAt: null`도 함께 담긴다 — §3.3의 촬영 진행 카운트다운과 20분
-   쿨다운 재시작에 쓰인다.
+3. `report:{uuid}` KV(**TTL 12시간**, 2026-09-11 6시간에서 상향 — 봇이 오래
+   꺼져 있어도 안전망 폴링이 나중에 집어갈 수 있는 유예를 늘림)에 제보
+   원본을 저장한다. 🔧 2026-09-11: "진행 중인 제보" 표시용 기록은 더
+   이상 KV 인덱스가 아니라 같은 DO 호출(`recordReportCooldown`)이 쿨다운
+   판정과 함께 겸한다 — `id`/`mode`/`startedAt`/`capturedAt: null`도 이때
+   함께 기록되어 §3.3의 촬영 진행 카운트다운과 20분 쿨다운 재시작에 쓰인다.
 4. **봇에게 즉시 통지**: `proxyToBotDashboard(env, "/reports/new", POST)`로 로컬
    봇의 상태 서버(Cloudflare Tunnel 경유)에 바로 알린다. 이건 지연 없이 캡처를
    시작시키기 위한 최적 경로일 뿐 — 실패해도(봇이 그 순간 꺼져 있어도) 예외를
    던지지 않고 조용히 넘어간다.
 5. **폴링 안전망**: `GET /reports`(→ `handleListReports`, `X-Bot-Secret` 인증,
    프론트에서는 호출하지 않음)가 `report:*` KV를 통째로 읽어 반환하며 **읽은 즉시
-   전부 삭제**한다 — at-most-once 소비 큐다. 코드 주석에 따르면 봇 쪽의
-   `report_intake.py`가 훨씬 낮은 빈도로 이 엔드포인트를 폴링해, 4번의 즉시 푸시가
-   실패했을 때(봇이 그 순간 오프라인)를 놓치지 않기 위한 안전망 역할을 한다.
+   전부 삭제**한다 — at-most-once 소비 큐다. 봇 쪽의 `report_intake.py`가
+   `POLL_INTERVAL_SEC = 600`(10분)으로 이 엔드포인트를 폴링해, 4번의 즉시
+   푸시가 실패했을 때(봇이 그 순간 오프라인)를 놓치지 않기 위한 안전망
+   역할을 한다. 폴링에서도 처리 못 한 항목은 `POST /reports/requeue`
+   (`handleRequeueReport`)로 남은 TTL만큼 재등록된다 — 원래 접수 시각
+   기준 12시간이 이미 지났으면 재등록하지 않고 포기한다.
 
 ### 3.3 "최근 진행된 제보" (`ActiveReportsSection`)
 
@@ -207,11 +214,40 @@ ReportPage (app/src/pages/ReportPage.tsx)
 `GET /my-output-pen`)를 요일별 아코디언으로 합쳐 보여준다. 두 API 모두 상단
 `CycleSwitcher`로 고른 사이클(`?cycle=` 쿼리, 없으면 현재 진행 중인 주)에 맞춰
 그 주(월~일, KST) 데이터를 조회한다 — `docs/WEB_DASHBOARD.md` §6의 사이클 토글
-패턴을 그대로 재사용한 것이다. 재조회는 `useRefreshOnVisible`(탭 복귀 시) +
-`usePollingRefresh(visible, load, 10 * 60_000)`(10분 폴링 — 🔧 2026-09 3분에서
-하향, `penSlotGrid:`/`members:`/`penCycle:` 캐시가 이미 즉시 무효화되므로 폴링은
-무효화를 놓친 경우의 안전망 역할). 섹션 헤더의 수동 새로고침 버튼과 폴링
-진행률 게이지는 2026-09에 제거됐다. 🔧 2026-09: 날짜 그룹 내부 항목 정렬은 발생
+패턴을 그대로 재사용한 것이다. **이 화면의 재조회 폴링은 다른 화면들과 역할이
+다르다** — `/my-captures`/`/my-output-pen`은 캐시를 전혀 거치지 않고 매번 봇
+manifest를 실시간 프록시 조회하므로("TTL이 지나야 갱신"이라는 개념 자체가
+없음), 폴링은 "낡은 서버 캐시를 새로고침"하는 게 아니라 **"다른 사람이 방금
+나를 새로 제보했는지 주기적으로 확인"**하는 용도다.
+
+🔧 2026-09-11: **폴링을 "렌더"와 "감지" 두 단계로 분리했다** — 새로고침
+버튼의 활성/비활성이 "지금 눌러볼 만한 신선도 신호"라는 의미를 대시보드
+(§`docs/WEB_DASHBOARD.md` — TTL 기반 예측)와 통일하기 위함. 이 화면은 캐시가
+없어 TTL로 예측할 수 없으므로, 대신 배경에서 가볍게 "감지"해 그 감지 결과로
+버튼을 활성화한다:
+
+- **렌더(`load`, `usePollingRefresh(visible, load, 20 * 60_000)`, 20분)**:
+  `/my-captures`+`/my-output-pen` 둘 다 불러와 화면을 실제로 갱신한다(🔧
+  2026-09 3분→10분→20분). 갱신 직후엔 안 보여준 새 항목이 없으므로 새로고침
+  버튼을 비활성화한다. `useRefreshOnVisible`(탭 복귀 시)도 이 함수를 호출한다.
+- **감지(`detectNew`, `usePollingRefresh(visible, detectNew, 5 * 60_000)`,
+  5분, 신설)**: `/my-output-pen`만(가볍게) 불러와 그 결과의 id를 **현재
+  화면에 렌더된** `receivedItems`의 id와 비교한다. 화면 자체는 건드리지
+  않고, 새 id가 있으면 새로고침 버튼만 활성화한다(`refreshDisabled` prop,
+  `SectionHeader` — 대시보드의 TTL 기반 비활성화와 같은 prop을 반대
+  방향으로 쓴다: 기본 비활성화, 감지되면 활성화). 버튼 클릭·20분 렌더
+  폴링·탭 복귀 중 어느 것이든 실제로 화면을 갱신하면 다시 비활성화된다.
+  (예전엔 감지 대신 "직전에 본 id와 비교해 글로우를 켜는" 방식을 시도했지만,
+  `usePollingRefresh`가 `visible=false`일 때 타이머 자체를 멈춘다는 걸
+  뒤늦게 확인해 — 탭을 벗어나 있으면 폴링이 전혀 안 돎 — 그 방식은
+  사실상 절대 발동하지 않는 죽은 기능이었다. 지금 방식은 **탭을 계속
+  보고 있는 동안**의 갭(20분 렌더 사이)을 5분 감지로 메우는 것이라
+  실제로 발동한다.)
+
+`attachNextOccurrence`가 붙이는 `nextOccurrence` 등 부가 계산값은 항목 자체가
+뜨는지와 무관하다 — `penSlotGrid:` TTL도 2026-09-11에 60초→5분으로 상향되고,
+받은 제보 중 pending 건이 하나도 없으면 이 계산 자체를 건너뛰도록 개선됐다
+(`docs/CACHING_POLICY.md` §24.6 참고). 🔧 2026-09: 날짜 그룹 내부 항목 정렬은 발생
 시각(`ts`) 오름차순(오래된 게 위)이고, 날짜 그룹 헤더 우측에 "N건" 뱃지가
 붙는다(주황색 — 내 화각 점검은 건수에서 제외, 받은 제보만 카운트). 항목 카드
 헤더에는 사람 아이콘 대신 시계 아이콘 + 시각만 표시한다(날짜는 이미 그룹
@@ -359,6 +395,7 @@ ReportPage (app/src/pages/ReportPage.tsx)
 | GET | `/report-cooldowns` | `handleListActiveCooldowns` | "최근 진행된 제보" |
 | POST | `/reports/capture-done` | `handleReportCaptureDone` | 봇 전용(`X-Bot-Secret`). 캡처 완료 시점부터 20분 쿨다운 재시작(§3.3) |
 | GET | `/reports` | `handleListReports` | 봇 전용, 읽으면서 즉시 삭제(소비 큐) |
+| POST | `/reports/requeue` | `handleRequeueReport` | 봇 전용. 안전망 폴링에서 스킵된 항목을 남은 TTL만큼 재등록(원 접수 후 12시간 지났으면 포기) |
 | GET | `/my-captures` | `handleMyCaptures` | 내 화각 점검 목록(`?cycle=` 지원) |
 | POST | `/my-captures/delete` | `handleMyCaptureDelete` | 본인 화각 점검 기록 삭제 |
 | GET | `/my-output-pen` | `handleMyOutputPen` | 받은 제보 목록(`?cycle=` 지원) |

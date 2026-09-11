@@ -10,6 +10,14 @@
 @custom-variant mobile-landscape (@media (orientation: landscape) and (max-height: 32rem));
 @custom-variant mobile-portrait (@media (orientation: portrait) and (max-width: 32rem));
 
+/* 체커 화면(뷰파인더는 항상 16:9라 세로 화면에서 격자칸이 비좁아짐)이
+   "휴대폰뿐 아니라 태블릿도" 세로로 들고 있으면 가로 회전을 유도하기 위한
+   variant. 위 mobile-portrait은 폭 32rem 이하(좁은 휴대폰 전용, 레이아웃
+   패딩 조정 목적)라 태블릿(예: iPad 세로 768px)은 못 잡는다 — 여긴 폭
+   제한 없이 순수 orientation만 본다. 데스크탑은 창을 세로로 좁게 만들지
+   않는 한 이 조건에 걸리지 않는다(실사용상 무해). */
+@custom-variant portrait-any (@media (orientation: portrait));
+
 /* 페이지 콘텐츠 최대폭 — 모바일은 좁게, sm 이상(태블릿)부터 단계적으로 넓힘 */
 @utility page-content {
   max-width: 28rem; /* 448px, 기존 max-w-md */
@@ -32,17 +40,6 @@
   padding-top: calc(0.625rem + env(safe-area-inset-top, 0px)); /* pt-2.5 */
   @variant sm {
     padding-top: calc(1rem + env(safe-area-inset-top, 0px)); /* sm:pt-4 */
-  }
-}
-
-/* checker.html처럼 뷰파인더가 있는 넓은 페이지 */
-@utility page-content-wide {
-  max-width: 40rem; /* 640px, 기존 max-w-160 */
-  @variant sm {
-    max-width: 56rem; /* 896px */
-  }
-  @variant lg {
-    max-width: 64rem; /* 1024px */
   }
 }
 
