@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   RotateCcw,
-  RotateCw,
+  SwitchCamera,
   Download,
   Camera,
   FlipHorizontal2,
@@ -19,6 +19,7 @@ import { useCamera } from "@/hooks/useCamera";
 import { useFrameCapture } from "@/hooks/useFrameCapture";
 import { useFitViewfinder } from "@/hooks/useFitViewfinder";
 import { InfoCard } from "@/components/dashboard/shared";
+import { ThemeToggleButton } from "@/components/layout/ThemeToggleButton";
 
 // "화각 불량 제보"/"PUSH 알림 전송"의 주의사항과 동일한 패턴 — 배열이라
 // 문구가 늘어나도 목록에 항목만 추가하면 된다.
@@ -74,6 +75,12 @@ export function CheckerPage() {
           화면 높이가 고정이고 세로 공간이 빠듯해, 얇게 줄인 헤더도 결국
           뷰파인더/버튼 영역과 높이가 안 맞는 원인 중 하나였다. 제목은
           세로모드에서만 보이고 가로모드에서는 아예 렌더링하지 않는다. */}
+      {/* 🔧 [사용자 지시] "화각체커 우측 상단에도 다크모드 토글 버튼은
+          출력하도록 해. (나머진 회원용이니까 출력 X)" — 다른 메인 페이지는
+          AppShell이 공통 헤더에 PeriodAlarmToggleButton/LinksHeaderButton/
+          ThemeToggleButton을 함께 렌더링하지만, 체커는 로그인 회원이 아닌
+          사람도 접근 가능한 "누구나" 페이지(LoginPage 참고)라 자체 헤더를
+          쓴다 — 그중 다크모드 토글만 가져와 우측에 둔다. */}
       <header className="flex w-full shrink-0 page-content items-baseline justify-between gap-3 mobile-landscape:hidden">
         <div className="flex flex-col gap-0.5">
           <Link to="/" className="text-xs font-semibold tracking-tight text-primary sm:text-sm">
@@ -84,6 +91,7 @@ export function CheckerPage() {
             화각 체커
           </h1>
         </div>
+        <ThemeToggleButton />
       </header>
 
       {/* 🔧 뷰파인더+썸네일+버튼을 가로모드에서 나란히 배치하기 위한 행.
@@ -308,43 +316,62 @@ export function CheckerPage() {
                   disabled={!canToggleCamera}
                   onClick={camera.toggleCamera}
                   className={cn(
-                    "flex size-9.5 shrink-0 items-center justify-center rounded-full border-2 bg-card disabled:opacity-40 sm:size-11 mobile-landscape:size-8",
+                    "flex size-9.5 shrink-0 items-center justify-center rounded-full border bg-card disabled:opacity-40 sm:size-11 mobile-landscape:size-8",
                     camera.enabled ? "border-destructive text-destructive" : "border-green-600 text-green-600 dark:border-green-500 dark:text-green-500"
                   )}
                 >
                   {camera.enabled ? <PowerOff className="size-3.5 sm:size-4" /> : <Power className="size-3.5 sm:size-4" />}
                 </button>
+                {/* 🔧 [사용자 지시] "켜기 끄기 → 켜져있으면 '캠 끄기',
+                    꺼져있으면 '캠 켜기' 출력" — 고정 문구 대신 다시 현재
+                    상태에 따라 "다음에 누르면 무슨 일이 일어나는지"를 그대로
+                    보여주는 동적 라벨로 되돌린다. */}
                 <span className="text-micro-lg text-muted-foreground sm:text-xs">
-                  {camera.enabled ? "카메라 끄기" : "카메라 켜기"}
+                  {camera.enabled ? "캠 끄기" : "캠 켜기"}
+                </span>
+              </div>
+
+              {/* 🔧 [사용자 지시] "전면 후면은 아이콘이 이전이 나았던 것
+                  같아. 다시 돌려놔. 아이콘 토글 방식은 포기하자" —
+                  ScanFace/Camera로 상태별 아이콘을 바꾸던 시도를 되돌리고,
+                  "회전 같다"는 지적으로 RotateCw에서 바꿨던 SwitchCamera
+                  고정 아이콘으로 복귀한다(색상도 처음부터 항상 회색 톤).
+                  미러 버튼의 좌우 반전 아이콘 토글은 그대로 유지. */}
+              <div className="flex shrink-0 flex-col items-center gap-1">
+                <button
+                  type="button"
+                  title={camera.facing === "user" ? "카메라 전환 (현재: 전면)" : "카메라 전환 (현재: 후면)"}
+                  aria-label="카메라 전환"
+                  disabled={!canSwitchCamera}
+                  onClick={camera.switchFacing}
+                  className="flex size-9.5 shrink-0 items-center justify-center rounded-full border bg-card text-foreground disabled:opacity-40 sm:size-11 mobile-landscape:size-8"
+                >
+                  <SwitchCamera className="size-3.5 sm:size-4" />
+                </button>
+                {/* 🔧 [사용자 지시] "전면 후면 → 전면이면 '후면으로', 후면이면
+                    '전면으로' 출력" — 현재 상태가 아니라 눌렀을 때 바뀌는
+                    대상(다음 상태)을 안내하는 문구로 바꾼다. */}
+                <span className="text-micro-lg text-muted-foreground sm:text-xs">
+                  {camera.facing === "user" ? "후면으로" : "전면으로"}
                 </span>
               </div>
 
               <div className="flex shrink-0 flex-col items-center gap-1">
                 <button
                   type="button"
-                  title="카메라 전환"
-                  aria-label="카메라 전환"
-                  disabled={!canSwitchCamera}
-                  onClick={camera.switchFacing}
-                  className="flex size-9.5 shrink-0 items-center justify-center rounded-full border bg-card text-foreground disabled:opacity-40 sm:size-11 mobile-landscape:size-8"
-                >
-                  <RotateCw className="size-3.5 sm:size-4" />
-                </button>
-                <span className="text-micro-lg text-muted-foreground sm:text-xs">전면 / 후면</span>
-              </div>
-
-              <div className="flex shrink-0 flex-col items-center gap-1">
-                <button
-                  type="button"
-                  title="좌우 반전"
+                  title={camera.mirrored ? "좌우 반전 (현재: ON)" : "좌우 반전 (현재: OFF)"}
                   aria-label="좌우 반전"
                   aria-pressed={camera.mirrored}
+                  disabled={!camera.enabled || !canToggleCamera}
                   onClick={camera.toggleMirror}
-                  className="flex size-9.5 shrink-0 items-center justify-center rounded-full border bg-card text-foreground sm:size-11 mobile-landscape:size-8"
+                  className="flex size-9.5 shrink-0 items-center justify-center rounded-full border bg-card text-foreground disabled:opacity-40 sm:size-11 mobile-landscape:size-8"
                 >
-                  <FlipHorizontal2 className="size-3.5 sm:size-4" />
+                  <FlipHorizontal2
+                    className={cn("size-3.5 sm:size-4 transition-transform", camera.mirrored && "scale-x-[-1]")}
+                  />
                 </button>
-                <span className="text-micro-lg text-muted-foreground sm:text-xs">거울모드</span>
+                {/* 🔧 [사용자 지시] "미러 → '좌우반전' 출력" */}
+                <span className="text-micro-lg text-muted-foreground sm:text-xs">좌우반전</span>
               </div>
 
               {/* 🔧 [사용자 지시] "가로모드에서 파일 생성이 완료되면 '촬영
@@ -365,7 +392,7 @@ export function CheckerPage() {
                     title="파일 저장"
                     aria-label="파일 저장"
                     onClick={capture.downloadResult}
-                    className="flex size-9.5 shrink-0 animate-save-ready-glow items-center justify-center rounded-full border-2 border-primary bg-card text-primary sm:size-11 mobile-landscape:size-8"
+                    className="flex size-9.5 shrink-0 animate-save-ready-glow items-center justify-center rounded-full border border-primary bg-card text-primary sm:size-11 mobile-landscape:size-8"
                   >
                     <Download className="size-3.5 sm:size-4" />
                   </button>
@@ -376,7 +403,7 @@ export function CheckerPage() {
                     aria-label="스크린샷 촬영"
                     disabled={!canStartSequence}
                     onClick={capture.startSequence}
-                    className="flex size-9.5 shrink-0 items-center justify-center rounded-full border-2 border-green-600 bg-card text-green-600 disabled:opacity-40 sm:size-11 mobile-landscape:size-8 dark:border-green-500 dark:text-green-500"
+                    className="flex size-9.5 shrink-0 items-center justify-center rounded-full border border-green-600 bg-card text-green-600 disabled:opacity-40 sm:size-11 mobile-landscape:size-8 dark:border-green-500 dark:text-green-500"
                   >
                     <Camera className="size-3.5 sm:size-4" />
                   </button>
@@ -386,17 +413,19 @@ export function CheckerPage() {
                     title="멈춤 (촬영을 중지하고 지금까지 찍은 사진을 모두 지웁니다)"
                     aria-label="멈춤"
                     onClick={capture.stopSequence}
-                    className="flex size-9.5 shrink-0 items-center justify-center rounded-full border-2 border-destructive bg-card text-destructive sm:size-11 mobile-landscape:size-8"
+                    className="flex size-9.5 shrink-0 items-center justify-center rounded-full border border-destructive bg-card text-destructive sm:size-11 mobile-landscape:size-8"
                   >
                     <Square className="size-3 fill-current sm:size-3.5" />
                   </button>
                 )}
+                {/* 🔧 [사용자 지시] "촬영 시작 → '촬영시작' 출력. 멈춤 →
+                    '멈추기' 출력" */}
                 <span className="text-micro-lg text-muted-foreground sm:text-xs">
                   {capture.isFinished
                     ? "파일 저장"
                     : !capture.isCapturing && !isCountingDown
-                      ? "촬영 시작"
-                      : "멈춤"}
+                      ? "촬영시작"
+                      : "멈추기"}
                 </span>
               </div>
             </div>
