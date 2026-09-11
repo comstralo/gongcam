@@ -3264,11 +3264,20 @@ async function handleAdminUsageStatus(req, env, origin) {
 
   const cloudflare = await fetchCloudflareUsage(env);
 
-  // 🔧 [사용량 모니터링 고도화, 2026-09-11] UsageStats DO에서 오늘(KST)
-  // 하루치 (경로·사용자·연산)별 누적 집계를 읽어온다 — 5분 cron이 배치로
-  // 채워둔 값이라 최근 5분 이내 발생분은 아직 반영 전일 수 있다(§
-  // flushDailyUsageStats). DO 조회 자체가 실패해도(신규 배포 직후 등)
-  // 전체 응답이 죽지 않도록 빈 배열로 대체한다.
+  // 🔧 [사용자 지시] "5분마다 갱신 이거 조건 없앨 수 있나? 폴링 될 때마다
+  // 새로 가져오도록" — cron(5분 주기)만 flush하면 그 사이 발생분은 화면에
+  // 안 보인다. DO 조회 직전에 한 번 더 flush해 이 요청 시점까지의 버퍼를
+  // 반영시킨다 — flush 자체가 실패해도(신규 배포 직후 DO 초기화 지연 등)
+  // 조회는 계속 진행되도록 별도 try/catch로 감싼다.
+  try {
+    await flushDailyUsageStats(env);
+  } catch (e) {
+    console.error("[admin/usage] flush 실패:", e);
+  }
+
+  // UsageStats DO에서 오늘(KST) 하루치 (경로·사용자·연산)별 누적 집계를
+  // 읽어온다. DO 조회 자체가 실패해도(신규 배포 직후 등) 전체 응답이
+  // 죽지 않도록 빈 배열로 대체한다.
   const dailyUsage = await getUsageStatsStub(env)
     .fetch(`https://do/today?date=${encodeURIComponent(todayKSTDateString())}`)
     .then((r) => r.json())
@@ -8672,8 +8681,11 @@ function getUsageStatsStub(env) {
 }
 
 // _dailyUsageBuffer(index.js 상단)를 UsageStats DO로 배치 전송하고 비운다.
-// 5분 cron(scheduled)에서만 호출된다 — 매 요청마다 부르면 DO fetch
-// 오버헤드가 쌓인다.
+// 5분 cron(scheduled)에서 정기적으로 호출되고, handleAdminUsageStatus에서도
+// 응답 직전에 한 번 더 호출된다(🔧 [사용자 지시] "5분마다 갱신 이거 조건
+// 없앨 수 있나? 폴링 될 때마다 새로 가져오도록" — 버퍼가 비어있으면 즉시
+// 반환하므로(위 if문) 이 엔드포인트를 호출하는 관리자 화면(1분 폴링) 정도
+// 빈도에서는 DO fetch 오버헤드가 무시할 만하다).
 async function flushDailyUsageStats(env) {
   if (_dailyUsageBuffer.size === 0) return;
   const entries = [];

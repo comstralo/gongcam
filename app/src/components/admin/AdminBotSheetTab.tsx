@@ -136,7 +136,7 @@ function UsageBreakdownGroup({
         <FieldLabel>오늘 하루 · 화면별·사용자별</FieldLabel>
         {dailyRows.length === 0 ? (
           <p className="pl-2 text-micro-lg text-muted-foreground/70 sm:text-xs">
-            아직 집계된 기록이 없습니다(5분마다 갱신).
+            아직 집계된 기록이 없습니다.
           </p>
         ) : (
           Object.entries(byPath).map(([path, byEmail]) => (
@@ -298,8 +298,12 @@ function UsageMonitorSection({ visible }: { visible: boolean }) {
                         위 30분·isolate 근사치와 달리 "오늘 하루(KST 자정
                         기준) 누적·관리자+학생 모두 포함·Durable Object
                         영구 저장" 기준이라 서버 재시작에도 유지된다.
-                        최근 5분 이내 발생분은 cron 배치 전이라 아직 안
-                        보일 수 있다.
+                        🔧 [사용자 지시] "5분마다 갱신 이거 조건 없앨 수
+                        있나? 폴링 될 때마다 새로 가져오도록" — 원래 5분
+                        cron만 DO로 flush해 최근 5분 이내 발생분이 안 보일
+                        수 있었는데, 이제 /admin/usage 조회 시점마다 서버가
+                        먼저 flush한 뒤 응답하므로(이 화면 자체가 1분 폴링)
+                        지연이 사실상 없다.
                         🔧 [사용자 지시] "내역이 없어도 기본으로 제목이라도
                         보여줘" → "값이 없더라도 각각 아래에 제목은
                         붙이라니까" — 데이터가 없어도 소제목은 항상 보이고,
