@@ -725,14 +725,18 @@ export type AdminUsageResponse = {
   // 🔧 [KV 쓰기/삭제 추적, 화면별·사용자별 특정] 이 Worker isolate가 최근
   // 30분간 실제로 KV.put/delete/list를 호출한 (연산·캐시종류·요청경로
   // ·사용자) 조합별 집계 — 예: [{op:"kv_put", kind:"sheetCache:exitStatus:",
-  // path:"/admin/captures", email:"a@b.com", count:5}]. isolate당
-  // 근사치라 정확한 하루 총합은 아니다. email은 세션이 없는 요청이면
-  // "(익명)".
+  // path:"화각 불량 제보 처리", email:"재희", count:5}]. isolate당 근사치라
+  // 정확한 하루 총합은 아니다.
+  // 🔧 [사용자 지시] "알아먹기 쉽게 실제 메뉴명을 적어줘. 그리고 이메일
+  // 말고 사용자 이름을 적고" — path/email 필드명은 그대로지만, 서버가
+  // 응답 직전에 API 경로를 화면 메뉴명으로, 이메일을 회원 이름으로 치환해
+  // 내려준다(못 찾으면 원래 경로/이메일 그대로, 세션 없는 요청이면
+  // "(익명)").
   kvWriteBreakdown: { op: string; kind: string; path: string; email: string; count: number }[];
   // 🔧 [사용량 모니터링 고도화] 위 kvWriteBreakdown과 달리 "하루(KST 자정
   // 기준) 누적 · 관리자+학생 모두 포함 · Durable Object 영구 저장" 기준이라
-  // isolate 재시작에도 유지된다. email은 세션이 없는 요청이면 "(익명)".
-  // 최근 5분 이내 발생분은 cron 배치 전이라 아직 반영 안 됐을 수 있다.
+  // isolate 재시작에도 유지된다. path/email은 위와 동일하게 메뉴명·이름으로
+  // 치환되어 내려온다.
   dailyUsage: { path: string; email: string; op: string; count: number }[];
 };
 

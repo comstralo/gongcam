@@ -334,7 +334,16 @@ const KV_USAGE_WINDOW_MIN = 30;
 // 보낸다(DO 자체는 KV 할당량과 무관하지만 오버헤드 자체를 줄이는 목적).
 const _dailyUsageBuffer = new Map(); // "{date}|{path}|{email}|{op}" -> count
 
-function _bumpKvUsageCounter(op, prefix, path, email) {
+// 🔧 [사용자 지시] "이메일 말고 사용자 이름을 적고" — 집계 키(_kvUsageCounters/
+// _dailyUsageBuffer/UsageStats DO)는 계속 email을 유일 식별자로 쓰되(이름은
+// 동명이인 가능성이 있어 키로 부적합), 화면에 보여줄 때만 이름으로 바꿔
+// 치환할 수 있도록 세션에 이미 담겨 있는 memberName(로그인 시점에 회원
+// 시트에서 조회해 고정된 값 — 별도 시트 재조회 불필요)을 email과 함께
+// 기억해둔다. isolate 재시작 시 비워져도 무해(그 경우 이메일로 대체 표시).
+const _emailNameMap = new Map(); // email -> memberName
+
+function _bumpKvUsageCounter(op, prefix, path, email, name) {
+  if (email && name) _emailNameMap.set(email, name);
   const minuteKey = new Date().toISOString().slice(0, 16); // "YYYY-MM-DDTHH:MM"
   const key = `${op}|${prefix}|${path || "(cron/기타)"}|${email || "(익명)"}:${minuteKey}`;
   _kvUsageCounters.set(key, (_kvUsageCounters.get(key) || 0) + 1);
@@ -350,6 +359,13 @@ function _bumpKvUsageCounter(op, prefix, path, email) {
 
   const dailyKey = `${todayKSTDateString()}|${path || "(cron/기타)"}|${email || "(익명)"}|${op}`;
   _dailyUsageBuffer.set(dailyKey, (_dailyUsageBuffer.get(dailyKey) || 0) + 1);
+}
+
+// email을 화면 표시용 이름으로 바꾼다 — 매핑이 없으면(isolate 재시작 직후
+// 등) 이메일을 그대로 보여준다(집계 자체는 계속 정상 동작).
+function _displayNameForEmail(email) {
+  if (!email || email === "(익명)") return email || "(익명)";
+  return _emailNameMap.get(email) || email;
 }
 
 // "최근 5분간 kv_put:sheetCache:9 라고 찍혀" — 콜론 1개까지만 잘라
@@ -372,7 +388,7 @@ function _kvKeyPrefix(key) {
 // 딱 한 번 선제적으로 verifySession한 결과다(§fetch 진입부 주석 참고) —
 // 각 핸들러 내부의 실제 권한 판정(requireAdmin 등)과는 별개로, "누가
 // 이 KV 호출을 유발했는지" 집계용으로만 쓰인다.
-function instrumentKvNamespace(kv, requestPath, requestEmail) {
+function instrumentKvNamespace(kv, requestPath, requestEmail, requestName) {
   return {
     ...kv,
     get: kv.get.bind(kv),
@@ -384,23 +400,96 @@ function instrumentKvNamespace(kv, requestPath, requestEmail) {
     // 탭에서 어느 화면이 list()를 얼마나 자주 쓰는지 보이게 한다.
     list(opts) {
       const prefix = _kvKeyPrefix((opts && opts.prefix) || "(전체)");
-      _bumpKvUsageCounter("kv_list", prefix, requestPath, requestEmail);
+      _bumpKvUsageCounter("kv_list", prefix, requestPath, requestEmail, requestName);
       console.log(`[kv list] path=${requestPath || "(cron/기타)"} prefix=${(opts && opts.prefix) || "(전체)"}`);
       return kv.list(opts);
     },
     put(key, value, opts) {
       const prefix = _kvKeyPrefix(key);
-      _bumpKvUsageCounter("kv_put", prefix, requestPath, requestEmail);
+      _bumpKvUsageCounter("kv_put", prefix, requestPath, requestEmail, requestName);
       console.log(`[kv put] path=${requestPath || "(cron/기타)"} key=${key}`);
       return kv.put(key, value, opts);
     },
     delete(key) {
       const prefix = _kvKeyPrefix(key);
-      _bumpKvUsageCounter("kv_delete", prefix, requestPath, requestEmail);
+      _bumpKvUsageCounter("kv_delete", prefix, requestPath, requestEmail, requestName);
       console.log(`[kv delete] path=${requestPath || "(cron/기타)"} key=${key}`);
       return kv.delete(key);
     },
   };
+}
+
+// 🔧 [사용자 지시] "알아먹기 쉽게 실제 메뉴명을 적어줘" — API 경로 그대로
+// 보여주던 걸, 프론트 각 화면 컴포넌트가 실제로 그 경로를 호출하는 이름
+// (docs/CACHING_POLICY.md §12.2의 화면↔엔드포인트 매핑과 동일 기준)으로
+// 바꿔 보여준다. 매핑에 없는 경로(신규 추가분 등)는 원래 경로를 그대로
+// 보여줘 정보 유실이 없게 한다.
+const _PATH_MENU_NAMES = {
+  "/status": "내 대시보드",
+  "/admin/usage": "사용량 모니터링",
+  "/admin/bot/status": "도움봇 오퍼레이터",
+  "/admin/bot/command": "도움봇 오퍼레이터",
+  "/admin/members/roster": "참여 스터디원 목록",
+  "/admin/members/parti-status": "참여 스터디원 목록",
+  "/admin/members/reorder": "번호 정렬",
+  "/admin/members/reorder-preview": "번호 정렬",
+  "/admin/members": "신규 스터디원 등록",
+  "/admin/blacklist": "신규 스터디원 등록",
+  "/admin/open-slots": "신규 스터디원 등록",
+  "/admin/members/grant-access": "신규 스터디원 등록",
+  "/admin/captures": "화각 불량 제보 처리",
+  "/admin/captures/decide": "화각 불량 제보 처리",
+  "/admin/captures/delete": "화각 불량 제보 처리",
+  "/admin/captures/revert": "화각 불량 제보 처리",
+  "/admin/captures/vote": "화각 불량 제보 처리",
+  "/admin/captures/cancel-penalty": "화각 불량 제보 처리",
+  "/admin/captures/cancel-merit": "화각 불량 제보 처리",
+  "/admin/captures/file": "화각 불량 제보 처리",
+  "/my-output-pen": "내 제보 확인",
+  "/captures/target-respond": "내 제보 확인",
+  "/my-captures/delete": "내 제보 확인",
+  "/roster-status": "RANK",
+  "/admin/fines/status": "PEN · Money",
+  "/admin/fines/admin-forced-count": "PEN · Money",
+  "/admin/prize/settle": "PEN · Money",
+  "/admin/leave-proof": "사유 반휴 신청 처리",
+  "/admin/leave-proof/file": "사유 반휴 신청 처리",
+  "/admin/leave-proof/decide": "사유 반휴 신청 처리",
+  "/admin/leave-apply": "반휴 신청",
+  "/leave-apply": "반휴 신청",
+  "/reason-leave-proof": "반휴 신청",
+  "/reason-leave-proof/cancel": "반휴 신청",
+  "/exit-request": "퇴실 신청",
+  "/exit-request/agree": "퇴실 신청",
+  "/admin/exit/preview": "퇴실 처리",
+  "/admin/exit/confirm": "퇴실 처리",
+  "/admin/exit/blacklist": "퇴실 스터디원 목록",
+  "/admin/members/exited": "퇴실 스터디원 목록",
+  "/notify-prefs": "알림 설정",
+  "/push/devices": "알림 설정",
+  "/push/devices/remove": "알림 설정",
+  "/push/devices/rename": "알림 설정",
+  "/push/devices/toggle": "알림 설정",
+  "/admin/push/send-category": "알림 설정",
+  "/push/send-to-member": "빠른 공지",
+  "/push/subscription-status": "빠른 공지",
+  "/push/recent-notices": "최근 공지",
+  "/status-message": "상태 메시지",
+  "/member-status-message": "제보",
+  "/report": "제보",
+  "/report-cooldowns": "제보",
+  "/report-status": "제보",
+  "/reports": "제보",
+  "/reports/capture-done": "제보",
+  "/reports/requeue": "제보",
+  "/participants": "체커(참여자 목록)",
+  "/goal-schedule": "목표시간 설정",
+  "(cron)": "정기 배치(cron)",
+};
+
+function _menuNameForPath(path) {
+  if (!path) return "(cron/기타)";
+  return _PATH_MENU_NAMES[path] || path;
 }
 
 // 최근 minutesWindow분(기본 30분) 동안의 (연산·캐시종류·요청경로·사용자)별
@@ -418,7 +507,7 @@ function _getKvWriteBreakdown(minutesWindow = KV_USAGE_WINDOW_MIN) {
   return [...totals.entries()]
     .map(([groupKey, count]) => {
       const [op, kind, path, email] = groupKey.split("|");
-      return { op, kind, path, email, count };
+      return { op, kind, path: _menuNameForPath(path), email: _displayNameForEmail(email), count };
     })
     .sort((a, b) => b.count - a.count);
 }
@@ -3278,10 +3367,18 @@ async function handleAdminUsageStatus(req, env, origin) {
   // UsageStats DO에서 오늘(KST) 하루치 (경로·사용자·연산)별 누적 집계를
   // 읽어온다. DO 조회 자체가 실패해도(신규 배포 직후 등) 전체 응답이
   // 죽지 않도록 빈 배열로 대체한다.
+  // 🔧 [사용자 지시] "알아먹기 쉽게 실제 메뉴명을 적어줘. 그리고 이메일
+  // 말고 사용자 이름을 적고" — DO는 원본 경로/이메일을 저장하므로(집계
+  // 키 자체는 안정적으로 유지), 응답 직전에만 메뉴명·이름으로 치환한다.
+  // 이름 매핑은 이 isolate가 최근에 본 사용자만 알 수 있어(_emailNameMap),
+  // 모르는 이메일은 이메일 그대로 표시된다(집계 값 자체는 항상 정확).
   const dailyUsage = await getUsageStatsStub(env)
     .fetch(`https://do/today?date=${encodeURIComponent(todayKSTDateString())}`)
     .then((r) => r.json())
     .then((d) => d.items || [])
+    .then((items) =>
+      items.map((it) => ({ ...it, path: _menuNameForPath(it.path), email: _displayNameForEmail(it.email) }))
+    )
     .catch(() => []);
 
   return json(
@@ -9814,7 +9911,11 @@ export default {
     const token = authHeader.replace(/^Bearer\s+/i, "");
     const requestSession = token ? await verifySession(token, rawEnv.SESSION_SECRET) : null;
     const requestEmail = requestSession ? requestSession.email : null;
-    const env = { ...rawEnv, REPORTS_KV: instrumentKvNamespace(rawEnv.REPORTS_KV, url.pathname, requestEmail) };
+    const requestName = requestSession ? requestSession.memberName : null;
+    const env = {
+      ...rawEnv,
+      REPORTS_KV: instrumentKvNamespace(rawEnv.REPORTS_KV, url.pathname, requestEmail, requestName),
+    };
     const origin = resolveOrigin(req, env);
 
     if (req.method === "OPTIONS") {

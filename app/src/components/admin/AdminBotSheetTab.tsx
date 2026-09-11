@@ -86,6 +86,11 @@ function UsageBar({ label, used, limit, unit }: { label: string; used: number; l
 // 말고" — PUT·DEL·LIST 각각의 "최근 30분(isolate 근사치)"과 "오늘 하루
 // (KST, DO 영구 저장)" breakdown을, 하나의 표에 다 몰아 보여주지 않고
 // 해당 연산에 대응하는 UsageBar 바로 아래에 op 하나씩 붙이기 위한 헬퍼.
+// 🔧 [사용자 지시] "알아먹기 쉽게 실제 메뉴명을 적어줘. 그리고 이메일
+// 말고 사용자 이름을 적고" — path/email 필드명은 백엔드 응답 스키마
+// 그대로지만, 실제 값은 서버가 이미 "메뉴명"·"사용자 이름"(모르면
+// 이메일로 대체)으로 치환해서 내려준다(index.js _menuNameForPath/
+// _displayNameForEmail). 프론트는 그대로 렌더링만 한다.
 function UsageBreakdownGroup({
   opLabel,
   recentRows,
