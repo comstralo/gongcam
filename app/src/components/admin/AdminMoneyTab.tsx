@@ -515,20 +515,44 @@ function PrizeRecipientList({
   useEffect(load, [cycleFileId]); // eslint-disable-line react-hooks/exhaustive-deps
   useRefreshOnVisible(isVisible, load);
   usePullRefreshListener(isVisible, load);
+  // 🔧 [사용자 지시, 2026-09-11] PEN·Money 탭 전면 재점검 — 다른 4개
+  // 섹션은 모두 20분 자동 폴링이 걸려있는데 이 섹션만 빠져 있었다.
+  // rosterStatus:(순위·분배금) 캐시가 탭을 열어둔 채 낡아가도 자동으로
+  // 갱신되지 않아, 관리자가 낡은 분배금을 보며 "상금 정산 집행"을 누를
+  // 위험이 있었다 — 다른 탭과 동일하게 통일한다.
+  const refreshProgress = usePollingRefresh(isVisible, load, 20 * 60_000);
 
   // "상금 정산 집행" — 관리자가 이번 주 1~5등에게 실제로 상금을 지급했음을
   // 집계!P6 셀에 "완료"로 기록한다(handleAdminPrizeSettle). 다른 상태
   // 변경(납부/미납/면제)처럼 별도 확인 다이얼로그 없이 클릭 즉시 실행한다
   // (사용자 지시) — 대신 실수로 중복 집행하지 않도록, 성공한 뒤에는
   // 버튼을 "집행 완료"로 바꾸고 다시 누를 수 없게 한다.
+  // 🔧 [사용자 지시, 2026-09-11] PEN·Money 탭 전면 재점검 — 이 화면이
+  // 보여주는 순위·분배금(rosterStatus: 캐시)은 탭을 열어둔 채 최대
+  // 10분(§28)까지 낡을 수 있는데, 정산 집행 자체는 화면 값을 재검증
+  // 없이 그대로 실행한다는 위험을 발견했다. 화면이 보여준 총 모금액
+  // (expectedCollectMoney)을 함께 보내면, 서버(handleAdminPrizeSettle)가
+  // 캐시를 강제로 지우고 "진짜 최신" 값과 대조해 다르면 409로 거부한다
+  // — 프론트에서 미리 조회해 비교하는 방식은 그 조회 자체가 아직 안
+  // 지워진 캐시를 받을 수 있어(제보 승인은 이 캐시를 무효화하지 않는
+  // 의도적 방치, §16/§31) 신뢰할 수 없다. 서버 쪽 강제 무효화+재계산만이
+  // 확실한 최종 방어선이다.
   async function handleSettle() {
     setSettling(true);
     setError(null);
     try {
-      await call<PrizeSettleResponse>("/admin/prize/settle", { method: "POST" });
+      await call<PrizeSettleResponse>("/admin/prize/settle", {
+        method: "POST",
+        body: { expectedCollectMoney: collectMoney },
+      });
       setSettled(true);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "상금 정산 집행에 실패했습니다.");
+      if (err instanceof ApiError && err.status === 409) {
+        setError("정산 대상 정보가 방금 바뀌었습니다. 화면을 새로고침한 뒤 다시 확인해 주세요.");
+        load();
+      } else {
+        setError(err instanceof ApiError ? err.message : "상금 정산 집행에 실패했습니다.");
+      }
     } finally {
       setSettling(false);
     }
@@ -536,7 +560,13 @@ function PrizeRecipientList({
 
   return (
     <Collapsible defaultOpen className="flex flex-col">
-      <SectionHeader icon={Trophy} title="상금 수령 처리" loading={loading} onRefresh={load} />
+      <SectionHeader
+        icon={Trophy}
+        title="상금 수령 처리"
+        loading={loading}
+        onRefresh={load}
+        refreshProgress={refreshProgress}
+      />
       <CollapsiblePanel className="flex flex-col gap-4">
         {error && (
           <Alert variant="destructive">

@@ -2545,8 +2545,13 @@ async function listPaidFines(env, accessToken, fileId) {
 // invalidateMemberCache를 호출하므로 그 무효화 대상에 포함시킨다. TTL은
 // 무효화가 놓친 경우의 안전망일 뿐이라 5분으로 늘려 KV 읽기 빈도를 줄인다
 // (docs/CACHING_POLICY.md §5, 2026-09).
+// 🔧 [사용자 지시, 2026-09-11] 5분→10분 재상향 — 이 값은 "납부된 총
+// 벌금액" 표시 전용이고(강제퇴실 판정 등 다른 계산엔 안 쓰임), 유일한
+// 쓰기 경로(handleAdminFineStatus)가 항상 확실히 무효화하며 이를 우회하는
+// 쓰기 경로(앱스크립트 등)도 없다 — TTL은 순수 안전망이라 10분으로
+// 늘려도 위험이 없다고 재검증했다(§33).
 async function getWeeklyPaidFineTotal(env, accessToken, fileId) {
-  return _cachedCompute(env, `weeklyPaidFine:${fileId}`, 5 * 60_000, async () => {
+  return _cachedCompute(env, `weeklyPaidFine:${fileId}`, 10 * 60_000, async () => {
     const rows = await getSheetValues(env, accessToken, fileId, "집계!D22");
     return safeNumber((rows && rows[0] && rows[0][0]) || 0);
   });
@@ -6230,13 +6235,31 @@ async function handleAdminFineStatus(req, env, origin) {
 // 탭에 캐싱(rosterStatus:, 30분)을 새로 추가하면서, 이 마킹도 즉시
 // 무효화해야 "정산 집행 완료" 상태가 최대 30분 늦게 반영되는 걸 막을 수
 // 있다.
+// 🔧 [사용자 지시, 2026-09-11] PEN·Money 탭 전면 재점검 — rosterStatus:는
+// penalty 그룹(제보 승인) 무효화에서 의도적으로 빠져있어(§16, §31) 최대
+// 10분 낡을 수 있는데, 프론트가 재조회해도 그 사이 캐시가 안 지워졌으면
+// 여전히 낡은 총 모금액을 받아 검증이 무의미해질 수 있었다. 집행 직전에
+// 이 함수 자체가 rosterOnly 그룹을 먼저 지우고 buildRosterStatus를 다시
+// 계산해, 프론트가 보낸 expectedCollectMoney와 "진짜 최신" 총 모금액을
+// 대조한다 — 프론트 재확인(느슨한 안전장치)과 별개로 서버가 최종 방어선
+// 역할을 한다.
 async function handleAdminPrizeSettle(req, env, origin) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
 
   try {
+    const { expectedCollectMoney } = await req.json().catch(() => ({}));
     const accessToken = await getServiceAccountAccessToken(env);
     const fileId = env.GOOGLE_SHEET_FILE_ID;
+    await invalidateMemberCache(env, ["rosterOnly"], fileId);
+    const latest = await buildRosterStatus(env, accessToken, fileId);
+    if (typeof expectedCollectMoney === "number" && expectedCollectMoney !== (latest.collectMoney ?? 0)) {
+      return json(
+        { error: "정산 대상 정보가 방금 바뀌었습니다. 화면을 새로고침한 뒤 다시 확인해 주세요.", collectMoney: latest.collectMoney ?? 0 },
+        409,
+        origin
+      );
+    }
     await writeSheetValues(env, accessToken, fileId, [{ range: "집계!P6", values: [["완료"]] }]);
     await invalidateMemberCache(env, ["rosterOnly"], fileId);
     return json({ ok: true }, 200, origin);

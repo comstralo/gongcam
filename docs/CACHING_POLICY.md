@@ -129,7 +129,7 @@ computeFn)` 형태로 각 파생 계산(주로 여러 셀을 모아 가공한 �
 | `members:` | `listAllMembers` | **2시간**(현재/과거 fileId 공통 — §17.2, 2026-09-11 재상향, 구 10분) | `invalidateMemberCache`(`roster` 그룹 — 신규등록/퇴실/재납/번호이동 5곳) + 제보 승인/상점 지급 직전 `memberIdentity` 그룹(좁게, §17.2) |
 | `personalStatusBundle:` | `getPersonalStatusBundle`(§21, 2026-09-10 통합) | 10분(현재 시트) / **2시간(과거 fileId)** | `writeSheetValues` 내장 정밀 무효화(개인 탭 쓰기 시) + 제보 처리 경로의 `invalidateMemberSlotCache(env, 번호)` — 개인 탭 원본 + `outputPenSlots` + `reportScore` 셋을 담는 회원별 캐시 |
 | `memberRows:` | `getSharedMemberRows` | **10분**(2026-09-11 상향, 구 60초 — §28) | `invalidateMemberCache`(`fine` 그룹) |
-| `weeklyPaidFine:` | `getWeeklyPaidFineTotal` | 5분 | `invalidateMemberCache`(`fine` 그룹) |
+| `weeklyPaidFine:` | `getWeeklyPaidFineTotal` | **10분**(2026-09-11 상향, 구 5분 — §33) | `invalidateMemberCache`(`fine` 그룹) |
 | `penSlotGrid:` | `attachNextOccurrence` | **5분**(2026-09-11 상향, 구 60초 — §24.6) | `invalidateMemberCache`(`penalty` 그룹) |
 | `exitStatus:` | `getAllExitRelevantStatus` | **10분**(2026-09-11 상향, 구 60초 — §28) | `invalidateMemberCache`(`penalty`/`fine`/`exitRequest`/`partiStatus` 그룹) |
 | `rosterStatus:` | `buildRosterStatus`(§16) | **10분**(현재 시트, 2026-09-11 하향 — 구 30분) / **2시간(과거 fileId, §17)** | `invalidateMemberCache`(`roster`에 자동 포함, "상금 정산 집행"만 `rosterOnly` 그룹으로 좁게) |
@@ -588,7 +588,7 @@ isolate 분산과 KV 히트율에 달려 있어 정적 코드 조사만으로는
 |---|---|---|
 | `ReportReviewList`("화각 불량 제보 처리") | `penSlotGrid:` 5분(§24.6) / `coReviewers:` 5분(§22) | **20분**(2026-09-11, 구 10분 — `penSlotGrid:` 상향에 맞춰 배율 4배 유지, §24.6) |
 | `PenaltyCandidateList`("예치금 재납 대상자") | `exitStatus:` 10분(2026-09-11 상향, §28) / `memberRows:` 10분(§28) | **20분**(2026-09-11, 구 3분 — "봇 상태 제외 전부 20분 통일" 지시, §27 참고. 배율 2:1) |
-| `AdminMoneyTab`의 벌금 조회(`PaidFineList` 등) | `memberRows:` 10분(§28) / `weeklyPaidFine:` 5분 | **20분**(2026-09-11, 구 3분 — 위와 동일 지시) |
+| `AdminMoneyTab`의 벌금 조회(`PaidFineList` 등) | `memberRows:` 10분(§28) / `weeklyPaidFine:` 10분(§33) | **20분**(2026-09-11, 구 3분 — 위와 동일 지시) |
 | `MyOutputPenSection`("내 제보 확인") — 렌더(`load`) | `penSlotGrid:` 5분(§24.6) / `members:` 2시간(§17.2) | **20분**(2026-09-11, 구 10분·3분 — §24.6) |
 | `MyOutputPenSection`("내 제보 확인") — 감지(`detectNew`, 신설) | `/my-output-pen` 응답의 id만 비교, 캐시 아님 | **5분**(§24.6, 새로고침 버튼 활성화 전용) |
 | `RosterPage`("RANK") | `rosterStatus:` 10분(2026-09-11 하향, 구 30분) | 30분 — 폴링 : TTL 배율 **3:1**로 원칙(3배 이상) 충족(2026-09-11 이전엔 1:1이었다) |
@@ -1561,7 +1561,63 @@ ACCOUNT 탭에 이어 "PEN·Money" 탭(`ReportReviewList`/`ReasonLeaveReviewList
 위험보다 이 UX 혼란 위험을 더 우선해 보수적으로 현행(5분) 유지를
 택했다.
 
-## 32. 관련 문서
+## 32. "상금 수령 처리" 폴링 누락 + 집행 직전 서버 재검증 추가 (2026-09-11)
+
+"혹시 모르니 PEN·Money 탭 전반을 다시 점검해달라"는 요청으로 §25~§31과
+겹치지 않는 각도에서 재조사한 결과, `PrizeRecipientList`("상금 수령
+처리")에 다른 4개 섹션과 달리 `usePollingRefresh`가 아예 빠져 있는 걸
+발견했다. §16에서 `rosterStatus:`(순위·분배금)에 캐싱이 도입된 뒤에도
+이 섹션만 폴링 통일(§27) 대상에서 누락되어 있었다 — 관리자가 탭을 열어둔
+채 방치하면 최대 10분(§9 TTL 표) 낡은 분배금을 계속 보면서도 자동으로
+갱신되지 않았다.
+
+문제는 여기서 그치지 않았다 — `PrizeRecipientList`가 이 캐시를 그대로
+보여주는 화면에 "상금 정산 집행" 버튼(`handleAdminPrizeSettle`, 집계!P6에
+"완료" 마킹)이 함께 있는데, 이 버튼이 **화면에 표시된 값을 재검증 없이
+그대로 실행**했다. §31①에서 이미 "제보 승인이 `rosterStatus:`를 바꾸는데
+`penalty` 그룹은 이걸 무효화하지 않는다(의도적 방치, §16)"는 걸 확인했던
+바로 그 캐시라, 돈이 걸린 액션과 겹친다는 게 단순 표시 지연보다 훨씬
+위험했다.
+
+**두 겹의 방어를 추가했다**:
+1. **폴링 추가**: 다른 섹션과 동일하게 `usePollingRefresh(isVisible, load,
+   20 * 60_000)`을 붙였다(AdminMoneyTab.tsx, `PrizeRecipientList`).
+2. **서버 측 집행 직전 재검증**: 처음엔 "프론트가 집행 직전에
+   `/roster-status`를 한 번 더 조회해 비교"하는 방식을 시도했으나, 그
+   조회 자체가 아직 무효화되지 않은 낡은 캐시를 받을 수 있어(제보 승인이
+   `rosterStatus:`를 안 지우므로) 신뢰할 수 없다고 판단해 기각했다.
+   대신 `handleAdminPrizeSettle`(index.js:6233 부근)이 **서버에서** 집행
+   직전에 `rosterOnly` 그룹을 먼저 무효화하고 `buildRosterStatus`를
+   강제로 재계산해, 프론트가 보낸 `expectedCollectMoney`(화면에 표시된
+   총 모금액)와 "진짜 최신" 값을 대조한다 — 다르면 409를 반환해 집행을
+   막고, 프론트는 이를 받아 `load()`로 최신 값을 다시 불러온다. 프론트
+   재확인이 아니라 서버 강제 무효화+재계산만이 §16의 의도적 방치를
+   완전히 우회하는 확실한 최종 방어선이다.
+
+## 33. `weeklyPaidFine:` TTL 5분→10분 상향 (2026-09-11)
+
+"PEN·Money 탭 5분짜리 TTL(`weeklyPaidFine:`/`penSlotGrid:`)을 10분으로
+늘리면 위험한가" 재검토 요청으로 둘을 각각 조사했다.
+
+**`weeklyPaidFine:` — 상향.** `getWeeklyPaidFineTotal`(집계!D22)은 "납부된
+총 벌금액" 표시(`PaidFineList`) 하나에만 쓰이는 단순 집계값이고, 강제퇴실
+판정 등 다른 계산엔 전혀 관여하지 않는다(그 판정은 개인 탭 32행 기반
+`exitStatus:`가 별도로 담당). 유일한 쓰기 경로(`handleAdminFineStatus`)가
+항상 `fine` 그룹으로 확실히 무효화하고, 이를 우회하는 쓰기 경로(앱스크립트
+등)도 없음을 재확인했다 — `fine_check_row` 상수가 정의만 되고 실제로
+쓰이는 곳이 없는 죽은 코드라는 것까지 확인해, "무효화는 완전히 신뢰
+가능하고 TTL은 순수 안전망"이라는 이상적인 경우로 판단했다.
+
+**`penSlotGrid:` — 재검증 후 5분 유지, 결론 불변.** §31③ 결론(실제 승인은
+캐시를 안 쓰고 항상 시트를 직접 재조회하므로 정합성 위험은 없지만, 관리자가
+보는 "적용" 버튼 라벨이 캐시값 기반이라 낡으면 실제와 어긋나 보일 수 있다)
+을 재확인했다. 10분으로 늘리면 이 라벨 불일치의 노출 시간이 최대 5분→10분
+으로 2배 늘고, `ReportReviewList`의 20분 폴링과 짝지어진 배율(4:1) 원칙을
+지키려면 폴링도 40분으로 함께 늘려야 해 체감 지연이 커진다 — 여러
+관리자가 동시에 제보를 처리하는 흐름에서 화면 간 불일치가 더 자주
+노출될 수 있어 보수적으로 현행(5분)을 유지했다.
+
+## 34. 관련 문서
 
 - `docs/WEB_ADMIN.md` §3.1 — `applyOutputPenalty`/`applyReportMerit`/
   `applyTimeDeduction`가 실제로 호출되는 관리자 제보 처리 화면·플로우.
