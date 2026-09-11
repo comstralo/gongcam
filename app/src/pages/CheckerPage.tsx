@@ -112,10 +112,20 @@ export function CheckerPage() {
             aspect-video(16/9)를 컨테이너 자체에 고정해, 컨테이너 높이가
             "이 컨테이너의 폭" 기준으로만 정해지도록 순환을 끊는다 — 가로모드는
             반대로 이 컨테이너가 남는 폭을 다 채워야 하므로 aspect-ratio를
-            끄고 기존 h-full/useFitViewfinder(높이 제약) 계산을 그대로 쓴다. */}
+            끄고 기존 h-full/useFitViewfinder(높이 제약) 계산을 그대로 쓴다.
+            🔧 [사용자 지적] "아이폰에서 확인하니 뷰파인더가 버튼/썸네일
+            박스보다 짧게 나온다" — 한때 aspect-video 대신 이 컨테이너를
+            shrink-0(내용물 크기)만으로 두고 안쪽 뷰파인더 박스의 렌더
+            크기를 그대로 감싸게 해봤는데, 그러면 "컨테이너 크기가 안쪽
+            박스 크기를 따라가고, 안쪽 박스 크기(size)는 다시 컨테이너
+            크기를 관찰해 계산되는" 자기 강화 순환이 생겨 창을 넓혀도
+            한 번 작아진 크기에 그대로 갇혔다(정확히 위 문단에서 이미 겪은
+            문제의 재발 — Playwright로 재현 확인). aspect-video는 그대로
+            두고 min-h-0만 제거해 iOS Safari의 aspect-ratio 계산 이슈만
+            targeted로 완화한다. */}
         <div
           ref={containerRef}
-          className="flex min-h-0 w-full shrink-0 aspect-video page-content items-center justify-center overflow-hidden mobile-landscape:aspect-auto mobile-landscape:h-full mobile-landscape:w-0 mobile-landscape:max-w-none mobile-landscape:flex-1"
+          className="flex w-full shrink-0 aspect-video page-content items-center justify-center overflow-hidden mobile-landscape:min-h-0 mobile-landscape:aspect-auto mobile-landscape:h-full mobile-landscape:w-0 mobile-landscape:max-w-none mobile-landscape:flex-1"
         >
           <div
             className="relative overflow-hidden rounded-lg bg-black"
