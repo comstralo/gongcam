@@ -8354,6 +8354,23 @@ export class ParticipantsRoster {
     this.state = state;
     this.members = [];
     this.updatedAt = 0;
+    // 🔧 [버그 수정, 2026-09-11] "교시 제한 시간도 아닌데 도움봇이 꺼져있다고
+    // 뜬다"는 제보 — this.updatedAt은 순수 인메모리 필드라, Cloudflare가
+    // 이 DO를 유휴 시 자동 종료했다가 다음 요청에서 새 인스턴스로 재시작시키면
+    // (트래픽에 따라 수시로 일어남, 이 앱이 제어할 수 없는 플랫폼 동작)
+    // updatedAt이 다시 0으로 리셋됐다 — 재시작 직후 봇은 실제로 멀쩡히
+    // 동작 중인데도 "Date.now() - 0"이 항상 PARTICIPANTS_STALE_MS(60초)를
+    // 넘어 stale:true를 잘못 반환하고, 다음 봇 PUT(최대 약 10~15초 이내)이
+    // 오면 다시 정상화되는 패턴이었다(간헐적으로 "잠깐" 뜨는 증상과 일치).
+    // DO의 영구 저장소(this.state.storage)에 매 PUT마다 updatedAt을 함께
+    // 저장해두고, 재시작 시 blockConcurrencyWhile로 그 값을 복구해 재시작
+    // 여부와 무관하게 "마지막으로 실제 갱신된 시각"을 정확히 유지한다 —
+    // 첫 구동(진짜 아무도 PUT한 적 없음)이면 저장된 값이 없어 0 그대로
+    // 유지되므로 stale:true가 맞게 나온다.
+    this.state.blockConcurrencyWhile(async () => {
+      const stored = await this.state.storage.get("updatedAt");
+      if (typeof stored === "number") this.updatedAt = stored;
+    });
     this.locks = new Map(); // key -> { holding: bool, queue: [resolve, ...] }
     // 🔧 [KV list() 제거, 2026-09-11] "PUSH 알림 전송"의 쿨다운(닉네임별
     // 재전송 제한)·"최근 전송된 알림" 목록을 원래 KV(notice-cooldown:/
@@ -8383,6 +8400,11 @@ export class ParticipantsRoster {
       const { members } = await req.json();
       this.members = Array.isArray(members) ? members.slice(0, 200) : [];
       this.updatedAt = Date.now();
+      // 이 DO가 나중에 재시작돼도 "마지막으로 실제 갱신된 시각"을 이어받을
+      // 수 있도록 영구 저장소에도 함께 남긴다(위 생성자 주석 참고). 실패해도
+      // 조용히 넘어간다 — 최악의 경우 다음 재시작 때만 이 문제가 재발할
+      // 뿐, 이번 요청의 본 응답(멤버 목록 갱신)을 막을 이유는 아니다.
+      this.state.storage.put("updatedAt", this.updatedAt).catch((e) => console.error("[ParticipantsRoster] updatedAt 영구 저장 실패:", e));
       return new Response(JSON.stringify({ ok: true }), {
         headers: { "Content-Type": "application/json" },
       });

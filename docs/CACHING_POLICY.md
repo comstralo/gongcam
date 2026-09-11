@@ -1958,7 +1958,45 @@ pending 없음"만 매번 확인하고 각자 추가하는 것이라면 락은 �
 감수하고 실시간성을 우선한 것으로, 코드 위험 재검증이 아니라 사용자의
 우선순위 재확정이다.
 
-## 44. 관련 문서
+## 44. "화각 불량 제보" 도움봇 연결 오탐 버그 수정 — ParticipantsRoster 재시작 시 stale 오판정 (2026-09-11)
+
+"교시 시작 제한 시간이 아닌데도 도움봇이 가동중이지 않다는 오버레이가
+가끔 뜬다"는 제보로 Playwright를 이용해 원인을 조사했다.
+
+**증상 재현·원인 확인**: `ReportPage.tsx`의 `stale`(오버레이 트리거
+조건)은 `useRosterPolling` → `GET /participants` → `ParticipantsRoster`
+Durable Object가 반환하는 `Date.now() - this.updatedAt > 60초`로
+판정된다(`PARTICIPANTS_STALE_MS`). 실제 프로덕션 API를 Playwright로
+직접 호출해 봇이 약 10초 주기로 정상 PUT을 보내고 있음을 확인했고,
+문제는 `this.updatedAt`(도움봇이 마지막으로 PUT을 보낸 시각)이 **순수
+인메모리 필드**였다는 데 있었다 — Cloudflare가 이 DO를 유휴 시 자동
+종료했다가 다음 요청에서 새 인스턴스로 재시작시키면(트래픽에 따라
+수시로 일어나는, 이 앱이 제어할 수 없는 플랫폼 동작) `updatedAt`이
+다시 0으로 리셋됐다. 재시작 직후 봇은 실제로 멀쩡히 동작 중인데도
+`Date.now() - 0`이 항상 60초를 넘어 `stale:true`를 잘못 반환했고,
+다음 봇 PUT(최대 약 10~15초 이내)이 오면 다시 정상화됐다 — "교시
+제한과 무관하게 간헐적으로 잠깐 떴다가 사라지는" 증상과 정확히
+일치한다.
+
+**수정**: `ParticipantsRoster`(index.js:8352 부근)의 PUT 핸들러가
+`this.updatedAt` 갱신 직후 DO의 영구 저장소(`this.state.storage.put`)
+에도 함께 기록하고, 생성자에서 `this.state.blockConcurrencyWhile`로
+그 값을 복구하도록 했다 — DO가 재시작돼도 "마지막으로 실제 갱신된
+시각"을 이어받아 재시작 여부와 무관하게 정확히 판정한다. 진짜 봇이
+오래 응답 없는 경우(복구된 값도 오래됨)엔 여전히 정확히 `stale:true`가
+나오므로 오탐만 제거되고 본래 감지 기능은 그대로 유지된다.
+
+**안전성 검증**: `wrangler.toml`에 이 DO가 이미 `new_sqlite_classes`로
+등록되어 있어(17-19행) storage API 사용에 추가 마이그레이션이 필요
+없음을 확인했다. `blockConcurrencyWhile`은 DO 인스턴스가 처음 뜰 때
+(재시작 직후) 딱 한 번, `storage.get` 1회(수 ms)만큼만 첫 요청을
+지연시키며, 락(`/lock/acquire`, `LOCK_WAIT_TIMEOUT_MS`=15초)을 포함한
+이후 모든 요청엔 영향이 없다. `storage.put` 실패 시 조용히 넘어가되
+`console.error`로 로그는 남기도록 했다 — 실패해도 이번 PUT 응답 자체는
+막지 않고, 최악의 경우 다음 재시작 때만 이 버그가 재발하는 정도로
+영향이 제한적이다.
+
+## 45. 관련 문서
 
 - `docs/WEB_ADMIN.md` §3.1 — `applyOutputPenalty`/`applyReportMerit`/
   `applyTimeDeduction`가 실제로 호출되는 관리자 제보 처리 화면·플로우.
