@@ -1218,6 +1218,17 @@ function sheet_reset() {
   spread_sheet.getSheets()
     .filter(sheet => sheet.getName().includes("퇴실") || sheet.getName().includes("재납"))
     .forEach(sheet => spread_sheet.deleteSheet(sheet));
+
+  // 🔧 [Worker 캐시 정합성, 2026-09-11] 이름에 "퇴실"/"재납"이 들어간 시트를
+  // 생성 시점과 무관하게 전부 지운다 — 관리자가 이 리셋 직전(월요일 새벽)에
+  // 막 만든 "OOO (퇴실)" 시트도 예외 없이 함께 삭제된다(의도된 동작). 문제는
+  // 그 뒤 Worker 쪽 meta:/adminMemberList: 캐시(퇴실자 드롭다운 등, 최대
+  // 2시간)가 삭제 사실을 몰라 최대 2시간 동안 이미 없는 퇴실자가 목록에
+  // 계속 보이다가 클릭하면 404로 실패하는 불일치가 있었다(2026-09 재검토로
+  // 발견) — 실제 데이터가 잘못 계산되는 건 아니지만(상세 조회는 캐시 없이
+  // 시트를 직접 재확인해 정직하게 실패함), 위 5번 페널티 사이클 갱신과
+  // 동일한 패턴으로 삭제 직후 즉시 알려 그 지연을 없앤다.
+  _notifyWorkerCacheInvalidate({ groups: ["roster"] });
 }
 
 // ⚙️ [트리거] ‘집계’ 시트의 의무시간 신청 (N열) 의 행 단위로 스터디원에게 수정 권한 부여 함수.

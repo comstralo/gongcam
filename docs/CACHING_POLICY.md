@@ -1835,7 +1835,51 @@ KV 로컬 복제본에 반영 안 됐을 수 있었다. 상한 검증 직전에
 **§35에서 발견한 4건(부스터디장 임명 상한, 퇴실신청 인덱스, 사유반휴
 승인, 반휴 큐 인덱스) 전부 점검·수정 완료.**
 
-## 40. 관련 문서
+이 시점에서 범위를 관리자 API 밖으로 넓혀 회원용 API·도움봇 연동·
+Durable Object 내부·구글 Apps Script 자동 트리거까지 1차로 폭넓게
+탐색했다. 새로 발견한 후보: (a) Apps Script `sheet_reset()`의 시트 삭제
+직후 캐시 무효화 누락, (b) 반휴 신청 제출 단계에 잠금 없음, (c) PUSH
+구독 인덱스 동시 등록 시 경쟁. 우선순위대로 (a)부터 순차 점검한다.
+
+## 40. Apps Script `sheet_reset()` — 시트 삭제 후 캐시 무효화 누락 (2026-09-11)
+
+`sheet_reset()`(study_sw/assets/appscript.js:1084, 매주 월요일 05:00~
+06:00 실행 추정)이 이름에 "퇴실"/"재납"이 포함된 시트를 생성 시점과
+무관하게 전부 삭제하는데(1218-1220행, 이름 패턴 매칭만 있고 사이클/
+타임스탬프 조건은 없음), 삭제 직후 Worker 쪽 캐시를 무효화하는 호출이
+없었다. 같은 함수 앞부분(페널티 사이클 갱신 직후, 1207행)엔 이미
+`_notifyWorkerCacheInvalidate({groups:["cycle"]})`가 있어 이 패턴 자체는
+낯설지 않다 — 시트 삭제 뒤에만 빠져 있었다.
+
+**2차 점검으로 밝힌 실제 영향**: 처음 우려했던 것과 달리 "잘못된 데이터로
+계산"되는 문제는 아니었다. `meta:`/`adminMemberList:`(퇴실자 드롭다운 등,
+TTL 최대 2시간)가 삭제 사실을 모른 채 최대 2시간 동안 이미 삭제된
+퇴실자를 목록에 계속 보여줄 수 있지만, 그 항목을 클릭해 상세를 조회하면
+`buildExitedMemberSnapshot`이 캐시 없이 매번 시트를 직접 재확인해 시트가
+없으면 404 "퇴실자 기록을 찾을 수 없습니다"로 정직하게 실패한다 —
+"삭제된 게 존재하는 것처럼 잘못 계산"되는 게 아니라 "목록엔 뜨는데
+클릭하면 실패"하는 최대 2시간짜리 표시 불일치였다.
+
+**트리거 활성화 여부는 코드로 확인 불가**: 저장소 전체에 `ScriptApp.
+newTrigger` 등록 코드가 없다 — `docs/SHEET_APPSCRIPT.md`가 이미 "시간
+기반 트리거는 Apps Script 프로젝트 설정에서 별도로 연결되어 있어 이
+파일만으로는 정확한 예약 시각을 알 수 없다"고 명시한다(§28의 `_exit_define`
+과 같은 종류의 불확실성). `docs/tmp_appscript.js`(git 미추적)는
+`_notifyWorkerCacheInvalidate` 도입 이전 시점의 구버전 스크래치 사본으로,
+현재 운영 스크립트와 무관하다고 확인했다.
+
+**수정**: 다른 Apps Script 함수들과 동일한 패턴으로, 시트 삭제 직후
+`_notifyWorkerCacheInvalidate({ groups: ["roster"] })`를 추가했다 —
+`roster` 그룹은 `meta`/`adminMemberList`를 포함한 9종 전부를 지운다
+(index.js:852). 근본 해결(삭제 필터에 "이번 주기 시작 이전에 생성됐는지"
+조건을 추가)은 "퇴실" 백업명에 타임스탬프가 없어(재납은 있음) 변경
+범위가 더 크다고 판단해, 우선 캐시 무효화 추가만 적용했다. **이
+저장소의 `study_sw/assets/appscript.js`는 참고용 사본이라, 실제 반영은
+구글 스프레드시트의 Apps Script 편집기에 이 파일 내용을 다시 붙여넣어야
+한다** — Worker/프론트와 달리 git push나 wrangler deploy로 자동 반영되지
+않는다.
+
+## 41. 관련 문서
 
 - `docs/WEB_ADMIN.md` §3.1 — `applyOutputPenalty`/`applyReportMerit`/
   `applyTimeDeduction`가 실제로 호출되는 관리자 제보 처리 화면·플로우.
