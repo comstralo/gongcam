@@ -722,12 +722,13 @@ export type AdminUsageResponse = {
     kvListsPerDay: number;
     kvStorageBytes: number;
   };
-  // 🔧 [KV 쓰기/삭제 추적, 화면별 특정] 이 Worker isolate가 최근 30분간
-  // 실제로 KV.put/delete를 호출한 (연산·캐시종류·요청경로) 조합별 집계 —
-  // 예: [{op:"kv_put", kind:"sheetCache:exitStatus:",
-  // path:"/admin/captures", count:5}]. isolate당 근사치라 정확한 하루
-  // 총합은 아니다.
-  kvWriteBreakdown: { op: string; kind: string; path: string; count: number }[];
+  // 🔧 [KV 쓰기/삭제 추적, 화면별·사용자별 특정] 이 Worker isolate가 최근
+  // 30분간 실제로 KV.put/delete/list를 호출한 (연산·캐시종류·요청경로
+  // ·사용자) 조합별 집계 — 예: [{op:"kv_put", kind:"sheetCache:exitStatus:",
+  // path:"/admin/captures", email:"a@b.com", count:5}]. isolate당
+  // 근사치라 정확한 하루 총합은 아니다. email은 세션이 없는 요청이면
+  // "(익명)".
+  kvWriteBreakdown: { op: string; kind: string; path: string; email: string; count: number }[];
   // 🔧 [사용량 모니터링 고도화] 위 kvWriteBreakdown과 달리 "하루(KST 자정
   // 기준) 누적 · 관리자+학생 모두 포함 · Durable Object 영구 저장" 기준이라
   // isolate 재시작에도 유지된다. email은 세션이 없는 요청이면 "(익명)".

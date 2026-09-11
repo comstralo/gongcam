@@ -322,7 +322,7 @@ function _getUsageCounter(kind, minutesAgo = 0) {
 // — "이번 분"/"직전 분"만 보면 충분해 5분 창)와는 목적이 다르므로(이건
 // "주기적으로 반복되는 패턴"을 보는 게 목적이라 더 긴 관찰 창이 필요)
 // 별도 Map으로 분리하고 청소 창도 30분으로 늘렸다.
-const _kvUsageCounters = new Map(); // "kv_put|sheetCache:exitStatus:|/admin/captures:2026-09-09T12:34" -> count
+const _kvUsageCounters = new Map(); // "kv_put|sheetCache:exitStatus:|/admin/captures|user@example.com:2026-09-09T12:34" -> count
 const KV_USAGE_WINDOW_MIN = 30;
 
 // 🔧 [사용량 모니터링 고도화, 2026-09-11] "하루 동안, 어느 메뉴에서, 어느
@@ -336,9 +336,9 @@ const _dailyUsageBuffer = new Map(); // "{date}|{path}|{email}|{op}" -> count
 
 function _bumpKvUsageCounter(op, prefix, path, email) {
   const minuteKey = new Date().toISOString().slice(0, 16); // "YYYY-MM-DDTHH:MM"
-  const key = `${op}|${prefix}|${path || "(cron/기타)"}:${minuteKey}`;
+  const key = `${op}|${prefix}|${path || "(cron/기타)"}|${email || "(익명)"}:${minuteKey}`;
   _kvUsageCounters.set(key, (_kvUsageCounters.get(key) || 0) + 1);
-  // 오래된 분 버킷은 청소한다 — 30분 창만 유지하면 충분하다. path까지
+  // 오래된 분 버킷은 청소한다 — 30분 창만 유지하면 충분하다. path/email까지
   // 조합에 들어가 카디널리티가 늘었으니 sheets 카운터보다 넉넉히 잡는다.
   if (_kvUsageCounters.size > 2000) {
     const cutoff = Date.now() - KV_USAGE_WINDOW_MIN * 60_000;
@@ -403,11 +403,11 @@ function instrumentKvNamespace(kv, requestPath, requestEmail) {
   };
 }
 
-// 최근 minutesWindow분(기본 30분) 동안의 (연산·캐시종류·요청경로)별 집계 —
-// 어느 화면(경로)이 어떤 캐시를 얼마나 자주 쓰기/삭제하는지 한눈에 보여준다.
+// 최근 minutesWindow분(기본 30분) 동안의 (연산·캐시종류·요청경로·사용자)별
+// 집계 — 어느 화면(경로)을 누가 얼마나 자주 쓰기/삭제하는지 한눈에 보여준다.
 function _getKvWriteBreakdown(minutesWindow = KV_USAGE_WINDOW_MIN) {
   const cutoff = Date.now() - minutesWindow * 60_000;
-  const totals = new Map(); // "kv_put|sheetCache:exitStatus:|/admin/captures" -> count
+  const totals = new Map(); // "kv_put|sheetCache:exitStatus:|/admin/captures|user@example.com" -> count
   for (const [key, count] of _kvUsageCounters) {
     const minuteKey = key.slice(-16);
     const ts = Date.parse(minuteKey + ":00Z");
@@ -417,8 +417,8 @@ function _getKvWriteBreakdown(minutesWindow = KV_USAGE_WINDOW_MIN) {
   }
   return [...totals.entries()]
     .map(([groupKey, count]) => {
-      const [op, kind, path] = groupKey.split("|");
-      return { op, kind, path, count };
+      const [op, kind, path, email] = groupKey.split("|");
+      return { op, kind, path, email, count };
     })
     .sort((a, b) => b.count - a.count);
 }

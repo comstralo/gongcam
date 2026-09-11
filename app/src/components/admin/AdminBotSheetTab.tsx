@@ -92,7 +92,7 @@ function UsageBreakdownGroup({
   dailyRows,
 }: {
   opLabel: string;
-  recentRows: { op: string; kind: string; path: string; count: number }[];
+  recentRows: { op: string; kind: string; path: string; email: string; count: number }[];
   dailyRows: { path: string; email: string; op: string; count: number }[];
 }) {
   const byPath = dailyRows.reduce<Record<string, Record<string, number>>>((acc, { path, email, count }) => {
@@ -100,18 +100,34 @@ function UsageBreakdownGroup({
     byEmail[email] = (byEmail[email] || 0) + count;
     return acc;
   }, {});
+  // 🔧 [사용자 지시] "'[사용자명] 메뉴 - 영역' 으로 구분하고 카운트 횟수를
+  // 표시해달란거야. 지금처럼 캐시명으로 하지말고" — kind(캐시 키 종류)만
+  // 보여주던 걸, 누가(email) 어느 화면(path)의 어느 캐시 영역(kind)을
+  // 건드렸는지 알 수 있게 사용자 우선으로 그룹핑한다.
+  const byEmailRecent = recentRows.reduce<Record<string, { path: string; kind: string; count: number }[]>>(
+    (acc, { email, path, kind, count }) => {
+      (acc[email] ??= []).push({ path, kind, count });
+      return acc;
+    },
+    {}
+  );
   return (
     <div className="flex flex-col gap-1.5 border-l-2 border-border pl-2">
       <span className="text-micro-lg font-semibold sm:text-xs">{opLabel}</span>
       {recentRows.length > 0 && (
         <div className="flex flex-col gap-0.5">
-          <FieldLabel>최근 30분 · 화면별 (이 서버 기준)</FieldLabel>
-          {recentRows.map(({ kind, path, count }) => (
-            <div key={`${path}|${kind}`} className="flex items-center justify-between gap-2 pl-2">
-              <span className="truncate text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
-                {path} · {kind}
-              </span>
-              <span className="shrink-0 text-micro-lg font-semibold tabular-nums sm:text-xs">{count}</span>
+          <FieldLabel>최근 30분 · 사용자별 (이 서버 기준)</FieldLabel>
+          {Object.entries(byEmailRecent).map(([email, rows]) => (
+            <div key={email} className="flex flex-col gap-0.5 pl-2">
+              <span className="truncate text-micro-lg font-medium sm:text-xs">[{email}]</span>
+              {rows.map(({ path, kind, count }) => (
+                <div key={`${path}|${kind}`} className="flex items-center justify-between gap-2 pl-2">
+                  <span className="truncate text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
+                    {path} - {kind}
+                  </span>
+                  <span className="shrink-0 text-micro-lg font-semibold tabular-nums sm:text-xs">{count}</span>
+                </div>
+              ))}
             </div>
           ))}
         </div>
