@@ -82,6 +82,66 @@ function UsageBar({ label, used, limit, unit }: { label: string; used: number; l
   );
 }
 
+// 🔧 [사용자 지시] "그걸 알맞은 게이지 아래에 해달라고. 저렇게 몰아놓지
+// 말고" — PUT·DEL·LIST 각각의 "최근 30분(isolate 근사치)"과 "오늘 하루
+// (KST, DO 영구 저장)" breakdown을, 하나의 표에 다 몰아 보여주지 않고
+// 해당 연산에 대응하는 UsageBar 바로 아래에 op 하나씩 붙이기 위한 헬퍼.
+function UsageBreakdownGroup({
+  opLabel,
+  recentRows,
+  dailyRows,
+}: {
+  opLabel: string;
+  recentRows: { op: string; kind: string; path: string; count: number }[];
+  dailyRows: { path: string; email: string; op: string; count: number }[];
+}) {
+  const byPath = dailyRows.reduce<Record<string, Record<string, number>>>((acc, { path, email, count }) => {
+    const byEmail = (acc[path] ??= {});
+    byEmail[email] = (byEmail[email] || 0) + count;
+    return acc;
+  }, {});
+  return (
+    <div className="flex flex-col gap-1.5 border-l-2 border-border pl-2">
+      <span className="text-micro-lg font-semibold sm:text-xs">{opLabel}</span>
+      {recentRows.length > 0 && (
+        <div className="flex flex-col gap-0.5">
+          <FieldLabel>최근 30분 · 화면별 (이 서버 기준)</FieldLabel>
+          {recentRows.map(({ kind, path, count }) => (
+            <div key={`${path}|${kind}`} className="flex items-center justify-between gap-2 pl-2">
+              <span className="truncate text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
+                {path} · {kind}
+              </span>
+              <span className="shrink-0 text-micro-lg font-semibold tabular-nums sm:text-xs">{count}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex flex-col gap-0.5">
+        <FieldLabel>오늘 하루 · 화면별·사용자별</FieldLabel>
+        {dailyRows.length === 0 ? (
+          <p className="pl-2 text-micro-lg text-muted-foreground/70 sm:text-xs">
+            아직 집계된 기록이 없습니다(5분마다 갱신).
+          </p>
+        ) : (
+          Object.entries(byPath).map(([path, byEmail]) => (
+            <div key={path} className="flex flex-col gap-0.5 pl-2">
+              <span className="truncate text-micro-lg font-medium sm:text-xs">{path}</span>
+              {Object.entries(byEmail).map(([email, count]) => (
+                <div key={email} className="flex items-center justify-between gap-2 pl-2">
+                  <span className="truncate text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
+                    {email}
+                  </span>
+                  <span className="shrink-0 text-micro-lg font-semibold tabular-nums sm:text-xs">{count}</span>
+                </div>
+              ))}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Google Sheets(분당 60회 읽기/쓰기)와 Cloudflare(Workers/KV 무료 티어) 무료
 // 할당량 대비 현재 사용량을 한 화면에서 보여준다. Sheets 쪽은 이 Worker
 // 자신이 호출할 때마다 인메모리로 센 근사치(콜드스타트 시 리셋)이고,
@@ -190,19 +250,6 @@ function UsageMonitorSection({ visible }: { visible: boolean }) {
                       limit={usage.limits.kvWritesPerDay}
                       unit="회"
                     />
-                    {/* 🔧 [사용자 지시] "Cloudflare 모니터링 쪽에서 list
-                        사용 횟수도 표기해줘" — list()는 위 "KV 읽기" 게이지
-                        (read+list 합산, 하루 10만 한도)에도 이미 포함돼
-                        있지만, 실제로는 무료 플랜에서 하루 1,000회라는
-                        훨씬 빡빡한 자체 한도를 쓴다(2026-08-27 실제 소진
-                        이력) — 별도 게이지로 그 한도 대비 사용량을 바로
-                        볼 수 있게 한다. */}
-                    <UsageBar
-                      label="KV 목록조회(list)"
-                      used={usage.cloudflare.kvListsToday}
-                      limit={usage.limits.kvListsPerDay}
-                      unit="회"
-                    />
                     {/* 🔧 [사용자 지시] "해당 로그를 남겨서 어디서 누수가
                         발생하는지 알 수 있도록 해줘" → "어느 화면에서 어떤
                         기능에 의해 주기적으로 발생하는지 확인할 수 있도록,
@@ -216,87 +263,52 @@ function UsageMonitorSection({ visible }: { visible: boolean }) {
                         (isolate당 근사치 — 정확한 하루 총합은 위 게이지를
                         신뢰). 개별 이벤트 단위까지 보려면 wrangler tail의
                         [kv put]/[kv delete] 로그를 함께 참고.
-                        🔧 [list() 계측 추가] KV list()는 put/delete와는
-                        별도의 하루 1,000회 한도(무료 플랜)를 쓰고
-                        2026-08-27에 실제로 소진된 이력이 있어(§docs/
-                        CACHING_POLICY.md), 위 게이지엔 합산하지 않되 같은
-                        breakdown 표에 "LIST" 행으로 함께 보여준다. */}
-                    {usage.kvWriteBreakdown.length > 0 && (
-                      <div className="flex flex-col gap-0.5">
-                        <FieldLabel>최근 30분 KV 쓰기·삭제·목록조회 — 화면별 (이 서버 기준)</FieldLabel>
-                        {usage.kvWriteBreakdown.map(({ op, kind, path, count }) => (
-                          <div
-                            key={`${op}|${kind}|${path}`}
-                            className="flex items-center justify-between gap-2 pl-2"
-                          >
-                            <span className="truncate text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
-                              {op === "kv_put" ? "PUT" : op === "kv_delete" ? "DEL" : "LIST"} {path} · {kind}
-                            </span>
-                            <span className="shrink-0 text-micro-lg font-semibold tabular-nums sm:text-xs">
-                              {count}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {/* 🔧 [사용량 모니터링 고도화] 위 kvWriteBreakdown(30분·
-                        isolate 근사치)과 달리 "오늘 하루(KST 자정 기준)
-                        누적·관리자+학생 모두 포함·Durable Object 영구
-                        저장" 기준이라 서버 재시작에도 유지된다. 최근 5분
-                        이내 발생분은 cron 배치 전이라 아직 안 보일 수 있다.
+                        🔧 [사용자 지시] "그걸 알맞은 게이지 아래에 해달라고.
+                        저렇게 몰아놓지 말고" — PUT/DEL/LIST를 한 표로 몰아
+                        보여주던 걸, PUT·DEL은 바로 위 "KV 쓰기·삭제"
+                        게이지 아래에, LIST는 아래 "KV 목록조회(list)"
+                        게이지 아래에 각각 붙여 보여준다.
+                        🔧 [사용량 모니터링 고도화] 아래 "하루 누적" 목록은
+                        위 30분·isolate 근사치와 달리 "오늘 하루(KST 자정
+                        기준) 누적·관리자+학생 모두 포함·Durable Object
+                        영구 저장" 기준이라 서버 재시작에도 유지된다.
+                        최근 5분 이내 발생분은 cron 배치 전이라 아직 안
+                        보일 수 있다.
                         🔧 [사용자 지시] "내역이 없어도 기본으로 제목이라도
-                        보여줘" — 데이터가 없어도 섹션 라벨은 항상 보이고,
-                        목록이 비었을 때만 안내 문구로 대체한다.
-                        🔧 [사용자 지시] "쓰기 삭제랑 리스트랑 각각 아래에
-                        나눠서 표시해" — 한 줄에 "PUT n / DEL n / LIST n"으로
-                        합쳐 보여주던 걸, PUT/DELETE/LIST 세 개의 독립된
-                        소제목 아래에 각자 화면별·사용자별 목록을 나열하는
-                        구조로 바꿨다(연산 종류가 0건이면 그 소제목 자체를
-                        생략). */}
-                    <div className="flex flex-col gap-3">
-                      <FieldLabel>오늘 KV 쓰기·삭제·목록조회 — 화면별·사용자별 (하루 누적)</FieldLabel>
-                      {usage.dailyUsage.length === 0 ? (
-                        <p className="pl-2 text-micro-lg text-muted-foreground/70 sm:text-xs">
-                          아직 집계된 기록이 없습니다(5분마다 갱신).
-                        </p>
-                      ) : (
-                        (
-                          [
-                            ["kv_put", "PUT (쓰기)"],
-                            ["kv_delete", "DEL (삭제)"],
-                            ["kv_list", "LIST (목록조회)"],
-                          ] as const
-                        ).map(([op, opLabel]) => {
-                          const rows = usage.dailyUsage.filter((item) => item.op === op);
-                          if (rows.length === 0) return null;
-                          const byPath = rows.reduce<Record<string, Record<string, number>>>((acc, { path, email, count }) => {
-                            const byEmail = (acc[path] ??= {});
-                            byEmail[email] = (byEmail[email] || 0) + count;
-                            return acc;
-                          }, {});
-                          return (
-                            <div key={op} className="flex flex-col gap-0.5">
-                              <span className="text-micro-lg font-semibold sm:text-xs">{opLabel}</span>
-                              {Object.entries(byPath).map(([path, byEmail]) => (
-                                <div key={path} className="flex flex-col gap-0.5 pl-2">
-                                  <span className="truncate text-micro-lg font-medium sm:text-xs">{path}</span>
-                                  {Object.entries(byEmail).map(([email, count]) => (
-                                    <div key={email} className="flex items-center justify-between gap-2 pl-2">
-                                      <span className="truncate text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
-                                        {email}
-                                      </span>
-                                      <span className="shrink-0 text-micro-lg font-semibold tabular-nums sm:text-xs">
-                                        {count}
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
-                              ))}
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
+                        보여줘" → "값이 없더라도 각각 아래에 제목은
+                        붙이라니까" — 데이터가 없어도 소제목은 항상 보이고,
+                        목록이 비었을 때만 "없음" 안내로 대체한다. */}
+                    {(
+                      [
+                        ["kv_put", "PUT (쓰기)"],
+                        ["kv_delete", "DEL (삭제)"],
+                      ] as const
+                    ).map(([op, opLabel]) => (
+                      <UsageBreakdownGroup
+                        key={op}
+                        opLabel={opLabel}
+                        recentRows={usage.kvWriteBreakdown.filter((item) => item.op === op)}
+                        dailyRows={usage.dailyUsage.filter((item) => item.op === op)}
+                      />
+                    ))}
+                    {/* 🔧 [사용자 지시] "Cloudflare 모니터링 쪽에서 list
+                        사용 횟수도 표기해줘" — list()는 위 "KV 읽기" 게이지
+                        (read+list 합산, 하루 10만 한도)에도 이미 포함돼
+                        있지만, 실제로는 무료 플랜에서 하루 1,000회라는
+                        훨씬 빡빡한 자체 한도를 쓴다(2026-08-27 실제 소진
+                        이력) — 별도 게이지로 그 한도 대비 사용량을 바로
+                        볼 수 있게 한다. */}
+                    <UsageBar
+                      label="KV 목록조회(list)"
+                      used={usage.cloudflare.kvListsToday}
+                      limit={usage.limits.kvListsPerDay}
+                      unit="회"
+                    />
+                    <UsageBreakdownGroup
+                      opLabel="LIST (목록조회)"
+                      recentRows={usage.kvWriteBreakdown.filter((item) => item.op === "kv_list")}
+                      dailyRows={usage.dailyUsage.filter((item) => item.op === "kv_list")}
+                    />
                     {usage.cloudflare.workersErrorsToday > 0 && (
                       <p className="text-micro-lg text-destructive sm:text-xs">
                         오늘 Workers 오류 {usage.cloudflare.workersErrorsToday}건
