@@ -135,7 +135,6 @@ export function SectionHeader({
   refreshProgress,
   refreshDisabled,
   refreshDisabledReason,
-  iconVariant = "plain",
   trailing,
 }: {
   icon: LucideIcon;
@@ -150,10 +149,6 @@ export function SectionHeader({
   refreshDisabled?: boolean;
   /** refreshDisabled가 true일 때 보여줄 이유(버튼 title 툴팁). */
   refreshDisabledReason?: string;
-  /** "tint"면 아이콘을 원형 틴트 배지로 감싼다(사용자 지시: "디자인이
-   * 딱딱해 보인다" — 우선 제보 화면에서만 사용). 기본은 기존과 동일한
-   * 맨 아이콘(plain). */
-  iconVariant?: "plain" | "tint";
   /** 🔧 [사용자 지시] "관리자 드롭다운을 헤더 영역에 넣어버릴 수 있나?" —
    * 제목과 새로고침 버튼 사이에 임의 콘텐츠(회원 선택 Select 등)를 끼워
    * 넣기 위한 옵셔널 슬롯. 생략하면 기존 20여 곳의 사용처와 완전히
@@ -191,13 +186,7 @@ export function SectionHeader({
           안 보이되(sr-only) 스크린 리더용 라벨로 남긴다. */}
       <CollapsibleTrigger className={trailing ? "w-auto shrink-0" : "flex-1"} hideChevron>
         <span className="flex items-center gap-2 text-sm font-bold sm:text-base">
-          {iconVariant === "tint" ? (
-            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary sm:size-7">
-              <Icon className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
-            </span>
-          ) : (
-            <Icon className="size-4 shrink-0 text-primary sm:size-5" strokeWidth={ICON_STROKE.default} />
-          )}
+          <Icon className="size-4 shrink-0 text-primary sm:size-5" strokeWidth={ICON_STROKE.default} />
           {title}
         </span>
       </CollapsibleTrigger>

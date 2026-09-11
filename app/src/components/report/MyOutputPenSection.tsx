@@ -339,7 +339,6 @@ export function MyOutputPenSection({
           loading={loading}
           onRefresh={load}
           refreshProgress={refreshProgress}
-          iconVariant="tint"
         />
         <CollapsiblePanel className="flex flex-col gap-4">
           <CycleSwitcher selectedFileId={cycleFileId} onSelect={setCycleFileId} memberNumber="self" />

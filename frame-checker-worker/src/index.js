@@ -708,169 +708,20 @@ async function _cachedCompute(env, key, ttlMs, compute) {
   return promise;
 }
 
-// "진행 중인 제보 쿨다운"/"최근 전송된 알림" 목록을 KV.list()로 매번
-// 다시 훑지 않기 위한 인덱스 헬퍼. 이 두 목록은 항목이 "등록되는 순간"과
-// "TTL로 자연 만료되는 순간"에만 실제로 바뀌는데, 예전엔 15초 폴링마다
-// list()를 새로 호출해 사람 수 x 폴링 횟수만큼 하루 list 할당량(무료 1000회)을
-// 소진했다(2026-08 실측: 15명이 1시간만 동시 접속해도 초과). 이제는 항목
-// 배열 자체를 파일당 1개의 키에 저장해두고, 등록 시에만 다시 써서(list() 없이
-// get 1회 + put 1회) 갱신하고, 조회는 그 값을 그대로 돌려준다 — list()는
-// 조회 시점에 만료된 항목이 섞여 있을 때 정리 목적으로만 드물게 쓰인다.
-// 🔧 [동시 쓰기 레이스 수정] 이 인덱스는 배열 전체를 get→수정→put하는
-// 구조라(KV에 락/CAS가 없음), 두 요청이 거의 동시에 호출되면(예: 학생A
-// 제보 접수와 학생B 캡처 완료가 몇 초 간격으로 겹침) 둘 다 같은 "이전"
-// 배열을 읽어 각자 수정한 뒤, 나중에 put하는 쪽이 앞선 쪽의 결과를 통째로
-// 덮어써 그 항목이 사라지는 문제가 실제로 발생했다(사용자 보고: 1:21
-// 제보가 1:28 제보 이후 사라짐).
-//
-// put 직후 검증(내 항목이 남아있는지만 확인)하는 방식은 시뮬레이션으로
-// 검증해보니 무의미했다 — 상대방이 나를 덮어쓴 뒤 내가 다시 상대방을
-// 덮어써도 "내 항목은 남아있으니" 검증을 통과해버려, 상대방 항목이
-// 사라진 걸 전혀 잡아내지 못한다. 대신 CAS(compare-and-swap)를 그대로
-// 흉내낸다: get한 원본 문자열을 기억해두고, put하기 직전에 다시 get해
-// 그 사이 값이 조금이라도 바뀌었으면(누군가 먼저 썼다는 뜻) 이번 put을
-// 버리고 처음부터 다시 시도한다 — KV에 진짜 조건부 쓰기가 없어 "직전
-// 재확인 → 값이 같으면 즉시 put"으로 창을 최대한 좁히는 근사다.
-const LIVE_INDEX_MAX_RETRIES = 5;
+// 🔧 [KV → DO 이전, 2026-09-11] "진행 중인 제보 쿨다운"/"최근 전송된 알림"
+// 목록은 예전엔 여기(REPORTS_KV)에 "파일당 1개 키 + CAS 유사 재시도"
+// 방식의 라이브 인덱스로 있었다(list() 자체는 이미 없앤 상태였다). 이제는
+// 둘 다 ParticipantsRoster Durable Object의 메모리 상태로 옮겨졌다
+// (checkReportCooldown/recordReportCooldown/markReportCaptureDone/
+// listReportCooldowns, checkNoticeCooldown/recordNotice/listRecentNotices —
+// §ParticipantsRoster 클래스 정의 참고). DO는 단일 인스턴스가 요청을
+// 직렬 처리하므로 이 절이 다루던 CAS 재시도 로직 자체가 필요 없어져
+// 삭제했다 — 자세한 배경은 `docs/CACHING_POLICY.md` §24.2.
 
-async function _appendToLiveIndex(env, indexKey, item, itemTtlSec) {
-  for (let attempt = 0; attempt < LIVE_INDEX_MAX_RETRIES; attempt++) {
-    const rawBefore = await env.REPORTS_KV.get(indexKey);
-    const now = Date.now();
-    let items = [];
-    if (rawBefore) {
-      try {
-        items = JSON.parse(rawBefore).filter((it) => it.expiresAt > now);
-      } catch {
-        items = [];
-      }
-    }
-    items.push(item);
-    const newValue = JSON.stringify(items);
-    // put하기 직전에 다시 읽어, 내가 처음 읽은 시점과 지금이 정말 같은
-    // 상태인지 확인한다 — 다르면(다른 요청이 그 사이 먼저 썼다는 뜻)
-    // 이번 계산은 낡은 것이므로 버리고 최신 상태로 재시도한다.
-    const rawJustBefore = await env.REPORTS_KV.get(indexKey);
-    if (rawJustBefore !== rawBefore) continue;
-    // 인덱스 자체의 TTL은 그 안에 남아있는 항목 중 가장 늦게 만료되는 것보다
-    // 넉넉히 길게 잡아, 아직 유효한 항목이 있는데 인덱스가 먼저 사라지는 일을 막는다.
-    await env.REPORTS_KV.put(indexKey, newValue, { expirationTtl: itemTtlSec + 300 });
-    return items;
-  }
-  // 여러 번 재시도해도 경합이 계속되면(동시 요청이 극단적으로 많을 때만
-  // 발생, 이 스터디 규모에서는 거의 없음) 마지막엔 그냥 강제로 덮어써
-  // 최소한 내 항목만이라도 반영한다 — 화면 표시용 인덱스라 무한 재시도보다
-  // 낙관적 반환이 안전하다.
-  const raw = await env.REPORTS_KV.get(indexKey);
-  const now = Date.now();
-  let items = [];
-  if (raw) {
-    try {
-      items = JSON.parse(raw).filter((it) => it.expiresAt > now);
-    } catch {
-      items = [];
-    }
-  }
-  items.push(item);
-  await env.REPORTS_KV.put(indexKey, JSON.stringify(items), { expirationTtl: itemTtlSec + 300 });
-  return items;
-}
-
-// COOLDOWN_INDEX_KEY 안의 특정 항목(id로 식별)에 capturedAt을 채워
-// 갱신한다 — 봇이 실제 캡처를 끝낸 시점을 서버에 알릴 때 쓴다. 이미 TTL로
-// 만료됐거나 애초에 없는 id면 조용히 무시한다(쿨다운 자체는 그대로 유효).
-// 🔧 [촬영 완료 후 20분 재시작] 원래는 접수 시각(startedAt)부터 20분이
-// 지나면 재제보 쿨다운이 풀렸는데, 촬영 소요시간도 그 20분 안에 포함되어
-// 있었다(사용자 지적: 파일이 저장된 시점부터 20분을 새로 세야 함). 이제
-// 캡처 완료 시점(capturedAt)을 새 기준으로 삼아 expiresAt을 재계산하고,
-// 실제 429 차단에 쓰이는 cooldownKey(`cooldown:{nickname}`) KV의 TTL도
-// 그 시점부터 20분으로 다시 설정한다 — 이 인덱스 갱신만으로는 화면 표시
-// (handleListActiveCooldowns)만 늘어나고 실제 차단은 그대로 원래 20분에
-// 풀려버리기 때문이다. cooldownSec은 항목이 이미 알고 있는 만료 기준
-// (expiresAt - startedAt)을 그대로 재사용해, 셀프체크 등 다른 쿨다운
-// 길이가 생겨도 하드코딩 없이 맞물린다.
-// 🔧 [동시 쓰기 레이스 수정] _appendToLiveIndex와 동일한 배열 전체
-// get→수정→put 구조라 같은 취약점을 공유한다 — 이 함수와 _appendToLiveIndex가
-// 서로 다른 요청에서 거의 동시에 같은 인덱스를 건드려도(A 제보 접수 중에
-// B 캡처 완료가 끼어드는 등) 나중 put이 앞선 변경을 덮어쓸 수 있었다.
-// _appendToLiveIndex와 동일한 CAS 유사 재시도(put 직전에 원본을 다시 읽어
-// 그 사이 값이 바뀌었으면 처음부터 재시도)를 적용한다.
-async function _markCaptureDoneInLiveIndex(env, indexKey, id, capturedAt) {
-  for (let attempt = 0; attempt < LIVE_INDEX_MAX_RETRIES; attempt++) {
-    const rawBefore = await env.REPORTS_KV.get(indexKey);
-    if (!rawBefore) return;
-    let items;
-    try {
-      items = JSON.parse(rawBefore);
-    } catch {
-      return;
-    }
-    const now = Date.now();
-    let changed = false;
-    let cooldownRestart = null;
-    // 캡처가 예상보다 늦게 끝나 원래 expiresAt을 이미 넘겼을 수 있으므로,
-    // "완료 알림이 도착한" 이 항목만은 만료 필터로 미리 걸러내지 않는다 —
-    // 아래에서 새 expiresAt으로 갱신한 뒤에 함께 살아있는지 다시 판단한다.
-    const alive = items.filter((it) => it.expiresAt > now || it.id === id);
-    for (const it of alive) {
-      if (it.id === id && !it.capturedAt) {
-        it.capturedAt = capturedAt;
-        const cooldownSec = Math.round((it.expiresAt - it.startedAt) / 1000);
-        it.expiresAt = capturedAt + cooldownSec * 1000;
-        cooldownRestart = { nickname: it.nickname, cooldownSec };
-        changed = true;
-      }
-    }
-    if (!changed) return; // 이미 이 id에 capturedAt이 채워져 있거나 id가 없음 — 더 할 일 없음.
-    const stillAlive = alive.filter((it) => it.expiresAt > now);
-    const newValue = stillAlive.length > 0 ? JSON.stringify(stillAlive) : null;
-    // put하기 직전에 다시 읽어, 그 사이 다른 요청이 먼저 썼는지 확인한다 —
-    // 다르면 이번 계산은 낡은 것이므로 버리고 최신 상태로 재시도한다.
-    const rawJustBefore = await env.REPORTS_KV.get(indexKey);
-    if (rawJustBefore !== rawBefore) continue;
-    // cooldownKey 갱신은 같은 값을 다시 써도 무해(멱등)하므로 CAS 확인
-    // 이후 실행해도(재시도로 여러 번 불려도) 안전하다.
-    if (cooldownRestart) {
-      await env.REPORTS_KV
-        .put(`cooldown:${cooldownRestart.nickname}`, JSON.stringify({ nickname: cooldownRestart.nickname, ts: capturedAt }), {
-          expirationTtl: cooldownRestart.cooldownSec,
-        })
-        .catch(() => {});
-    }
-    if (!newValue) return;
-    const maxExpiresAt = Math.max(...stillAlive.map((it) => it.expiresAt));
-    const ttlSec = Math.max(60, Math.ceil((maxExpiresAt - now) / 1000) + 300);
-    await env.REPORTS_KV.put(indexKey, newValue, { expirationTtl: ttlSec }).catch(() => {});
-    return;
-  }
-}
-
-async function _readLiveIndex(env, indexKey) {
-  const raw = await env.REPORTS_KV.get(indexKey);
-  if (!raw) return [];
-  const now = Date.now();
-  let items;
-  try {
-    items = JSON.parse(raw);
-  } catch {
-    return [];
-  }
-  const alive = items.filter((it) => it.expiresAt > now);
-  // 만료된 항목이 섞여 있었다면(아무도 새로 등록하지 않아 자동 정리가 안 된
-  // 경우) 조회 시점에 한 번 걸러내 다시 저장해둔다 — 다음 조회부터는 이미
-  // 깨끗한 값을 쓰게 되어, 만료 항목이 계속 쌓여 값이 무한정 커지지 않는다.
-  if (alive.length !== items.length && alive.length > 0) {
-    const maxExpiresAt = Math.max(...alive.map((it) => it.expiresAt));
-    const ttlSec = Math.max(60, Math.ceil((maxExpiresAt - now) / 1000) + 300);
-    await env.REPORTS_KV.put(indexKey, JSON.stringify(alive), { expirationTtl: ttlSec }).catch(() => {});
-  }
-  return alive;
-}
-
-// leaveq:(사유반휴 봇 오프라인 대기열) 전용 인덱스. cooldown:/notice:와
-// 달리 이 큐는 자연 만료(TTL)가 없고 "봇에 전달됨/승인됨/반려됨/철회됨"
-// 시점에 명시적으로 사라져야 하므로, _appendToLiveIndex/_readLiveIndex의
-// expiresAt 기반 필터링을 그대로 재사용할 수 없다 — 추가/제거를 직접
+// leaveq:(사유반휴 봇 오프라인 대기열) 전용 인덱스. 이 큐는 KV에 남아있다
+// (자연 만료(TTL)가 없고 "봇에 전달됨/승인됨/반려됨/철회됨" 시점에 명시적으로
+// 사라져야 하는 데다, 봇이 몇 시간 꺼져 있어도 반드시 살아남아야 하는
+// 성격이라 DO의 휘발성 메모리로 옮기기엔 안 맞는다 — §24.3 참고). 추가/제거를 직접
 // 관리하는 전용 버전을 둔다. 🔧 [실측 계기] 2026-08-27 KV list() 하루
 // 한도(1,000회)가 실제로 소진되어 "/admin/members/roster"가 500을
 // 냈다(GraphQL 실측: list 1,102회/일). listQueuedReasonLeaveDays가
@@ -2772,7 +2623,6 @@ async function handleDevLogin(req, env, origin) {
 }
 
 const REPORT_COOLDOWN_SEC = 20 * 60;
-const COOLDOWN_INDEX_KEY = "cooldownIndex:current";
 // 🔧 [촬영 진행 중 카운트다운] 제보 접수 직후부터 20분 재제보 쿨다운을 바로
 // 보여주면, 실제로 봇이 촬영 중인 짧은 구간(스크린샷 약 2.5분, 영상 약
 // 1.5~3분)에도 20분짜리 숫자가 떠 사용자가 "촬영이 끝났나?"를 가늠할 수
@@ -2881,8 +2731,11 @@ async function handleReport(req, env, origin) {
     cooldownSec = REPORT_COOLDOWN_SEC;
   }
 
+  // 🔧 [KV → DO 이전, 2026-09-11] 쿨다운 체크를 KV(cooldown:/selfcheck-cooldown:)가
+  // 아니라 ParticipantsRoster DO에 위임한다 — cooldownKey 문자열은 그대로
+  // 재사용(두 종류가 안 섞이도록)하되, 저장소만 바뀐다.
   if (!isAdmin) {
-    const onCooldown = await env.REPORTS_KV.get(cooldownKey);
+    const onCooldown = await checkReportCooldown(env, cooldownKey);
     if (onCooldown) {
       return json(
         {
@@ -2922,36 +2775,21 @@ async function handleReport(req, env, origin) {
   await env.REPORTS_KV.put(`report:${id}`, JSON.stringify(entry), {
     expirationTtl: REPORT_TTL_SEC,
   });
-  await env.REPORTS_KV.put(cooldownKey, JSON.stringify({ nickname: trimmedNickname, ts }), {
-    expirationTtl: cooldownSec,
-  });
-  // 🔧 [버그 수정] 셀프 체크를 원래 이 공유 인덱스에서 아예 제외했는데,
-  // 본인조차 "최근 진행된 제보"에서 자신의 셀프 체크 진행 상황(촬영
-  // 중인지 등)을 확인할 방법이 없었다(사용자 지적: "본인조차 진행
-  // 상황을 모르잖아"). 그렇다고 그대로 노출하면 "최근 진행된 제보"가
-  // 전체 참여자 공개 목록이라 다른 사람에게도 "OOO이 셀프 체크했다"가
-  // 보이는 부작용이 있다 — 항목은 항상 인덱스에 넣되 selfCheck/
-  // reporterEmail을 함께 저장해, 조회 시점(handleListActiveCooldowns)
-  // 에서 요청자 본인 것과 관리자에게만 걸러 보여준다(사용자 결정:
-  // "자기랑 관리자한테만 노출"). 관리자는 재제보 차단(위 429)만
-  // 우회할 뿐 "최근 진행된 제보" 목록에는 관리자 제보도 똑같이 보여야
-  // 한다 — 그러지 않으면 실제로는 봇에 정상 접수됐는데도 참여자들에게
-  // "제보가 없다"고 잘못 보인다(사용자 지적). 목록 화면이 "언제
-  // 끝나는지"를 계산할 수 있도록 ts도 함께 저장한다 — 값 자체(TTL
-  // 만료 여부)로 쿨다운 중인지는 이미 판별되므로, ts는 순수하게
-  // 표시용 부가 정보다. id/mode/capturedAt은 "촬영 진행 중" 카운트다운
-  // 판정에 쓰인다 — 봇이 캡처를 끝내면 handleReportCaptureDone이 이
-  // id를 찾아 capturedAt을 채운다.
-  await _appendToLiveIndex(
+  // 🔧 [KV → DO 이전, 2026-09-11] 쿨다운 기록 + "진행 중인 제보" 표시를
+  // 하나의 DO 호출로 겸한다 — KV 시절엔 cooldownKey(차단 판정용)와
+  // COOLDOWN_INDEX_KEY(표시용)를 따로 썼는데, DO에서는 배열 하나(§record)가
+  // 둘 다 담당해 별도로 동기화할 필요가 없다. 셀프 체크도 항상 기록하되
+  // (본인조차 진행 상황을 봐야 하므로), "진행 중인 제보" 조회 시점
+  // (handleListActiveCooldowns)에서 요청자 본인과 관리자에게만 걸러
+  // 보여준다 — 그 필터링 로직 자체는 그대로 유지된다. 관리자는 재제보
+  // 차단(위 429)만 우회할 뿐 이 기록 자체는 관리자 제보도 똑같이 남는다.
+  await recordReportCooldown(
     env,
-    COOLDOWN_INDEX_KEY,
     {
+      cooldownKey,
       id,
       nickname: trimmedNickname,
       mode: finalMode,
-      startedAt: ts,
-      capturedAt: null,
-      expiresAt: ts + cooldownSec * 1000,
       selfCheck: isSelfCheck,
       reporterEmail: session.email,
     },
@@ -3007,10 +2845,11 @@ async function handleListActiveCooldowns(req, env, origin) {
 
   const isAdmin = (session.email || "").toLowerCase() === (env.ADMIN_EMAIL || "").toLowerCase();
 
-  // list() 대신 handleReport가 등록 시점에 미리 채워둔 인덱스를 읽는다 —
-  // 15초 폴링이 몇 명이든 실제 KV.list() 호출 없이 처리된다.
-  const rawItems = await _readLiveIndex(env, COOLDOWN_INDEX_KEY);
-  // 🔧 [버그 수정] 셀프 체크 항목도 이제 이 인덱스에 들어오지만(사용자
+  // 🔧 [KV → DO 이전, 2026-09-11] list() 대신(원래도 이미 인덱스 방식이었지만,
+  // 이제 그 인덱스 자체가 KV가 아니라) ParticipantsRoster DO의 메모리
+  // 상태를 읽는다 — 15초 폴링이 몇 명이든 KV를 전혀 안 거친다.
+  const rawItems = await listReportCooldowns(env);
+  // 🔧 [버그 수정] 셀프 체크 항목도 이제 이 목록에 들어오지만(사용자
   // 지시: 본인이 자신의 진행 상황을 볼 수 있어야 함), "최근 진행된
   // 제보"는 전체 참여자에게 공개되는 목록이라 그대로 노출하면 다른
   // 사람에게도 "OOO이 셀프 체크했다"가 보이는 부작용이 있다 — 요청자
@@ -3020,7 +2859,7 @@ async function handleListActiveCooldowns(req, env, origin) {
   // 누구에게나 보인다.
   const items = rawItems
     .filter((item) => !item.selfCheck || isAdmin || item.reporterEmail === session.email)
-    .map(({ selfCheck, reporterEmail, ...rest }) => rest);
+    .map(({ cooldownKey, selfCheck, reporterEmail, ...rest }) => rest);
   items.sort((a, b) => a.expiresAt - b.expiresAt);
   return json({ items }, 200, origin);
 }
@@ -3036,7 +2875,10 @@ async function handleReportCaptureDone(req, env, origin) {
   }
   const { id } = await req.json().catch(() => ({}));
   if (!id) return json({ error: "id가 필요합니다." }, 400, origin);
-  await _markCaptureDoneInLiveIndex(env, COOLDOWN_INDEX_KEY, id, Date.now());
+  // 🔧 [KV → DO 이전, 2026-09-11] cooldown: KV TTL 재기입 + 인덱스 갱신
+  // 두 단계였던 걸 DO 호출 하나로 대체(§ParticipantsRoster
+  // /report-cooldown/capture-done).
+  await markReportCaptureDone(env, id, Date.now());
   return json({ ok: true }, 200, origin);
 }
 
@@ -6894,28 +6736,23 @@ async function handleAdminMembersRoster(req, env, origin) {
     // 여부(PUSH_SUBS_KV, 이메일 기준)와 카테고리별 on/off(REPORTS_KV의
     // notifyPref:{번호}, 회원번호 기준)를 함께 보여준다 — 조회 전용이며,
     // 관리자가 여기서 값을 바꾸지는 못한다(변경은 회원 본인만 /notify-prefs로).
-    const subscribedEmails = new Set();
-    let cursor;
-    do {
-      const page = await env.PUSH_SUBS_KV.list({ prefix: "sub:", cursor });
-      for (const key of page.keys) {
-        const email = key.name.split(":")[1];
-        if (email) subscribedEmails.add(email);
-      }
-      cursor = page.list_complete ? undefined : page.cursor;
-    } while (cursor);
-
+    // 🔧 [KV list() 제거, 2026-09-11] 예전엔 list({prefix:"sub:"})로 전
+    // 회원 구독을 한 번에 훑었는데, 이제 회원별 subIndex:{이메일}을 각자
+    // 조회한다(§getPushDeviceIndex, handlePushSubscriptionStatus와 동일 패턴).
     const membersWithNotify = await Promise.all(
       members.map(async (m) => {
         const email = emailByNumber.get(m.number) || null;
-        const prefs = await loadNotifyPrefs(env, m.number);
+        const [prefs, pushSubscribed] = await Promise.all([
+          loadNotifyPrefs(env, m.number),
+          email ? getPushDeviceIndex(env, email).then((d) => d.length > 0) : Promise.resolve(false),
+        ]);
         const detail = detailByNumber.get(m.number) || { googleAccount: "", gooroomeeAccount: "", examKind: "" };
         const lastLogin = lastLoginByNumber.get(m.number) || { ts: null, ip: "" };
         const joinDateYYMMDD = joinDateYYMMDDByNumber.get(m.number) || "";
         return {
           ...m,
           joinDate: joinDateYYMMDD && m.joinDate ? `${m.joinDate} (${joinDateYYMMDD})` : m.joinDate,
-          pushSubscribed: email ? subscribedEmails.has(email) : false,
+          pushSubscribed,
           notifyPrefs: prefs,
           googleAccount: detail.googleAccount,
           gooroomeeAccount: detail.gooroomeeAccount,
@@ -8215,6 +8052,27 @@ export class ParticipantsRoster {
     this.members = [];
     this.updatedAt = 0;
     this.locks = new Map(); // key -> { holding: bool, queue: [resolve, ...] }
+    // 🔧 [KV list() 제거, 2026-09-11] "PUSH 알림 전송"의 쿨다운(닉네임별
+    // 재전송 제한)·"최근 전송된 알림" 목록을 원래 KV(notice-cooldown:/
+    // noticeIndex:current)에 뒀었는데, 이 DO가 이미 "전 세계에 단 하나뿐인
+    // 인스턴스"라 같은 목적(참여자 명단)에 더해 이 상태도 얹을 수 있다 —
+    // KV처럼 하루 쓰기 한도(1,000회)에 걸리지 않고, get→put 사이 경합도
+    // 없이(요청이 이 인스턴스로 직렬 처리됨) 원자적으로 처리된다. 만료
+    // 판정용 expiresAt만 함께 저장해 매 조회 시 걸러낸다 — KV의
+    // _appendToLiveIndex/_readLiveIndex와 같은 원리지만 DO 안에서는 CAS
+    // 재시도 로직 자체가 필요 없다(단일 인스턴스가 이미 직렬화해주므로).
+    this.notices = []; // { nickname, message, senderName, ts, expiresAt }
+    // 🔧 [KV list() 무관, KV 쓰기 한도 제거, 2026-09-11] "진행 중인 제보"
+    // (ActiveReportsSection, 15초 폴링)도 notices와 같은 이유로 여기로
+    // 옮긴다 — cooldownKey(코드상 `cooldown:{nickname}`/
+    // `selfcheck-cooldown:{email}`와 동일한 문자열을 그대로 재사용, 두
+    // 종류가 섞이지 않도록) 존재 여부로 429 차단을 판정하고, 같은 배열을
+    // "최근 진행된 제보" 표시에도 그대로 쓴다 — KV 시절엔 이 둘(차단 판정용
+    // cooldown: 키, 표시용 COOLDOWN_INDEX_KEY 인덱스)이 서로 다른 저장소라
+    // 수동으로 동기화해야 했는데(_markCaptureDoneInLiveIndex가 인덱스
+    // expiresAt과 cooldown: TTL 둘 다 갱신), 여기선 한 배열이 둘 다 겸해
+    // 그 동기화 자체가 필요 없어졌다.
+    this.reportCooldowns = []; // { cooldownKey, id, nickname, mode, startedAt, capturedAt, expiresAt, selfCheck, reporterEmail }
   }
 
   async fetch(req) {
@@ -8227,6 +8085,21 @@ export class ParticipantsRoster {
       });
     }
     if (req.method === "GET") {
+      const url = new URL(req.url);
+      if (url.pathname === "/notice/list") {
+        const now = Date.now();
+        this.notices = this.notices.filter((n) => n.expiresAt > now);
+        return new Response(JSON.stringify({ items: this.notices }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.pathname === "/report-cooldown/list") {
+        const now = Date.now();
+        this.reportCooldowns = this.reportCooldowns.filter((c) => c.expiresAt > now);
+        return new Response(JSON.stringify({ items: this.reportCooldowns }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       const stale = Date.now() - this.updatedAt > PARTICIPANTS_STALE_MS;
       return new Response(
         JSON.stringify({ members: this.members, updatedAt: this.updatedAt, stale }),
@@ -8235,6 +8108,71 @@ export class ParticipantsRoster {
     }
     if (req.method === "POST") {
       const url = new URL(req.url);
+      if (url.pathname === "/notice/check") {
+        const { nickname } = await req.json();
+        const now = Date.now();
+        this.notices = this.notices.filter((n) => n.expiresAt > now);
+        const onCooldown = this.notices.some((n) => n.nickname === nickname);
+        return new Response(JSON.stringify({ onCooldown }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.pathname === "/notice/record") {
+        const { nickname, message, senderName, cooldownSec } = await req.json();
+        const now = Date.now();
+        this.notices = this.notices.filter((n) => n.expiresAt > now);
+        this.notices.push({ nickname, message, senderName, ts: now, expiresAt: now + cooldownSec * 1000 });
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.pathname === "/report-cooldown/check") {
+        const { cooldownKey } = await req.json();
+        const now = Date.now();
+        this.reportCooldowns = this.reportCooldowns.filter((c) => c.expiresAt > now);
+        const onCooldown = this.reportCooldowns.some((c) => c.cooldownKey === cooldownKey);
+        return new Response(JSON.stringify({ onCooldown }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.pathname === "/report-cooldown/record") {
+        const { cooldownKey, id, nickname, mode, selfCheck, reporterEmail, cooldownSec } = await req.json();
+        const now = Date.now();
+        this.reportCooldowns = this.reportCooldowns.filter((c) => c.expiresAt > now);
+        this.reportCooldowns.push({
+          cooldownKey,
+          id,
+          nickname,
+          mode,
+          startedAt: now,
+          capturedAt: null,
+          expiresAt: now + cooldownSec * 1000,
+          selfCheck: !!selfCheck,
+          reporterEmail,
+        });
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.pathname === "/report-cooldown/capture-done") {
+        // 🔧 [촬영 완료 후 20분 재시작] KV 시절 _markCaptureDoneInLiveIndex와
+        // 동일한 로직 — capturedAt부터 원래 쿨다운 길이(expiresAt-startedAt)
+        // 만큼 다시 카운트한다. 여긴 배열 하나가 차단 판정과 표시를 겸하므로
+        // KV처럼 cooldown: 키를 별도로 재기입할 필요가 없다.
+        const { id, capturedAt } = await req.json();
+        const now = Date.now();
+        this.reportCooldowns = this.reportCooldowns.filter((c) => c.expiresAt > now || c.id === id);
+        const item = this.reportCooldowns.find((c) => c.id === id);
+        if (item && !item.capturedAt) {
+          const cooldownSec = Math.round((item.expiresAt - item.startedAt) / 1000);
+          item.capturedAt = capturedAt;
+          item.expiresAt = capturedAt + cooldownSec * 1000;
+        }
+        this.reportCooldowns = this.reportCooldowns.filter((c) => c.expiresAt > now);
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       const key = url.searchParams.get("key");
       if (!key) return new Response(JSON.stringify({ error: "key required" }), { status: 400 });
       if (url.pathname === "/lock/acquire") {
@@ -8333,6 +8271,72 @@ async function withMemberLock(env, key, fn) {
       }
     }
   }
+}
+
+// PUSH 알림 쿨다운/최근 목록 — ParticipantsRoster DO(§lock과 동일한 단일
+// 인스턴스)에 위임한다. 이 세 함수 모두 KV를 전혀 건드리지 않는다.
+async function checkNoticeCooldown(env, nickname) {
+  const stub = getRosterStub(env);
+  const res = await stub.fetch("https://do/notice/check", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ nickname }),
+  });
+  const data = await res.json();
+  return !!data.onCooldown;
+}
+
+async function recordNotice(env, entry, cooldownSec) {
+  const stub = getRosterStub(env);
+  await stub.fetch("https://do/notice/record", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...entry, cooldownSec }),
+  });
+}
+
+async function listRecentNotices(env) {
+  const stub = getRosterStub(env);
+  const res = await stub.fetch("https://do/notice/list", { method: "GET" });
+  const data = await res.json();
+  return data.items || [];
+}
+
+// "진행 중인 제보" 쿨다운/목록 — 같은 DO, notice와 동일한 패턴.
+async function checkReportCooldown(env, cooldownKey) {
+  const stub = getRosterStub(env);
+  const res = await stub.fetch("https://do/report-cooldown/check", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cooldownKey }),
+  });
+  const data = await res.json();
+  return !!data.onCooldown;
+}
+
+async function recordReportCooldown(env, entry, cooldownSec) {
+  const stub = getRosterStub(env);
+  await stub.fetch("https://do/report-cooldown/record", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...entry, cooldownSec }),
+  });
+}
+
+async function markReportCaptureDone(env, id, capturedAt) {
+  const stub = getRosterStub(env);
+  await stub.fetch("https://do/report-cooldown/capture-done", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, capturedAt }),
+  });
+}
+
+async function listReportCooldowns(env) {
+  const stub = getRosterStub(env);
+  const res = await stub.fetch("https://do/report-cooldown/list", { method: "GET" });
+  const data = await res.json();
+  return data.items || [];
 }
 
 function getRosterStub(env) {
@@ -8783,8 +8787,9 @@ async function handleAdminPushSendCategory(req, env, origin) {
       );
     }
 
-    const list = await env.PUSH_SUBS_KV.list({ prefix: `sub:${member.email}:` });
-    if (list.keys.length === 0) {
+    // 🔧 [KV list() 제거, 2026-09-11] subIndex:{이메일}로 대체.
+    const devices = await getPushDeviceIndex(env, member.email);
+    if (devices.length === 0) {
       return json({ error: `${member.name}님은 아직 알림을 켜지 않았습니다.` }, 404, origin);
     }
 
@@ -8794,25 +8799,40 @@ async function handleAdminPushSendCategory(req, env, origin) {
     });
 
     let sent = 0;
-    for (const key of list.keys) {
-      const raw = await env.PUSH_SUBS_KV.get(key.name);
-      if (!raw) continue;
-      const parsed = JSON.parse(raw);
+    let indexChanged = false;
+    for (const device of devices) {
       // enabled가 false로 명시된 기기(사용자가 껐거나, 중복이라 정리한
       // 기기)는 건너뛴다. 필드가 아예 없는 옛 구독(이 기능 추가 전 저장된
       // 것)은 기존처럼 발송 대상으로 취급한다.
+      if (device.enabled === false) continue;
+      const raw = await env.PUSH_SUBS_KV.get(device.id);
+      if (!raw) {
+        device._missing = true;
+        indexChanged = true;
+        continue;
+      }
+      const parsed = JSON.parse(raw);
       if (parsed.enabled === false) continue;
       const { subscription } = parsed;
       try {
         const res = await sendWebPush(subscription, payload, env);
         if (res.status === 404 || res.status === 410) {
-          await env.PUSH_SUBS_KV.delete(key.name);
+          await env.PUSH_SUBS_KV.delete(device.id);
+          device._missing = true;
+          indexChanged = true;
         } else if (res.status >= 200 && res.status < 300) {
           sent += 1;
         }
       } catch {
         // 개별 구독 발송 실패는 건너뛰고 나머지 구독에는 계속 시도한다.
       }
+    }
+    if (indexChanged) {
+      await putPushDeviceIndex(
+        env,
+        member.email,
+        devices.filter((d) => !d._missing)
+      );
     }
 
     if (sent === 0) return json({ error: "알림 발송에 실패했습니다." }, 502, origin);
@@ -8858,6 +8878,72 @@ function guessDeviceLabel(userAgent) {
 // "기기별로 켜고 끌 수 있게" 사용자가 직접 죽은/중복 기기를 정리할 수
 // 있는 구조로 바꾼다 — deviceLabel(자동 추정)과 enabled(기본 true)를
 // 함께 저장하고, 발송 로직은 enabled가 false인 구독을 건너뛴다.
+// 🔧 [KV list() 제거, 2026-09-11] 회원 1명의 기기 목록을 PUSH_SUBS_KV.list
+// ({prefix:"sub:{이메일}:"})로 훑던 4곳(handleListPushDevices/
+// handlePushSendToMember/handlePushSendTest/handlePushSubscriptionStatus)이
+// 전부 list()를 하루 1,000회 예산에서 소진했다. 회원별 인덱스
+// subIndex:{이메일}(그 사람 기기의 id/deviceLabel/enabled/savedAt 배열)
+// 하나로 대체한다 — 기기 등록/토글/이름변경/삭제(4곳) 시점에 이 인덱스도
+// 함께 갱신해 항상 최신을 유지한다.
+//
+// 마이그레이션: 이 기능 배포 전에 이미 등록된 구독은 인덱스가 없다 —
+// getPushDeviceIndex가 인덱스를 못 찾으면 그 회원에 한해 딱 한 번
+// list()로 실제 구독을 훑어 인덱스를 새로 만들어둔다(자체 치유). 그
+// 이후로는 그 회원에 대해 다시는 list()가 필요 없다.
+async function getPushDeviceIndex(env, email) {
+  const raw = await env.PUSH_SUBS_KV.get(`subIndex:${email}`);
+  if (raw) {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      // 손상된 인덱스는 아래 자체 복구 경로로 넘어간다.
+    }
+  }
+  const list = await env.PUSH_SUBS_KV.list({ prefix: `sub:${email}:` });
+  const devices = [];
+  for (const key of list.keys) {
+    const raw2 = await env.PUSH_SUBS_KV.get(key.name);
+    if (!raw2) continue;
+    try {
+      const parsed = JSON.parse(raw2);
+      devices.push({
+        id: key.name,
+        deviceLabel: parsed.deviceLabel || "알 수 없는 기기",
+        enabled: parsed.enabled !== false,
+        savedAt: parsed.savedAt || null,
+      });
+    } catch {
+      // 손상된 항목은 건너뜀.
+    }
+  }
+  await putPushDeviceIndex(env, email, devices);
+  return devices;
+}
+
+async function putPushDeviceIndex(env, email, devices) {
+  await env.PUSH_SUBS_KV.put(`subIndex:${email}`, JSON.stringify(devices));
+}
+
+// 토글/이름변경 공용 — 인덱스에서 해당 기기 항목 하나만 찾아 updater로
+// 고친 뒤 다시 저장한다. id가 인덱스에 없으면(드묾 — sub: 키는 있는데
+// 인덱스만 어긋난 경우) 조용히 넘어간다 — 실제 구독 상태(sub: 키)는
+// 호출부가 이미 따로 갱신했으므로 표시용 인덱스 하나 어긋나는 정도는
+// 다음 자체 복구(getPushDeviceIndex의 list() 폴백은 인덱스가 아예 없을
+// 때만 동작하므로, 이 경우는 다음 배포/재구독 때 자연히 맞춰진다).
+async function updatePushDeviceIndexEntry(env, email, id, updater) {
+  const devices = await getPushDeviceIndex(env, email);
+  const idx = devices.findIndex((d) => d.id === id);
+  if (idx === -1) return;
+  updater(devices[idx]);
+  await putPushDeviceIndex(env, email, devices);
+}
+
+async function removePushDeviceIndexEntry(env, email, id) {
+  const devices = await getPushDeviceIndex(env, email);
+  const next = devices.filter((d) => d.id !== id);
+  if (next.length !== devices.length) await putPushDeviceIndex(env, email, next);
+}
+
 async function handlePushSubscribe(req, env, origin) {
   const authHeader = req.headers.get("Authorization") || "";
   const token = authHeader.replace(/^Bearer\s+/i, "");
@@ -8871,10 +8957,20 @@ async function handlePushSubscribe(req, env, origin) {
 
   const key = `sub:${session.email}:${await sha256Hex(subscription.endpoint)}`;
   const deviceLabel = guessDeviceLabel(req.headers.get("User-Agent"));
+  const savedAt = Date.now();
   await env.PUSH_SUBS_KV.put(
     key,
-    JSON.stringify({ email: session.email, subscription, savedAt: Date.now(), deviceLabel, enabled: true })
+    JSON.stringify({ email: session.email, subscription, savedAt, deviceLabel, enabled: true })
   );
+  // 🔧 [KV list() 제거, 2026-09-11] subIndex:{이메일}도 함께 갱신한다 —
+  // 같은 기기(endpoint)가 재구독하면 같은 key로 덮어써지므로 교체, 새
+  // 기기면 추가한다.
+  const devices = await getPushDeviceIndex(env, session.email);
+  const idx = devices.findIndex((d) => d.id === key);
+  const entry = { id: key, deviceLabel, enabled: true, savedAt };
+  if (idx >= 0) devices[idx] = entry;
+  else devices.push(entry);
+  await putPushDeviceIndex(env, session.email, devices);
 
   // 🔧 [알림 켜기 직후 상태가 안 바뀌던 문제 수정] 프론트가 구독 등록
   // 직후 곧바로 /push/devices를 다시 조회해 "이 기기가 서버에도 있는지"
@@ -8905,23 +9001,10 @@ async function handleListPushDevices(req, env, origin) {
   const session = await verifySession(token, env.SESSION_SECRET);
   if (!session) return json({ error: "로그인이 만료되었습니다. 다시 로그인해주세요." }, 401, origin);
 
-  const list = await env.PUSH_SUBS_KV.list({ prefix: `sub:${session.email}:` });
-  const devices = [];
-  for (const key of list.keys) {
-    const raw = await env.PUSH_SUBS_KV.get(key.name);
-    if (!raw) continue;
-    try {
-      const parsed = JSON.parse(raw);
-      devices.push({
-        id: key.name,
-        deviceLabel: parsed.deviceLabel || "알 수 없는 기기",
-        enabled: parsed.enabled !== false,
-        savedAt: parsed.savedAt || null,
-      });
-    } catch {
-      // 손상된 항목은 목록에서 조용히 제외한다.
-    }
-  }
+  // 🔧 [KV list() 제거, 2026-09-11] subIndex:{이메일}이 이미 이 응답에
+  // 필요한 필드(id/deviceLabel/enabled/savedAt)를 그대로 담고 있어
+  // list()도 기기별 get()도 필요 없다.
+  const devices = (await getPushDeviceIndex(env, session.email)).slice();
   devices.sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
   return json({ devices }, 200, origin);
 }
@@ -8946,6 +9029,9 @@ async function handlePushDeviceToggle(req, env, origin) {
   const parsed = JSON.parse(raw);
   parsed.enabled = !!enabled;
   await env.PUSH_SUBS_KV.put(id, JSON.stringify(parsed));
+  await updatePushDeviceIndexEntry(env, session.email, id, (d) => {
+    d.enabled = !!enabled;
+  });
   return json({ ok: true }, 200, origin);
 }
 
@@ -8972,6 +9058,9 @@ async function handlePushDeviceRename(req, env, origin) {
   const parsed = JSON.parse(raw);
   parsed.deviceLabel = trimmed;
   await env.PUSH_SUBS_KV.put(id, JSON.stringify(parsed));
+  await updatePushDeviceIndexEntry(env, session.email, id, (d) => {
+    d.deviceLabel = trimmed;
+  });
   return json({ ok: true, deviceLabel: trimmed }, 200, origin);
 }
 
@@ -8989,6 +9078,7 @@ async function handlePushDeviceRemove(req, env, origin) {
   }
 
   await env.PUSH_SUBS_KV.delete(id);
+  await removePushDeviceIndexEntry(env, session.email, id);
   return json({ ok: true }, 200, origin);
 }
 
@@ -8996,8 +9086,9 @@ async function handlePushSendTest(req, env, origin) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
 
-  const list = await env.PUSH_SUBS_KV.list({ prefix: `sub:${admin.email}:` });
-  if (list.keys.length === 0) {
+  // 🔧 [KV list() 제거, 2026-09-11] subIndex:{이메일}로 대체.
+  const devices = await getPushDeviceIndex(env, admin.email);
+  if (devices.length === 0) {
     return json({ error: "등록된 구독이 없습니다. 먼저 알림을 켜주세요." }, 404, origin);
   }
 
@@ -9007,28 +9098,42 @@ async function handlePushSendTest(req, env, origin) {
   });
 
   const results = [];
-  for (const key of list.keys) {
-    const raw = await env.PUSH_SUBS_KV.get(key.name);
-    if (!raw) continue;
+  let indexChanged = false;
+  for (const device of devices) {
+    if (device.enabled === false) continue;
+    const raw = await env.PUSH_SUBS_KV.get(device.id);
+    if (!raw) {
+      device._missing = true;
+      indexChanged = true;
+      continue;
+    }
     const parsed = JSON.parse(raw);
     if (parsed.enabled === false) continue;
     const { subscription } = parsed;
     try {
       const res = await sendWebPush(subscription, payload, env);
       if (res.status === 404 || res.status === 410) {
-        await env.PUSH_SUBS_KV.delete(key.name);
+        await env.PUSH_SUBS_KV.delete(device.id);
+        device._missing = true;
+        indexChanged = true;
       }
-      results.push({ key: key.name, status: res.status });
+      results.push({ key: device.id, status: res.status });
     } catch (err) {
-      results.push({ key: key.name, error: err.message });
+      results.push({ key: device.id, error: err.message });
     }
+  }
+  if (indexChanged) {
+    await putPushDeviceIndex(
+      env,
+      admin.email,
+      devices.filter((d) => !d._missing)
+    );
   }
 
   return json({ ok: true, results }, 200, origin);
 }
 
 const NOTICE_COOLDOWN_SEC = 10 * 60;
-const NOTICE_INDEX_KEY = "noticeIndex:current";
 
 // 참여자가 다른 참여자에게 짧은 문구를 푸시 알림으로 보낸다(예: "타이머
 // 안 켜졌어요" 같은 실수 알림용). 관리자 전용이 아니라 로그인한 누구나
@@ -9036,14 +9141,18 @@ const NOTICE_INDEX_KEY = "noticeIndex:current";
 // 중인 참여자 명단에서 고른 이름)으로 지정하고, applyOutputPenalty와
 // 동일하게 listAllMembers의 name과 정확히 일치하는 회원만 찾는다.
 // 같은 대상에게는 handleReport의 20분 쿨다운과 같은 원리로 10분 내 중복
-// 발송을 막고(notice-cooldown:*), 최근 발송 이력(notice:*)은 REPORTS_KV에
-// 남겨 "최근 전송된 알림" 화면이 참여자 전체에게 공유되도록 한다.
+// 발송을 막고, 최근 발송 이력은 "최근 전송된 알림" 화면이 참여자 전체에게
+// 공유되도록 한다 — 🔧 [KV → DO 이전, 2026-09-11] 이 둘(쿨다운·이력) 모두
+// KV가 아니라 ParticipantsRoster DO에 저장한다(checkNoticeCooldown/
+// recordNotice/listRecentNotices 참고, §ParticipantsRoster 주석).
 // GET /push/subscription-status — "간단한 알림 전송" 화면이 대상자 드롭다운
 // 옆에 "(알림구독 X)"를 미리 보여줄 수 있도록, 전체 회원의 웹 푸시 구독
-// 여부를 한 번에 반환한다. PUSH_SUBS_KV 키는 `sub:${email}:${hash}` 형태라,
-// list({prefix:"sub:"}) 한 번으로 구독 중인 이메일 집합을 얻을 수 있다(회원
-// 마다 개별 조회할 필요 없음) — handlePushSendToMember가 발송 시점에 하는
-// 것과 같은 판정을, 미리 보여주기 위해 배치로 수행하는 것뿐이다.
+// 여부를 한 번에 반환한다. 🔧 [KV list() 제거, 2026-09-11] 예전엔
+// PUSH_SUBS_KV.list({prefix:"sub:"}) 한 번으로 구독 중인 이메일 집합을
+// 얻었는데(회원마다 개별 조회할 필요 없이), 이제 회원별 subIndex:{이메일}
+// (§getPushDeviceIndex)을 각자 조회하는 방식으로 바뀌었다 — list() 호출
+// 자체를 없애는 대신 회원 수만큼(최대 15회) get()을 쓴다(읽기는 하루
+// 10만 회로 여유가 커 문제없음).
 async function handlePushSubscriptionStatus(req, env, origin) {
   const authHeader = req.headers.get("Authorization") || "";
   const token = authHeader.replace(/^Bearer\s+/i, "");
@@ -9054,18 +9163,16 @@ async function handlePushSubscriptionStatus(req, env, origin) {
     const accessToken = await getServiceAccountAccessToken(env);
     const members = await listAllMembers(env, accessToken, env.GOOGLE_SHEET_FILE_ID);
 
-    const subscribedEmails = new Set();
-    let cursor;
-    do {
-      const page = await env.PUSH_SUBS_KV.list({ prefix: "sub:", cursor });
-      for (const key of page.keys) {
-        const email = key.name.split(":")[1];
-        if (email) subscribedEmails.add(email);
-      }
-      cursor = page.list_complete ? undefined : page.cursor;
-    } while (cursor);
-
-    const items = members.map((m) => ({ name: m.name, subscribed: subscribedEmails.has(m.email) }));
+    // 🔧 [KV list() 제거, 2026-09-11] 예전엔 list({prefix:"sub:"})로 전
+    // 회원 구독을 한 번에 훑었는데, 이제 회원별 subIndex:{이메일}를 각자
+    // 조회한다 — list() 1회가 get() 최대 15회(회원 수)로 바뀐다(읽기는
+    // 예산이 넉넉해 문제없음).
+    const items = await Promise.all(
+      members.map(async (m) => ({
+        name: m.name,
+        subscribed: (await getPushDeviceIndex(env, m.email)).length > 0,
+      }))
+    );
     return json({ items }, 200, origin);
   } catch (err) {
     return json({ error: "구독 현황 조회 실패: " + err.message }, 500, origin);
@@ -9089,9 +9196,12 @@ async function handlePushSendToMember(req, env, origin) {
   const isAdmin = (session.email || "").toLowerCase() === (env.ADMIN_EMAIL || "").toLowerCase();
 
   const trimmedNickname = nickname.slice(0, 50);
-  const cooldownKey = `notice-cooldown:${trimmedNickname}`;
+  // 🔧 [KV → DO 이전, 2026-09-11] 쿨다운 체크·기록을 KV(notice-cooldown:)가
+  // 아니라 ParticipantsRoster DO에 위임한다 — 하루 쓰기 한도(1,000회)와
+  // 무관해지고, get→put 사이 경합(레이스)도 원천적으로 없다(§ParticipantsRoster
+  // 주석 참고).
   if (!isAdmin) {
-    const onCooldown = await env.REPORTS_KV.get(cooldownKey);
+    const onCooldown = await checkNoticeCooldown(env, trimmedNickname);
     if (onCooldown) {
       return json({ error: "같은 대상에게는 10분 내에 다시 알림을 보낼 수 없습니다." }, 429, origin);
     }
@@ -9103,8 +9213,10 @@ async function handlePushSendToMember(req, env, origin) {
     const member = members.find((m) => m.name === nickname);
     if (!member) return json({ error: `"${nickname}" 이름과 일치하는 등록 회원을 찾을 수 없습니다.` }, 404, origin);
 
-    const list = await env.PUSH_SUBS_KV.list({ prefix: `sub:${member.email}:` });
-    if (list.keys.length === 0) {
+    // 🔧 [KV list() 제거, 2026-09-11] subIndex:{이메일}(§getPushDeviceIndex)로
+    // 대체 — 자체 복구 경로가 있어 기존 구독도 그대로 동작한다.
+    const devices = await getPushDeviceIndex(env, member.email);
+    if (devices.length === 0) {
       return json({ error: `${member.name}님은 아직 알림을 켜지 않았습니다.` }, 404, origin);
     }
 
@@ -9114,16 +9226,26 @@ async function handlePushSendToMember(req, env, origin) {
     });
 
     let sent = 0;
-    for (const key of list.keys) {
-      const raw = await env.PUSH_SUBS_KV.get(key.name);
-      if (!raw) continue;
+    let indexChanged = false;
+    for (const device of devices) {
+      if (device.enabled === false) continue;
+      const raw = await env.PUSH_SUBS_KV.get(device.id);
+      if (!raw) {
+        // 인덱스에는 있지만 실제 구독이 사라진 경우(드묾) — 다음 정리 때
+        // 인덱스에서도 걸러지도록 표시만 해두고 계속 진행한다.
+        device._missing = true;
+        indexChanged = true;
+        continue;
+      }
       const parsed = JSON.parse(raw);
       if (parsed.enabled === false) continue;
       const { subscription } = parsed;
       try {
         const res = await sendWebPush(subscription, payload, env);
         if (res.status === 404 || res.status === 410) {
-          await env.PUSH_SUBS_KV.delete(key.name);
+          await env.PUSH_SUBS_KV.delete(device.id);
+          device._missing = true;
+          indexChanged = true;
         } else if (res.status >= 200 && res.status < 300) {
           sent += 1;
         }
@@ -9131,18 +9253,21 @@ async function handlePushSendToMember(req, env, origin) {
         // 개별 구독 발송 실패는 건너뛰고 나머지 구독에는 계속 시도한다.
       }
     }
+    if (indexChanged) {
+      await putPushDeviceIndex(
+        env,
+        member.email,
+        devices.filter((d) => !d._missing)
+      );
+    }
 
     if (sent === 0) return json({ error: "알림 발송에 실패했습니다." }, 502, origin);
 
-    const ts = Date.now();
-    await env.REPORTS_KV.put(cooldownKey, "1", { expirationTtl: NOTICE_COOLDOWN_SEC });
-    // "최근 전송된 알림" 화면(handleListRecentNotices)이 매 조회마다
-    // KV.list()를 다시 훑지 않도록, 발송 시점에 공유 인덱스에도 추가해둔다.
-    const noticeValue = { nickname: trimmedNickname, message: text, senderName: session.memberName || "참여자", ts };
-    await _appendToLiveIndex(
+    // 🔧 [KV → DO 이전, 2026-09-11] "최근 전송된 알림" 목록도 KV
+    // (noticeIndex:current) 대신 같은 DO에 기록한다.
+    await recordNotice(
       env,
-      NOTICE_INDEX_KEY,
-      { ...noticeValue, expiresAt: ts + NOTICE_COOLDOWN_SEC * 1000 },
+      { nickname: trimmedNickname, message: text, senderName: session.memberName || "참여자" },
       NOTICE_COOLDOWN_SEC
     );
 
@@ -9161,9 +9286,9 @@ async function handleListRecentNotices(req, env, origin) {
   const session = await verifySession(token, env.SESSION_SECRET);
   if (!session) return json({ error: "로그인이 만료되었습니다. 다시 로그인해주세요." }, 401, origin);
 
-  // list() 대신 handlePushSendToMember가 발송 시점에 미리 채워둔 인덱스를
-  // 읽는다 — 15초 폴링이 몇 명이든 실제 KV.list() 호출 없이 처리된다.
-  const items = await _readLiveIndex(env, NOTICE_INDEX_KEY);
+  // 🔧 [KV → DO 이전, 2026-09-11] ParticipantsRoster DO의 메모리 상태를
+  // 그대로 읽는다 — KV(REPORTS_KV)를 전혀 거치지 않는다(읽기도 쓰기도).
+  const items = await listRecentNotices(env);
   items.sort((a, b) => b.ts - a.ts);
   return json({ items }, 200, origin);
 }

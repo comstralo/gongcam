@@ -255,12 +255,16 @@ primary 톤, 꺼짐일 땐 무채색으로 상태가 색으로 구분되고, 옆
   믿어 프론트 state를 즉시 맞추고, 목록 재조회 시에도 그 값이 아직 없으면
   낙관적으로 맨 앞에 끼워 넣는다(`loadDevices()`의 `unshift`).
 - **🔧 [KV list() 방어, 2026-09-10] `loadDevices()`에 진행 중 가드 추가**:
-  `GET /push/devices`는 `env.PUSH_SUBS_KV.list({prefix: sub:{email}:})`를
-  쓴다 — `list()`는 read와 별개로 하루 1,000회 한도가 있다(`docs/CACHING_POLICY.md`
-  §23). 이 조회는 계정당 호출 빈도가 낮지만(알림을 켤 때·페이지 재마운트
+  `GET /push/devices`가 `env.PUSH_SUBS_KV.list({prefix: sub:{email}:})`를
+  쓰던 시절 방어책이다 — `list()`는 read와 별개로 하루 1,000회 한도가
+  있다. 이 조회는 계정당 호출 빈도가 낮지만(알림을 켤 때·페이지 재마운트
   시 1회, 이 카드는 언마운트 없이 `hidden`으로만 숨겨져 탭 재진입만으로는
   재조회 안 됨), 같은 틱에 중복 호출이 겹치는 경우까지 대비해
   `loadingDevicesRef`(useRef 플래그)로 진행 중이면 새 호출을 무시한다.
+  🔧 2026-09-11: `GET /push/devices`는 이제 `list()`를 전혀 안 쓴다 —
+  회원별 `subIndex:{이메일}` 인덱스를 직접 읽는다(`docs/CACHING_POLICY.md`
+  §24). 이 가드 자체는 여전히 유효하고 그대로 남겨뒀다(list() 여부와
+  무관하게 중복 호출 자체를 막는 게 목적이라).
 
 **③ 카테고리별 알림 on/off** (`GET`/`POST /notify-prefs`): 5개 카테고리
 (`report_result`, `leave_proof_result`, `fine_status`, `exit_result`,
@@ -292,8 +296,8 @@ primary 톤, 꺼짐일 땐 무채색으로 상태가 색으로 구분되고, 옆
 | GET | `/status-message` | `handleGetStatusMessage` | `STATUS_MESSAGE_KV_PREFIX` 직접 저장소(`_cachedCompute` 아님) |
 | POST | `/status-message` | `handleSetStatusMessage` | 빈 문자열이면 KV `delete` |
 | POST | `/push/subscribe` | `handlePushSubscribe` | `deviceId`/`deviceLabel`을 응답에 실어 즉시 신뢰 가능하게 함 |
-| GET | `/push/devices` | `handleListPushDevices` | 본인 이메일 접두 기기만. `PUSH_SUBS_KV.list()` 사용 |
-| POST | `/push/devices/toggle` | `handlePushDeviceToggle` | 받은 `id`를 그대로 씀 — `list()` 재호출 없음 |
+| GET | `/push/devices` | `handleListPushDevices` | 🔧 2026-09-11: `subIndex:{이메일}` 인덱스 조회로 변경 — `list()` 안 씀 |
+| POST | `/push/devices/toggle` | `handlePushDeviceToggle` | 받은 `id`를 그대로 씀 — `sub:` 값과 `subIndex:` 둘 다 갱신 |
 | POST | `/push/devices/rename` | `handlePushDeviceRename` | 30자 제한 |
 | POST | `/push/devices/remove` | `handlePushDeviceRemove` | |
 | GET | `/notify-prefs` | `handleGetNotifyPrefs` | `NOTIFY_PREF_KV_PREFIX` 직접 저장소 |

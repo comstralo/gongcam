@@ -1,21 +1,25 @@
 # 제보 기능 구조 지도 (WEB_REPORT.md)
 
 > 이 문서는 웹 서비스(`app/`, Cloudflare Worker `frame-checker-worker/`)의 **제보**
-> 기능(하단 내비게이션의 "/report" 경로, "화각 불량 제보"/"PUSH 알림 전송" 두 탭)을
-> 프론트~백엔드~KV까지 실제 코드를 읽어 조사한 결과입니다. `docs/WEB_DASHBOARD.md`와
-> 같은 목적·형식으로 작성했으며, 구현 명령을 내릴 때 이 문서를 참조점으로 삼습니다.
-> 코드가 바뀌면 이 문서도 함께 갱신해야 합니다.
+> 기능(하단 내비게이션의 "/report" 경로, "화각 불량 제보"/"PUSH 알림 전송"/"내 제보
+> 확인" 세 탭)을 프론트~백엔드~KV까지 실제 코드를 읽어 조사한 결과입니다.
+> `docs/WEB_DASHBOARD.md`와 같은 목적·형식으로 작성했으며, 구현 명령을 내릴 때 이
+> 문서를 참조점으로 삼습니다. 코드가 바뀌면 이 문서도 함께 갱신해야 합니다.
 >
 > 조사 시점: 2026-09-09(§3.4 "내 화각 불량 제보" 개명·처리현황 뱃지 이원화·
 > 유예 독립 시간 차감·제보상점 1일 1회 상한·§6 4가지 결정 반영 등 대규모
-> 갱신). 대상 커밋 기준 `app/src/pages/ReportPage.tsx`,
-> `app/src/components/report/*`, `app/src/hooks/useRosterPolling.ts`,
-> `frame-checker-worker/src/index.js`.
+> 갱신). 2026-09-11 갱신: (1) `MyOutputPenSection`("내 화각 불량 제보")이 "화각
+> 불량 제보" 탭 하단에서 빠져나와 **"내 제보 확인"이라는 별도 세 번째 탭**으로
+> 승격(§1·§2·§3.4), (2) PUSH 기기 목록의 `list()` 완전 제거(§4.1), (3) 알림
+> 쿨다운·"최근 전송된 알림"과 "진행 중인 제보" 쿨다운 둘 다 KV 라이브 인덱스에서
+> **`ParticipantsRoster` Durable Object**로 이전(§3.3·§4·§7). 대상 커밋 기준
+> `app/src/pages/ReportPage.tsx`, `app/src/components/report/*`,
+> `app/src/hooks/useRosterPolling.ts`, `frame-checker-worker/src/index.js`.
 
 ## 1. 범위 정의 — "제보" 탭이란
 
 `TabBar.tsx`가 `/report`에 매핑하는 라벨이 "제보"이며, 실제로는 `ReportPage` 하나가
-URL 쿼리 `?tab=`으로 관리하는 두 하위 탭을 담고 있다(기본값 "capture"):
+URL 쿼리 `?tab=`으로 관리하는 세 하위 탭을 담고 있다(기본값 "capture"):
 
 - **화각 불량 제보**(`view=capture`, 기본. 예전 이름 "송출 P 제보") — 화각 이탈/근거리
   송출 등을 스크린샷·영상으로 제보하는 화면. 실제 페널티(§6)로 이어지는 시작점.
@@ -23,15 +27,21 @@ URL 쿼리 `?tab=`으로 관리하는 두 하위 탭을 담고 있다(기본값 
   참여자에게 짧은 문구(현재는 "타이머 멈춤" 하나)를 웹 푸시로 즉시 보내는 화면.
   실제 시트를 건드리지 않는 순수 알림 기능으로, 제보와는 무관하지만 같은 메뉴에
   얹혀 있다("제보"만큼 무거운 절차 없이 가볍게 주의를 환기하는 용도).
+- **내 제보 확인**(`view=mycheck`, 🔧 2026-09-11 신설) — `MyOutputPenSection`
+  (§3.4) 하나만 담는 탭. 원래 "화각 불량 제보" 탭 하단에 제보 폼과 함께
+  렌더링됐는데, 별도 탭으로 분리됐다(사용자 지시).
 
-두 탭 모두 로그인만 되어 있으면(관리자 여부 무관) 누구나 쓸 수 있다 — 관리자는 각
-탭의 쿨다운(20분/10분)만 우회한다.
+세 탭 모두 로그인만 되어 있으면(관리자 여부 무관) 누구나 쓸 수 있다 — 관리자는
+쿨다운(제보 20분/알림 10분)만 우회한다.
 
-**"화각 불량 제보" 탭 안의 별도 섹션 — 내 화각 불량 제보**: `MyOutputPenSection`
-(§3.4, 🔧 2026-09 "내 송출 P 제보 확인"에서 개명)이 제보 폼 아래에 함께 렌더링된다.
-"내 화각 점검"(본인이 셀프로 찍은 기록)과 "받은 제보"(자신이 대상으로 지목된 일반
-제보)를 한 화면에서 보여주고, 대상자 본인이 "위반인정"/"이의제기"를 제출할 수 있는
-유일한 화면이다.
+**"내 제보 확인" 탭 — `MyOutputPenSection`**: "내 화각 점검"(본인이 셀프로 찍은
+기록)과 "받은 제보"(자신이 대상으로 지목된 일반 제보)를 한 화면에서 보여주고,
+대상자 본인이 "위반인정"/"이의제기"를 제출할 수 있는 유일한 화면이다. 컴포넌트
+자체는 `refreshSignal`/`visible` 두 prop만 받는 독립적인 구성이라, 탭을 분리해도
+내부 로직(폴링 10분, `useRefreshOnVisible` 등)은 전혀 바뀌지 않았다 — `visible`이
+이제 "제보 페이지가 보이는지"가 아니라 **"이 탭이 실제로 선택돼 있는지"**
+(`visible && view === "mycheck"`)로 더 정확해졌다(전에는 "화각 불량 제보"
+탭 안에 있었지만 `visible` 계산 자체는 탭 구분 없이 페이지 단위였다).
 
 **포함되지 않는 것(별도 문서 참고)**: 관리자가 제보 캡처를 승인/반려하는 화면
 (`AdminPage`의 "화각 불량 제보 처리" — `ReportReviewList` 등, `docs/WEB_ADMIN.md`
@@ -46,8 +56,8 @@ URL 쿼리 `?tab=`으로 관리하는 두 하위 탭을 담고 있다(기본값 
 
 ```
 ReportPage (app/src/pages/ReportPage.tsx)
-├─ useRosterPolling (hooks/useRosterPolling.ts) — 15초 폴링, 두 탭이 공유
-├─ Tabs: "capture"(기본) | "notice"  — URL 쿼리(tab)와 동기화, 최초 마운트 이후 로컬 state
+├─ useRosterPolling (hooks/useRosterPolling.ts) — 15초 폴링, capture/notice 탭이 공유
+├─ Tabs: "capture"(기본) | "notice" | "mycheck"  — URL 쿼리(tab)와 동기화, 최초 마운트 이후 로컬 state
 ├─ [capture] "화각 불량 제보"
 │   ├─ 대상자 Select (members, 실시간 접속 명단)
 │   ├─ 원인 Select (REASON_OPTIONS: 고정 5개 + "기타(직접 기재)" — §3.2 참고)
@@ -55,29 +65,36 @@ ReportPage (app/src/pages/ReportPage.tsx)
 │   ├─ "내 화각 점검" 버튼 → POST /report ({selfCheck: true}, 본인 대상 셀프 캡처)
 │   ├─ ActiveReportsSection (components/report/ActiveReportsSection.tsx)
 │   │   └─ GET /report-cooldowns, 15초 폴링 + 1초 카운트다운 (§3.3)
-│   ├─ MyOutputPenSection (components/report/MyOutputPenSection.tsx) — §3.4
-│   │   ├─ CycleSwitcher — 3주 사이클 토글(현재 진행 중 + 지난 주차)
-│   │   ├─ GET /my-captures, GET /my-output-pen (?cycle= 선택)
-│   │   ├─ "위반인정"/"이의제기" 제출 → POST /captures/target-respond
-│   │   └─ "내 화각 점검" 삭제 → POST /my-captures/delete
 │   └─ 주의사항 InfoCard (REPORT_CAUTIONS 배열)
-└─ [notice] "PUSH 알림 전송"
-    └─ SimpleNoticeSection (components/report/SimpleNoticeSection.tsx)
-        ├─ 구독 여부 사전 조회: GET /push/subscription-status
-        ├─ 대상자 Select (구독 안 한 회원은 "(PUSH OFF)"로 비활성 표시)
-        ├─ 원인 Select (NOTICE_REASON_OPTIONS: "타이머 멈춤" 하나뿐 — 하드코딩)
-        ├─ "알림 전송" 버튼 → POST /push/send-to-member
-        ├─ RecentNoticesSection (components/report/RecentNoticesSection.tsx)
-        │   └─ GET /push/recent-notices, 15초 폴링 + 1초 경과시간 갱신
-        └─ 주의사항 InfoCard (NOTICE_CAUTIONS 배열)
+├─ [notice] "PUSH 알림 전송"
+│   └─ SimpleNoticeSection (components/report/SimpleNoticeSection.tsx)
+│       ├─ 구독 여부 사전 조회: GET /push/subscription-status
+│       ├─ 대상자 Select (구독 안 한 회원은 "(PUSH OFF)"로 비활성 표시)
+│       ├─ 원인 Select (NOTICE_REASON_OPTIONS: "타이머 멈춤" 하나뿐 — 하드코딩)
+│       ├─ "알림 전송" 버튼 → POST /push/send-to-member
+│       ├─ RecentNoticesSection (components/report/RecentNoticesSection.tsx)
+│       │   └─ GET /push/recent-notices, 15초 폴링 + 1초 경과시간 갱신
+│       └─ 주의사항 InfoCard (NOTICE_CAUTIONS 배열)
+└─ [mycheck] "내 제보 확인" (🔧 2026-09-11 신설, capture 탭에서 분리)
+    └─ MyOutputPenSection (components/report/MyOutputPenSection.tsx) — §3.4
+        ├─ CycleSwitcher — 3주 사이클 토글(현재 진행 중 + 지난 주차)
+        ├─ GET /my-captures, GET /my-output-pen (?cycle= 선택)
+        ├─ "위반인정"/"이의제기" 제출 → POST /captures/target-respond
+        └─ "내 화각 점검" 삭제 → POST /my-captures/delete
 ```
 
-두 서브탭 모두 `App.tsx`/`DashboardPage.tsx`와 같은 "언마운트하지 않고 hidden으로만
+세 서브탭 모두 `App.tsx`/`DashboardPage.tsx`와 같은 "언마운트하지 않고 hidden으로만
 감춘다" 패턴을 그대로 따른다(`everOpened` ref).
 
 ---
 
 ## 3. "화각 불량 제보" 탭 상세
+
+> 🔧 2026-09-11: §3.4는 더 이상 이 탭 안의 섹션이 아니다 — "내 제보 확인"이라는
+> 별도 탭(`view=mycheck`)으로 분리됐다(§1·§2). 번호는 옮기지 않고 그대로 뒀다 —
+> 다른 문서(§관련 문서 참고)의 교차 참조를 다 같이 바꿔야 하는 부담 대비 실익이
+> 적어서다. "화각 불량 제보 탭 상세"라는 이 절 제목은 이제 §3.1~§3.3(제보 접수
+> 흐름)만 가리킨다.
 
 ### 3.1 실시간 접속 명단 (`useRosterPolling` + `ParticipantsRoster` Durable Object)
 
@@ -139,10 +156,10 @@ ReportPage (app/src/pages/ReportPage.tsx)
 
 ### 3.3 "최근 진행된 제보" (`ActiveReportsSection`)
 
-`GET /report-cooldowns` → `handleListActiveCooldowns`가 `_readLiveIndex
-(COOLDOWN_INDEX_KEY)`(KV.list() 없이 인덱스 배열 하나만 읽는 최적화, §7 참고)를
-만료 임박순(`expiresAt` 오름차순)으로 반환. 15초 폴링 + 1초 카운트다운 타이머로
-표시하되, **두 단계로 나뉜다**:
+`GET /report-cooldowns` → `handleListActiveCooldowns`가 `listReportCooldowns`
+(🔧 2026-09-11: KV 인덱스에서 `ParticipantsRoster` **Durable Object**의 메모리
+상태로 이전 — §7 참고)를 만료 임박순(`expiresAt` 오름차순)으로 반환. 15초 폴링
++ 1초 카운트다운 타이머로 표시하되, **두 단계로 나뉜다**:
 
 1. **촬영 진행 중** — 봇이 아직 캡처를 끝내지 못했으면(`capturedAt: null`)
    "진행 중 (MM:SS 남음)"으로, 모드별 예상 소요시간(`EXPECTED_CAPTURE_SEC`:
@@ -155,27 +172,37 @@ ReportPage (app/src/pages/ReportPage.tsx)
    남음)"으로 전환된다. **20분 쿨다운은 이제 제보 접수 시각이 아니라 캡처가
    실제로 끝난 시각부터 시작한다** — 촬영 소요시간이 20분 안에 포함되지 않게
    바뀐 것이라, 총 재제보 대기시간은 예전보다 촬영 시간만큼 더 길어진다.
-   `_markCaptureDoneInLiveIndex`가 `expiresAt`(화면 표시용 인덱스)과
-   `cooldown:{nickname}` KV의 TTL(실제 429 차단 기준) 둘 다 이 시점 기준으로
-   재계산한다.
+   `markReportCaptureDone`(DO 호출)이 차단 판정과 표시를 동시에 겸하는 배열
+   항목 하나의 `expiresAt`만 갱신하면 끝난다 — 🔧 2026-09-11 이전엔 KV
+   `cooldown:{nickname}`의 TTL과 인덱스의 `expiresAt`을 **각각** 재계산해야
+   했는데, 이제 그 이중 갱신 자체가 없어졌다(§7).
 
 이미 서버가 429로 중복 제보를 막지만, 누르기 전에 "이미 접수됐구나"를 보여줘
 헛수고를 줄이는 목적은 그대로다. 관리자가 쿨다운을 우회해 제보해도(§3.2) 이
 목록에는 똑같이 뜬다 — 그러지 않으면 참여자 입장에서 "방금 분명 제보됐는데
 목록엔 없다"는 혼란이 생기기 때문(코드 주석에 명시된 의도적 설계).
 
-> ⚠️ **동시 쓰기 레이스**: `_appendToLiveIndex`/`_markCaptureDoneInLiveIndex`는
-> 인덱스 배열 전체를 get→수정→put하는 구조라, 두 제보(또는 제보 접수와 다른 건의
-> 캡처 완료)가 몇 초 간격으로 겹치면 나중 put이 앞선 변경을 통째로 덮어써 항목이
-> 사라지는 사고가 실제로 있었다. 지금은 put 직전에 원본을 다시 읽어 그 사이
-> 값이 바뀌었으면 처음부터 재시도하는 CAS 유사 방식으로 고쳐져 있다(§7 참고).
+> ⚠️ **동시 쓰기 레이스(이력, 2026-09-11 해소)**: KV 인덱스 시절엔
+> `_appendToLiveIndex`/`_markCaptureDoneInLiveIndex`가 배열 전체를
+> get→수정→put하는 구조라, 두 제보(또는 제보 접수와 다른 건의 캡처 완료)가
+> 몇 초 간격으로 겹치면 나중 put이 앞선 변경을 통째로 덮어써 항목이 사라지는
+> 사고가 실제로 있었다 — put 직전에 원본을 다시 읽어 재시도하는 CAS 유사
+> 방식으로 막았었다. DO로 옮긴 뒤로는 이 레이스 자체가 구조적으로 발생할 수
+> 없다(단일 인스턴스가 요청을 직렬 처리) — CAS 재시도 로직은 삭제됐다(§7).
 
 ### 3.4 "내 화각 불량 제보" (`MyOutputPenSection`) — 당사자 응답 시스템
 
 > 🔧 2026-09: 화면 제목이 "내 송출 P 제보 확인"에서 "내 화각 불량 제보"로
 > 바뀌었다(관리자 화면과 동일한 개명 흐름 — `docs/WEB_ADMIN.md` §3.1).
+>
+> 🔧 2026-09-11: **탭 자체가 분리됐다.** 원래 "화각 불량 제보" 탭 폼 하단에
+> 함께 렌더링됐는데, 이제 "내 제보 확인"(`view=mycheck`, §1·§2)이라는 독립된
+> 세 번째 탭 하나가 이 컴포넌트만 담는다. 컴포넌트 자체(`MyOutputPenSection`)
+> 는 `refreshSignal`/`visible` 두 prop만 받는 자기완결적 구성이라 내부 로직은
+> 전혀 안 바뀌었다 — 아래 서술 내용은 여전히 그대로 유효하다.
 
-제보 폼 하단에 함께 렌더링되는 별도 섹션. "내 화각 점검"(본인이 셀프로 찍은 기록,
+이제 "내 제보 확인" 탭 하나를 통째로 차지하는 컴포넌트. "내 화각 점검"(본인이
+셀프로 찍은 기록,
 `GET /my-captures`)과 "받은 제보"(자신이 대상으로 지목된 일반 제보,
 `GET /my-output-pen`)를 요일별 아코디언으로 합쳐 보여준다. 두 API 모두 상단
 `CycleSwitcher`로 고른 사이클(`?cycle=` 쿼리, 없으면 현재 진행 중인 주)에 맞춰
@@ -265,23 +292,56 @@ ReportPage (app/src/pages/ReportPage.tsx)
   있다.
 - **구독 여부 사전 확인**: 다이얼로그가 열리자마자(컴포넌트 마운트 시)
   `GET /push/subscription-status`(→ `handlePushSubscriptionStatus`)로 전 회원의
-  웹 푸시 구독 이메일 집합을 한 번에 가져온다(`PUSH_SUBS_KV`를 `sub:` 접두사로
-  list, 회원별 개별 조회 없이 배치 판정). 구독 안 한 회원은 드롭다운에서
-  `"{이름} (PUSH OFF)"`로 표시되고 선택 자체가 막힌다(`disabled`).
+  웹 푸시 구독 여부를 한 번에 가져온다. 구독 안 한 회원은 드롭다운에서
+  `"{이름} (PUSH OFF)"`로 표시되고 선택 자체가 막힌다(`disabled`). 🔧 2026-09-11:
+  회원별 `PUSH_SUBS_KV.list({prefix:"sub:"})` 통짜 훑기 대신, 회원별
+  `subIndex:{이메일}`(아래 참고)을 각자 `get()`으로 조회하는 방식으로 바뀌었다 —
+  `list()` 호출 자체가 사라졌다.
 - **`POST /push/send-to-member` → `handlePushSendToMember`**:
-  1. **10분 쿨다운**(`NOTICE_COOLDOWN_SEC = 10*60`, `notice-cooldown:{nickname}` KV
-     키) — 관리자는 우회.
-  2. `listAllMembers`에서 닉네임과 이름이 정확히 일치하는 회원을 찾고, 그 이메일로
-     `PUSH_SUBS_KV`에서 `sub:{email}:*` 구독을 전부 조회 — 없으면 404("아직 알림을
-     켜지 않았습니다").
+  1. **10분 쿨다운**(`NOTICE_COOLDOWN_SEC = 10*60`) — 관리자는 우회. 🔧 2026-09-11:
+     KV(`notice-cooldown:{nickname}`) 대신 **`ParticipantsRoster` Durable
+     Object**의 메모리 상태로 판정한다(`checkNoticeCooldown`) — KV 하루 쓰기
+     한도와 완전히 무관해지고, get→put 사이 경합(레이스) 걱정도 없다(단일
+     인스턴스가 요청을 직렬 처리하므로).
+  2. `listAllMembers`에서 닉네임과 이름이 정확히 일치하는 회원을 찾고, 그
+     이메일의 **`subIndex:{이메일}`**(§7.1)에서 기기 목록을 가져와 각 기기의
+     실제 구독(`sub:{email}:{hash}`)을 조회한다 — 기기가 하나도 없으면 404
+     ("아직 알림을 켜지 않았습니다").
   3. 등록된 모든 기기 구독에 `sendWebPush`로 발송(`{title: "{발신자}님의 알림",
      body: 문구}`). 발송 중 404/410(만료된 구독)을 만나면 그 자리에서 KV 구독을
-     삭제해 정리한다. 하나라도 성공(`sent>0`)하면 성공 응답, 전부 실패하면 502.
-  4. 성공 시 쿨다운 키 기록 + `_appendToLiveIndex(NOTICE_INDEX_KEY, ...)`로
-     "최근 전송된 알림" 인덱스에 추가.
+     삭제하고 `subIndex:`에서도 그 기기를 제거해 정리한다. 하나라도 성공
+     (`sent>0`)하면 성공 응답, 전부 실패하면 502.
+  4. 성공 시 **DO에 `recordNotice`**를 호출해 쿨다운 갱신과 "최근 전송된 알림"
+     기록을 동시에 남긴다(KV `put` 없음).
 - **"최근 전송된 알림"** (`RecentNoticesSection`): `GET /push/recent-notices` →
-  `handleListRecentNotices`가 `NOTICE_INDEX_KEY` 인덱스를 그대로 반환. 15초 폴링 +
-  1초 경과시간(`N분 전`) 갱신 — §3.3과 동일한 목적·패턴.
+  `handleListRecentNotices`가 DO의 `listRecentNotices()`를 그대로 반환. 15초
+  폴링 + 1초 경과시간(`N분 전`) 갱신 — §3.3과 동일한 목적·패턴이지만, §3.3
+  (제보 쿨다운)은 여전히 KV 라이브 인덱스(§7)를 쓰고 이쪽만 DO로 옮겨졌다는
+  점이 다르다(둘 다 KV → DO 이전이 가능했지만, 이번엔 알림 기능만 우선
+  적용했다).
+
+### 4.1 기기 인덱스 `subIndex:{이메일}` — 회원별 `list()` 제거 (2026-09-11)
+
+"PUSH 알림 전송"(이 탭)·"알림 받는 기기"(설정, `docs/WEB_SETTINGS.md`)·관리자
+테스트 발송(`docs/WEB_ADMIN.md`) 넷 다 "이 회원 기기가 뭐가 있나"를 알아야
+하는데, 예전엔 전부 `PUSH_SUBS_KV.list({prefix: sub:{이메일}:})`로 훑었다 —
+하루 `list()` 한도(1,000회)를 쓰는 유일한 제보/설정 관련 경로였다.
+
+- **인덱스 구조**: `subIndex:{이메일}` 키 하나에 그 회원의 기기 배열
+  (`{id, deviceLabel, enabled, savedAt}[]`)을 담는다 — `GET /push/devices`가
+  그대로 필요로 하는 필드 그대로라, 인덱스만 읽으면 기기별 `get()`도 필요
+  없다.
+- **갱신 지점**: 기기 등록(`/push/subscribe`)·토글(`/push/devices/toggle`)·
+  이름변경(`/push/devices/rename`)·삭제(`/push/devices/remove`) 네 곳 모두
+  `sub:` 값을 쓰는 것과 같은 요청 안에서 `subIndex:`도 함께 갱신한다.
+- **자체 복구(마이그레이션)**: `getPushDeviceIndex(env, email)`이 인덱스가
+  없으면(이 기능 배포 전에 이미 등록된 구독) 그 회원에 한해 딱 한 번
+  `list()`로 실제 구독을 훑어 인덱스를 새로 만들어둔다 — 별도 백필 스크립트
+  없이, 회원이 아무 push 관련 화면을 처음 건드리는 순간 자연스럽게 전환된다.
+  그 이후로는 그 회원에 대해 다시는 `list()`가 필요 없다.
+- **여전히 `list()`를 쓰는 곳**: 위 자체 복구 경로 하나뿐이다 — 배포 직후
+  회원마다 최초 1회씩(최대 15회, 그것도 몰리지 않고 자연 분산) 발생하고 이후
+  영구히 사라진다.
 
 ---
 
@@ -387,23 +447,42 @@ ReportPage (app/src/pages/ReportPage.tsx)
 
 ---
 
-## 7. KV 라이브 인덱스 패턴 (`_appendToLiveIndex`/`_readLiveIndex`)
+## 7. 라이브 인덱스 패턴 — KV에서 `ParticipantsRoster` DO로 이전 (2026-09-11)
 
-"진행 중인 제보"(`COOLDOWN_INDEX_KEY = "cooldownIndex:current"`)와 "최근 전송된
-알림"(`NOTICE_INDEX_KEY = "noticeIndex:current"`)이 공유하는 공통 헬퍼
-(`index.js` 581~619행 근처). 두 목록 다 15초 폴링으로 여러 사용자가 동시에
-조회하는데, 예전엔 매 폴링마다 `KV.list()`를 새로 호출해 "15명이 1시간만 접속해도
-하루 무료 한도(1,000회)를 초과"하는 문제가 있었다(코드 주석에 실측 기록). 지금은:
+> 🔧 "최근 전송된 알림"(§4.1)과 "진행 중인 제보"(§3.3) 둘 다 더 이상 KV를
+> 쓰지 않는다 — 예전엔 여기 있던 `_appendToLiveIndex`/`_readLiveIndex`/
+> `_markCaptureDoneInLiveIndex`(+ CAS 유사 재시도 로직, `LIVE_INDEX_MAX_RETRIES`)
+> 헬퍼로 KV `NOTICE_INDEX_KEY`/`COOLDOWN_INDEX_KEY` 인덱스를 다뤘는데,
+> 지금은 전부 삭제됐고 `ParticipantsRoster` **Durable Object**의 메모리
+> 상태(`this.notices`/`this.reportCooldowns`)로 대체됐다
+> (`docs/CACHING_POLICY.md` §24.2·§24.4). 아래 설명은 **이력**으로
+> 남겨둔다 — 이 방식으로 되돌아갈 일이 있다면(예: DO 한도를 실제로
+> 근접해서 다시 KV로 내려야 하는 경우) 참고용.
 
-- **등록 시점**(`_appendToLiveIndex`): 인덱스 키 하나에 담긴 배열을 `get` 1회로
-  읽어, 만료된 항목을 걸러내고 새 항목을 추가한 뒤 `put` 1회로 다시 저장. 인덱스
-  자체의 TTL은 안에 남은 항목 중 가장 늦게 만료되는 것보다 5분 더 길게 잡는다.
-- **조회 시점**(`_readLiveIndex`): 그 배열을 `get` 1회로 읽어 `expiresAt` 기준으로
-  살아있는 것만 걸러 반환. 걸러진(만료된) 항목이 있었으면 조회 시점에 한 번
-  정리해서 다시 저장 — 아무도 새로 등록하지 않아도 값이 무한정 커지지 않는다.
+**옛 KV 방식**(`_appendToLiveIndex`/`_readLiveIndex`, `index.js` 581~619행
+근처였던 공통 헬퍼): 15초 폴링으로 여러 사용자가 동시에 조회하는데, 예전엔
+매 폴링마다 `KV.list()`를 새로 호출해 "15명이 1시간만 접속해도 하루 무료
+한도(1,000회)를 초과"하는 문제가 있었다(코드 주석에 실측 기록). 그래서 이
+인덱스 배열 자체를 파일당 1개의 키에 저장해두고, 등록 시에만 `get` 1회 +
+`put` 1회로 갱신하고(`_appendToLiveIndex`), 조회는 `get` 1회로 그 값을
+읽어 만료된 항목만 걸러 반환(`_readLiveIndex`)하는 식으로 `list()`를
+없앴었다 — 그래도 여전히 KV 쓰기 예산(하루 1,000회)은 계속 썼다.
+배열 전체를 get→수정→put하는 구조라 두 요청이 몇 초 간격으로 겹치면
+나중 put이 앞선 변경을 덮어쓰는 레이스가 있어, put 직전에 원본을 다시
+읽어 재시도하는 CAS 유사 방식으로 방어해야 했다.
 
-새로운 "최근 N분 내 이벤트" 목록을 만들 때는 KV.list()를 직접 쓰지 말고 이 패턴을
-재사용하는 것이 이 코드베이스의 관례다.
+**왜 DO로 옮겼나**: `/participants`가 이미 "몇 초 간격 갱신은 KV 부적합,
+DO가 적합"이라는 논리로 같은 DO를 쓰고 있었다(§3.1) — 알림/제보 쿨다운도
+똑같이 "여러 사용자가 동시에 보는 짧은 수명의 공유 상태"라 같은 논리가
+그대로 적용된다. DO로 옮기면 KV 쓰기 예산과 완전히 무관해지고, 단일
+인스턴스가 요청을 직렬 처리해 위 CAS 재시도 로직 자체가 필요 없어진다.
+DO 자체의 한도(무료 플랜 기준 하루 요청 10만 회, 실행시간 13,000 GB초 —
+`docs/CACHING_POLICY.md` §24.3)는 이 규모(15명)에서 근접할 가능성이 낮다.
+
+새로운 "최근 N분 내 이벤트" 목록을 만들 때는 이 DO의 패턴
+(check/record/list 세 함수 한 벌)을 재사용하는 것이 이 코드베이스의
+관례다 — 단, §24.3의 기준(영구 보관이 필요 없는 데이터인지)을 먼저
+확인할 것.
 
 ---
 

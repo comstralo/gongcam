@@ -150,7 +150,6 @@ export function StatusPage({
           refreshProgress={refreshProgress}
           refreshDisabled={refreshDisabled}
           refreshDisabledReason={refreshDisabledReason}
-          iconVariant="tint"
           trailing={
             isAdmin ? (
               // 🔧 [사용자 지시] "관리자 드롭다운을 헤더 영역에 넣어버릴 수

@@ -553,10 +553,13 @@ OFF로 표시한다 — "구독은 꺼졌는데 세부 항목은 죄다 ON"으�
 막기 위한 의도적 표시 로직(저장값 자체를 바꾸는 건 아님).
 
 > 🔧 2026-09 확인(잠재 함정, 미수정): `pushSubscribed`는 "이 회원 이메일로
-> `PUSH_SUBS_KV`에 `sub:{email}:*` 키가 하나라도 있는지"만 본다 —
-> `docs/WEB_SETTINGS.md` §4.2의 기기별 `enabled` 토글은 반영하지 않는다.
-> `handlePushSendToMember`(실제 발송 경로)의 최상위 게이트(`list.keys.length
-> === 0`이면 404)와는 정확히 같은 기준이라 이 필드 자체는 정확하지만,
+> 등록된 기기가 하나라도 있는지"만 본다 — `docs/WEB_SETTINGS.md` §4.2의
+> 기기별 `enabled` 토글은 반영하지 않는다. 🔧 2026-09-11: 판정 원본이
+> `PUSH_SUBS_KV.list({prefix:"sub:{email}:"})`에서 `subIndex:{이메일}`
+> 인덱스 조회(`docs/CACHING_POLICY.md` §24.1)로 바뀌었지만 "기기 존재
+> 여부"라는 기준 자체는 그대로다. `handlePushSendToMember`(실제 발송
+> 경로)의 최상위 게이트(기기 목록이 비어 있으면 404)와는 정확히 같은
+> 기준이라 이 필드 자체는 정확하지만,
 > 회원이 등록된 기기를 **전부** `enabled: false`로 꺼둔 극단적 케이스에서는
 > `pushSubscribed: true`(+ 카테고리 저장값이 ON)로 보여도 실제 발송은
 > 기기별 필터에서 전부 걸러져 실패한다("이 회원 알림 받을 수 있음"으로

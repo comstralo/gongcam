@@ -8,7 +8,7 @@
 > 코드가 바뀌면(특히 `writeSheetValues` 호출 지점이나 `_cachedCompute` TTL을
 > 건드리면) 이 문서도 함께 갱신해야 합니다.
 >
-> 최초 조사 시점: 2026-09-09. 이후 2026-09-10까지 지속 갱신(§14~§24).
+> 최초 조사 시점: 2026-09-09. 이후 2026-09-11까지 지속 갱신(§14~§25).
 > Cloudflare KV 무료 티어 쓰기/삭제 하루 1,000회 한도를 예민하게 관리해야
 > 한다는 문제의식에서 시작해, "쓰기 시점 무효화가 실제로 필요한 곳을
 > 놓치고 있지는 않은지"(정합성 위험)와 "거의 안 바뀌는데 TTL이 짧아 KV를
@@ -1129,7 +1129,136 @@ read 한도(하루 10만)와 **별개로 하루 1,000회**라는 훨씬 빡빡�
 "오늘 하루 총합·한도 대비 위험 수준", breakdown은 "어느 화면이 list를
 쓰는지".
 
-## 24. 관련 문서
+## 24. PUSH 알림 — `list()` 완전 제거 + 쿨다운/최근목록의 KV→DO 이전 (2026-09-11)
+
+"제보" 메뉴 KV 정책을 전수조사하다가, "PUSH 알림 전송" 탭이 제보/설정 관련
+화면 중 유일하게 `list()`를 쓰는 곳으로 확인됐다(건당 발송 1회 + 탭 진입 시
+1회). 회원별 기기 수가 적어 당장 위험한 수준은 아니었지만, 두 가지를 함께
+정리했다.
+
+### 24.1 `subIndex:{이메일}` — 회원별 기기 인덱스로 `list()` 제거
+
+`PUSH_SUBS_KV`의 키 구조가 `sub:{이메일}:{기기해시}`라 "이 회원 기기가 뭐가
+있나"를 알려면 원래 `list({prefix: sub:{이메일}:})`가 필요했다. 이 패턴을
+쓰던 곳이 6곳이나 됐다: `handleListPushDevices`(설정 "알림 받는 기기"),
+`handlePushSendToMember`(제보 "PUSH 알림 전송"), `handlePushSendTest`(관리자
+테스트), `handleAdminPushSendCategory`(관리자 카테고리별 테스트),
+`handlePushSubscriptionStatus`(제보, 전 회원 배치 조회),
+`handleAdminMembersRoster`(관리자 "참여 스터디원 목록", 전 회원 배치 조회
+— 이건 제보가 아니라 관리자 화면인데도 같은 문제를 겪고 있어서 함께
+고쳤다).
+
+**설계**: `subIndex:{이메일}` 키 하나에 그 회원 기기 배열
+(`{id, deviceLabel, enabled, savedAt}[]`)을 담아, `GET /push/devices`가
+필요로 하는 필드를 그대로 응답할 수 있게 했다(기기별 `get()`도 불필요).
+기기를 바꾸는 4곳(`/push/subscribe`·`/push/devices/toggle`·`/rename`·
+`/remove`)에서 `sub:` 값을 쓸 때 이 인덱스도 함께 갱신한다.
+
+**마이그레이션**: 배포 전 이미 등록된 구독은 인덱스가 없다 —
+`getPushDeviceIndex(env, email)`이 인덱스 부재 시 그 회원에 한해 딱 한 번
+`list()`로 자체 복구(인덱스를 새로 만들어 저장)한다. 이후 그 회원에 대해
+다시는 `list()`가 필요 없다 — 별도 백필 스크립트 없이 회원이 아무 push
+화면이나 처음 건드리는 순간 자연스럽게 전환된다. `leaveq:` 인덱스 전환
+(§18 근처) 때는 "마침 큐가 비어 있어서" 백필이 필요 없었는데, 이번엔 실제
+구독이 이미 존재해 이 자체 복구 경로가 꼭 필요했다.
+
+**전 회원 배치 조회 2곳**(`handlePushSubscriptionStatus`,
+`handleAdminMembersRoster`)은 `list()` 1회가 회원 수만큼(최대 15회)
+`get()`으로 바뀐다 — 읽기는 하루 10만 회로 여유가 커 문제없다.
+
+### 24.2 알림 쿨다운·"최근 전송된 알림" — KV 대신 `ParticipantsRoster` DO
+
+전송 1건당 KV 쓰기 2건(`notice-cooldown:{nickname}` put +
+`_appendToLiveIndex(NOTICE_INDEX_KEY)`)이 있었다 — 빈도가 낮아 예산상
+급하진 않았지만, "KV 없이 아예 안 쓰고 처리할 수 있냐"는 질문에 "KV
+자체를 안 쓰는 건 구조적으로 안 되지만(요청 간 공유 상태가 필요하므로),
+**KV가 아닌 Durable Object**로 옮기면 쓰기 자체가 한도 밖으로 빠진다"는
+결론으로 이어졌다 — `/participants`(§3.1, `docs/WEB_REPORT.md`)가 이미
+"몇 초 간격 갱신은 KV 부적합, DO가 적합"이라는 같은 논리로 DO를 쓰고
+있던 선례를 그대로 재사용했다.
+
+**구현**: 새 DO 클래스를 만들지 않고 기존 `ParticipantsRoster`(이미
+`withMemberLock`의 락 저장소로도 겸용되던 다목적 싱글턴)에 `this.notices`
+배열과 세 라우트(`POST /notice/check`, `POST /notice/record`,
+`GET /notice/list`)를 추가했다. KV의 `_appendToLiveIndex`가 필요로 했던
+CAS 재시도(get→put 사이 경합 방어)가 DO 안에서는 아예 필요 없다 — 단일
+인스턴스가 요청을 이미 직렬 처리하므로 두 요청이 동시에 배열을 건드릴
+수가 없다.
+
+- `checkNoticeCooldown(env, nickname)` — 관리자가 아닐 때만 호출, 만료된
+  항목을 걸러낸 뒤 그 닉네임이 남아있는지 확인.
+- `recordNotice(env, entry, cooldownSec)` — 발송 성공 후 호출, 만료 항목을
+  걸러낸 뒤 새 항목 추가(쿨다운 판정과 "최근 전송된 알림" 표시를 겸함).
+- `listRecentNotices(env)` — `GET /push/recent-notices`가 그대로 반환.
+
+`NOTICE_COOLDOWN_SEC`(10분)는 그대로 유지하되 `NOTICE_INDEX_KEY`/
+`notice-cooldown:` 키는 완전히 폐지됐다. 처음엔 "진행 중인 제보"
+(`COOLDOWN_INDEX_KEY`)는 봇의 `/reports/capture-done` 콜백과 얽혀 있어
+건드리지 않고 후보로만 남겨뒀는데, 아래 §24.4에서 마저 옮겼다.
+
+### 24.3 DO 전환 대상 판단 기준 — 뭐든 다 옮기면 안 되는 이유
+
+"KV 쓰기 한도와 관련된 부분은 전부 DO로 바꿔도 되냐"는 질문에 확인한
+결과, 아니다. DO(순수 메모리, `state.storage` 미사용)가 맞는 경우와
+안 맞는 경우가 명확히 갈린다.
+
+- **✅ 맞는 경우 — "지금 이 순간의 공유 상태", 없어져도 그만인 데이터**:
+  `/participants`(실시간 접속 명단), 알림 쿨다운/최근 목록(§24.2), 진행
+  중인 제보(§24.4) — 셋 다 여러 사용자가 동시에 보는 짧은 수명의 상태이고,
+  DO가 재시작되면 그냥 빈 상태로 다시 시작하면 된다.
+- **❌ 안 맞는 경우 — 영구 보관이 필요한 대기열/기록**: `report:{id}`
+  (봇이 못 가져간 제보를 나중에 재시도로 집어가야 하는 안전망 큐),
+  `leaveq:`(봇 오프라인 동안 몇 시간을 버텨야 하는 사유반휴 대기열),
+  `lastLogin:`(영구 이력) — DO 메모리는 재배포·유휴 시 초기화되므로,
+  이런 "사라지면 안 되는" 데이터를 여기 두면 오히려 유실 위험을 새로
+  만든다.
+- **❌ 안 맞는 경우 — 시트를 캐싱한 `_cachedCompute` 결과 전체**
+  (`personalStatusBundle:`/`rosterStatus:`/`members:` 등 12종): DO는
+  "전 세계에 단 하나"라 요청이 전부 그 인스턴스로 몰려 직렬(한 줄로) 처리된다
+  — 15명이 각자 다른 데이터를 동시에 요청해도 서로 무관한데 한 줄로 서서
+  기다리게 되는 셈이라, 원래 KV(분산·복제돼 병렬 응답 가능)가 담당하던
+  "여러 사람이 동시에 빠르게 읽는" 역할엔 오히려 병목이 된다. 이 캐시들은
+  이미 이번 세션에서 TTL을 조정해 예산 안에 들어와 있어 구조를 바꿀 급한
+  이유도 없다.
+
+### 24.4 "진행 중인 제보"도 DO로 — 남은 마지막 KV 라이브 인덱스 (2026-09-11)
+
+§24.3의 기준에 따라 "진행 중인 제보"(`ActiveReportsSection`, 15초 폴링)도
+DO로 옮겼다 — 알림과 완전히 같은 패턴이다. 같은 `ParticipantsRoster`에
+`this.reportCooldowns` 배열과 네 라우트를 추가했다:
+
+- `checkReportCooldown(env, cooldownKey)` — `handleReport`의 429 판정.
+  `cooldownKey`는 KV 시절과 동일한 문자열(`cooldown:{닉네임}` 또는
+  `selfcheck-cooldown:{이메일}`)을 그대로 재사용해 두 종류가 안 섞이게 한다.
+- `recordReportCooldown(env, entry, cooldownSec)` — 제보 접수 시 기록.
+- `markReportCaptureDone(env, id, capturedAt)` — 봇의 캡처 완료 콜백
+  (`/reports/capture-done`)이 호출, 캡처 완료 시점부터 쿨다운을 재시작한다.
+- `listReportCooldowns(env)` — "진행 중인 제보" 표시용.
+
+**KV 시절보다 구조가 단순해졌다**: 원래는 차단 판정용 KV
+(`cooldown:{nickname}`)와 표시용 인덱스(`COOLDOWN_INDEX_KEY`)가 서로
+다른 저장소였다 — `_markCaptureDoneInLiveIndex`가 캡처 완료 시 이 둘을
+**각각** 갱신해야 했다(인덱스의 `expiresAt`과 KV의 TTL 둘 다). DO에서는
+배열 하나(`reportCooldowns`)가 차단 판정과 표시를 동시에 담당해 이 이중
+갱신 자체가 사라졌다.
+
+`_appendToLiveIndex`/`_readLiveIndex`/`_markCaptureDoneInLiveIndex`(CAS
+유사 재시도 로직 포함)와 `LIVE_INDEX_MAX_RETRIES`/`COOLDOWN_INDEX_KEY`는
+더 이상 아무 데서도 호출되지 않아 코드에서 완전히 제거했다 — DO는 단일
+인스턴스가 요청을 직렬 처리해 이 재시도 로직 자체가 필요 없기 때문이다.
+`leaveq:` 전용 인덱스(`_addToLeaveQueueIndex` 등)는 §24.3의 이유로
+그대로 KV에 남겨뒀다 — 이름이 비슷해 보여도 서로 다른 함수라 혼동 주의.
+
+### 24.5 순영향(§24.1~§24.4 종합)
+
+| 항목 | 변화 |
+|---|---|
+| `list()`(하루 1,000회) | PUSH 관련 정기 소비가 사실상 0으로 감소(마이그레이션 자체 복구 제외) |
+| 쓰기(write, 하루 1,000회 공유) | 기기 등록/토글/이름변경/삭제 시 `subIndex:` 갱신으로 각 +1건(저빈도 이벤트라 무시할 수준). 알림 전송·제보 접수의 쓰기는 그대로 발생하지만 **KV가 아니라 DO**로 이동해 KV 쓰기 한도에서 완전히 빠짐(제보 접수는 3건→`report:` 1건만 남고 나머지 2건은 DO로) |
+| 삭제(delete) | "제보 즉시 처리 완료 시 `report:{id}` 삭제"만 KV에 남음(그 자체가 안전망 큐의 정상 소비 동작) — 그 외 변화 없음 |
+| 읽기(read, 하루 10만 회) | 화면별로 증감이 있으나 예산 여유가 커 무의미 |
+
+## 25. 관련 문서
 
 - `docs/WEB_ADMIN.md` §3.1 — `applyOutputPenalty`/`applyReportMerit`/
   `applyTimeDeduction`가 실제로 호출되는 관리자 제보 처리 화면·플로우.
@@ -1137,3 +1266,6 @@ read 한도(하루 10만)와 **별개로 하루 1,000회**라는 훨씬 빡빡�
   목록조회 게이지 + 화면별 breakdown).
 - `docs/WEB_DASHBOARD.md` — `buildPersonalStatus`/`getPersonalStatusBundle`이
   조립하는 개인 대시보드 데이터의 원본.
+- `docs/WEB_REPORT.md` §3.1/§4.1/§7 — `ParticipantsRoster` DO의 원래
+  용도(실시간 접속 명단)·PUSH 알림에 새로 얹은 용도·"진행 중인 제보"가
+  아직 KV 라이브 인덱스로 남아있는 이유.

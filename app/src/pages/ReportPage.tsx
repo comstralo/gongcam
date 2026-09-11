@@ -83,10 +83,10 @@ function isWithinReconnectWindow(leadSec: number): boolean {
 }
 
 type ReportMode = "screenshot" | "video";
-type ReportView = "capture" | "notice";
+type ReportView = "capture" | "notice" | "mycheck";
 
 function normalizeView(raw: string | null): ReportView {
-  if (raw === "notice") return raw;
+  if (raw === "notice" || raw === "mycheck") return raw;
   return "capture";
 }
 
@@ -147,7 +147,7 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
   // 이후로는 로컬 state로만 관리한다(하단 탭바로 다른 페이지에 갔다가 돌아와도
   // 마지막에 보던 탭이 쿼리 초기화로 조용히 리셋되지 않게).
   const [view, setView] = useState<ReportView>(() => normalizeView(params.get("tab")));
-  const everOpened = useRef({ capture: false, notice: false });
+  const everOpened = useRef({ capture: false, notice: false, mycheck: false });
   everOpened.current[view] = true;
 
   function changeView(v: string) {
@@ -291,6 +291,12 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
           >
             PUSH 알림 전송
           </TabsTrigger>
+          <TabsTrigger
+            value="mycheck"
+            className="h-auto flex-1 rounded-full py-2.5 font-mono text-xs tracking-wide uppercase data-active:shadow-sm"
+          >
+            내 제보 확인
+          </TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -310,7 +316,7 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
                 공용 SectionCard 기본값은 그대로 둠). */}
             <SectionCard className="shadow-sm shadow-black/[0.03]">
               <Collapsible defaultOpen className="flex flex-col">
-                <SectionHeader icon={Flag} title="화각 불량 제보" iconVariant="tint" />
+                <SectionHeader icon={Flag} title="화각 불량 제보" />
                 <CollapsiblePanel className="flex flex-col gap-4">
                     <SectionCard className="relative flex flex-col gap-3">
                       {/* 🔧 [사용자 지시] 개별 입력 필드마다 disabled를 거는
@@ -510,8 +516,6 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
                 </CollapsiblePanel>
               </Collapsible>
             </SectionCard>
-
-            <MyOutputPenSection refreshSignal={myCapturesRefreshSignal} visible={visible} />
           </>
         )}
       </div>
@@ -525,13 +529,18 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
                 title="PUSH 알림"
                 onRefresh={refresh}
                 refreshProgress={refreshProgress}
-                iconVariant="tint"
               />
               <CollapsiblePanel className="flex flex-col gap-4">
                 <SimpleNoticeSection members={members} noMembers={noMembers} stale={stale} />
               </CollapsiblePanel>
             </Collapsible>
           </SectionCard>
+        )}
+      </div>
+
+      <div className="w-full" hidden={view !== "mycheck"}>
+        {everOpened.current.mycheck && (
+          <MyOutputPenSection refreshSignal={myCapturesRefreshSignal} visible={visible && view === "mycheck"} />
         )}
       </div>
     </div>
