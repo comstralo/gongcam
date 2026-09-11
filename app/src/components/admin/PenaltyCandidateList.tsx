@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ShieldAlert, ChevronDown, CalendarDays, User, Radio, CalendarClock } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -100,8 +100,13 @@ export function PenaltyCandidateList({
   // 있어야 한다"). 실제 계산은 이 화면이 보고 있는 cycleFileId 기준으로
   // 이뤄지고, 참여상태 변경 자체는 항상 현재 시트에 반영된다.
   const [readOnly, setReadOnly] = useState(false);
+  // 탭 복귀/폴링이 겹쳐 load()가 중복 호출되는 걸 막는 가드 — loading
+  // state는 비동기라 ref로 즉시 확인한다.
+  const loadingRef = useRef(false);
 
   function load() {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     setLoading(true);
     setError(null);
     const cycleParam = cycleFileId ? `?cycle=${encodeURIComponent(cycleFileId)}` : "";
@@ -111,16 +116,20 @@ export function PenaltyCandidateList({
         setReadOnly(!!data.readOnly);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "예치금 재납 대상 처리 목록을 불러오지 못했습니다."))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        loadingRef.current = false;
+        setLoading(false);
+      });
   }
 
   useEffect(load, [cycleFileId]); // eslint-disable-line react-hooks/exhaustive-deps
   // 다른 회원의 페널티 누적이 탭을 벗어난 사이에도 바뀔 수 있어, 돌아올
   // 때마다 새로 불러와야 최신 대상자를 놓치지 않는다.
   useRefreshOnVisible(visible, load);
-  // 관련 캐시(exitStatus:/memberRows: 60초)의 3배 이상 주기로 폴링해,
-  // 탭을 벗어나지 않아도 몇 분 안에 자동으로 최신 값을 받는다.
-  const refreshProgress = usePollingRefresh(visible, load, 3 * 60_000);
+  // 🔧 [사용자 지시] "봇 상태를 제외하곤 모두 폴링 주기 20분으로 맞춰" —
+  // 관리자 탭 간 폴링 주기를 20분으로 통일(무캐시 실시간 프록시인 봇
+  // 상태 탭만 예외).
+  const refreshProgress = usePollingRefresh(visible, load, 20 * 60_000);
 
   return (
     <Collapsible defaultOpen className="flex flex-col">

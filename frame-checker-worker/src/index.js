@@ -872,6 +872,19 @@ const MEMBER_CACHE_GROUPS = {
   // 등 무관한 캐시까지 지우는 기본 roster 그룹보다 좁게 잡아 불필요한
   // KV 삭제를 아낀다.
   memberIdentity: ["members", "dataSheetRows"],
+  // 🔧 [사용자 지시, 2026-09-11] "신규 등록이 왜 벌점/벌금/사이클 캐시까지
+  // 매번 지우나" — handleAdminCreateMember가 실제로 쓰는 셀은 개인탭
+  // B2/I2/L3/O3와 데이터!D/E열뿐이라(시트 생성·삭제 없음), 그 범위와
+  // 무관한 meta:(탭 구조)/penSlotGrid:(데이터!F~K)/weeklyPaidFine:
+  // (집계!D22)/penCycle:(집계!D25, 앱스크립트 전용)은 낡지 않는다 —
+  // roster 그룹(9종 전부)보다 좁혀 이 4종의 불필요한 KV 삭제를 아낀다.
+  // members/dataSheetRows(이메일 D/E열)·exitStatus·memberRows(참여상태
+  // L3 등)·rosterStatus(집계 수식이 B2/L3를 즉시 반영)·adminMemberList
+  // (members 경유)·coReviewers(members 의존, 보수적으로 포함)는 실제로
+  // 낡으므로 그대로 남긴다. 번호 재사용 시 잔존 개인별 캐시는 이 그룹과
+  // 별개로 invalidateMemberSlotCache가 이미 방어한다(handleAdminCreateMember
+  // 호출부 참고).
+  newMember: ["members", "dataSheetRows", "exitStatus", "memberRows", "rosterStatus", "adminMemberList", "coReviewers"],
 };
 
 // 시트 구조(권한관리·데이터 D~V 등)를 바꾸는 쓰기 작업 뒤에 호출해 캐시가
@@ -1736,8 +1749,18 @@ async function findMemberNumberByEmail(env, accessToken, fileId, email) {
 // 포함한 4곳이 모두 재사용하게 한다. members:와 TTL·무효화 그룹을 반드시
 // 함께 맞춘다(MEMBER_CACHE_PREFIXES/MEMBER_CACHE_UNCONDITIONAL_KEYS/
 // MEMBER_CACHE_GROUPS.roster 세 곳 모두에 dataSheetRows: 등록 필요).
+// 🔧 [사용자 지시, 2026-09-11] members:가 2시간으로 늘 때(§1729 주석)
+// "함께 맞춘다"고 명시해놓고 정작 TTL 자체는 10분에 남아있던 누락을
+// 발견해 바로잡는다 — members:가 이 원본에서 파생되는데 재료(dataSheetRows)만
+// 10분마다 낡은 것으로 취급되면 가공값(members)의 2시간 TTL도 사실상
+// 무의미해진다. 소비처 3곳(listAllMembers/handleAdminMembersRoster/
+// handleAdminOpenSlots) 모두 이메일·이름·시험종류처럼 저빈도로만 바뀌는
+// 열만 읽고 벌점/상점 등 F~V열은 안 읽어(각 핸들러 주석 참고), 2시간
+// 묵어도 안전하다고 재검증했다. 무효화 그룹(roster/memberIdentity/
+// newMember)은 이미 members:와 완전히 동일하게 dataSheetRows:도 포함하고
+// 있어 무효화 타이밍은 그대로 정확하다 — TTL만 안전망으로 따라간다.
 async function getDataSheetRows(env, accessToken, fileId) {
-  return _cachedCompute(env, `dataSheetRows:${fileId}`, 10 * 60_000, () => {
+  return _cachedCompute(env, `dataSheetRows:${fileId}`, 2 * 60 * 60_000, () => {
     return getSheetValues(env, accessToken, fileId, "데이터!A1:V50");
   });
 }
@@ -2470,11 +2493,15 @@ function colIndexToLetter(col) {
 // exitStatus(getAllExitRelevantStatus)와 paymentRows(getAllPaymentRows)는
 // 둘 다 "15명 개인 탭 A1:U(대략 30~40행)"이라는 거의 같은 범위를 각자
 // batchGet했다 — ROW_REASON_LEAVE_LEFT(40)가 ROW_PAYMENT_CHECK(31)보다
-// 넓은 범위라, 더 넓은 쪽 하나로 통일해 캐시/호출 자체를 공유한다. KV
-// 쓰기는 파일당 1개 키만 남으므로(회원 수와 무관), TTL을 1분으로 잡아도
-// 하루 최악치가 1,440회 수준으로 안전하다.
+// 넓은 범위라, 더 넓은 쪽 하나로 통일해 캐시/호출 자체를 공유한다.
+// 🔧 [사용자 지시, 2026-09-11] ACCOUNT 탭 TTL 점검 — 벌금 처리(fine 그룹)는
+// 프론트가 확정 후 즉시 재조회(`AdminMoneyTab`의 write-then-reload)해
+// 캐시 TTL 자체는 체감 UX에 영향이 없고, 매주 sheet_reset()의 직접쓰기가
+// 무효화를 못 받는 gap도 주 1회뿐이라 영향이 작다고 판단해 60초→10분으로
+// 올린다. KV 쓰기는 파일당 1개 키만 남으므로(회원 수와 무관) 하루 최악치도
+// 여전히 안전하다.
 async function getSharedMemberRows(env, accessToken, fileId, members) {
-  return _cachedCompute(env, `memberRows:${fileId}`, 60_000, () => {
+  return _cachedCompute(env, `memberRows:${fileId}`, 10 * 60_000, () => {
     const ranges = members.map((m) => `${m.number}!A1:U${ROW_REASON_LEAVE_LEFT + 1}`);
     return batchGetSheetValues(env, accessToken, fileId, ranges);
   });
@@ -3586,17 +3613,28 @@ async function handleAdminCapturesList(req, env, origin, url) {
 
   const fileId = env.GOOGLE_SHEET_FILE_ID;
   const coReviewers = await getCurrentCoReviewers(env, accessToken, fileId);
+  // 🔧 [사용자 지시, 2026-09-11] "화각 불량 제보 처리" 캐싱 정책 점검 —
+  // 안쪽 for...of가 항목당 부스터디장 수만큼(최대 2명) KV.get을 순차
+  // 대기했다(항목 20건이면 최대 40회 직렬). 각 get()에 이미 개별
+  // .catch(() => null)이 붙어 있어 실패해도 절대 reject로 전파되지
+  // 않으므로 Promise.all로 병렬화해도 에러 처리 방식은 그대로 유지된다
+  // — votes는 회원번호를 키로 하는 객체라 대입 순서와도 무관하다.
   const items = await Promise.all(
     withOccurrenceAndDeferral.map(async (item) => {
       const votes = {};
-      for (const m of coReviewers) {
-        const raw = await env.REPORTS_KV.get(`${REPORT_VOTE_KV_PREFIX}${item.id}:${m.number}`).catch(() => null);
-        if (!raw) continue;
-        try {
-          votes[m.number] = JSON.parse(raw);
-        } catch {
-          // 손상된 값은 무시 — 미제출로 취급.
-        }
+      const voteEntries = await Promise.all(
+        coReviewers.map(async (m) => {
+          const raw = await env.REPORTS_KV.get(`${REPORT_VOTE_KV_PREFIX}${item.id}:${m.number}`).catch(() => null);
+          if (!raw) return null;
+          try {
+            return [m.number, JSON.parse(raw)];
+          } catch {
+            return null; // 손상된 값은 무시 — 미제출로 취급.
+          }
+        })
+      );
+      for (const entry of voteEntries) {
+        if (entry) votes[entry[0]] = entry[1];
       }
       return { ...item, votes };
     })
@@ -6233,8 +6271,17 @@ async function handleAdminPrizeSettle(req, env, origin) {
 // 분산해, 다른 사용자·새 연결끼리는 인메모리 캐시가 거의 공유되지 않는다
 // — 2026-08 실측으로 확인) — KV(REPORTS_KV)에도 함께 저장해 isolate
 // 경계를 넘어 공유되도록 한다(_cacheSetAsync).
+// 🔧 [사용자 지시, 2026-09-11] ACCOUNT 탭 TTL 점검 — 이 캐시를 무효화하는
+// 5개 그룹(roster/penalty/fine/exitRequest/partiStatus) 모두 Worker API
+// 경유 쓰기 직후 항상 await로 무효화되어 신뢰도가 높다. 유일한 우회 경로인
+// 구글시트 메뉴 "퇴실자·재납자 처리"(_exit_define, appscript.js)는 캐시
+// 무효화 알림이 없는 gap이 있지만, 웹 서비스가 정상 가동 중엔 이 메뉴를
+// 쓸 일이 없고(대부분 기능이 웹으로 이전 완료, 웹 장애 시의 비상 수단으로만
+// 남음) — 그 비상 상황 자체에선 웹 화면의 캐시 최신성이 애초에 무의미해
+// 이 gap과 TTL 상향이 실질적으로 겹치지 않는다고 판단해 60초→10분으로
+// 올린다.
 async function getAllExitRelevantStatus(env, accessToken, fileId, members) {
-  return _cachedCompute(env, `exitStatus:${fileId}`, 60_000, async () => {
+  return _cachedCompute(env, `exitStatus:${fileId}`, 10 * 60_000, async () => {
     const [allRows, dataRows, currentCycle, notesGrid, exitRequests] = await Promise.all([
       getSharedMemberRows(env, accessToken, fileId, members),
       getSheetValues(env, accessToken, fileId, "데이터!F4:M18"),
@@ -6646,11 +6693,16 @@ async function listActiveMembersWithExitInfo(env, accessToken, fileId) {
 // handleAdminCapturesList)가 이 함수를 매번 캐시 없이 호출해, 부스터디장
 // 임명처럼 아주 가끔만 바뀌는 값을 3분마다 15명 전체 셀을 다시 읽고
 // 있었다(사용자 지적). meta:(스프레드시트 구조, 같은 성격의 저빈도 값)와
-// 동일하게 5분 TTL로 캐싱한다 — 임명/해제(handleAdminSetPartiStatus)가
+// 동일하게 캐싱한다 — 임명/해제(handleAdminSetPartiStatus)가
 // invalidateMemberCache(["partiStatus"])를 호출하므로, 그 그룹에 이 키를
 // 포함시켜 즉시 무효화되게 한다(TTL은 그 무효화가 실패했을 때의 안전망).
+// 🔧 [사용자 지시, 2026-09-11] ACCOUNT 탭 TTL 점검 — 임명/해제 경로가
+// handleAdminSetPartiStatus 단일 경로뿐이고 항상 await로 무효화되며,
+// 시트 직접쓰기로 부스터디장을 지정하는 우회 경로가 없음을 재확인해
+// 5분→10분으로 올린다. 늘어나는 건 "무효화 자체가 실패했을 때의 안전망
+// 시간"뿐이라 이 권한 검사(requireAdminOrCoReviewer)에 영향이 크지 않다.
 async function getCurrentCoReviewers(env, accessToken, fileId) {
-  return _cachedCompute(env, `coReviewers:${fileId}`, 5 * 60_000, async () => {
+  return _cachedCompute(env, `coReviewers:${fileId}`, 10 * 60_000, async () => {
     const members = await listAllMembers(env, accessToken, fileId);
     const partiStatusValues = await batchGetSheetValues(
       env,
@@ -7845,7 +7897,13 @@ async function handleAdminCreateMember(req, env, origin) {
       { range: `데이터!D${rowNumber}`, values: [[dCellValue]] },
       { range: `데이터!E${rowNumber}`, values: [[examKind || ""]] },
     ]);
-    await invalidateMemberCache(env, ["roster"]); // 신규 이메일이 명단에 추가되었으므로 전체 무효화.
+    // 🔧 [사용자 지시, 2026-09-11] "신규 등록이 벌점/벌금/사이클 캐시까지
+    // 매번 지우는 건 과도하다" — roster(9종 전부) 대신 이 함수가 실제로
+    // 건드리는 범위와 겹치는 캐시만 지우는 newMember 그룹으로 좁힌다
+    // (MEMBER_CACHE_GROUPS.newMember 정의 근처 주석 참고). meta:/
+    // penSlotGrid:/weeklyPaidFine:/penCycle:는 이 함수가 건드리는 시트
+    // 범위와 무관해 무효화 대상에서 뺐다.
+    await invalidateMemberCache(env, ["newMember"]);
     // 이 번호가 과거 퇴실한 회원의 것이었다면, 그 회원의 벌점/제보상점 KV
     // 캐시가 아직 안 지워진 채 남아있을 수 있으므로 신규 등록 시점에도
     // 한 번 더 방어적으로 지운다.

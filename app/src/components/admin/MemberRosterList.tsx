@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Users, User, ChevronDown, Hash, Bell, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -40,8 +40,13 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
   const [expandedNumber, setExpandedNumber] = useState<string | null>(null);
   const [cancelingNumber, setCancelingNumber] = useState<string | null>(null);
   const [togglingNumber, setTogglingNumber] = useState<string | null>(null);
+  // 탭 복귀/당겨서 새로고침/폴링이 겹쳐 load()가 중복 호출되는 걸 막는
+  // 가드 — loading state는 비동기라 ref로 즉시 확인한다.
+  const loadingRef = useRef(false);
 
   function load() {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     setLoading(true);
     setError(null);
     call<AdminMembersRosterResponse>("/admin/members/roster")
@@ -51,7 +56,10 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
         setSpreadsheetId(data.spreadsheetId || null);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "참여 스터디원 목록을 불러오지 못했습니다."))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        loadingRef.current = false;
+        setLoading(false);
+      });
   }
 
   function cancelExitRequest(number: string) {
@@ -80,15 +88,13 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
   // 이 탭으로 돌아올 때마다 다시 불러오고(신규등록/퇴실/번호이동은 다른
   // 화면에서 처리되므로), 계속 띄워둔 채로도 관련 캐시의 3배 이상 주기로
   // 폴링해 자동 갱신되게 한다.
-  // 🔧 [2026-09-11 재조정] 원래 15분이었는데, 의존 캐시 중 dataSheetRows:
-  // (10분)와의 배율이 1.5배로 원칙(3배 이상, docs/CACHING_POLICY.md §12.1)
-  // 에 못 미쳤다 — meta:(당시 5분)까지 감안하면 최대 3배였지만 최소 기준인
-  // dataSheetRows:엔 못 미쳤던 것. meta:를 10분으로 올리고(아래
-  // getSpreadsheetMeta) 폴링도 30분으로 늘려, 이제 dataSheetRows:/meta:
-  // 둘 다 10분 기준 정확히 3배를 맞춘다(members:는 2시간으로 더 길어
-  // 병목이 아님, §17.2).
+  // 🔧 [사용자 지시] "봇 상태를 제외하곤 모두 폴링 주기 20분으로 맞춰" —
+  // 관리자 탭 간 폴링 주기를 20분으로 통일. 직전엔 dataSheetRows:/meta:
+  // (10분)의 3배 원칙(docs/CACHING_POLICY.md §12.1)을 맞추려 30분이었는데,
+  // 이번 통일 지시로 배율이 2배로 낮아진다 — 그만큼 캐시 미스(재계산)
+  // 빈도가 약간 늘 수 있음을 감안한 결정.
   useRefreshOnVisible(visible, load);
-  const refreshProgress = usePollingRefresh(visible, load, 30 * 60_000);
+  const refreshProgress = usePollingRefresh(visible, load, 20 * 60_000);
 
   return (
     <Collapsible defaultOpen className="flex flex-col">

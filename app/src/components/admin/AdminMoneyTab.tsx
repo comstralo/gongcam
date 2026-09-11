@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown, CircleDollarSign, CalendarDays, Loader2, User, Trophy, Timer, Award, Coins } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -149,8 +149,13 @@ function PaidFineList({
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [dayDetail, setDayDetail] = useState<Record<string, StatusResponse | "loading" | "error">>({});
+  // 탭 복귀/당겨서 새로고침/폴링이 겹쳐 load()가 중복 호출되는 걸 막는
+  // 가드 — loading state는 비동기라 ref로 즉시 확인한다.
+  const loadingRef = useRef(false);
 
   function load() {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     setLoading(true);
     setError(null);
     const cycleParam = cycleFileId ? `?cycle=${encodeURIComponent(cycleFileId)}` : "";
@@ -175,7 +180,10 @@ function PaidFineList({
         setStatusOverride({});
       })
       .catch((err) => setError(err instanceof Error ? err.message : "벌금 납부 대상자 목록을 불러오지 못했습니다."))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        loadingRef.current = false;
+        setLoading(false);
+      });
   }
 
   useEffect(load, [cycleFileId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -183,9 +191,10 @@ function PaidFineList({
   // Money 탭으로 돌아올 때마다 새로 불러온다.
   useRefreshOnVisible(isVisible, load);
   usePullRefreshListener(isVisible, load);
-  // 관련 캐시(memberRows: 60초, weeklyPaidFine: 5분)의 3배 이상 주기로
-  // 폴링해, 탭을 벗어나지 않아도 몇 분 안에 자동으로 최신 값을 받는다.
-  const refreshProgress = usePollingRefresh(isVisible, load, 3 * 60_000);
+  // 🔧 [사용자 지시] "봇 상태를 제외하곤 모두 폴링 주기 20분으로 맞춰" —
+  // 관리자 탭 간 폴링 주기를 20분으로 통일(무캐시 실시간 프록시인 봇
+  // 상태 탭만 예외).
+  const refreshProgress = usePollingRefresh(isVisible, load, 20 * 60_000);
 
   async function handleSetStatus(f: FineRecord, status: FineStatus) {
     const key = fineKey(f);
@@ -472,6 +481,9 @@ function PrizeRecipientList({
   // 지난 사이클 조회 중이면 읽기 전용 — "상금 정산 집행"은 그 시점 시트에
   // 실제로 값을 쓰는 액션이라 현재 시트에서만 의미가 있다.
   const readOnly = !!cycleFileId;
+  // 탭 복귀/당겨서 새로고침/폴링이 겹쳐 load()가 중복 호출되는 걸 막는
+  // 가드 — loading state는 비동기라 ref로 즉시 확인한다.
+  const loadingRef = useRef(false);
 
   // 🔧 2026-09: 더미 데이터를 걷어내고 실제 /roster-status를 호출한다 —
   // "랭킹"(RosterPage)이 이미 쓰는 것과 같은 엔드포인트다. settlement(1~5등
@@ -482,6 +494,8 @@ function PrizeRecipientList({
   // 제한을 걸지 않는다(index.js, handleRosterStatus). cycle 쿼리는 이미
   // handleRosterStatus가 resolveTargetFileId로 지원하는 기존 패턴이다.
   function load() {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     setLoading(true);
     setError(null);
     const cycleParam = cycleFileId ? `?cycle=${encodeURIComponent(cycleFileId)}` : "";
@@ -492,7 +506,10 @@ function PrizeRecipientList({
         setSettlement(data.settlement ?? []);
       })
       .catch((err) => setError(err instanceof ApiError ? err.message : "상금 수령 대상 목록을 불러오지 못했습니다."))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        loadingRef.current = false;
+        setLoading(false);
+      });
   }
 
   useEffect(load, [cycleFileId]); // eslint-disable-line react-hooks/exhaustive-deps

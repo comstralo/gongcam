@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BedDouble, ChevronDown, CalendarDays, User, FileText, Image as ImageIcon } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { InfoCard, SubRow, TintedPill } from "@/components/dashboard/shared";
 import { SectionHeader, CapturePreview, AdminListSkeleton, AdminEmptyState } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
+import { usePollingRefresh } from "@/hooks/usePollingRefresh";
 import { useAuth } from "@/lib/auth/useAuth";
 import { ICON_STROKE, cn } from "@/lib/utils";
 import type { LeaveProofReviewItem, LeaveProofListResponse, LeaveProofDecideResponse } from "@/lib/api/types";
@@ -93,8 +94,13 @@ export function ReasonLeaveReviewList({
   // — 그 자체로 이미 approved/rejected가 확정된 읽기 전용 목록이라 승인/
   // 반려 액션을 잠근다.
   const [readOnly, setReadOnly] = useState(false);
+  // 탭 복귀/당겨서 새로고침/폴링이 겹쳐 load()가 중복 호출되는 걸 막는
+  // 가드 — loading state는 비동기라 ref로 즉시 확인한다.
+  const loadingRef = useRef(false);
 
   function load() {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     setLoading(true);
     setError(null);
     const cycleParam = cycleFileId ? `?cycle=${encodeURIComponent(cycleFileId)}` : "";
@@ -104,13 +110,23 @@ export function ReasonLeaveReviewList({
         setReadOnly(!!data.readOnly);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "사유반휴 신청 목록을 불러오지 못했습니다."))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        loadingRef.current = false;
+        setLoading(false);
+      });
   }
 
   useEffect(load, [cycleFileId]); // eslint-disable-line react-hooks/exhaustive-deps
   // 새 반휴 신청이 탭을 벗어난 사이에 들어올 수 있어, 돌아올 때마다 새로
   // 불러와야 처리가 늦어지지 않는다.
   useRefreshOnVisible(visible, load);
+  // 🔧 [사용자 지시, 2026-09-11] "봇 상태 제외 전부 폴링 주기 20분으로
+  // 맞춰" — PEN·Money 탭의 다른 4개 섹션(ReportReviewList/PaidFineList/
+  // PenaltyCandidateList/PrizeRecipientList)은 이미 20분 폴링이 걸려있는데
+  // 이 섹션만 useRefreshOnVisible(탭 복귀 시에만 갱신)만 있고 자동 폴링이
+  // 빠져 있었다 — 탭을 계속 띄워둔 채로 있으면 다른 관리자가 처리한
+  // 반휴 신청이 자동 반영되지 않는 사각지대였다.
+  const refreshProgress = usePollingRefresh(visible, load, 20 * 60_000);
 
   function decide(item: LeaveProofReviewItem, decision: "approved" | "rejected", rejectReason?: string) {
     setDecidingId(item.id);
@@ -143,7 +159,13 @@ export function ReasonLeaveReviewList({
 
   return (
     <Collapsible defaultOpen className="flex flex-col">
-      <SectionHeader icon={BedDouble} title="사유 반휴 신청 처리" loading={loading} onRefresh={load} />
+      <SectionHeader
+        icon={BedDouble}
+        title="사유 반휴 신청 처리"
+        loading={loading}
+        onRefresh={load}
+        refreshProgress={refreshProgress}
+      />
       <CollapsiblePanel className="flex flex-col gap-4">
         {error && (
           <Alert variant="destructive">

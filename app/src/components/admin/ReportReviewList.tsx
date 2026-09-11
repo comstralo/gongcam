@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Flag, ChevronDown, CalendarDays, FileText, Clock, Gavel, Image as ImageIcon, User, Users, Trash2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -400,6 +400,9 @@ export function ReportReviewList({
   const [myName, setMyName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // 탭 복귀/당겨서 새로고침/폴링이 겹쳐 load()가 중복 호출되는 걸 막는
+  // 가드 — loading state는 비동기라 ref로 즉시 확인한다.
+  const loadingRef = useRef(false);
   const [decidingId, setDecidingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [votingId, setVotingId] = useState<string | null>(null);
@@ -446,7 +449,16 @@ export function ReportReviewList({
   const cycleFileId = cycleFileIdProp !== undefined ? cycleFileIdProp : cycleFileIdState;
   const setCycleFileId = onCycleChange || setCycleFileIdState;
 
+  // 🔧 [사용자 지시, 2026-09-11] "화각 불량 제보 처리" 캐싱 정책 점검 —
+  // 탭 복귀(useRefreshOnVisible)/당겨서 새로고침(usePullRefreshListener)/
+  // 20분 폴링(usePollingRefresh)이 서로의 존재를 모른 채 각자 load()를
+  // 호출해, 타이밍이 겹치면(예: 폴링 직전에 당겨서 새로고침) 같은 조회가
+  // 중복으로 나갈 수 있었다. loadingRef로 "이미 진행 중이면 무시"하는
+  // 가드를 추가한다 — loading state는 비동기 setState라 재진입 시점에
+  // 아직 반영 안 됐을 수 있어 ref로 즉시 체크한다.
   function load() {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     setLoading(true);
     setError(null);
     const cycleParam = cycleFileId ? `?cycle=${encodeURIComponent(cycleFileId)}` : "";
@@ -469,7 +481,10 @@ export function ReportReviewList({
         }
       })
       .catch((err) => setError(err instanceof Error ? err.message : "제보 목록을 불러오지 못했습니다."))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        loadingRef.current = false;
+        setLoading(false);
+      });
   }
 
   useEffect(load, [cycleFileId]); // eslint-disable-line react-hooks/exhaustive-deps
