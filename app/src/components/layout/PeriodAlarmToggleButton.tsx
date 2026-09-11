@@ -11,13 +11,21 @@ import { ICON_STROKE, cn } from "@/lib/utils";
 export function PeriodAlarmToggleButton() {
   const { phase, remainingLabel, soundEnabled, setSoundEnabled } = usePeriodAlarm();
 
+  // 🔧 [사용자 지시] "N교시 00:00 남음 / 휴식 00:00 남음 으로만 처리해줘" —
+  // 세 가지 phase 문구를 "{접두어} {남은시간} 남음"으로 통일한다.
+  // 🔧 [사용자 지시] "11교시 같은 표시 뒤에는 구분자 기호를 넣어줘" →
+  // "가운뎃점 말고 세로 구분선을 써" → 세로선 DOM 요소로 시도했다가
+  // "가운데 점이 나은듯 저기선" — 이 헤더 pill처럼 짧고 촘촘한 텍스트에는
+  // 세로선보다 가운뎃점이 더 어울린다는 판단으로 되돌림. 이 코드베이스가
+  // 이미 쓰는 가운뎃점(·) 구분자 관례(admin/shared.tsx의 "스크린샷 · 영상"
+  // 등)를 따른다.
   let statusLabel: string;
   if (phase.kind === "in-period") {
-    statusLabel = `${phase.period.index}교시 ${remainingLabel}`;
+    statusLabel = `${phase.period.index}교시 · ${remainingLabel} 남음`;
   } else if (phase.kind === "break") {
-    statusLabel = `휴식 ${remainingLabel}`;
+    statusLabel = `휴식 · ${remainingLabel} 남음`;
   } else {
-    statusLabel = `1교시 전 ${remainingLabel}`;
+    statusLabel = `1교시 · ${remainingLabel} 남음`;
   }
 
   return (

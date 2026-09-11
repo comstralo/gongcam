@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { HashRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
-import { LayoutDashboard, ScanLine, Bell, Link2, Settings, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, ScanLine, Bell, Settings, ShieldCheck } from "lucide-react";
 import { AuthProvider } from "@/lib/auth/AuthContext";
 import { useAuth } from "@/lib/auth/useAuth";
 import { MyStatusProvider } from "@/lib/status/MyStatusContext";
@@ -14,13 +14,12 @@ import { CheckerPage } from "@/pages/CheckerPage";
 import { ReportPage } from "@/pages/ReportPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { NotificationsPage } from "@/pages/NotificationsPage";
-import { LinksPage } from "@/pages/LinksPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { AdminPage } from "@/pages/AdminPage";
 import { useVersionCheck } from "@/hooks/useVersionCheck";
 
-type MainView = "/" | "/report" | "/notifications" | "/links" | "/settings" | "/admin";
-const MAIN_VIEWS: MainView[] = ["/", "/report", "/notifications", "/links", "/settings", "/admin"];
+type MainView = "/" | "/report" | "/notifications" | "/settings" | "/admin";
+const MAIN_VIEWS: MainView[] = ["/", "/report", "/notifications", "/settings", "/admin"];
 
 // 로그인 후 오가는 5개 메인 페이지(대시보드/제보/링크/설정/관리자)는 예전
 // react-router <Routes>처럼 경로가 바뀔 때마다 언마운트/재마운트되면, 각
@@ -39,7 +38,6 @@ function MainViews() {
     "/": false,
     "/report": false,
     "/notifications": false,
-    "/links": false,
     "/settings": false,
     "/admin": false,
   });
@@ -55,7 +53,7 @@ function MainViews() {
     // 보고 있는지"와 완전히 무관하게 세션이 있는 동안 항상 15분 폴링을
     // 돌렸다. 이 전역 상태를 실제로 쓰는 화면은 대시보드(StatusPage)와
     // 설정(SettingsPage) 둘뿐인데(useMyStatus 사용처 전수조사로 확인),
-    // 제보/알림/링크/관리자 화면에 있는 동안에도 계속 재작성됐다.
+    // 제보/알림/관리자 화면에 있는 동안에도 계속 재작성됐다.
     // MainViews(=useLocation을 쓸 수 있는 위치) 안으로 Provider를 옮겨
     // path를 그대로 visible 계산에 써서, 그 두 화면 중 하나를 보고 있을
     // 때만 폴링이 돌게 좁힌다. 최초 로드(로그인 직후 1회, 화면 전환 시
@@ -83,13 +81,6 @@ function MainViews() {
         {everVisited.current["/notifications"] && (
           <AppShell title="알림" titleIcon={Bell}>
             <NotificationsPage />
-          </AppShell>
-        )}
-      </div>
-      <div hidden={path !== "/links"} className="animate-tab-enter">
-        {everVisited.current["/links"] && (
-          <AppShell title="링크" titleIcon={Link2}>
-            <LinksPage />
           </AppShell>
         )}
       </div>

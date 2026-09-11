@@ -69,6 +69,8 @@ export function formatRemaining(ms: number): string {
   const h = Math.floor(totalSeconds / 3600);
   const m = Math.floor((totalSeconds % 3600) / 60);
   const s = totalSeconds % 60;
+  // 🔧 [사용자 지시] "N교시 00:00 남음"처럼 분:초를 항상 2자리로 —
+  // 기존엔 분 자리를 패딩하지 않아(예: 9:05) 자릿수가 흔들렸다.
   if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  return `${m}:${String(s).padStart(2, "0")}`;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
