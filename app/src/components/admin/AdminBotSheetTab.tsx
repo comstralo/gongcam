@@ -316,13 +316,13 @@ function BotStatusSection({ visible }: { visible: boolean }) {
   // 🔧 [자동 갱신, 2026-09] 이 화면(스크린샷 포함)은 KV 캐시가 아니라
   // 봇에 매번 실시간으로 프록시하는 무캐시 경로라 usePollingRefresh의
   // "캐시 TTL의 3배" 원칙이 적용되지 않는다 — 사용자가 직접 정한 고정
-  // 주기(1분)로 폴링한다. 봇이 요청마다 Selenium으로 화면을 새로
-  // 캡처하므로(ctx.lock_element 락 공유), 너무 짧게 잡으면 제보 캡처·
-  // 교시 기록 같은 봇의 다른 작업과 락 경합이 늘고 대역폭도 커진다 —
-  // 1분은 "부하는 낮게, 그래도 꽤 실시간"인 절충점으로 사용자가 확정
-  // (docs/CACHING_POLICY.md §12 참고, 이 화면은 캐시 무관이라 표에는
-  // 없음).
-  const refreshProgress = usePollingRefresh(visible, load, 60_000);
+  // 주기로 폴링한다. 봇이 요청마다 Selenium으로 화면을 새로 캡처하므로
+  // (ctx.lock_element 락 공유), 너무 짧게 잡으면 제보 캡처·교시 기록
+  // 같은 봇의 다른 작업과 락 경합이 늘고 대역폭도 커진다 — 원래 "부하는
+  // 낮게, 그래도 꽤 실시간"인 절충점으로 1분을 확정했었으나(§12 참고),
+  // 2026-09-11 사용자 지시로 더 실시간성을 우선해 30초로 낮췄다 — 락
+  // 경합 빈도가 늘 수 있다는 트레이드오프는 감수하기로 함.
+  const refreshProgress = usePollingRefresh(visible, load, 30_000);
 
   // 🔧 [버그 수정] daily_browser_reset(실제 재시작 작업) 자체는 완료까지
   // 수십 초(스레드 정리 대기+브라우저 재기동)가 걸리는데, 원래는 명령
