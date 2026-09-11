@@ -537,13 +537,24 @@ function PrizeRecipientList({
   // 지워진 캐시를 받을 수 있어(제보 승인은 이 캐시를 무효화하지 않는
   // 의도적 방치, §16/§31) 신뢰할 수 없다. 서버 쪽 강제 무효화+재계산만이
   // 확실한 최종 방어선이다.
+  // 🔧 [2차 점검, 2026-09-11] "총 모금액만 검증하면 부족하다" — 제보 승인은
+  // 집계 F열(순위)만 바꾸고 총 모금액(D20)은 안 바꾸므로, 총액이 그대로인
+  // 채 1~5등 명단(settlement)만 바뀌는 경우 위 검증을 그대로 통과해버렸다.
+  // 이 화면은 관리자가 표시된 명단을 보고 실제로 먼저 송금한 뒤 "집행"
+  // 버튼으로 사후 기록만 남기는 워크플로우라(코드 주석 참고), 낡은 명단으로
+  // 잘못된 사람에게 이미 송금된 뒤에야 뒤늦게 막히는 게 문제였다. 총액과
+  // 함께 현재 화면에 표시된 수령자 번호 순서(expectedSettlementNumbers)도
+  // 보내, 서버가 재계산한 최신 명단과 정확히 일치할 때만 집행을 허용한다.
   async function handleSettle() {
     setSettling(true);
     setError(null);
     try {
       await call<PrizeSettleResponse>("/admin/prize/settle", {
         method: "POST",
-        body: { expectedCollectMoney: collectMoney },
+        body: {
+          expectedCollectMoney: collectMoney,
+          expectedSettlementNumbers: settlement?.map((s) => s.number) ?? [],
+        },
       });
       setSettled(true);
     } catch (err) {

@@ -952,10 +952,15 @@ function invalidateMemberCache(env, groups, fileId) {
 // 과거 키(outputPenSlots:/reportScore:)는 더 이상 존재하지 않는다 —
 // personalStatusBundle: 하나만 지우면 셋(개인 탭 원본 포함) 다 함께
 // 재계산된다.
-function invalidateMemberSlotCache(env, memberNumber) {
+// fileId를 생략하면 항상 "지금 진행 중인" 현재 시트(env.GOOGLE_SHEET_FILE_ID)
+// 기준으로 지운다 — 기존 호출부(벌점/상점 처리 등)는 전부 현재 시트만
+// 다루므로 이 기본값으로 충분하다. 과거 백업 파일도 다룰 수 있는 호출부
+// (computeExitResult 등)는 실제로 조회한 sourceFileId를 명시해야 그 파일의
+// 캐시가 정확히 지워진다.
+function invalidateMemberSlotCache(env, memberNumber, fileId) {
   if (!env) return Promise.resolve();
-  const fileId = env.GOOGLE_SHEET_FILE_ID;
-  const cacheKey = `personalStatusBundle:${fileId}:${memberNumber}`;
+  const targetFileId = fileId || env.GOOGLE_SHEET_FILE_ID;
+  const cacheKey = `personalStatusBundle:${targetFileId}:${memberNumber}`;
   _sheetCache.delete(cacheKey);
   return env.REPORTS_KV.delete(`${KV_CACHE_PREFIX}${cacheKey}`).catch(() => {});
 }
@@ -6243,19 +6248,40 @@ async function handleAdminFineStatus(req, env, origin) {
 // 계산해, 프론트가 보낸 expectedCollectMoney와 "진짜 최신" 총 모금액을
 // 대조한다 — 프론트 재확인(느슨한 안전장치)과 별개로 서버가 최종 방어선
 // 역할을 한다.
+// 🔧 [2차 점검, 2026-09-11] "총 모금액만 검증하면 부족하다" — 제보 승인은
+// 집계 F열(순위) 수식만 바꾸고 D20(총 모금액)은 안 바꾸므로, 총액이
+// 그대로인 채 1~5등 수령자 구성만 바뀌는 경우 위 검증을 그대로 우회했다.
+// 관리자가 화면에 뜬 명단을 보고 먼저 실제로 송금한 뒤 이 버튼으로 완료만
+// 기록하는 워크플로우라(§6230 주석), 낡은 명단으로 잘못된 사람에게 이미
+// 송금된 뒤에야 뒤늦게 막히는 게 진짜 위험이었다. 프론트가 화면에 표시된
+// 수령자 번호 순서(expectedSettlementNumbers)도 함께 보내면, 서버가
+// 재계산한 최신 순위 기준 수령자 번호 순서와 정확히 일치할 때만 집행을
+// 허용한다. settlement는 rankValue로 안정 정렬되어 같은 데이터면 항상
+// 같은 순서로 나오므로(비결정 요소 없음), 실제로 명단이 안 바뀌었다면
+// 오탐 없이 통과한다.
 async function handleAdminPrizeSettle(req, env, origin) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
 
   try {
-    const { expectedCollectMoney } = await req.json().catch(() => ({}));
+    const { expectedCollectMoney, expectedSettlementNumbers } = await req.json().catch(() => ({}));
     const accessToken = await getServiceAccountAccessToken(env);
     const fileId = env.GOOGLE_SHEET_FILE_ID;
     await invalidateMemberCache(env, ["rosterOnly"], fileId);
     const latest = await buildRosterStatus(env, accessToken, fileId);
-    if (typeof expectedCollectMoney === "number" && expectedCollectMoney !== (latest.collectMoney ?? 0)) {
+    const latestNumbers = (latest.settlement || []).map((s) => s.number);
+    const collectMoneyChanged =
+      typeof expectedCollectMoney === "number" && expectedCollectMoney !== (latest.collectMoney ?? 0);
+    const settlementChanged =
+      Array.isArray(expectedSettlementNumbers) &&
+      (expectedSettlementNumbers.length !== latestNumbers.length ||
+        expectedSettlementNumbers.some((num, i) => num !== latestNumbers[i]));
+    if (collectMoneyChanged || settlementChanged) {
       return json(
-        { error: "정산 대상 정보가 방금 바뀌었습니다. 화면을 새로고침한 뒤 다시 확인해 주세요.", collectMoney: latest.collectMoney ?? 0 },
+        {
+          error: "정산 대상 정보가 방금 바뀌었습니다. 화면을 새로고침한 뒤 다시 확인해 주세요.",
+          collectMoney: latest.collectMoney ?? 0,
+        },
         409,
         origin
       );
@@ -6988,8 +7014,27 @@ async function resolveExitSourceFileId(env, accessToken, fileId, number, kind, c
 }
 
 // 실제로 시트를 바꾸지 않고 discount_ratio/사유/결과 메시지만 계산해 돌려준다.
-async function computeExitResult(env, accessToken, fileId, number, name, kind, forcedReason, cycleFileId) {
+// 🔧 [2차 점검, 2026-09-11] Cloudflare KV 최종 일관성 재검증 — 벌점 승인
+// (applyOutputPenalty)이 personalStatusBundle:을 지운 직후(승인이 실행된
+// 리전에서만) 60초 내에 다른 리전 관리자가 같은 회원을 이 함수로 퇴실
+// 판정하면, 그 리전의 KV 로컬 복제본엔 아직 delete가 전파되지 않아 낡은
+// 페널티 상태(예: 강제퇴실 조건 미충족)를 읽고 반환금을 잘못 계산할 수
+// 있음을 확인했다 — withMemberLock(뮤텍스)은 "동시 실행 순서"만 강제할
+// 뿐, 락 해제 후에도 여전히 존재하는 "KV 자체의 리전 간 전파 지연"은
+// 막지 못한다(뮤텍스로는 해결 안 됨을 재확인). `forceFresh`가 true면
+// 퇴실 판정 직전에 이 회원의 personalStatusBundle:을 강제로 지운 뒤
+// buildPersonalStatus를 호출해, 같은 요청 안에서 방금 지운 값을 그대로
+// 다시 읽는(KV read-your-write는 같은 리전 내에서는 보장됨) 방식으로
+// "이 판정 시점만큼은" 최대한 최신 값을 쓰도록 한다 — KV delete 자체도
+// 최종 일관성 연산이라 이론상 완전한 해결은 아니지만(다른 리전의 delete가
+// 이 리전에 아직 안 닿았을 가능성은 남음), §32와 동일한 수준의 실질적
+// 안전장치다. 실제로 시트를 바꾸는 확정(handleAdminExitConfirm)에서만
+// true로 넘긴다 — 미리보기(handleAdminExitPreview)는 다이얼로그를 열 때,
+// 그리고 사유 입력 중 300ms 디바운스로 반복 호출되는 조회 전용 경로라
+// 매번 강제 무효화하면 불필요한 KV delete+Sheets 재조회가 쌓인다.
+async function computeExitResult(env, accessToken, fileId, number, name, kind, forcedReason, cycleFileId, forceFresh) {
   const { sourceFileId, fromBackup } = await resolveExitSourceFileId(env, accessToken, fileId, number, kind, cycleFileId);
+  if (forceFresh) await invalidateMemberSlotCache(env, number, sourceFileId);
   const status = await buildPersonalStatus(env, accessToken, sourceFileId, number, name);
   const breakdown = status.depositRefundBreakdown;
   const process = calcExitProcess(kind, breakdown, forcedReason);
@@ -7451,7 +7496,10 @@ async function handleAdminExitConfirm(req, env, origin) {
       return json({ error: "직권 퇴실 사유를 입력해야 확정 처리할 수 있습니다." }, 400, origin);
     }
 
-    const result = await computeExitResult(env, accessToken, fileId, member.number, member.name, kind, forcedReason, cycle);
+    // forceFresh: true — 실제로 시트를 바꾸는 확정 경로라 §computeExitResult
+    // 주석 참고, 판정 직전 캐시를 강제로 재계산해 리전 간 KV 전파 지연으로
+    // 인한 오판정 위험을 최대한 줄인다.
+    const result = await computeExitResult(env, accessToken, fileId, member.number, member.name, kind, forcedReason, cycle, true);
     if (!result) {
       return json({ error: "해당 처리 유형에 해당하지 않는 회원입니다." }, 400, origin);
     }
@@ -7799,6 +7847,16 @@ async function moveMemberSlot(env, accessToken, fileId, ownerEmail, from, to, on
   await Promise.all([invalidateMemberSlotCache(env, from), invalidateMemberSlotCache(env, to)]);
 }
 
+// 🔧 [2차 점검, 2026-09-11] moveMemberSlot이 탭 삭제→이름변경→위치조정 등
+// 여러 단계를 락 없이 순차 실행해, 관리자 두 명이 "정렬 실행"을 거의
+// 동시에 누르면 서로 다른 시점의 계획(plan)으로 같은 탭을 건드려 시트
+// 구조가 절반만 이동된 채 깨질 위험이 있었다(경쟁 조건 재검증 완료).
+// 개별 이동 단계가 아니라 요청 전체(plan 재계산부터 전체 이동 완료까지)를
+// withMemberLock으로 감싼다 — 정렬 도중 다른 정렬 요청이 끼어들면 더
+// 위험하므로 배치 전체를 하나의 임계구역으로 다룬다. "reorder:" 접두어라
+// 신규 등록("newmember:")/벌점 승인("pen:"/"merit:")과는 무관하게
+// 독립적으로 직렬화된다. 정렬은 관리자가 명시적으로 트리거하는 드문 배치
+// 작업이라 전역 직렬화의 체감 비용은 낮다.
 async function handleAdminMemberReorder(req, env, origin) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
@@ -7807,24 +7865,26 @@ async function handleAdminMemberReorder(req, env, origin) {
   const moved = [];
   try {
     const accessToken = await getServiceAccountAccessToken(env);
-    // 클라이언트가 미리보기 이후 시간이 지나 상태가 바뀌었을 수 있으므로,
-    // 클라이언트가 보낸 계획을 신뢰하지 않고 서버에서 다시 계산한다.
-    const plan = await computeMemberReorderPlan(env, accessToken);
+    await withMemberLock(env, `reorder:${fileId}`, async () => {
+      // 클라이언트가 미리보기 이후 시간이 지나 상태가 바뀌었을 수 있으므로,
+      // 클라이언트가 보낸 계획을 신뢰하지 않고 서버에서 다시 계산한다.
+      const plan = await computeMemberReorderPlan(env, accessToken);
 
-    // "1"번 탭의 위치를 배치 전체에서 딱 한 번만 조회해 고정 기준점으로 쓴다.
-    // "1"번은 가장 작은 번호라 이 로직의 from(이동 대상)이 될 수 없어
-    // 배치 도중 계속 안정적이다("집계"와 "1" 사이에 숨겨진 다른 탭이
-    // 있을 가능성까지 감안해, 그 사이 간격을 가정하지 않고 "1" 자체의
-    // 실측 위치를 직접 기준으로 삼는다).
-    const sheets = await getSpreadsheetMeta(env, accessToken, fileId);
-    const oneSheet = sheets.find((s) => s.title === "1");
-    if (!oneSheet) throw new Error("1번 탭을 찾을 수 없습니다.");
-    const oneIndex = oneSheet.index;
+      // "1"번 탭의 위치를 배치 전체에서 딱 한 번만 조회해 고정 기준점으로 쓴다.
+      // "1"번은 가장 작은 번호라 이 로직의 from(이동 대상)이 될 수 없어
+      // 배치 도중 계속 안정적이다("집계"와 "1" 사이에 숨겨진 다른 탭이
+      // 있을 가능성까지 감안해, 그 사이 간격을 가정하지 않고 "1" 자체의
+      // 실측 위치를 직접 기준으로 삼는다).
+      const sheets = await getSpreadsheetMeta(env, accessToken, fileId);
+      const oneSheet = sheets.find((s) => s.title === "1");
+      if (!oneSheet) throw new Error("1번 탭을 찾을 수 없습니다.");
+      const oneIndex = oneSheet.index;
 
-    for (const step of plan) {
-      await moveMemberSlot(env, accessToken, fileId, env.ADMIN_EMAIL, step.from, step.to, oneIndex);
-      moved.push(step);
-    }
+      for (const step of plan) {
+        await moveMemberSlot(env, accessToken, fileId, env.ADMIN_EMAIL, step.from, step.to, oneIndex);
+        moved.push(step);
+      }
+    });
     return json({ ok: true, moved }, 200, origin);
   } catch (err) {
     return json({ ok: false, moved, error: err.message }, 500, origin);
@@ -7871,55 +7931,77 @@ async function handleAdminCreateMember(req, env, origin) {
     const accessToken = await getServiceAccountAccessToken(env);
     const fileId = env.GOOGLE_SHEET_FILE_ID;
 
-    // 🔧 [데이터 시트 통합] "권한관리" 탭이 "데이터" 탭으로 흡수됐다. 열
-    // 인덱스(B=번호, C=이름, D=이메일)는 그대로라 row[1]/row[3] 접근은 안
-    // 바뀌지만, 시트 자체가 D~V까지 넓어져 범위를 A1:V50으로 확장했다.
-    const authRows = await getSheetValues(env, accessToken, fileId, "데이터!A1:V50");
-    const rowIndex = authRows.findIndex((row) => (row[1] || "").trim() === String(sheetNum));
-    if (rowIndex === -1) return json({ error: "존재하지 않는 시트번호입니다." }, 404, origin);
-    const existingEmail = parseGoogleEmail(authRows[rowIndex][3]);
-    if (existingEmail) return json({ error: `이미 배정된 번호입니다 (${existingEmail}).` }, 409, origin);
+    // 🔧 [2차 점검, 2026-09-11] "빈 번호 찾기 → 그 번호에 쓰기"가 읽기-수정-
+    // 쓰기(read-modify-write) 구조라, 관리자 두 명이 거의 동시에 등록하면
+    // 둘 다 같은 "빈 번호"를 통과해 나중 쓰기가 먼저 등록된 회원을 완전히
+    // 덮어써 데이터가 소실될 수 있었다(경쟁 조건 재검증 완료). 대상 회원
+    // 번호가 아직 정해지지 않은 단계라 applyOutputPenalty/applyReportMerit
+    // 처럼 회원 단위 락을 걸 수 없으므로, 이 fileId(사실상 단일 시트)의
+    // 신규 등록 전체를 직렬화하는 전역 락을 쓴다 — "pen:"/"merit:" 접두어와
+    // 겹치지 않아 벌점 승인과는 무관하고, 신규 등록은 애초에 드문 관리자
+    // 조작이라 직렬화로 인한 체감 지연도 거의 없다. withMemberLock은 락
+    // 획득 자체가 실패해도(DO 장애 등) 잠금 없이 그냥 진행하는 "레이스를
+    // 줄이는" 안전장치일 뿐이라(§withMemberLock 주석), 승인 흐름이 락 때문에
+    // 완전히 막히지는 않는다.
+    // 락 콜백 안에서 검증 실패를 던지면 withMemberLock의 finally(release)
+    // 순서가 꼬이지 않도록, 예외 대신 { failure: {status, message} } 마커를
+    // 반환해 바깥에서 판별한다(이 코드베이스에 커스텀 HTTP 에러 클래스가
+    // 없어, 기존 관례인 "핸들러가 직접 json()을 반환"하는 패턴을 그대로
+    // 따른다).
+    const result = await withMemberLock(env, `newmember:${fileId}`, async () => {
+      // 🔧 [데이터 시트 통합] "권한관리" 탭이 "데이터" 탭으로 흡수됐다. 열
+      // 인덱스(B=번호, C=이름, D=이메일)는 그대로라 row[1]/row[3] 접근은 안
+      // 바뀌지만, 시트 자체가 D~V까지 넓어져 범위를 A1:V50으로 확장했다.
+      const authRows = await getSheetValues(env, accessToken, fileId, "데이터!A1:V50");
+      const rowIndex = authRows.findIndex((row) => (row[1] || "").trim() === String(sheetNum));
+      if (rowIndex === -1) return { failure: { status: 404, message: "존재하지 않는 시트번호입니다." } };
+      const existingEmail = parseGoogleEmail(authRows[rowIndex][3]);
+      if (existingEmail) return { failure: { status: 409, message: `이미 배정된 번호입니다 (${existingEmail}).` } };
 
-    // 🔧 [이름 중복 자동 처리] 도움봇/집계 시트는 구루미 닉네임과 이름(개인
-    // 탭 B2 → 집계 C열 수식)을 정확히 일치시켜 매칭한다 — "이지은"과
-    // "봉지은"이 똑같이 "지은"으로 등록되면 봇이 둘을 구분하지 못하고 먼저
-    // 매칭되는 한 명에게만 기록이 붙는다. 지금까지 관리자가 겹칠 때마다
-    // "지은1"처럼 수동으로 번호를 붙여온 관례를 그대로 자동화한다: 이미 쓰인
-    // 이름과 정확히 같으면 뒤에 1부터 번호를 붙여 처음으로 비어있는 값을 쓴다.
-    // "데이터" 시트 C열이 아니라 "집계" 시트 C열을 기준으로 삼는다 —
-    // 집계 C열은 각 개인 탭 B2에서 수식으로 매번 다시 계산되는 "현재 실제로
-    // 유효한 이름"이고, 봇이 구루미 닉네임 매칭에 쓰는 값도 바로 이것이다.
-    const totalRows = await getSheetValues(env, accessToken, fileId, "집계!C4:C18").catch(() => []);
-    const existingNames = new Set(totalRows.map((row) => (row[0] || "").trim()).filter(Boolean));
-    const trimmedName = name.trim();
-    let finalName = trimmedName;
-    if (existingNames.has(finalName)) {
-      let suffix = 1;
-      while (existingNames.has(`${trimmedName}${suffix}`)) suffix += 1;
-      finalName = `${trimmedName}${suffix}`;
-    }
+      // 🔧 [이름 중복 자동 처리] 도움봇/집계 시트는 구루미 닉네임과 이름(개인
+      // 탭 B2 → 집계 C열 수식)을 정확히 일치시켜 매칭한다 — "이지은"과
+      // "봉지은"이 똑같이 "지은"으로 등록되면 봇이 둘을 구분하지 못하고 먼저
+      // 매칭되는 한 명에게만 기록이 붙는다. 지금까지 관리자가 겹칠 때마다
+      // "지은1"처럼 수동으로 번호를 붙여온 관례를 그대로 자동화한다: 이미 쓰인
+      // 이름과 정확히 같으면 뒤에 1부터 번호를 붙여 처음으로 비어있는 값을 쓴다.
+      // "데이터" 시트 C열이 아니라 "집계" 시트 C열을 기준으로 삼는다 —
+      // 집계 C열은 각 개인 탭 B2에서 수식으로 매번 다시 계산되는 "현재 실제로
+      // 유효한 이름"이고, 봇이 구루미 닉네임 매칭에 쓰는 값도 바로 이것이다.
+      const totalRows = await getSheetValues(env, accessToken, fileId, "집계!C4:C18").catch(() => []);
+      const existingNames = new Set(totalRows.map((row) => (row[0] || "").trim()).filter(Boolean));
+      const trimmedName = name.trim();
+      let finalName = trimmedName;
+      if (existingNames.has(finalName)) {
+        let suffix = 1;
+        while (existingNames.has(`${trimmedName}${suffix}`)) suffix += 1;
+        finalName = `${trimmedName}${suffix}`;
+      }
 
-    const rowNumber = rowIndex + 1; // 1-indexed 시트 행 번호
-    const dateStr = joinDate || todayKST;
-    const targetTime = `${goalHours}H (${goalKind})`;
-    const sheetName = String(sheetNum);
-    // D열은 "구글계정,구루미계정" 형태로 저장한다(parseGoogleEmail/
-    // parseGooroomeeAccount가 이 순서로 다시 나눠 읽음) — 구루미 계정을 담을
-    // 별도 시트 컬럼이 없어 기존 이메일 칸에 함께 넣기로 함(사용자 확인).
-    const dCellValue = gooroomeeAccount ? `${email},${gooroomeeAccount}` : email;
+      const rowNumber = rowIndex + 1; // 1-indexed 시트 행 번호
+      const dateStr = joinDate || todayKST;
+      const targetTime = `${goalHours}H (${goalKind})`;
+      const sheetName = String(sheetNum);
+      // D열은 "구글계정,구루미계정" 형태로 저장한다(parseGoogleEmail/
+      // parseGooroomeeAccount가 이 순서로 다시 나눠 읽음) — 구루미 계정을 담을
+      // 별도 시트 컬럼이 없어 기존 이메일 칸에 함께 넣기로 함(사용자 확인).
+      const dCellValue = gooroomeeAccount ? `${email},${gooroomeeAccount}` : email;
 
-    await writeSheetValues(env, accessToken, fileId, [
-      // 🔧 [B2 문구 통일] 집계 탭 C열 수식이 이제
-      // =TRIM(MID(B2, 3, SEARCH("'s", B2)-3))로 바뀌어 " 님" 대신 "'s"를
-      // 찾는다 — B2도 "📝 {이름}'s 대시보드 📝" 형식으로 맞춰야 한다.
-      // finalName은 중복 시 자동으로 번호가 붙은 이름이다.
-      { range: `${sheetName}!B2`, values: [[`📝 ${finalName}'s 대시보드 📝`]] },
-      { range: `${sheetName}!I2`, values: [[dateStr]] },
-      { range: `${sheetName}!L3`, values: [["스터디원"]] },
-      { range: `${sheetName}!O3`, values: [[targetTime]] },
-      { range: `데이터!D${rowNumber}`, values: [[dCellValue]] },
-      { range: `데이터!E${rowNumber}`, values: [[examKind || ""]] },
-    ]);
+      await writeSheetValues(env, accessToken, fileId, [
+        // 🔧 [B2 문구 통일] 집계 탭 C열 수식이 이제
+        // =TRIM(MID(B2, 3, SEARCH("'s", B2)-3))로 바뀌어 " 님" 대신 "'s"를
+        // 찾는다 — B2도 "📝 {이름}'s 대시보드 📝" 형식으로 맞춰야 한다.
+        // finalName은 중복 시 자동으로 번호가 붙은 이름이다.
+        { range: `${sheetName}!B2`, values: [[`📝 ${finalName}'s 대시보드 📝`]] },
+        { range: `${sheetName}!I2`, values: [[dateStr]] },
+        { range: `${sheetName}!L3`, values: [["스터디원"]] },
+        { range: `${sheetName}!O3`, values: [[targetTime]] },
+        { range: `데이터!D${rowNumber}`, values: [[dCellValue]] },
+        { range: `데이터!E${rowNumber}`, values: [[examKind || ""]] },
+      ]);
+      return { sheetName, finalName };
+    });
+    if (result.failure) return json({ error: result.failure.message }, result.failure.status, origin);
+    const { sheetName, finalName } = result;
     // 🔧 [사용자 지시, 2026-09-11] "신규 등록이 벌점/벌금/사이클 캐시까지
     // 매번 지우는 건 과도하다" — roster(9종 전부) 대신 이 함수가 실제로
     // 건드리는 범위와 겹치는 캐시만 지우는 newMember 그룹으로 좁힌다
