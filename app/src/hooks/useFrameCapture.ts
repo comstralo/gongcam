@@ -167,6 +167,12 @@ export function useFrameCapture({ videoRef, liveCanvasRef, resultCanvasRef, stag
     // 🔧 [사용자 지시] 최종 합성본 좌측 상단에 출처/시각 라벨을 함께 저장.
     // "(세로모드)" 같이 촬영 당시 화면 방향도 함께 표기하고, 문구 색상은
     // 노란색으로 강조한다.
+    // 🔧 [사용자 지적] "상단에 텍스트가 좀 잘리거든? 라운드를 고려해서
+    // 맞춰줘" — 이 캔버스를 감싸는 바깥 컨테이너가 rounded-lg로 잘리는데,
+    // 라벨 배경 박스를 캔버스 (0,0) 꼭짓점에 딱 붙여 그리다 보니 그 둥근
+    // 모서리에 좌상단 모서리가 걸려 잘려 보였다. 캔버스 모서리에서 살짝
+    // 띄우고(margin) 배경 박스 자체도 둥글게 그려 라운드 처리와 시각적으로
+    // 맞춘다.
     if (finishedAtRef.current) {
       const orientation = finishedOrientationRef.current ? ` (${finishedOrientationRef.current})` : "";
       const label = `공부합시당 캠스터디 화각 체커${orientation} - ${formatTimestamp(finishedAtRef.current)}`;
@@ -174,13 +180,19 @@ export function useFrameCapture({ videoRef, liveCanvasRef, resultCanvasRef, stag
       ctx.save();
       ctx.font = `${fontSize}px ui-monospace, "SFMono-Regular", monospace`;
       ctx.textBaseline = "top";
+      const margin = Math.max(6, Math.round(fontSize * 0.5));
       const paddingX = fontSize * 0.6;
       const paddingY = fontSize * 0.45;
       const textWidth = ctx.measureText(label).width;
+      const boxW = textWidth + paddingX * 2;
+      const boxH = fontSize + paddingY * 2;
+      const boxRadius = Math.min(8, boxH / 2);
       ctx.fillStyle = "rgba(0,0,0,0.55)";
-      ctx.fillRect(0, 0, textWidth + paddingX * 2, fontSize + paddingY * 2);
+      ctx.beginPath();
+      ctx.roundRect(margin, margin, boxW, boxH, boxRadius);
+      ctx.fill();
       ctx.fillStyle = "#facc15";
-      ctx.fillText(label, paddingX, paddingY);
+      ctx.fillText(label, margin + paddingX, margin + paddingY);
       ctx.restore();
     }
   }

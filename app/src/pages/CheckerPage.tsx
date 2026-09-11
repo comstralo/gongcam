@@ -10,6 +10,9 @@ import {
   RotateCcwSquare,
   TriangleAlert,
   X,
+  Square,
+  Power,
+  PowerOff,
 } from "lucide-react";
 import { cn, ICON_STROKE } from "@/lib/utils";
 import { useCamera } from "@/hooks/useCamera";
@@ -58,8 +61,12 @@ export function CheckerPage() {
   const isCountingDown = capture.startCountdown !== null;
 
   // 상호배제 규칙을 한 곳에서 파생 상태로 계산 — 산발적 disabled 토글 버그를 막기 위함
-  const canSwitchCamera = !capture.isCapturing && !isCountingDown;
+  const canSwitchCamera = camera.enabled && !capture.isCapturing && !isCountingDown;
   const canStartSequence = camera.isReady && !isCountingDown;
+  // 🔧 [사용자 지시] "이 페이지에 들어오자마자 자동으로 카메라를 켜지마"
+  // — 카메라가 꺼진 동안엔 전환/촬영 시작 등 카메라에 의존하는 버튼들을
+  // 모두 눌러도 의미가 없으므로 비활성화한다.
+  const canToggleCamera = !capture.isCapturing && !isCountingDown;
 
   return (
     <div className="flex min-h-0 w-full flex-col items-center justify-start gap-3 mobile-portrait:min-h-[calc(100dvh-0.625rem-env(safe-area-inset-top,0px)-var(--shell-pb-portrait,96px))] mobile-landscape:min-h-0 mobile-landscape:flex-1 mobile-landscape:gap-1.5">
@@ -111,14 +118,14 @@ export function CheckerPage() {
           className="flex min-h-0 w-full shrink-0 aspect-video page-content items-center justify-center overflow-hidden mobile-landscape:aspect-auto mobile-landscape:h-full mobile-landscape:w-0 mobile-landscape:max-w-none mobile-landscape:flex-1"
         >
           <div
-            className="relative overflow-hidden rounded-lg bg-[#1b1d19] p-3.5 mobile-landscape:p-2"
+            className="relative overflow-hidden rounded-lg bg-black"
             style={
               size
                 ? { width: size.width, height: size.height }
                 : { width: "100%", aspectRatio: "16/9" }
             }
           >
-            <div ref={stageRef} className="relative size-full overflow-hidden rounded-sm bg-black">
+            <div ref={stageRef} className="relative size-full overflow-hidden">
               <video ref={camera.videoRef} autoPlay playsInline muted className="absolute inset-0 size-full object-cover" />
               <canvas
                 ref={liveCanvasRef}
@@ -128,6 +135,25 @@ export function CheckerPage() {
                 ref={resultCanvasRef}
                 className={cn("absolute inset-0 size-full bg-black object-cover", !capture.isFinished && "hidden")}
               />
+
+              {/* HUD: 카메라가 꺼져 있을 때의 안내 — 🔧 [사용자 지시]
+                  "이 페이지에 들어오자마자 자동으로 카메라를 켜지마" —
+                  카메라를 켜기 전에는 화면이 그냥 검게만 보여 상태를 알 수
+                  없으므로, 켜야 한다는 안내와 함께 바로 누를 수 있는 버튼을
+                  뷰파인더 안에도 둔다(상단의 카메라 ON/OFF 버튼과 동일 동작). */}
+              {!camera.enabled && (
+                <div className="absolute inset-0 z-6 flex flex-col items-center justify-center gap-3 bg-black px-6 text-center">
+                  <PowerOff className="size-8 shrink-0 text-[#eef0ea]/70 sm:size-10" strokeWidth={ICON_STROKE.default} />
+                  <span className="text-sm font-semibold text-[#eef0ea] sm:text-base">카메라가 꺼져 있습니다.</span>
+                  <button
+                    type="button"
+                    onClick={camera.toggleCamera}
+                    className="rounded-full border border-green-500/60 px-3.5 py-1.5 text-xs font-medium text-green-400 transition-colors hover:bg-green-500/10 sm:text-sm"
+                  >
+                    카메라 켜기
+                  </button>
+                </div>
+              )}
 
               {/* HUD: 촬영 시작 전 카운트다운 오버레이 — 🔧 [사용자 지시]
                   숫자만 덩그러니 있으면 무슨 카운트다운인지 맥락이 없어
@@ -208,27 +234,39 @@ export function CheckerPage() {
         </div>
 
         <div className="flex w-full shrink-0 page-content flex-col gap-3 mobile-landscape:h-full mobile-landscape:w-auto mobile-landscape:gap-2.5">
-          {/* 🔧 [사용자 지시] "즉, 지금의 버튼 박스가 차지하는 쓸데없는
-              공간을 최소화 해서 썸네일 영역을 확보해야해" — 세로모드용
-              썸네일 그리드는 그대로 유지(사이드바 위에 얹힘), 가로모드는
-              위 독립 컬럼에서 보여주므로 여기서는 숨긴다. */}
-          {capture.thumbs.length > 0 && (
-            <div className="grid w-full grid-cols-6 gap-1.5 p-0.5 sm:gap-2 mobile-landscape:hidden">
-              {capture.thumbs.map((src, i) => (
+          {/* 🔧 [사용자 지시] "세로모드에서도 썸네일을 박스에 가두고, 1~6
+              숫자를 표시해줘. 가로모드랑 마찬가지로" — 가로모드(위 grid-rows-6
+              컬럼)와 동일하게 항상 6칸을 만들어 border+bg-card 카드로 감싸고,
+              아직 안 찍힌 칸은 점선 테두리의 빈 자리로 번호만 흐리게 보여준다.
+              세로모드는 폭이 넉넉하므로 6열 1행으로 배치(가로모드는 반대로
+              폭이 좁아 1열 6행). 촬영 시작 전(thumbs가 비어있을 때)에도 카드
+              박스 자체는 항상 보여 "여기 6장이 쌓일 것"임이 드러난다. */}
+          <div className="grid w-full grid-cols-6 gap-1.5 rounded-lg border bg-card p-1.5 sm:gap-2 mobile-landscape:hidden">
+            {Array.from({ length: 6 }).map((_, i) => {
+              const src = capture.thumbs[i];
+              return (
                 <div key={i} className="relative">
-                  <img src={src} className="aspect-video w-full rounded-sm border object-cover" alt={`촬영 ${i + 1}`} />
-                  <span className="absolute inset-0 flex items-center justify-center rounded-sm bg-black/45">
-                    <span
-                      className="font-mono text-2xl font-bold text-white sm:text-3xl"
-                      style={{ textShadow: "0 1px 4px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,0.9)" }}
-                    >
-                      {i + 1}
-                    </span>
-                  </span>
+                  {src ? (
+                    <>
+                      <img src={src} className="aspect-video w-full rounded-sm border object-cover" alt={`촬영 ${i + 1}`} />
+                      <span className="absolute inset-0 flex items-center justify-center rounded-sm bg-black/45">
+                        <span
+                          className="font-mono text-2xl font-bold text-white sm:text-3xl"
+                          style={{ textShadow: "0 1px 4px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,0.9)" }}
+                        >
+                          {i + 1}
+                        </span>
+                      </span>
+                    </>
+                  ) : (
+                    <div className="flex aspect-video w-full items-center justify-center rounded-sm border border-dashed border-border/60">
+                      <span className="font-mono text-xs text-muted-foreground/60 sm:text-sm">{i + 1}</span>
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
-          )}
+              );
+            })}
+          </div>
 
           {/* 🔧 [사용자 지시] "여전히 박스 영역이랑 뷰파인더 영역 세로
               길이가 안맞잖아" — 카드가 shrink-0(암묵)인 채 부모의 h-full을
@@ -237,9 +275,40 @@ export function CheckerPage() {
               카드 자체에 h-full을 줘 부모 컬럼 전체 높이를 차지하게 하고,
               내부 버튼 그룹은 justify-center로 그 안에서 세로 중앙 정렬한다
               — 이제 카드 배경 테두리가 뷰파인더와 정확히 같은 높이가 된다. */}
-          <div className="flex flex-col gap-3 rounded-lg border bg-card p-3.5 sm:p-5 mobile-landscape:h-full mobile-landscape:justify-center mobile-landscape:gap-2.5 mobile-landscape:overflow-y-auto mobile-landscape:px-2 mobile-landscape:py-3">
-            {/* 주 액션 4버튼: 카메라 전환 / 좌우 반전 / 스크린샷 촬영 / 영상 녹화 — 항상 동일 규격 */}
-            <div className="flex flex-wrap items-start justify-center gap-3 sm:gap-4 mobile-landscape:flex-col mobile-landscape:flex-nowrap mobile-landscape:items-center mobile-landscape:gap-2.5">
+          <div className="flex flex-col gap-3 rounded-lg border bg-card p-3.5 sm:p-5 mobile-landscape:h-full mobile-landscape:justify-center mobile-landscape:gap-1.5 mobile-landscape:overflow-y-auto mobile-landscape:px-1.5 mobile-landscape:py-2">
+            {/* 주 액션 버튼: 카메라 ON/OFF / 카메라 전환 / 좌우 반전 / 스크린샷 촬영 — 항상 동일 규격
+                🔧 [사용자 지시] "전면 / 후면 버튼 앞에 카메라 ON, OFF 버튼을
+                만들어줘. 이 페이지에 들어오자마자 자동으로 카메라를 켜지마"
+                — useCamera가 이제 마운트 즉시 getUserMedia를 호출하지 않고
+                camera.enabled가 true일 때만 시작하므로, 사용자가 직접
+                켜야 카메라 권한 프롬프트가 뜬다.
+                🔧 [사용자 지적] "버튼 크기들을 박스에 맞게 전체적으로
+                조정 좀 해야할듯. 잘린다 지금은" — 버튼이 4개(카메라ON/OFF
+                포함)+구분선+초기화+주의사항으로 늘어 가로모드 사이드바
+                세로 높이를 넘쳤다. 가로모드에서만 버튼을 더 작게(size-8)
+                줄이고, 라벨 텍스트는 숨겨 세로 공간을 줄인다(세로모드는
+                공간 여유가 있어 기존 크기·라벨 그대로 유지). */}
+            <div className="flex flex-wrap items-start justify-center gap-3 sm:gap-4 mobile-landscape:flex-col mobile-landscape:flex-nowrap mobile-landscape:items-center mobile-landscape:gap-1.5">
+              <div className="flex shrink-0 flex-col items-center gap-1">
+                <button
+                  type="button"
+                  title={camera.enabled ? "카메라 끄기" : "카메라 켜기"}
+                  aria-label={camera.enabled ? "카메라 끄기" : "카메라 켜기"}
+                  aria-pressed={camera.enabled}
+                  disabled={!canToggleCamera}
+                  onClick={camera.toggleCamera}
+                  className={cn(
+                    "flex size-9.5 shrink-0 items-center justify-center rounded-full border-2 bg-card disabled:opacity-40 sm:size-11 mobile-landscape:size-8",
+                    camera.enabled ? "border-destructive text-destructive" : "border-green-600 text-green-600 dark:border-green-500 dark:text-green-500"
+                  )}
+                >
+                  {camera.enabled ? <PowerOff className="size-3.5 sm:size-4" /> : <Power className="size-3.5 sm:size-4" />}
+                </button>
+                <span className="text-micro-lg text-muted-foreground sm:text-xs">
+                  {camera.enabled ? "카메라 끄기" : "카메라 켜기"}
+                </span>
+              </div>
+
               <div className="flex shrink-0 flex-col items-center gap-1">
                 <button
                   type="button"
@@ -247,7 +316,7 @@ export function CheckerPage() {
                   aria-label="카메라 전환"
                   disabled={!canSwitchCamera}
                   onClick={camera.switchFacing}
-                  className="flex size-9.5 shrink-0 items-center justify-center rounded-full border bg-card text-foreground disabled:opacity-40 sm:size-11"
+                  className="flex size-9.5 shrink-0 items-center justify-center rounded-full border bg-card text-foreground disabled:opacity-40 sm:size-11 mobile-landscape:size-8"
                 >
                   <RotateCw className="size-3.5 sm:size-4" />
                 </button>
@@ -261,7 +330,7 @@ export function CheckerPage() {
                   aria-label="좌우 반전"
                   aria-pressed={camera.mirrored}
                   onClick={camera.toggleMirror}
-                  className="flex size-9.5 shrink-0 items-center justify-center rounded-full border bg-card text-foreground sm:size-11"
+                  className="flex size-9.5 shrink-0 items-center justify-center rounded-full border bg-card text-foreground sm:size-11 mobile-landscape:size-8"
                 >
                   <FlipHorizontal2 className="size-3.5 sm:size-4" />
                 </button>
@@ -269,51 +338,24 @@ export function CheckerPage() {
               </div>
 
               {/* 🔧 [사용자 지시] "가로모드에서 파일 생성이 완료되면 '촬영
-                  시작' 버튼을 '파일 저장' 버튼으로 재활용" — 가로모드는
-                  화면 높이가 고정이라 보조 버튼 행(다시 촬영/이미지 저장)을
-                  그대로 추가하면 공간을 더 차지한다. 가로모드에서만 촬영
-                  완료 시 이 버튼 자리를 "파일 저장"으로 재사용하고(아래
-                  mobile-landscape:flex 블록), 세로모드는 기존처럼 "촬영
-                  시작" 버튼을 그대로 두고 보조 버튼 행(다시 촬영/이미지
-                  저장)을 따로 쓴다(스크롤 가능해 공간 제약이 없으므로) —
-                  같은 상태를 모드별로 다르게 보여줘야 해서 세로/가로용
-                  버튼을 각각 렌더링하고 하나만 보이도록 hidden으로 나눈다. */}
-              <div className="flex shrink-0 flex-col items-center gap-1 mobile-landscape:hidden">
-                {!capture.isCapturing && !isCountingDown ? (
-                  <button
-                    type="button"
-                    title="스크린샷 촬영 (10초 후 시작)"
-                    aria-label="스크린샷 촬영"
-                    disabled={!canStartSequence}
-                    onClick={capture.startSequence}
-                    className="flex size-9.5 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-card text-primary disabled:opacity-40 sm:size-11"
-                  >
-                    <Camera className="size-3.5 sm:size-4" />
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    title="초기화 (촬영을 중지하고 지금까지 찍은 사진을 모두 지웁니다)"
-                    aria-label="초기화"
-                    onClick={capture.stopSequence}
-                    className="flex size-9.5 shrink-0 items-center justify-center rounded-full border-2 border-destructive bg-card text-destructive sm:size-11"
-                  >
-                    <RotateCcw className="size-3.5 sm:size-4" />
-                  </button>
-                )}
-                <span className="text-micro-lg text-muted-foreground sm:text-xs">
-                  {!capture.isCapturing && !isCountingDown ? "촬영 시작" : "초기화"}
-                </span>
-              </div>
-
-              <div className="hidden shrink-0 flex-col items-center gap-1 mobile-landscape:flex">
+                  시작' 버튼을 '파일 저장' 버튼으로 재활용" → "세로모드에서도
+                  동일하게 구현해" — 세로/가로 구분 없이 같은 슬롯에서
+                  촬영 시작 → 멈춤 → 파일 저장 3단계로 재활용한다(예전엔
+                  가로모드만 재활용하고 세로모드는 별도 보조 버튼 행(다시
+                  촬영/이미지 저장)을 썼는데, 이제 모드별로 다르게 만들
+                  이유가 없어져 하나의 블록으로 합쳤다).
+                  "촬영 시작 전에는 버튼을 초록색으로" — border-primary
+                  (테마 강조색) 대신 초록으로 "지금 눌러도 되는 시작" 신호.
+                  "멈춤 버튼 아이콘을 멈춤에 맞는걸로" — RotateCcw(되돌리기
+                  느낌) 대신 표준 일시정지 아이콘 Pause. */}
+              <div className="flex shrink-0 flex-col items-center gap-1">
                 {capture.isFinished ? (
                   <button
                     type="button"
                     title="파일 저장"
                     aria-label="파일 저장"
                     onClick={capture.downloadResult}
-                    className="flex size-9.5 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-card text-primary sm:size-11"
+                    className="flex size-9.5 shrink-0 animate-save-ready-glow items-center justify-center rounded-full border-2 border-primary bg-card text-primary sm:size-11 mobile-landscape:size-8"
                   >
                     <Download className="size-3.5 sm:size-4" />
                   </button>
@@ -324,19 +366,19 @@ export function CheckerPage() {
                     aria-label="스크린샷 촬영"
                     disabled={!canStartSequence}
                     onClick={capture.startSequence}
-                    className="flex size-9.5 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-card text-primary disabled:opacity-40 sm:size-11"
+                    className="flex size-9.5 shrink-0 items-center justify-center rounded-full border-2 border-green-600 bg-card text-green-600 disabled:opacity-40 sm:size-11 mobile-landscape:size-8 dark:border-green-500 dark:text-green-500"
                   >
                     <Camera className="size-3.5 sm:size-4" />
                   </button>
                 ) : (
                   <button
                     type="button"
-                    title="초기화 (촬영을 중지하고 지금까지 찍은 사진을 모두 지웁니다)"
-                    aria-label="초기화"
+                    title="멈춤 (촬영을 중지하고 지금까지 찍은 사진을 모두 지웁니다)"
+                    aria-label="멈춤"
                     onClick={capture.stopSequence}
-                    className="flex size-9.5 shrink-0 items-center justify-center rounded-full border-2 border-destructive bg-card text-destructive sm:size-11"
+                    className="flex size-9.5 shrink-0 items-center justify-center rounded-full border-2 border-destructive bg-card text-destructive sm:size-11 mobile-landscape:size-8"
                   >
-                    <RotateCcw className="size-3.5 sm:size-4" />
+                    <Square className="size-3 fill-current sm:size-3.5" />
                   </button>
                 )}
                 <span className="text-micro-lg text-muted-foreground sm:text-xs">
@@ -344,7 +386,7 @@ export function CheckerPage() {
                     ? "파일 저장"
                     : !capture.isCapturing && !isCountingDown
                       ? "촬영 시작"
-                      : "초기화"}
+                      : "멈춤"}
                 </span>
               </div>
             </div>
@@ -358,25 +400,55 @@ export function CheckerPage() {
                 🔧 [사용자 지적] "버튼 폭이 넓어" — w-full로 사이드바
                 (w-56) 폭을 그대로 채워 위 4개 원형 버튼과 비례가 안 맞았다.
                 같은 사이즈의 원형 아이콘 버튼으로 통일한다. */}
+            {/* 🔧 [사용자 지시] "가로모드에서 촬영 완료 후에 주의사항 밑에
+                작은 버튼 생기잖아? 이걸 초기화 버튼으로 쓰자. 촬영 전에도
+                보이긴 하되 비활로 처리해놔" — 기존엔 capture.isFinished일
+                때만 보조 버튼 행(다시 촬영/이미지 저장)이 나타났다 사라지며
+                레이아웃이 흔들렸는데, 항상 같은 자리에 "다시 촬영"(=초기화)
+                버튼을 두고 찍은 게 하나도 없을 때만 비활성화한다 — 세로모드는
+                기존처럼 촬영 완료 후에만 보이는 보조 버튼 행을 그대로 쓴다
+                (스크롤 가능해 상시 노출할 필요가 없으므로).
+                🔧 [사용자 지시] "초기화는 좀 작게 만들어줘" — 주 액션
+                버튼(size-9.5/11)보다 부수적인 동작이라 세로모드 보조
+                버튼(다시 촬영/이미지 저장)과 같은 작은 크기로 맞춘다.
+                🔧 [사용자 지시] "주의사항을 초기화 버튼과 크기를 맞추고
+                제일 아래로 내려. 그리고 초기화 버튼 위에 구분선을 넣어" —
+                주 액션 그룹과 부수 동작(초기화/주의사항)을 구분선으로
+                시각적으로 나누고, 둘 다 작은 크기로 통일해 맨 아래에 둔다. */}
+            <div className="hidden w-full shrink-0 border-t mobile-landscape:block" />
+
+            <div className="hidden shrink-0 flex-col items-center gap-1 mobile-landscape:flex">
+              <button
+                type="button"
+                title="초기화 (지금까지 찍은 사진을 모두 지웁니다)"
+                aria-label="초기화"
+                disabled={capture.thumbs.length === 0}
+                onClick={capture.resetSequence}
+                className="flex size-7 shrink-0 items-center justify-center rounded-full border bg-card text-foreground disabled:opacity-40 sm:size-7.5 mobile-landscape:size-6"
+              >
+                <RotateCcw className="size-3 sm:size-3.5 mobile-landscape:size-2.5" />
+              </button>
+              <span className="text-micro-lg text-muted-foreground sm:text-xs">초기화</span>
+            </div>
+
             <div className="hidden shrink-0 flex-col items-center gap-1 mobile-landscape:flex">
               <button
                 type="button"
                 title="주의사항"
                 aria-label="주의사항"
                 onClick={() => setCautionOpen(true)}
-                className="flex size-9.5 shrink-0 items-center justify-center rounded-full border border-amber-600/30 bg-amber-600/5 text-amber-600 transition-colors hover:bg-amber-600/10 sm:size-11 dark:border-amber-400/30 dark:bg-amber-400/5 dark:text-amber-400 dark:hover:bg-amber-400/10"
+                className="flex size-7 shrink-0 items-center justify-center rounded-full border border-amber-600/30 bg-amber-600/5 text-amber-600 transition-colors hover:bg-amber-600/10 sm:size-7.5 mobile-landscape:size-6 dark:border-amber-400/30 dark:bg-amber-400/5 dark:text-amber-400 dark:hover:bg-amber-400/10"
               >
-                <TriangleAlert className="size-3.5 sm:size-4" />
+                <TriangleAlert className="size-3 sm:size-3.5 mobile-landscape:size-2.5" />
               </button>
               <span className="text-micro-lg text-amber-600 dark:text-amber-400">주의사항</span>
             </div>
 
-            {/* 보조 버튼: 결과물이 있을 때만 표시 — 🔧 [사용자 지시]
-                가로모드는 "촬영 시작" 자리가 이미 "파일 저장"으로 바뀌므로
-                여기 "이미지 저장"은 중복이라 숨긴다("다시 촬영"은 가로
-                모드에도 별도 대체 수단이 없어 그대로 둔다). */}
+            {/* 보조 버튼(세로모드 전용): 결과물이 있을 때만 표시 — 가로모드는
+                "촬영 시작" 자리가 "파일 저장"으로, "주의사항" 아래 자리가
+                "초기화"로 각각 대체되어 이 행 자체가 필요 없다. */}
             {capture.isFinished && (
-              <div className="flex items-center justify-center gap-2.5 border-t pt-3 sm:gap-3.5 mobile-landscape:flex-col mobile-landscape:gap-2">
+              <div className="flex items-center justify-center gap-2.5 border-t pt-3 sm:gap-3.5 mobile-landscape:hidden">
                 <button
                   type="button"
                   title="다시 촬영"
@@ -385,15 +457,6 @@ export function CheckerPage() {
                   className="flex size-7 shrink-0 items-center justify-center rounded-full border bg-card sm:size-7.5"
                 >
                   <RotateCcw className="size-3 sm:size-3.5" />
-                </button>
-                <button
-                  type="button"
-                  title="이미지 저장"
-                  aria-label="이미지 저장"
-                  onClick={capture.downloadResult}
-                  className="flex size-7 shrink-0 items-center justify-center rounded-full border bg-card sm:size-7.5 mobile-landscape:hidden"
-                >
-                  <Download className="size-3 sm:size-3.5" />
                 </button>
               </div>
             )}

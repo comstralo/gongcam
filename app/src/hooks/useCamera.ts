@@ -10,8 +10,22 @@ export function useCamera() {
   // 전면 카메라는 거울처럼 보이는 게 자연스러워 기본 ON, 후면은 기본 OFF.
   // 카메라를 전환할 때마다 그 방향의 관례적인 기본값으로 재설정된다.
   const [mirrored, setMirrored] = useState(true);
+  // 🔧 [사용자 지시] "이 페이지에 들어오자마자 자동으로 카메라를 켜지마" —
+  // 기존엔 마운트되자마자 getUserMedia를 호출해 권한 프롬프트가 곧바로
+  // 떴다. enabled를 기본 false로 두고, 사용자가 새로 생긴 "카메라 켜기"
+  // 버튼을 눌러야만 스트림을 시작한다.
+  const [enabled, setEnabled] = useState(false);
 
   useEffect(() => {
+    if (!enabled) {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+      setIsReady(false);
+      return;
+    }
+
     let cancelled = false;
 
     async function startCamera() {
@@ -44,7 +58,7 @@ export function useCamera() {
 
     startCamera();
 
-    // 언마운트(페이지 이탈) 시 스트림 정리 — 원본 정적 페이지에는 없던 부분.
+    // 언마운트(페이지 이탈)나 꺼짐 시 스트림 정리 — 원본 정적 페이지에는 없던 부분.
     // SPA에서는 페이지 전환 시 카메라가 계속 켜진 채로 남는 걸 막기 위해 필요하다.
     return () => {
       cancelled = true;
@@ -53,7 +67,7 @@ export function useCamera() {
         streamRef.current = null;
       }
     };
-  }, [facing]);
+  }, [facing, enabled]);
 
   function switchFacing() {
     setFacing((prev) => {
@@ -67,5 +81,9 @@ export function useCamera() {
     setMirrored((prev) => !prev);
   }
 
-  return { videoRef, isReady, switchFacing, facing, mirrored, toggleMirror };
+  function toggleCamera() {
+    setEnabled((prev) => !prev);
+  }
+
+  return { videoRef, isReady, switchFacing, facing, mirrored, toggleMirror, enabled, toggleCamera };
 }

@@ -83,6 +83,26 @@
   }
 }
 
+/* 화각 체커 — 가로모드에서 6장 촬영이 끝나 "파일 저장" 버튼으로 바뀐
+   순간을 눈에 띄게 알리는 글로우. 위 unpaid-glow와 같은 원리(box-shadow
+   부풀림)지만 primary(파란/보라 등 테마 강조색) 버전 — 그 버튼 자체가
+   이미 border-primary라 같은 색으로 통일된다. */
+@keyframes save-ready-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 55%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 5px color-mix(in oklab, var(--primary) 0%, transparent);
+  }
+}
+@utility animate-save-ready-glow {
+  animation: save-ready-glow 1.4s ease-in-out infinite;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
 /* 하단 탭바 "알림" 아이콘용 — 안 읽은 알림이 있을 때 지나치다 눈에 띄도록
    아이콘 주위로 은은한 글로우가 부풀었다 줄었다 한다(위 unpaid-glow와 같은
    원리, primary 색상 버전). */
