@@ -185,11 +185,21 @@ function UsageMonitorSection({ visible }: { visible: boolean }) {
   // 한도 임박을 놓칠 수 있다 — 다시 보이게 될 때마다 새로 불러온다.
   useRefreshOnVisible(visible, load);
   usePullRefreshListener(visible, load);
+  // 🔧 [사용자 지시] "사용량 모니터링은 1분마다 폴링을 해줘" — 탭을 계속
+  // 열어두고 있어도 KV/Sheets 할당량이 실시간에 가깝게 갱신되도록 고정
+  // 주기 폴링을 추가한다(다른 섹션들의 usePollingRefresh 패턴과 동일).
+  const refreshProgress = usePollingRefresh(visible, load, 60_000);
 
   return (
     <SectionCard>
       <Collapsible defaultOpen className="flex flex-col">
-        <SectionHeader icon={Gauge} title="사용량 모니터링" loading={loading} onRefresh={load} />
+        <SectionHeader
+          icon={Gauge}
+          title="사용량 모니터링"
+          loading={loading}
+          onRefresh={load}
+          refreshProgress={refreshProgress}
+        />
         <CollapsiblePanel className="flex flex-col gap-4">
           {error && (
             <Alert variant="destructive">
