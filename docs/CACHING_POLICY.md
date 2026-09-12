@@ -2235,7 +2235,50 @@ remove 전체 사이클, 퇴실 관련 3개 엔드포인트(모두 200, 예외 �
 기반이라 KV 잔재 없음. 즉 **"KV가 구조적으로 필수인 것(캐시 12종)"을
 제외한 모든 KV 쓰기/삭제/조회 지점이 DO로 전환 완료**된 상태다.
 
-## 50. 관련 문서
+## 50. "직권 P"(벌금 미납 고정 사유) 처리 시 사이클 오인 방지 (2026-09-12)
+
+퇴실 프로세스를 재점검하던 중 발견된 설계 빈틈을 보강했다. `settle`
+(회원 자진 퇴실)은 exitDate 기준으로 서버가 자동으로 지난 주 백업
+시트를 찾아주지만(`resolveExitSourceFileId`), `admin_forced`(직권 P)는
+그런 자동 탐색이 없고 오직 프론트가 보내는 `cycle` 파라미터에만
+의존한다. 프론트(`AdminMoneyTab.tsx`)의 `cycleFileId` state는 화면을
+열 때마다 항상 `null`(이번 주)로 시작하므로, 관리자가 "벌금 납부
+처리" 탭에서 지난 주 미납자를 처리하려다 사이클 전환을 깜빡한 채
+"벌금 시한 내 미납자" 고정 사유로 직권 P를 확정하면, 서버는 에러 없이
+**이미 초기화됐을 수 있는 이번 주 원본**을 계산 근거로 써버린다(시트
+구조는 깨지지 않지만 계산이 틀릴 수 있다).
+
+일반 사유(관리자 자유 입력, 예: 비매너 행위)는 애초에 미납 여부와
+무관한 처리라 이 문제와 무관하다 — 오직 고정 문구 "벌금 시한 내
+미납자"로 처리할 때만 사이클 오인이 계산 오류로 이어진다.
+
+**보강**: `computeExitResult`가 이미 계산해 갖고 있는
+`breakdown.fineUnpaid`(§`depositRefundBreakdown`, `forcedExitChecks`의
+`fine_unpaid` 체크가 이미 재검증 목적으로 쓰던 것과 동일한 필드)를
+재사용해, kind가 `admin_forced`이고 forcedReason이 정확히 "벌금 시한
+내 미납자"일 때 실제 계산 기준 시트(`sourceFileId` — cycle이 없으면
+이번 주 원본, 있으면 그 백업)에서 그 회원이 정말 미납 상태인지
+재검증하는 `requiresFineUnpaidRecheck` 헬퍼와 `fineUnpaidRecheckFailed`
+반환 필드를 추가했다. cycle이 맞든 틀리든, 아예 안 왔든 상관없이
+"실제로 그 시트에 미납 기록이 있는가"만으로 판단하므로, 근본 원인
+(사이클 파라미터 자체)을 고치는 대신 결과를 항상 재확인하는 방식이다.
+
+`handleAdminExitPreview`와 `handleAdminExitConfirm` 양쪽에 동일하게
+`fineUnpaidRecheckFailed`면 409로 거부하는 로직을 넣었다. 미리보기가
+`ExitProcessDialog.tsx`에서 다이얼로그가 열리자마자 자동 호출되므로,
+관리자는 "확정 처리" 버튼을 눌러보기도 전에 사이클 오인을 알아챈다.
+confirm에도 중복 배치한 것은 이 코드베이스가 이미 지켜온 "프론트가
+막아도 서버에서 한 번 더 검증" 원칙(예: `settle`의 신청·동의 여부
+확인)과 일치시키기 위함 — API를 직접 호출해 preview 없이 confirm만
+부르는 경로까지 방어한다.
+
+검증: `node --check` → `wrangler deploy` → Playwright로 실제
+프로덕션 API 직접 호출 3종(① 미납 아닌 회원에게 cycle 없이 고정
+사유로 preview/confirm 모두 409 확인, ② 같은 상황에서 일반 사유는
+200 정상 진행 확인 — 회귀 없음, ③ `wrangler tail`로 관련 요청 전부
+`outcome: ok`, 예외 0건 확인).
+
+## 51. 관련 문서
 
 - `docs/WEB_ADMIN.md` §3.1 — `applyOutputPenalty`/`applyReportMerit`/
   `applyTimeDeduction`가 실제로 호출되는 관리자 제보 처리 화면·플로우.

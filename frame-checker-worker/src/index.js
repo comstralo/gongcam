@@ -6227,7 +6227,15 @@ async function handleAdminExitedMembers(req, env, origin) {
 // "벌금 납부 대상 처리"(PaidFineList)의 "직권 P" 버튼은 항상 이 사유로
 // 고정해서 admin_forced 확정을 요청한다(§AdminMoneyTab.tsx, lockForcedReason)
 // — 이 문자열을 바꾸면 여기도 함께 바꿔야 아래 카운트가 계속 맞게 걸린다.
-const FINE_UNPAID_ADMIN_FORCED_REASON_LABEL = "직권 사유: 벌금 시한 내 미납자";
+// 🔧 [사용자 지시] "직권 P 사이클 오인 방지" — handleAdminExitPreview/
+// handleAdminExitConfirm이 body로 받는 forcedReason "원본"(prefix 없는
+// 값, 프론트 lockForcedReason과 동일)과 비교하려면 이 상수가 필요하다.
+// FINE_UNPAID_ADMIN_FORCED_REASON_LABEL은 calcAdminForcedExit가 "직권
+// 사유: " prefix를 붙인 뒤의 label 형태라 원본과 직접 비교할 수 없어,
+// 아래 label 상수를 이 원본으로부터 파생시켜 두 상수가 항상 일치하게
+// 유지한다(§46 근처의 "관련 문서" 앞에 §CACHING_POLICY.md 기록 참고).
+const FINE_UNPAID_ADMIN_FORCED_REASON = "벌금 시한 내 미납자";
+const FINE_UNPAID_ADMIN_FORCED_REASON_LABEL = `직권 사유: ${FINE_UNPAID_ADMIN_FORCED_REASON}`;
 
 // 🔧 2026-09: "직권 P : N건" 배지(§PaidFineList 요일 헤더) 실제 구현 —
 // "벌금을 납부하지 않아서 '퇴실 처리 (직권 P)'가 눌려서 퇴실 처리된
@@ -7179,6 +7187,19 @@ async function resolveExitSourceFileId(env, accessToken, fileId, number, kind, c
 // true로 넘긴다 — 미리보기(handleAdminExitPreview)는 다이얼로그를 열 때,
 // 그리고 사유 입력 중 300ms 디바운스로 반복 호출되는 조회 전용 경로라
 // 매번 강제 무효화하면 불필요한 KV delete+Sheets 재조회가 쌓인다.
+// 🔧 [사용자 지시] "직권 P 사이클 오인 방지" — admin_forced는 settle과
+// 달리 exitDate로 서버가 자동으로 지난 주 백업을 찾아주는 로직이 없고,
+// 오직 프론트가 넘기는 cycle 파라미터에만 의존한다(resolveExitSourceFileId
+// 참고). 프론트의 cycleFileId는 화면을 열면 항상 null(=이번 주)로
+// 시작하므로, 관리자가 사이클 전환을 깜빡한 채 "벌금 시한 내 미납자"
+// 고정 사유로 확정하면 이미 초기화됐을 수 있는 이번 주 원본을 계산
+// 근거로 써버릴 위험이 있었다. 이 고정 사유일 때만, 계산 기준 시트에서
+// 실제로 미납 상태인지 재검증한다 — 관리자가 자유 입력한 사유(미납과
+// 무관한 처리)는 검증 대상이 아니다.
+function requiresFineUnpaidRecheck(kind, forcedReason) {
+  return kind === "admin_forced" && (forcedReason || "").trim() === FINE_UNPAID_ADMIN_FORCED_REASON;
+}
+
 async function computeExitResult(env, accessToken, fileId, number, name, kind, forcedReason, cycleFileId, forceFresh) {
   const { sourceFileId, fromBackup } = await resolveExitSourceFileId(env, accessToken, fileId, number, kind, cycleFileId);
   if (forceFresh) await invalidateMemberSlotCache(env, number, sourceFileId);
@@ -7285,6 +7306,11 @@ async function computeExitResult(env, accessToken, fileId, number, name, kind, f
     // performExitReset에 그대로 전달해 백업 탭도 같은 소스에서 만들도록 한다.
     fromBackup,
     sourceFileId,
+    // 🔧 [사용자 지시] "직권 P 사이클 오인 방지" — 위 requiresFineUnpaidRecheck
+    // 참고. 계산 기준 시트(sourceFileId)에 실제 미납 기록이 없으면
+    // true — 호출부(handleAdminExitPreview/handleAdminExitConfirm)가
+    // 이 값을 보고 확정/미리보기 자체를 거부한다.
+    fineUnpaidRecheckFailed: requiresFineUnpaidRecheck(kind, forcedReason) && !breakdown.fineUnpaid,
   };
 }
 
@@ -7310,9 +7336,21 @@ async function handleAdminExitPreview(req, env, origin) {
     // "관리자 선택에 따라 반환율이 달라지면 안 된다"는 검증은 시트를 실제로
     // 바꾸는 확정 단계(handleAdminExitConfirm)에서만 하면 충분하고, 여기
     // (시트 불변경, 계산만)까지 막을 필요는 없다.
+    // 🔧 [사용자 지시, 예외] "직권 P 사이클 오인 방지" — 위 원칙과 달리
+    // 이 검증만은 미리보기 단계부터 함께 거부한다. 다이얼로그가 열리자마자
+    // 자동 호출되는 이 경로에서 바로 막아야, 관리자가 "확정 처리" 버튼을
+    // 눌러보기도 전에 "사이클을 잘못 보고 있다"는 걸 가장 빨리 알 수
+    // 있다(사용자 확인: 미리보기·확정 동일하게 거부).
     const result = await computeExitResult(env, accessToken, fileId, member.number, member.name, kind, forcedReason, cycle);
     if (!result) {
       return json({ error: "해당 처리 유형에 해당하지 않는 회원입니다." }, 400, origin);
+    }
+    if (result.fineUnpaidRecheckFailed) {
+      return json(
+        { error: "지금 조회 중인 사이클(시트) 기준으로는 이 회원이 벌금 미납 상태가 아닙니다. 사이클을 다시 확인해주세요." },
+        409,
+        origin
+      );
     }
     return json({ ok: true, ...result }, 200, origin);
   } catch (err) {
@@ -7647,6 +7685,17 @@ async function handleAdminExitConfirm(req, env, origin) {
     const result = await computeExitResult(env, accessToken, fileId, member.number, member.name, kind, forcedReason, cycle, true);
     if (!result) {
       return json({ error: "해당 처리 유형에 해당하지 않는 회원입니다." }, 400, origin);
+    }
+    // 🔧 [사용자 지시] "직권 P 사이클 오인 방지" — §computeExitResult의
+    // requiresFineUnpaidRecheck 참고. 미리보기(handleAdminExitPreview)에도
+    // 동일한 검증이 있지만, API를 직접 호출해 preview 없이 confirm만
+    // 부르는 경로까지 방어하기 위해 이 확정 단계에서도 다시 확인한다.
+    if (result.fineUnpaidRecheckFailed) {
+      return json(
+        { error: "지금 조회 중인 사이클(시트) 기준으로는 이 회원이 벌금 미납 상태가 아닙니다. 사이클을 다시 확인해주세요." },
+        409,
+        origin
+      );
     }
 
     const statusLabel =
