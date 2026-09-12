@@ -6425,14 +6425,36 @@ async function handleAdminFineStatus(req, env, origin) {
 // 허용한다. settlement는 rankValue로 안정 정렬되어 같은 데이터면 항상
 // 같은 순서로 나오므로(비결정 요소 없음), 실제로 명단이 안 바뀌었다면
 // 오탐 없이 통과한다.
+// 🔧 [사용자 지시, 2026-09-12] "상금 정산 집행을 지난 주 사이클에
+// 반영" — 상금 정산은 일요일까지의 지난 한 주 실적을 대상으로 하지만
+// 실제 집행은 다음 주 중(일요일 당일 처리는 실무상 어려움)에 이뤄진다.
+// 원래는 cycle과 무관하게 항상 env.GOOGLE_SHEET_FILE_ID(실시간 원본)에만
+// 썼는데, 월요일 새벽 리셋이 지나면 원본은 이미 "이번 주"로 전환되어
+// 있어(총 모금액 D20·순위 F열이 라이브 수식) 화요일에 집행해도 지난
+// 주가 아니라 텅 빈 이번 주 기준으로 처리되는 사이클 오인 위험이 있었다.
+// 벌금 납부 처리(handleAdminFineStatus)와 동일하게 cycle을 필수로 받아
+// resolveTargetFileId로 검증한 그 사이클(지난 주 백업) 파일에 직접
+// 쓰도록 바꾼다 — 퇴실/재납 처리와 달리 "그 주에 상금을 지급했다"는
+// 순수 기록성 사실이라, 현재 시점에 별도로 반영할 상태/권한이 없다
+// (사용자 확인: "상금은 지난 주에만 기록하면 충분"). cycle이 없으면
+// (=이번 주를 보고 있으면) 애초에 집행 대상이 존재하지 않으므로 거부한다
+// — 이렇게 하면 일요일(아직 백업 자체가 없어 선택할 지난 사이클이
+// 없음)엔 자연히 집행이 불가능해진다.
 async function handleAdminPrizeSettle(req, env, origin) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
 
   try {
-    const { expectedCollectMoney, expectedSettlementNumbers } = await req.json().catch(() => ({}));
+    const { expectedCollectMoney, expectedSettlementNumbers, cycle } = await req.json().catch(() => ({}));
+    if (!cycle) {
+      return json(
+        { error: "상금 정산은 지난 주 사이클을 선택한 상태에서만 집행할 수 있습니다." },
+        400,
+        origin
+      );
+    }
     const accessToken = await getServiceAccountAccessToken(env);
-    const fileId = env.GOOGLE_SHEET_FILE_ID;
+    const { fileId } = await resolveTargetFileId(env, accessToken, cycle);
     await invalidateMemberCache(env, ["rosterOnly"], fileId);
     const latest = await buildRosterStatus(env, accessToken, fileId);
     const latestNumbers = (latest.settlement || []).map((s) => s.number);

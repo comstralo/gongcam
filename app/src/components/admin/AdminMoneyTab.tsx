@@ -477,10 +477,18 @@ function PrizeRecipientList({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [settling, setSettling] = useState(false);
-  const [settled, setSettled] = useState(false);
-  // 지난 사이클 조회 중이면 읽기 전용 — "상금 정산 집행"은 그 시점 시트에
-  // 실제로 값을 쓰는 액션이라 현재 시트에서만 의미가 있다.
-  const readOnly = !!cycleFileId;
+  // 🔧 [사용자 지시, 2026-09-12] "상금 정산 집행을 지난 주 사이클에
+  // 반영" — 원래 로컬 state(집행 성공 시에만 true)였는데, 새로고침하면
+  // 항상 false로 리셋돼 실제 집행 여부와 화면이 어긋났다. 서버가 이미
+  // 계산해 내려주는 data.settlementSettled(RosterStatusResponse)를 그대로
+  // 진실源으로 쓴다.
+  const [settlementSettled, setSettlementSettled] = useState(false);
+  // 🔧 [사용자 지시, 2026-09-12] "상금 정산 집행을 지난 주 사이클에
+  // 반영" — 원래는 정반대(지난 사이클이면 readOnly)였다. 집행이
+  // handleAdminPrizeSettle에서 이제 cycle 파라미터로 지정된 사이클에만
+  // 쓰이도록 바뀌어, "현재"(cycleFileId 없음)를 보고 있을 때는 애초에
+  // 집행 대상 자체가 없다 — 지난 사이클을 선택했을 때만 집행 가능하다.
+  const canSettle = !!cycleFileId;
   // 탭 복귀/당겨서 새로고침/폴링이 겹쳐 load()가 중복 호출되는 걸 막는
   // 가드 — loading state는 비동기라 ref로 즉시 확인한다.
   const loadingRef = useRef(false);
@@ -504,6 +512,7 @@ function PrizeRecipientList({
         setCollectMoney(data.collectMoney ?? 0);
         setMembers(data.members ?? []);
         setSettlement(data.settlement ?? []);
+        setSettlementSettled(!!data.settlementSettled);
       })
       .catch((err) => setError(err instanceof ApiError ? err.message : "상금 수령 대상 목록을 불러오지 못했습니다."))
       .finally(() => {
@@ -554,9 +563,10 @@ function PrizeRecipientList({
         body: {
           expectedCollectMoney: collectMoney,
           expectedSettlementNumbers: settlement?.map((s) => s.number) ?? [],
+          cycle: cycleFileId,
         },
       });
-      setSettled(true);
+      setSettlementSettled(true);
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         setError("정산 대상 정보가 방금 바뀌었습니다. 화면을 새로고침한 뒤 다시 확인해 주세요.");
@@ -637,14 +647,25 @@ function PrizeRecipientList({
           </div>
         )}
 
-        {settlement && settlement.length > 0 && !readOnly && (
+        {settlement && settlement.length > 0 && (
           <Button
             variant="outline"
             className="w-full sm:h-12 sm:text-base"
-            disabled={settling || settled}
+            disabled={!canSettle || settling || settlementSettled}
             onClick={handleSettle}
           >
-            {settled ? "집행 완료" : settling ? "집행 중..." : "상금 정산 집행"}
+            {/* 🔧 [사용자 지시, 2026-09-12] "현재"(이번 주) 사이클에서는
+                집행 대상 자체가 없어(handleAdminPrizeSettle이 cycle을
+                필수로 받음) 버튼을 숨기는 대신 비활성화하고, 라벨로
+                이유를 알려준다 — 관리자가 "왜 버튼이 없지?" 헷갈리지
+                않도록. */}
+            {!canSettle
+              ? "지난 주 사이클을 선택하면 집행할 수 있습니다"
+              : settlementSettled
+                ? "집행 완료"
+                : settling
+                  ? "집행 중..."
+                  : "상금 정산 집행"}
           </Button>
         )}
       </CollapsiblePanel>
