@@ -536,3 +536,106 @@ index.js 8,967→8,463줄(약 504줄 감소, 시작(10,984줄) 대비 총
 테스트 없이 구조 변경부터 시작하지 않는다는 원칙은 유지한다 —
 6차·7차 모두 통합 테스트 작성 자체가 실제 버그/mock 결함을 잡아내는
 안전망 역할을 했으므로, 순서를 건너뛰지 않는다.
+
+## 구조 개선 8차 — 퇴실 처리 도메인 통합 테스트 + 이동 (2026-09-13)
+
+7차 완료 기록에서 예고한 대로 "퇴실 처리"(신청/동의/취소, 관리자
+후보 조회/미리보기/확정, 강제퇴실·재납 시트 조작, 블랙리스트)
+도메인을 `src/exit.js`로 옮겼다. 6~7차와 동일하게 fetch mock +
+실제 workerd DO 통합 테스트를 먼저 깐 뒤 도메인을 통째로 이동했다.
+
+**범위 확정**: `buildPersonalStatus`(개인 대시보드 `/status` 전용
+— `handleStatus`가 실제 소비처이고, exit 도메인은 `computeExitResult`
+에서 호출만 함)와 `handleAdminMemberStatus`/`handleAdminMembersRoster`
+(7차에서 이미 제외 확정)는 이번에도 index.js에 남겼다. 대신
+`listActiveMembersWithExitInfo`(exit 전용 로직, `handleAdminMembersRoster`
+가 참조만 함)는 이동 대상에 포함했다 — index.js가 exit.js에서
+이 함수 하나만 다시 가져와 `handleAdminMembersRoster`에 연결한다.
+`handleAdminFinesAdminForcedCount`(벌금 도메인, index.js 잔류)는
+`listExitedMemberEntries`/`getMemberSettingsStub`을 참조하지만 둘 다
+이미 index.js에 있어 영향이 없었다.
+
+**`src/exit.js`(신설, 22개 함수, 약 1,125줄)**: `writeExitResultBox`,
+`revokeSheetAccess`, `getPenaltySlotNotesGrid`, `getSheetFormulas`,
+`getAllExitRelevantStatus`, `listExitCandidates`, `handleSetExitRequest`,
+`handleAgreeExitRequest`, `handleCancelExitRequest`, `listExitRequests`,
+`handleBotExitRequests`, `handleAdminExitedMembers`,
+`listActiveMembersWithExitInfo`, `handleAdminExitCandidates`,
+`computeExitResult`, `handleAdminExitPreview`, `appendDataAuditSnapshot`,
+`rewriteBackupAuditFormulas`, `performExitReset`, `performDepositAgainReset`,
+`handleAdminExitConfirm`, `handleAdminExitBlacklist`, `handleAdminBlacklist`.
+cycle.js/deposit.js에서 이미 index.js가 재export하는 범용 함수
+(`isUnguardedAdminForcedCycleCombo`/`resolveExitSourceFileId`/
+`resolveTargetFileId`, `calcForcedOutDeposit`/`calcExitProcess`/
+`countCurrentCyclePen`/`depositRefundBreakdown`/`forcedExitChecks`)는
+실제 사용 목적으로 다시 import한다(6~7차와 동일 패턴). `getSharedMemberRows`
+/`latestSlotDay`/`buildSlotHistory`/`_bumpUsageCounter`/
+`OUTPUT_PEN_SHEET_NAME`/`OUTPUT_PEN_SLOT_COLUMNS`/각종 `ROW_*`·`COL_*`
+상수는 다른 도메인(개인 대시보드, 벌점 집계)도 공유하는 범용
+유틸·상수라 index.js에 남기고 export만 추가했다.
+
+**🔧 통합 테스트 작성 중 발견·수정한 실제 버그**: exit.js로 옮기며
+`computeExitResult`의 예치금 반환액 계산부(`heldAmount`/`refundAmount`)
+를 원본을 옆에 두지 않고 기억에 의존해 재구성하다가, 실제 상수
+(`EXIT_DEPOSIT_VALUE=10000`)와 공식(`heldAmount = EXIT_DEPOSIT_VALUE *
+discountRatio`)을 놓치고 임의의 `depositAmount=50000`과 반대 방향
+공식(`heldAmount = depositAmount * (1 - discountRatio)`)으로 잘못
+작성했다 — 문법 검사와 기존 190여 개 테스트는 이 함수를 전혀
+호출하지 않아 통과했지만, 이번 8차에서 `handleAdminExitPreview`
+통합 테스트를 작성하며 기대값과 실제값이 반대로 나오는 것을 보고
+발견했다. `git show HEAD:.../index.js`로 커밋된 원본을 다시 꺼내
+`computeExitResult` 전체를 그대로 교체해 바로잡았고, 이후 이동한
+22개 함수 전부를 원본과 자동 diff로 대조해 주석 축약 외 로직
+차이가 없음을 재확인했다. **교훈**: "로직 변경 없이 그대로 옮긴다"
+원칙을 지키려면 큰 함수일수록 기억으로 재구성하지 말고 원본 텍스트를
+그대로 복사해야 한다 — 이번엔 통합 테스트가 안전망 역할을 했지만,
+읽기 전용 함수였다면 조용히 프로덕션에 배포될 뻔했다.
+
+**통합 테스트 3개 파일(31개 케이스)**:
+- `test/exit-requests.test.js`(13개) — `handleSetExitRequest`/
+  `handleAgreeExitRequest`/`handleCancelExitRequest`/
+  `handleBotExitRequests`. LeaveQueue DO(실제 workerd)에 직접
+  기록된 값을 검증한다. `resolveMemberNumber`가 `session.memberNumber`
+  로 즉시 반환되는 경우에도 그 앞에서 `getServiceAccountAccessToken`
+  이 항상 먼저 실행됨을 놓쳐 첫 시도에 다수 실패했다 — 각 테스트에
+  OAuth fetch mock을 명시적으로 걸어 해결.
+- `test/exit-fetch.test.js`(10개) — `handleAdminExitedMembers`/
+  `handleAdminExitCandidates`/`handleAdminExitBlacklist`/
+  `handleAdminBlacklist`. MemberSettingsDO(실제 workerd)에 exit
+  결과를 미리 심어(seed) 조회 결과를 검증한다.
+- `test/exit-confirm.test.js`(8개) — `handleAdminExitPreview`/
+  `handleAdminExitConfirm`. `buildPersonalStatus` 전체(개인 탭
+  조회+`_computeOutputPenSlots`+`_computeReportScore`+`getMeritRank`
+  →`buildRosterStatus`)를 실제로 태우는 가장 무거운 mock 시나리오 —
+  같은 회원번호(1번)의 "데이터" 탭 슬롯 조회가 `_computeOutputPenSlots`
+  (`'데이터'!F4:M4`, 시트명을 작은따옴표로 감쌈)와
+  `_computeRosterStatus`(`데이터!F4:M4`, 따옴표 없음)에서 URL이
+  거의 같게 인코딩되어(둘 다 회원 1번=4행) 처음엔 서로의 mock을
+  가로챘다 — `encodeURIComponent`가 작은따옴표를 인코딩하지 않는
+  성질을 이용해 `'`를 표식으로 구분해 해결.
+
+index.js 8,463→7,338줄(약 1,125줄 감소, 시작(10,984줄) 대비 총
+33.2% 감소). `npm test` 기준 247개 테스트 전부 통과(기존 216개 +
+신규 31개). 배포 후 curl로 `/admin/exit/candidates`,
+`/admin/members/exited`, `/admin/blacklist`, `/exit-request`,
+`/exit-request/agree`, `/exit-request/cancel`, `/admin/exit/preview`,
+`/admin/exit/confirm`, `/admin/exit/blacklist`, `/bot/exit-requests`
+전부 정상 인증 응답(401/403) 확인, `wrangler tail`로 실제 요청과
+봇 트래픽이 예외 없이("Ok") 처리됨을 확인했다.
+
+## 다음 단계
+
+사이클 판정, 예치금/강제퇴실/정산 판정, 회원 관리/알림·푸시의
+순수 함수, 웹푸시 암호화, 벌금/납부 처리, 회원 관리(CRUD/번호
+재배치), 퇴실 처리까지 총 8차에 걸쳐 분리했다. `resolveMemberNumber`
+/`findMemberNumberByEmail`(15곳 이상 공유 인증 유틸)은 8차 조사에서도
+계속 제외 대상으로 남았다 — 이제 index.js에 남은 handle* 중
+사이클 판정과 얽힌 것들(예: `hasForcedCandidateInCycle`이 여전히
+index.js에 있으면서 exit.js/deposit.js를 실제 사용 목적으로 참조)
+정리가 다음 후보다. 큰 함수를 새 파일로 옮길 때는 이번 8차에서
+드러난 실수(원본을 옆에 두지 않고 기억으로 재구성하다 계산 공식이
+뒤바뀜)를 반복하지 않도록, 이동 직후 반드시 `git show HEAD:<path>`
+로 원본과 diff 대조하는 절차를 다음 차수부터 명시적으로 넣는다.
+테스트 없이 구조 변경부터 시작하지 않는다는 원칙은 유지한다 —
+6~8차 모두 통합 테스트 작성 자체가 실제 버그/mock 결함을 잡아내는
+안전망 역할을 했으므로, 순서를 건너뛰지 않는다.
