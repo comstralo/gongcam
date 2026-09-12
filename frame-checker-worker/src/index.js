@@ -999,6 +999,15 @@ function invalidateMemberCache(env, groups, fileId) {
 // 건드린 회원 번호(대상자·제보자, 최대 2명)에 한해 이 함수를 함께 호출한다
 // — "번호 재사용" 대비용으로 좁게 쓰이던 함수가 이제 일반적인 제보 처리
 // 경로에서도 쓰인다.
+// 🔧 [사용자 지시, 2026-09-12 재점검] "벌점·상점을 제보 발생 사이클에
+// 기록"으로 바뀌면서, 이 6곳 모두 fileId 인자(sourceFileId — 원본이
+// 아닐 수 있음)를 반드시 함께 넘겨야 한다. 인자를 생략하면
+// invalidateMemberCache/invalidateMemberSlotCache는 항상
+// env.GOOGLE_SHEET_FILE_ID로 기본값이 잡히는데, 시트 쓰기는 이미
+// sourceFileId(지난 사이클 백업일 수 있음)에서 이뤄진 뒤라 — 캐시만
+// 엉뚱한(원본) 파일 걸 지우고 실제로 바뀐 파일의 캐시는 그대로 남아
+// 최대 TTL만큼 갱신되지 않는 불일치가 있었다(실제 발견된 버그, 수정
+// 완료).
 // 🔧 [캐싱 통합, 2026-09] outputPenSlots/reportScore가 personalStatusBundle:
 // 하나로 합쳐지면서(§getPersonalStatusBundle), 이 둘을 개별적으로 지우던
 // 과거 키(outputPenSlots:/reportScore:)는 더 이상 존재하지 않는다 —
@@ -4564,8 +4573,13 @@ async function handleAdminCaptureCancel(req, env, origin) {
     // 원본으로 폴백한다.
     const fileId = sourceFileId || env.GOOGLE_SHEET_FILE_ID;
     await cancelOutputPenalty(env, accessToken, fileId, number, col, deductedMinutes || 0, dayCol || null);
-    await invalidateMemberCache(env, ["penalty"]); // 페널티 슬롯이 바뀌었으므로 관련 캐시만 무효화.
-    await invalidateMemberSlotCache(env, number); // 이 회원의 outputPenSlots/reportScore는 KV까지 즉시.
+    // 🔧 [사용자 지시] "벌점·상점을 제보 발생 사이클에 기록" — 캐시
+    // 무효화도 실제로 쓴 fileId를 넘겨야 한다. 생략하면 항상
+    // env.GOOGLE_SHEET_FILE_ID(원본)만 지워져, fileId가 지난 사이클
+    // 백업이었을 때 그 백업의 캐시(exitStatus/personalStatusBundle 등)
+    // 가 최대 TTL만큼 갱신되지 않는다.
+    await invalidateMemberCache(env, ["penalty"], fileId); // 페널티 슬롯이 바뀌었으므로 관련 캐시만 무효화.
+    await invalidateMemberSlotCache(env, number, fileId); // 이 회원의 outputPenSlots/reportScore는 KV까지 즉시.
     return json({ ok: true }, 200, origin);
   } catch (err) {
     return json({ error: "취소 실패: " + err.message }, 500, origin);
@@ -4588,8 +4602,8 @@ async function handleAdminCaptureCancelMerit(req, env, origin) {
     const accessToken = await getServiceAccountAccessToken(env);
     const fileId = sourceFileId || env.GOOGLE_SHEET_FILE_ID;
     await cancelReportMerit(env, accessToken, fileId, number, col);
-    await invalidateMemberCache(env, ["penalty"]); // 제보상점 슬롯이 바뀌었으므로 관련 캐시만 무효화.
-    await invalidateMemberSlotCache(env, number); // 이 회원의 outputPenSlots/reportScore는 KV까지 즉시.
+    await invalidateMemberCache(env, ["penalty"], fileId); // 제보상점 슬롯이 바뀌었으므로 관련 캐시만 무효화.
+    await invalidateMemberSlotCache(env, number, fileId); // 이 회원의 outputPenSlots/reportScore는 KV까지 즉시.
     return json({ ok: true }, 200, origin);
   } catch (err) {
     return json({ error: "취소 실패: " + err.message }, 500, origin);
@@ -4755,11 +4769,14 @@ async function handleAdminCaptureDecide(req, env, origin) {
           meritResult = { error: meritErr.message };
         }
       }
-      await invalidateMemberCache(env, ["penalty"]); // 페널티/제보상점 슬롯이 바뀌었으므로 관련 캐시만 무효화.
+      // 🔧 [사용자 지시] "벌점·상점을 제보 발생 사이클에 기록" — sourceFileId
+      // 를 넘겨야 한다. 생략하면 항상 원본만 지워져, sourceFileId가 지난
+      // 사이클 백업이었을 때 그 백업의 캐시가 갱신되지 않는다.
+      await invalidateMemberCache(env, ["penalty"], sourceFileId); // 페널티/제보상점 슬롯이 바뀌었으므로 관련 캐시만 무효화.
       // 대상자(penaltyResult)와 제보자(meritResult)는 서로 다른 회원일 수
       // 있다 — 둘 다 outputPenSlots/reportScore가 KV까지 즉시 지워지도록.
-      if (penaltyResult?.number) await invalidateMemberSlotCache(env, penaltyResult.number);
-      if (meritResult?.number) await invalidateMemberSlotCache(env, meritResult.number);
+      if (penaltyResult?.number) await invalidateMemberSlotCache(env, penaltyResult.number, sourceFileId);
+      if (meritResult?.number) await invalidateMemberSlotCache(env, meritResult.number, sourceFileId);
     } catch (err) {
       return json({ error: "시트 반영 실패: " + err.message }, 500, origin);
     }
@@ -4859,9 +4876,12 @@ async function handleAdminCaptureDecide(req, env, origin) {
       }
     }
     if (penaltyResult || meritResult || timeDeductionResult) {
-      await invalidateMemberCache(env, ["penalty"]);
-      if (penaltyResult?.number) await invalidateMemberSlotCache(env, penaltyResult.number);
-      if (meritResult?.number) await invalidateMemberSlotCache(env, meritResult.number);
+      // 🔧 [사용자 지시] "벌점·상점을 제보 발생 사이클에 기록" — 위
+      // 롤백(cancelOutputPenalty 등)이 sourceFileId에서 이뤄졌으므로
+      // 캐시 무효화도 같은 파일을 대상으로 해야 한다.
+      await invalidateMemberCache(env, ["penalty"], sourceFileId);
+      if (penaltyResult?.number) await invalidateMemberSlotCache(env, penaltyResult.number, sourceFileId);
+      if (meritResult?.number) await invalidateMemberSlotCache(env, meritResult.number, sourceFileId);
     }
     return json({ error: "봇에 연결할 수 없습니다. 시트 반영은 자동으로 되돌렸으니 다시 시도해주세요." }, 502, origin);
   }
@@ -4937,9 +4957,9 @@ async function handleAdminCaptureDelete(req, env, origin) {
       if (merit && merit.number && merit.col) {
         await cancelReportMerit(env, accessToken, fileId, merit.number, merit.col);
       }
-      await invalidateMemberCache(env, ["penalty"]); // 페널티/제보상점 슬롯이 바뀌었으므로 관련 캐시만 무효화.
-      if (penalty?.number) await invalidateMemberSlotCache(env, penalty.number);
-      if (merit?.number) await invalidateMemberSlotCache(env, merit.number);
+      await invalidateMemberCache(env, ["penalty"], fileId); // 페널티/제보상점 슬롯이 바뀌었으므로 관련 캐시만 무효화.
+      if (penalty?.number) await invalidateMemberSlotCache(env, penalty.number, fileId);
+      if (merit?.number) await invalidateMemberSlotCache(env, merit.number, fileId);
     } catch (err) {
       return json({ error: "시트 반영 취소 실패: " + err.message }, 500, origin);
     }
@@ -4990,8 +5010,8 @@ async function handleAdminCaptureRevert(req, env, origin) {
     try {
       const accessToken = await getServiceAccountAccessToken(env);
       await cancelReportMerit(env, accessToken, fileId, merit.number, merit.col);
-      await invalidateMemberCache(env, ["penalty"]); // 제보상점 슬롯이 바뀌었으므로 관련 캐시만 무효화.
-      await invalidateMemberSlotCache(env, merit.number); // 이 회원의 outputPenSlots/reportScore는 KV까지 즉시.
+      await invalidateMemberCache(env, ["penalty"], fileId); // 제보상점 슬롯이 바뀌었으므로 관련 캐시만 무효화.
+      await invalidateMemberSlotCache(env, merit.number, fileId); // 이 회원의 outputPenSlots/reportScore는 KV까지 즉시.
     } catch (err) {
       return json({ error: "제보상점 회수 실패: " + err.message }, 500, origin);
     }
