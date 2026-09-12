@@ -2155,6 +2155,56 @@ export async function proxyToBotDashboard(env, path, options = {}) {
   }
 }
 
+// 봇(study_manager_260418.py)이 이 Worker와 같은 Google 서비스 계정을 써서
+// 직접 Sheets API(gspread)를 호출한다 — Worker 자신의 호출만 세면 실제
+// 분당 사용량을 과소평가하게 되므로, 봇이 usage_tracker.py로 자신의 호출
+// 수를 5초 간격으로 이렇게 보고하면 Worker의 기존 카운터에 합산한다.
+async function handleBotSheetsUsageReport(req, env, origin) {
+  const botSecret = req.headers.get("X-Bot-Secret");
+  if (!botSecret || botSecret !== env.BOT_SECRET) {
+    return json({ error: "unauthorized" }, 401, origin);
+  }
+
+  const { read, write } = await req.json().catch(() => ({}));
+  for (let i = 0; i < (parseInt(read, 10) || 0); i++) _bumpUsageCounter("sheets_read");
+  for (let i = 0; i < (parseInt(write, 10) || 0); i++) _bumpUsageCounter("sheets_write");
+  return json({ ok: true }, 200, origin);
+}
+
+// 🔧 [버그 방어] 봇의 capture_manifest.py가 오래된 캡처를 정리(archive)할
+// 때, 단순히 "접수 후 N일 지났는지"로 판단하면 실제 3주 사이클 경계와
+// 어긋나 "이번 사이클 안에서 아직 조회돼야 할" 캡처가 먼저 옮겨질 수
+// 있다(사용자 지적) — 사이클 길이가 정확히 21일이 아닐 수 있고, 새
+// 사이클이 막 시작된 직후엔 지난 사이클 자료가 21일 전이라는 이유만으로
+// 옮겨지는 경우가 생긴다. listCurrentCycleBackups가 이미 "지금 진행 중인
+// 3주 묶음"을 정확히 계산해 두므로, 그 묶음에서 가장 오래된(=사이클 1주차)
+// 백업의 weekOf를 그대로 "그 이전 접수 건은 지난 사이클, 그 이후는 이번
+// 사이클"의 경계로 봇에게 알려준다 — 봇은 이 경계보다 이전에 접수된
+// 확정 건만 archive로 옮긴다. 매주 월요일 정기 작업 한 번만 호출되므로
+// Sheets API 부담은 미미하다.
+async function handleInternalCycleBoundary(req, env, origin) {
+  const botSecret = req.headers.get("X-Bot-Secret");
+  if (!botSecret || botSecret !== env.BOT_SECRET) {
+    return json({ error: "unauthorized" }, 401, origin);
+  }
+  try {
+    const accessToken = await getServiceAccountAccessToken(env);
+    const { backups } = await listCurrentCycleBackups(env, accessToken);
+    // backups는 최신순 정렬 — 배열의 마지막이 "이번 3주 묶음"에서 가장
+    // 과거(=사이클 1주차) 백업이다. 백업이 아직 하나도 없으면(운영 시작
+    // 직후 등) 이번 사이클 시작을 판단할 근거가 없으므로 null로 알려
+    // 봇이 이번 회차 정리를 건너뛰게 한다.
+    const oldestInCycle = backups[backups.length - 1] || null;
+    return json(
+      { cycleStartWeekOf: oldestInCycle ? oldestInCycle.weekOf : null },
+      200,
+      origin
+    );
+  } catch (err) {
+    return json({ error: "사이클 조회 실패: " + err.message }, 500, origin);
+  }
+}
+
 // Cloudflare GraphQL Analytics API로 오늘(UTC) 하루치 Workers 요청 수와
 // KV 읽기/쓰기 수를 조회한다. CF_API_TOKEN/CF_ACCOUNT_ID가 없으면(토큰
 // 미발급) null을 반환 — "Bot·Sheet" 탭이 이 부분만 빈 상태로 보여준다.
