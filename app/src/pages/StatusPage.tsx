@@ -199,6 +199,7 @@ export function StatusPage({
           selectedFileId={cycleFileId ?? null}
           onSelect={onSelectCycle}
           memberNumber={selected === SELF_VALUE ? "self" : selected}
+          includeUnpaid
         />
       )}
       {membersError && (

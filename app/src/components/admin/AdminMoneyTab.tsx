@@ -675,7 +675,7 @@ export function AdminMoneyTab({ visible }: { visible: boolean }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <CycleSwitcher selectedFileId={cycleFileId} onSelect={handleCycleSelect} />
+      <CycleSwitcher selectedFileId={cycleFileId} onSelect={handleCycleSelect} includeUnpaid />
       {/* 🔧 [버그 수정] 탭 전환(hidden 패턴, 언마운트 없음)이나 화면 스크롤로
           CycleSwitcher의 선택 강조만 보고는 "지금 지난 사이클을 보고 있다"는
           걸 놓치기 쉬웠다 — 지난 주 데이터를 "이번 주 현황"으로 착각해 실제

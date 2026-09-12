@@ -815,7 +815,7 @@ export function ReportReviewList({
       <CollapsiblePanel className="flex flex-col gap-4">
         {cycleFileIdProp === undefined && (
           <>
-            <CycleSwitcher selectedFileId={cycleFileId} onSelect={setCycleFileId} />
+            <CycleSwitcher selectedFileId={cycleFileId} onSelect={setCycleFileId} includeUnpaid />
             {/* 🔧 [버그 수정] AdminMoneyTab이 렌더링할 때는 부모가 공용 경고
                 배너를 이미 보여주므로 여기서는 이 컴포넌트가 자체 토글을
                 쓰는 독립 모드(부스터디장 단독 화면)일 때만 표시한다. */}

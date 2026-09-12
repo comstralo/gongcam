@@ -286,6 +286,11 @@ export type CycleWeek = {
   // 실제로 존재했는지. 중도 가입 회원은 가입 전 주차엔 명단 자체에 없어
   // false가 된다 — 이 경우 프론트는 날짜 라벨 대신 "데이터 없음"으로 보여준다.
   hasData: boolean;
+  // 🔧 [사용자 지시] "벌금 납부 처리 사이클 오인 방지" — 요청에 includeUnpaid=1이
+  // 있을 때만 서버가 계산해 내려준다. member 파라미터가 있으면 그 회원 한
+  // 명의 미납 여부, 없으면 전체 회원 중 미납자 존재 여부. includeUnpaid를
+  // 안 보낸 화면(예: 전체 랭킹)의 응답에는 이 필드 자체가 없다.
+  hasUnpaid?: boolean;
 };
 
 export type CycleListResponse = {
@@ -300,6 +305,10 @@ export type CycleListResponse = {
   // 경계 판정 결과일 뿐 "이번 주가 몇 주차인지"와 항상 같지 않아 라벨이
   // 틀리는 경우가 있었다. 서버가 집계!D25(페널티 사이클)를 직접 읽어 내려준다.
   currentWeekNumber: number;
+  // 🔧 [사용자 지시] CycleWeek.hasUnpaid와 동일한 조건(includeUnpaid=1)에서만
+  // 내려오는, "이번 주"(실시간) 슬롯의 미납 여부. weeks 배열엔 이번 주가
+  // 없어 별도 필드로 둔다.
+  currentHasUnpaid?: boolean;
 };
 
 export type AdminMember = {
