@@ -185,11 +185,27 @@ export function CycleSwitcher({
     goTo(next);
   }
 
+  // 🔧 [사용자 지시] "이번 주 화면에 있어도 지난 주차에 미처리가 남아있는지
+  // 미리 알려준다" — 슬롯 하나(index)에 미납/forced가 있는지를 공통으로
+  // 판단하는 헬퍼. "이번 주" 슬롯(currentWeekIndex)은 weeks 배열에 없어
+  // currentHasUnpaid/currentHasForced를 대신 본다.
+  function hasPendingAt(index: number): boolean {
+    if (index === currentWeekIndex) return currentHasUnpaid || currentHasForced;
+    const slot = slots[index];
+    return !!slot && (!!slot.hasUnpaid || !!slot.hasForced);
+  }
+
   const browsedSlot = slots[browseIndex];
   const browsedIsCurrentWeek = browseIndex === currentWeekIndex;
   const browsedHasData = hasDataAt(browseIndex);
-  const browsedHasUnpaid = browsedIsCurrentWeek ? currentHasUnpaid : !!browsedSlot?.hasUnpaid;
-  const browsedHasForced = browsedIsCurrentWeek ? currentHasForced : !!browsedSlot?.hasForced;
+  const browsedHasPending = hasPendingAt(browseIndex);
+  // 왼쪽(과거, 더 작은 인덱스)/오른쪽(더 큰 인덱스) 방향 중 지금 보고 있는
+  // 슬롯을 제외한 어딘가에 미처리가 있으면 그 방향 화살표를 글로우한다 —
+  // "지금 안 보이지만 다른 방향에 확인할 게 있다"는 유도 신호.
+  const hasPendingToLeft = Array.from({ length: browseIndex }, (_, i) => i).some(hasPendingAt);
+  const hasPendingToRight = Array.from({ length: slots.length - browseIndex - 1 }, (_, i) => browseIndex + 1 + i).some(
+    hasPendingAt
+  );
   const thisWeek = thisWeekRange();
 
   return (
@@ -200,13 +216,27 @@ export function CycleSwitcher({
         type="button"
         onClick={() => step(-1)}
         disabled={!hasDataAt(browseIndex - 1)}
-        aria-label="이전 주차"
-        className="flex shrink-0 items-center justify-center p-1 text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-25"
+        aria-label={hasPendingToLeft ? "이전 주차 (확인이 필요한 처리 대상 있음)" : "이전 주차"}
+        className={cn(
+          "flex shrink-0 items-center justify-center rounded-full p-1 text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-25",
+          // 🔧 [사용자 지시] "과거 사이클의 미처리가 있다면 < 쪽에 글로우
+          // 이펙트로 표시" — 지금 보고 있는 슬롯 자체가 아니라 그 방향
+          // 어딘가에 미처리가 있다는 유도 신호. 비활성화된 화살표에는
+          // 애초에 넘어갈 곳이 없으므로 글로우를 주지 않는다.
+          hasPendingToLeft && hasDataAt(browseIndex - 1) && "text-destructive animate-unpaid-glow"
+        )}
       >
         <ChevronLeft className="size-4 sm:size-5" strokeWidth={2.5} />
       </button>
 
-      <div className="flex items-center gap-1.5 text-center">
+      <div
+        className={cn(
+          "flex items-center gap-1.5 rounded-full text-center transition-shadow",
+          // 🔧 [사용자 지시] "해당 주차에 미처리가 있으면 뱃지 ~ 날짜까지를
+          // 글로우 처리" — 점 대신 이 그룹 전체에 은은한 발광 테두리를 준다.
+          browsedHasPending && "px-2 py-0.5 shadow-[0_0_0_1px_var(--destructive)] animate-unpaid-glow"
+        )}
+      >
         {/* 🔧 [사용자 지시] "이번 주" 대신 다른 과거 슬롯과 동일하게
             "N주차"로 통일하고, 지금 진행 중인지/과거인지를 "N주차" 바로
             왼쪽에 뱃지로 표시한다("진행"→"현재", 과거 슬롯이면 "과거").
@@ -237,26 +267,17 @@ export function CycleSwitcher({
               ? `${formatDate(browsedSlot.weekOf)} ~ ${formatDate(browsedSlot.weekTo)}`
               : "데이터 없음"}
         </span>
-        {/* 🔧 [사용자 지시] "벌금 납부 처리/예치금 재납 대상 사이클 오인
-            방지" — 애초에 무엇이 남았는지 알려주는 게 목적이 아니라 "이
-            사이클에 처리 안 된 게 남아있으니 확인해보라"는 단일 유도
-            신호라, 미납/forced를 굳이 색으로 구분하지 않고 점 하나로
-            합친다(사용자 지적: "어차피 확인하려면 전환해서 봐야 하니
-            구분할 실익이 없다"). 건수·툴팁 없이 존재만 표시한다. */}
-        {(browsedHasUnpaid || browsedHasForced) && (
-          <span
-            aria-label="확인이 필요한 처리 대상 있음"
-            className="size-1.5 shrink-0 rounded-full bg-destructive sm:size-2"
-          />
-        )}
       </div>
 
       <button
         type="button"
         onClick={() => step(1)}
         disabled={!hasDataAt(browseIndex + 1)}
-        aria-label="다음 주차"
-        className="flex shrink-0 items-center justify-center p-1 text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-25"
+        aria-label={hasPendingToRight ? "다음 주차 (확인이 필요한 처리 대상 있음)" : "다음 주차"}
+        className={cn(
+          "flex shrink-0 items-center justify-center rounded-full p-1 text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-25",
+          hasPendingToRight && hasDataAt(browseIndex + 1) && "text-destructive animate-unpaid-glow"
+        )}
       >
         <ChevronRight className="size-4 sm:size-5" strokeWidth={2.5} />
       </button>
