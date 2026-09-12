@@ -384,13 +384,13 @@ export function DayDetailCard({
           </span>
         </div>
         <SubRow
-          label="구루미 학습시간"
+          label="구루미 기록"
           value={day.logStudyTime ? `+${padHM(day.logStudyTime)}` : "-"}
           labelClassName="text-xs sm:text-sm"
           valueClassName="text-xs sm:text-sm"
         />
         <SubRow
-          label="가산 · 감산 학습시간"
+          label="가산 · 감산 적용"
           value={signedTime(day.bonusStudyTime)}
           labelClassName="text-xs sm:text-sm"
           valueClassName={cn(
@@ -408,7 +408,7 @@ export function DayDetailCard({
         <div className="flex items-center justify-between gap-2">
           <span className="inline-flex items-center gap-1.25">
             <BedDouble className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-            <ItemTitle>반휴권</ItemTitle>
+            <ItemTitle>반휴권 사용</ItemTitle>
           </span>
           <span className="text-sm sm:text-base">
             {day.normalLeaveUsed + day.reasonLeaveUsed}장
