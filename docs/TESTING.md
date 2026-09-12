@@ -221,12 +221,66 @@ index.js 9,648→9,494줄(약 154줄 감소, 시작 대비 총 13.6% 감소).
 정상 401 응답 확인, `wrangler tail`로 두 요청 모두 예외 없이
 "Ok" 처리됨을 확인했다.
 
+## 구조 개선 3차 — 예치금 반환/강제퇴실/정산 판정 분리 (2026-09-13)
+
+벌점/벌금/예치금/상금 도메인 중 순수·시계 의존 함수가 몰려 있는
+예치금 반환 계산 핵심부를 옮겼다. `depositRefundBreakdown`이 만드는
+`depositBreakdown` 객체를 `forcedExitChecks`/`calcForcedOutDeposit`/
+`calcAdminForcedExit`/`calcSettleReturnDeposit`/`calcAgainDeposit`가
+입력으로 받고, `calcExitProcess`가 kind별로 이 넷을 디스패치하는
+강하게 연결된 순수 함수 그룹이라는 게 착수 전 조사로 확인됐다.
+
+- **`src/deposit.js`(신설)**: `countCurrentCyclePen`, `isLateNotice`
+  (유일하게 `Date.now()`를 직접 씀 — `todayKSTDateString()` 호출),
+  `depositRefundBreakdown`(`isLateNotice` 호출로 시계 의존 전파),
+  `forcedExitChecks`, `calcForcedOutDeposit`, `calcAdminForcedExit`,
+  `calcSettleReturnDeposit`, `calcAgainDeposit`, `calcExitProcess`,
+  `totalPenaltyBreakdown`. `safeNumber`/`STATUS_DAYS`/
+  `STATUS_DAY_COLS`/`ROW_PARTI_STATUS` 등 시트 레이아웃 상수·헬퍼는
+  index.js 전역(22곳, 16곳 등)에서 광범위하게 쓰이는 범용 유틸이라
+  `getSheetValues`와 같은 방식으로 **index.js에 남기고 `export`만
+  추가**했다 — `deposit.js`는 이를 순환 import로 가져온다(1차/2차와
+  동일한 재export 전용 패턴).
+- **`src/exit-timing.js`(신설)**: `isSettlementVisibleToMembers`
+  (상금 공개 시각, 일요일 23:30 KST 이후), `exitDateSettled`(퇴실
+  동의 가능 시점, exitDate+26시간 경계) — 도메인은 다르지만 둘 다
+  짧은 순수 시계 함수라 한 파일로 묶었다(사용자 확인). 둘 다 다른
+  파일 import가 필요 없어 순환이 생기지 않는다.
+- **버그 재현 회귀 테스트**: `calcSettleReturnDeposit`과
+  `depositRefundBreakdown`에 실제 "고지지연(퇴실 통보 지연) 미반영"
+  버그 수정 이력이 있다 — 회원이 미리 보는 예상 반환액과 관리자가
+  확정 처리할 때 실제 반환액이 어긋났었다. `test/deposit-clock.
+  test.js`가 `depositRefundBreakdown`의 버그 케이스(penTotal===1 &
+  lateNotice===true → amount 0)를 검증한 뒤, 그 결과를 그대로
+  `calcSettleReturnDeposit`에 넣어 discountRatio가 1(0% 반환)로
+  일치하는지 **교차 검증**한다 — 두 함수가 서로 어긋나지 않는지
+  자체가 회귀 방지 포인트다.
+- `calcSettleReturnDeposit`은 `Date.now()`를 직접 쓰지 않고
+  `depositBreakdown.lateNotice`(이미 계산된 값)만 참조하므로
+  `test/deposit-pure.test.js`(완전 순수 그룹)에 배치했다(사용자
+  확인) — `vi.setSystemTime()` 없이 fixture로 `lateNotice`를 직접
+  주입해 결정적으로 테스트한다.
+- `calcAdminForcedExit`/`calcAgainDeposit`/`calcSettleReturnDeposit`/
+  `isLateNotice`는 `calcExitProcess`/`depositRefundBreakdown`을
+  통해서만 간접 호출되고 index.js 다른 함수가 직접 부르지 않아
+  index.js 재export 대상에서 제외했다 — 이 함수들을 테스트하는
+  파일은 `../src/deposit.js`에서 직접 import한다(같은 모듈 인스턴스
+  이므로 index.js를 거쳐 import하는 것과 동작 차이 없음).
+
+index.js 9,494→9,273줄(약 221줄 감소, 시작 대비 총 15.6% 감소).
+`npm test` 기준 120개 테스트 전부 통과(기존 52개 + 신규 68개).
+배포 후 curl로 `/status`/`/roster-status`/`/cycles` 정상 401 응답
+확인, `wrangler tail`로 예외 없이 "Ok" 처리됨을 확인했다.
+
 ## 다음 단계
 
-사이클 판정 도메인은 이번 2차로 사실상 완결됐다(`hasUnpaidFineInCycle`/
-`hasForcedCandidateInCycle`만 의존 체인이 깊어 index.js에 계속
-남긴다). 이후 벌점/벌금/예치금/상금 처리, 회원 관리, 알림/푸시
-도메인은 아직 테스트가 없으므로, "테스트 커버리지가 넓어지는
+사이클 판정과 예치금 반환/강제퇴실/정산 판정 도메인은 이번 3차로
+사실상 완결됐다(`hasUnpaidFineInCycle`/`hasForcedCandidateInCycle`,
+`listUnpaidFines`/`listPaidFines`/`listExemptFines`,
+`listExitCandidates`, `handleAdminPrizeSettle`,
+`moveMemberSlot`/`computeMemberReorderPlan`만 fetch/DO 의존이 깊거나
+절차형 트랜잭션이라 계속 index.js에 남긴다). 이후 회원 관리, 알림/
+푸시 도메인은 아직 테스트가 없으므로, "테스트 커버리지가 넓어지는
 순서대로 파일을 분리한다"는 원칙에 따라 해당 도메인 테스트를 먼저
 작성한 뒤 같은 패턴(함수 단위 발췌 + 필요시 재export, 범용 유틸은
 index.js에 남기고 export만 추가)으로 이어간다. 테스트 없이 구조
