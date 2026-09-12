@@ -623,19 +623,77 @@ index.js 8,463→7,338줄(약 1,125줄 감소, 시작(10,984줄) 대비 총
 전부 정상 인증 응답(401/403) 확인, `wrangler tail`로 실제 요청과
 봇 트래픽이 예외 없이("Ok") 처리됨을 확인했다.
 
+## 구조 개선 9차 — 사이클 판정 정리 + CYCLE_MAX_LEN 버그 수정 (2026-09-13)
+
+8차 완료 기록에서 예고한 대로 index.js에 남아있던 사이클 판정
+함수 `hasUnpaidFineInCycle`/`hasForcedCandidateInCycle`과, 이 둘을
+호출하는 유일한 핸들러 `handleCycleList`(`GET /cycles`)를 `src/cycle.js`
+로 옮겼다. 8차보다 훨씬 작은 규모(약 125줄)의 "워밍업" 성격 정리다.
+
+**🔧 착수 전 실제 프로덕션 버그 발견·즉시 수정**: 이동 작업을 시작하기
+전 코드를 다시 읽다가, `handleCycleList`가 참조하는 `CYCLE_MAX_LEN`
+(cycle.js의 상수, 값 3)이 index.js의 cycle.js import 목록에 빠져있는
+것을 발견했다 — `GET /cycles`를 호출할 때마다 `ReferenceError:
+CYCLE_MAX_LEN is not defined`로 500이 나고 있었다(프론트의 사이클
+토글 UI가 이 엔드포인트를 씀). 이 함수가 언제부터 index.js에
+있었는지와 무관하게, 발견 즉시 import에 추가해 별도 커밋 없이 9차
+작업에 포함해 바로잡았다. 기존 테스트 스위트에 `/cycles` 관련
+테스트가 전혀 없어(`grep -rl handleCycleList test/`가 빈 결과) 8차
+이전부터 이 버그가 감지되지 못하고 있었던 것으로 보인다.
+
+**이동 대상**: `hasUnpaidFineInCycle`(사이클에 벌금 미납 기록이
+있는지, 회원 지정 가능), `hasForcedCandidateInCycle`(사이클에 자동
+강제퇴실 후보가 있는지, 회원 지정 가능), `handleCycleList`(`GET
+/cycles`, 사이클 토글 목록 + 위 두 판정을 `includeUnpaid`/
+`includeForced` 쿼리 파라미터로 선택 포함). fines.js의
+`listUnpaidFines`, exit.js의 `getAllExitRelevantStatus`/
+`listExitCandidates`, deposit.js의 `calcForcedOutDeposit`을 재export가
+아니라 실제 사용 목적으로 import한다 — 6~8차에서 반복 검증된 "실사용
+import" 패턴 그대로다. `getAllExitRelevantStatus`(exit.js)와
+`findMemberNumberByEmail`(index.js)이 각각 export 안 되어 있던 것을
+발견해 export를 추가했다. 이동 후 index.js에서 더는 안 쓰이게 된
+`listUnpaidFines`/`listExitCandidates`의 fines.js/exit.js import도
+함께 제거했다.
+
+**8차 교훈 적용**: `computeExitResult`를 기억으로 재구성하다 실제
+버그를 만들 뻔했던 8차 경험에 따라, 이번엔 이동한 함수 3개를 곧바로
+`git show HEAD:frame-checker-worker/src/index.js`로 꺼낸 원본과 자동
+diff 대조했다 — 전부 완전히 일치함을 확인(주석 차이도 없음).
+
+**통합 테스트**: `test/cycle-list.test.js`(8개 케이스, 신설) — 6~8차와
+동일하게 fetch mock만 사용(DO 의존 없음). `handleCycleList`의 "로그인
+후 200 정상 응답 + maxWeeks 필드 확인" 테스트가 곧 이번 CYCLE_MAX_LEN
+버그 수정의 회귀 방지 테스트를 겸한다 — 이 테스트가 먼저 있었다면
+애초에 버그가 배포되지 않았을 것이다. `test/cycle-fetch.test.js`(3단계
+때 신설된 기존 파일, `listBackupFiles`/`resolveTargetFileId`/
+`listCurrentCycleBackups` 테스트)와 이름이 겹칠 뻔했다 — 최초 작업 중
+실수로 이 기존 파일을 덮어썼다가 `git status`에서 "modified"로 표시된
+것을 보고 발견해 `git checkout`으로 복원하고, 신규 테스트는 별도
+파일(`cycle-list.test.js`)로 분리했다.
+
+index.js 7,338→7,202줄(약 136줄 감소, 시작(10,984줄) 대비 총 34.4%
+감소). `npm test` 기준 255개 테스트 전부 통과(8차 종료 시점 247개 +
+신규 8개, 기존 `cycle-fetch.test.js`의 7개는 247개 안에 포함되어
+있던 것을 재확인). 배포 후 curl로 `/cycles` 정상 401 응답 확인,
+`wrangler tail`로 실제 요청과 봇 트래픽이 예외 없이("Ok") 처리됨을
+확인했다.
+
 ## 다음 단계
 
 사이클 판정, 예치금/강제퇴실/정산 판정, 회원 관리/알림·푸시의
 순수 함수, 웹푸시 암호화, 벌금/납부 처리, 회원 관리(CRUD/번호
-재배치), 퇴실 처리까지 총 8차에 걸쳐 분리했다. `resolveMemberNumber`
-/`findMemberNumberByEmail`(15곳 이상 공유 인증 유틸)은 8차 조사에서도
-계속 제외 대상으로 남았다 — 이제 index.js에 남은 handle* 중
-사이클 판정과 얽힌 것들(예: `hasForcedCandidateInCycle`이 여전히
-index.js에 있으면서 exit.js/deposit.js를 실제 사용 목적으로 참조)
-정리가 다음 후보다. 큰 함수를 새 파일로 옮길 때는 이번 8차에서
-드러난 실수(원본을 옆에 두지 않고 기억으로 재구성하다 계산 공식이
-뒤바뀜)를 반복하지 않도록, 이동 직후 반드시 `git show HEAD:<path>`
-로 원본과 diff 대조하는 절차를 다음 차수부터 명시적으로 넣는다.
-테스트 없이 구조 변경부터 시작하지 않는다는 원칙은 유지한다 —
-6~8차 모두 통합 테스트 작성 자체가 실제 버그/mock 결함을 잡아내는
-안전망 역할을 했으므로, 순서를 건너뛰지 않는다.
+재배치), 퇴실 처리, 사이클 판정 정리까지 총 9차에 걸쳐 분리했다.
+`resolveMemberNumber`/`findMemberNumberByEmail`(15곳 이상 공유 인증
+유틸, `findMemberNumberByEmail`은 9차에서 export만 추가하고 잔류)은
+계속 제외 대상으로 남아있다. 9차 조사에서 파악한 다음 후보는 규모
+순으로: (1) 알림/푸시 핸들러 도메인(약 598줄, 순환 의존 없음, 위험
+낮음 — 다음 순번으로 유력), (2) 사유반휴/일반반휴 도메인(약 760줄,
+`hasQueuedReasonLeaveProof`를 `buildPersonalStatus`가 역참조하는
+방향인지 사전 확인 필요), (3) 제보/캡처 도메인(약 2,274줄, 가장
+크지만 `applyOutputPenalty`/`handleAdminCaptureDecide` 같은 복잡한
+분기 함수가 많아 8차형 사고 위험이 가장 큼 — 옮길 때 원본 diff
+대조를 원칙으로 삼는다). `buildPersonalStatus`/`buildRosterStatus`
+(여러 도메인이 공유하는 대형 집계 함수)는 계속 index.js 잔류 +
+export 확대가 안전해 보이며, 별도 도메인으로 뺄지는 이후 재검토한다.
+테스트 없이 구조 변경부터 시작하지 않는다는 원칙과, 이동 직후 원본과
+diff 대조하는 절차(8차부터 도입, 9차로 재확인) 둘 다 유지한다.

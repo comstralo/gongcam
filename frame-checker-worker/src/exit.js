@@ -204,7 +204,7 @@ async function getSheetFormulas(env, accessToken, fileId, range) {
 // 발생 요일)를 한 번에 계산해 10분 캐싱한다. listExitCandidates/
 // listActiveMembersWithExitInfo/hasForcedCandidateInCycle(사이클 도메인,
 // index.js 잔류)이 모두 이 캐시를 공유한다.
-async function getAllExitRelevantStatus(env, accessToken, fileId, members) {
+export async function getAllExitRelevantStatus(env, accessToken, fileId, members) {
   return _cachedCompute(env, `exitStatus:${fileId}`, 10 * 60_000, async () => {
     const [allRows, dataRows, currentCycle, notesGrid, exitRequests] = await Promise.all([
       getSharedMemberRows(env, accessToken, fileId, members),

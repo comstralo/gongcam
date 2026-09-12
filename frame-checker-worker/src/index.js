@@ -94,6 +94,7 @@ import {
   resolveTargetFileId,
   resolveExitSourceFileId,
   resolveCaptureSourceFileId,
+  handleCycleList,
 } from "./cycle.js";
 export {
   requiresFineUnpaidRecheck,
@@ -160,13 +161,10 @@ import { sendWebPush } from "./push-crypto.js";
 // 이번엔 fetch mock 기반 통합 테스트로 안전망을 먼저 깐 뒤 fetch 의존
 // 함수를 통째로 옮긴 첫 사례다. fines.js가 이 파일의 json/listAllMembers
 // 등 범용 유틸을 import하므로(위 export 선언들 참고) 순환이지만,
-// hasUnpaidFineInCycle(사이클 도메인, 계속 index.js에 남는 함수)이
-// listUnpaidFines를 직접 호출해야 해서 재export가 아니라 실제 사용
-//목적으로 import한다 — 3차의 hasForcedCandidateInCycle이 deposit.js를
-// 참조하는 것과 동일한 패턴이라 새로운 위험은 없다. 4개 핸들러는 라우팅
-// 테이블이 직접 호출하므로 함께 import한다.
+// 4개 핸들러는 라우팅 테이블이 직접 호출하므로 함께 import한다.
+// 🔧 [구조 개선 9차] listUnpaidFines를 실사용하던 hasUnpaidFineInCycle이
+// cycle.js로 옮겨가면서, index.js는 더 이상 이 함수를 직접 쓰지 않는다.
 import {
-  listUnpaidFines,
   handleAdminFinesUnpaid,
   handleAdminFinesPaid,
   handleAdminFinesExempt,
@@ -196,6 +194,8 @@ export { listAllMembers };
 // 확정)가 그대로 쓰므로 여기서 가져온다. handleAdminFinesAdminForcedCount
 // (벌금 도메인, index.js 잔류)는 listExitedMemberEntries/
 // getMemberSettingsStub만 참조하며 둘 다 이미 index.js에 있어 영향 없다.
+// 🔧 [구조 개선 9차] listExitCandidates를 실사용하던 hasForcedCandidateInCycle이
+// cycle.js로 옮겨가면서, index.js는 더 이상 이 함수를 직접 쓰지 않는다.
 import {
   handleSetExitRequest,
   handleAgreeExitRequest,
@@ -203,7 +203,6 @@ import {
   handleBotExitRequests,
   handleAdminExitedMembers,
   listActiveMembersWithExitInfo,
-  listExitCandidates,
   handleAdminExitCandidates,
   handleAdminExitPreview,
   handleAdminExitConfirm,
@@ -1254,7 +1253,7 @@ function explainDay(total, goal, morning, confirmed) {
 // 열 인덱스(B=번호, C=이름, D=이메일)는 그대로 유지되어 row[1]/row[2]/row[3]
 // 접근은 바뀌지 않았지만, 시트가 D~V까지 넓어져 A1:H50으로는 값을 다 못
 // 읽으므로 범위를 A1:V50으로 확장했다.
-async function findMemberNumberByEmail(env, accessToken, fileId, email) {
+export async function findMemberNumberByEmail(env, accessToken, fileId, email) {
   const rows = await getSheetValues(env, accessToken, fileId, "데이터!A1:V50");
   for (const row of rows) {
     const rowEmail = parseGoogleEmail(row[3]);
@@ -5961,141 +5960,6 @@ async function handleAdminOAuthCallback(req, env, origin, url) {
     );
   } catch (err) {
     return new Response("연동 실패: " + err.message, { status: 500 });
-  }
-}
-
-
-// GET /cycles — 토글에 뿌릴 선택지 목록. "현재"(fileId: null, 실시간)를
-// 맨 앞에 두고, 그 뒤로 이미 백업된 주차를 최신순으로 나열한다.
-// member 쿼리 파라미터가 있으면 각 주차마다 그 회원이 그 시점 명단에 실제로
-// 존재했는지(hasData)도 함께 계산한다 — 중도 가입 회원은 가입 전 주차엔
-// 명단 자체에 없기 때문이다. "self"는 세션 이메일로 본인을 판정하고(개인
-// 대시보드용), 파라미터 자체가 없으면 전혀 필터링하지 않는다(전체 랭킹처럼
-// 특정 회원 관점이 없는 화면용 — 항상 hasData: true).
-// 그 fileId(사이클)에 벌금 미납 기록이 하나라도 있는지 확인한다.
-// memberNumber가 있으면 그 회원 한 명만, 없으면 전체 회원 기준.
-// listUnpaidFines/getAllPaymentRows가 이미 getSharedMemberRows(10분
-// 캐시)를 거치므로, 벌금 탭이 같은 fileId를 방금 조회했다면 캐시를
-// 그대로 재사용한다.
-async function hasUnpaidFineInCycle(env, accessToken, fileId, memberNumber) {
-  if (memberNumber) {
-    const members = await listAllMembers(env, accessToken, fileId);
-    const member = members.find((m) => m.number === memberNumber);
-    if (!member) return false;
-    const [rows] = await getSharedMemberRows(env, accessToken, fileId, [member]);
-    const paymentRow = (rows && rows[ROW_PAYMENT_CHECK]) || [];
-    return STATUS_DAY_COLS.some((col) => paymentRow[col] === "미납");
-  }
-  const unpaid = await listUnpaidFines(env, accessToken, fileId);
-  return unpaid.length > 0;
-}
-
-// 그 fileId(사이클)에 forced(자동 강제퇴실, "페널티 2회 이상") 후보가
-// 있는지 확인한다. memberNumber가 있으면 그 회원 한 명만, 없으면 전체
-// 회원 기준(listExitCandidates와 동일 필터 — §6532의 "페널티 대상자"
-// 조건 그대로 재사용). getAllExitRelevantStatus가 이미 fileId별 10분
-// 캐시(exitStatus:{fileId})이므로, "예치금 재납 대상 처리" 화면이 같은
-// fileId를 방금 조회했다면 캐시를 그대로 재사용한다.
-async function hasForcedCandidateInCycle(env, accessToken, fileId, memberNumber) {
-  if (memberNumber) {
-    const members = await listAllMembers(env, accessToken, fileId);
-    const member = members.find((m) => m.number === memberNumber);
-    if (!member) return false;
-    const statuses = await getAllExitRelevantStatus(env, accessToken, fileId, members);
-    const status = statuses.find((s) => s && s.member.number === memberNumber);
-    if (!status || /^(퇴실자|재납자)/.test(status.partiStatus)) return false;
-    const forced = calcForcedOutDeposit(status.breakdown);
-    return !!forced && forced.reasons.some((r) => r.code === "penalty_2_or_more");
-  }
-  const candidates = await listExitCandidates(env, accessToken, fileId);
-  return candidates.length > 0;
-}
-
-// 🔧 [사용자 지시] "벌금 납부 처리에서 사이클 오인 방지" — 관리자가
-// 사이클 토글을 지난 주로 전환하는 걸 깜빡하면 이미 리셋된 이번 주
-// 원본만 보고 "미납자 없음"으로 오인해 실제 미납자를 방치할 수 있다
-// (§CACHING_POLICY.md 참고 예정). 서버가 자동으로 사이클을 판단해줄
-// 근거(exitDate 같은 날짜 필드)가 벌금 상태 셀엔 없어, 대신 토글
-// 자체에 "이 사이클에 미납 기록이 있다"는 신호를 얹어 관리자가
-// 전환해보지 않아도 알아채게 한다. 이 계산은 `includeUnpaid` 쿼리
-// 파라미터로 명시적으로 요청한 화면(관리자 화면, 본인 대시보드)에서만
-// 수행하고 응답에 포함한다 — 전체 랭킹(RosterPage)처럼 원래 "누가/
-// 얼마나 미납인지" 같은 개인 식별 정보를 다루지 않는 화면은 이
-// 파라미터를 보내지 않아, 서버가 계산 자체를 생략하고 필드도 응답에
-// 넣지 않는다(값을 false로 채우는 게 아니라 필드 자체가 없음 — 그
-// 화면의 세션으로 개발자도구를 열어봐도 신호가 없다).
-async function handleCycleList(req, env, origin, url) {
-  const authHeader = req.headers.get("Authorization") || "";
-  const token = authHeader.replace(/^Bearer\s+/i, "");
-  const session = await verifySession(token, env.SESSION_SECRET);
-  if (!session) return json({ error: "로그인이 만료되었습니다. 다시 로그인해주세요." }, 401, origin);
-
-  try {
-    const accessToken = await getServiceAccountAccessToken(env);
-    const { backups, currentCycle } = await listCurrentCycleBackups(env, accessToken);
-    const memberParam = url ? url.searchParams.get("member") : null;
-    const includeUnpaid = url ? url.searchParams.get("includeUnpaid") : null;
-    const includeForced = url ? url.searchParams.get("includeForced") : null;
-
-    let targetMemberNumber = null;
-    if (memberParam === "self") {
-      const member = await findMemberNumberByEmail(env, accessToken, env.GOOGLE_SHEET_FILE_ID, session.email);
-      targetMemberNumber = member ? member.number : null;
-    } else if (memberParam) {
-      targetMemberNumber = memberParam;
-    }
-
-    const weeks = await Promise.all(
-      backups.map(async (b) => {
-        let hasData = true;
-        if (targetMemberNumber) {
-          const members = await listAllMembers(env, accessToken, b.fileId);
-          hasData = members.some((m) => m.number === targetMemberNumber);
-        }
-        const week = { fileId: b.fileId, weekOf: b.weekOf, weekTo: b.weekTo, hasData };
-        if (includeUnpaid) {
-          week.hasUnpaid = await hasUnpaidFineInCycle(env, accessToken, b.fileId, targetMemberNumber);
-        }
-        if (includeForced) {
-          week.hasForced = await hasForcedCandidateInCycle(env, accessToken, b.fileId, targetMemberNumber);
-        }
-        return week;
-      })
-    );
-
-    const result = {
-      weeks,
-      // 🔧 프론트가 "아직 백업이 없는 과거 주차"도 비활성화 슬롯으로
-      // 채워 보여줄 수 있도록, 사이클 최대 길이를 함께 내려준다(하드코딩
-      // 값이 바뀌어도 프론트가 자동으로 따라가게).
-      maxWeeks: CYCLE_MAX_LEN,
-      // 🔧 [버그 수정, 2026-09] 프론트(CycleSwitcher)가 "이번 주가 사이클
-      // 몇 번째 주인지"를 weeks.length로 역산하던 방식은, 항상 3칸을
-      // 채운다는 잘못된 가정과 맞물려 1~2주차인데도 "3주차"로 잘못
-      // 표시되는 문제가 있었다 — 서버가 실제 현재 사이클 값을 직접
-      // 내려줘 프론트가 더는 역산하지 않게 한다.
-      currentWeekNumber: currentCycle,
-    };
-    if (includeUnpaid) {
-      result.currentHasUnpaid = await hasUnpaidFineInCycle(
-        env,
-        accessToken,
-        env.GOOGLE_SHEET_FILE_ID,
-        targetMemberNumber
-      );
-    }
-    if (includeForced) {
-      result.currentHasForced = await hasForcedCandidateInCycle(
-        env,
-        accessToken,
-        env.GOOGLE_SHEET_FILE_ID,
-        targetMemberNumber
-      );
-    }
-
-    return json(result, 200, origin);
-  } catch (err) {
-    return json({ error: "사이클 목록 조회 실패: " + err.message }, 500, origin);
   }
 }
 
