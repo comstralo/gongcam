@@ -931,32 +931,108 @@ index.js 5,780→3,937줄(약 1,843줄 감소, 시작(10,984줄) 대비 총
 응답 확인, `wrangler tail`로 실제 요청이 예외 없이("Ok") 처리됨을
 확인했다.
 
+## 🔧 긴급 수정 — 12차 이동 중 실수로 삭제된 함수 2개 복구 (2026-09-13)
+
+13차 착수 조사 중, 라우팅 테이블이 `handleBotSheetsUsageReport`/
+`handleInternalCycleBoundary`를 호출하는데 index.js 어디에도 그
+정의가 없다는 것을 발견했다. 12차(제보/캡처 도메인) 발췌 이동 시
+경계를 잘못 잡아 — 이 두 함수가 이동 대상(`handleReportCaptureDone`
+~`handleListReports`) 사이에 끼어 있었는데, 발췌 범위가 이들까지
+함께 삼켜버렸다. 라우팅 테이블은 그대로 남아있어 배포 직후부터
+`/admin/bot-sheets-usage`, `/internal/cycle-boundary` 두 엔드포인트가
+호출될 때마다 `ReferenceError`로 500을 반환하고 있었다(전자는 봇의
+5초 주기 사용량 보고, 후자는 매주 월요일 캡처 정리 배치가 호출 —
+당장 대량 장애는 아니지만 방치하면 사용량 계측과 캡처 아카이브
+경계 판정이 조용히 계속 실패했을 것). 11차 종료 시점 원본(git
+show)과 완전히 동일하게 복구해 즉시 배포하고, 두 엔드포인트가
+정상 401을 반환하는지, `wrangler tail`에 예외가 없는지 확인한 뒤
+별도 커밋으로 남겼다. **교훈**: 발췌 이동(여러 구간에 흩어진
+함수를 나눠서 옮기는 방식)에서는 이동 후 index.js 쪽에 "옮긴
+함수가 실제로 전부 옮겨졌는지"뿐 아니라 "옮기지 않은 함수가
+실수로 함께 삭제되지 않았는지"도 라우팅 테이블 전체를 grep해
+교차 검증해야 한다 — diff 대조는 옮긴 함수가 원본과 일치하는지만
+확인할 뿐, 옮기지 않았어야 할 함수가 사라진 것은 잡아내지 못한다.
+
+## 구조 개선 13차 — 봇 상태/사용량 도메인 통합 테스트 + 이동 (2026-09-13)
+
+12차에서 분리해둔 대로 봇 상태/사용량 도메인을 `src/bot.js`로
+옮겼다. `handleBotRegisterUrl`, `handleBotSheetsUsageReport`,
+`handleInternalCycleBoundary`, `fetchCloudflareUsage`,
+`handleAdminUsageStatus`, `handleAdminBotStatus`,
+`handleAdminBotCommand` 7개 함수 — 이전 차수들보다 작은 규모지만,
+`proxyToBotDashboard`/`proxyToBotDashboardRaw`, `getBotAdminConfigStub`,
+`BOT_URL_CONFIG_KEY`/`BOT_PROXY_TIMEOUT_MS`, 사용량 계측 클러스터
+(`_bumpUsageCounter`/`_getUsageCounter`/`_emailNameMap`/
+`_menuNameForPath`/`_usageCounters`/`_dailyUsageBuffer`/
+`_minuteUsageBuffer`/`_pendingNameFlush`), `getUsageStatsStub`/
+`flushDailyUsageStats`까지 index.js의 로그인/OAuth, 시트 읽기·쓰기
+계측(58곳 이상의 `_bumpUsageCounter` 호출), cron(`scheduled`가
+`flushDailyUsageStats` 직접 호출)과 두루 얽혀 있어 범위를 정확히
+가르는 데 공을 들였다. 이 범용 유틸 전부는 index.js에 남기고
+`export`만 추가했다 — 새 파일로 옮긴 건 라우팅 테이블에서만
+호출되고 index.js의 다른 함수가 실사용하지 않는 6개 핸들러 +
+`fetchCloudflareUsage`(내부 전용)뿐이다. `handleBotRegisterUrl`이
+쓰는 `flushQueuedReasonLeaveProofs`(leave.js, 11차)는 index.js를
+거치지 않고 bot.js가 leave.js에서 직접 import하도록 정리했다
+(index.js는 더 이상 이 함수를 쓰지 않으므로 그 import도 제거).
+
+**7개 함수 전체 diff 검증**: 정규식 기반 함수 추출로 이동 전
+원본(직전 커밋의 index.js, 위 긴급 수정 포함)과 bot.js를 비교해
+7개 전부 완전 일치를 확인했다.
+
+**통합 테스트(`test/bot-status.test.js`, 17개)**: BotAdminConfigDO/
+UsageStats 모두 실제 workerd DO를 그대로 써서(mock 불필요)
+`handleBotRegisterUrl`이 실제로 DO에 URL을 쓰는지, 그 값을
+`handleAdminBotStatus`가 다시 읽어 실제로 그 주소로 fetch하는지까지
+end-to-end로 검증했다. `handleAdminUsageStatus`는 `CF_API_TOKEN`/
+`CF_ACCOUNT_ID`를 비워 `fetchCloudflareUsage`가 fetch 없이 즉시
+null을 반환하는 경로(cloudflareConfigured:false)를 mock 없이
+검증했다. `handleInternalCycleBoundary` 테스트에서 처음엔 Drive
+파일 목록만 mock했다가 `listCurrentCycleBackups`가 내부적으로
+`집계!D25`(현재 페널티 사이클)도 함께 조회한다는 것을 놓쳐 500이
+났다 — mock을 보강해 해결(12차에서 확립한 "폴백 mock이 조용히
+받아버리는 경로를 조심하라"는 교훈과 같은 종류의 실수).
+
+파일 전체를 실행하면 workerd 풀 내부에서 "uncaught exception:
+internal error"라는 스택 없는 로그가 이따금(24회 실행 중 1회)
+찍히며 그 1회에서 드물게 테스트가 실패하는 현상을 관찰했다 —
+같은 파일을 단독/부분 조합으로 실행하면 재현되지 않고, 반복 실행
+시 대부분(23/24, 그리고 이후 15/15 연속) 통과해 코드 결함이 아니라
+다수의 DO 인스턴스가 한 파일에 몰릴 때 발생하는 테스트 풀 자체의
+teardown 경합으로 판단했다 — 전체 스위트(`npm test`)를 연속 2회
+돌려도 403/403 전부 통과함을 확인해 실제 배포에는 영향이 없음을
+확인했다.
+
+index.js 3,987(긴급 수정 후)→3,624줄(약 363줄 감소, 시작(10,984줄)
+대비 총 **67.0% 감소**). `npm test` 기준 403개 테스트 전부
+통과(12차 종료+긴급수정 시점 386개 + 신규 17개). 배포 후 curl로
+`/bot/register-url`, `/admin/bot-sheets-usage`,
+`/internal/cycle-boundary`, `/admin/bot/status`, `/admin/usage`,
+`/admin/bot/command` 전부 정상 401/403 응답 확인, `wrangler tail`로
+실제 요청이 예외 없이("Ok") 처리됨을 확인했다.
+
 ## 다음 단계
 
 사이클 판정, 예치금/강제퇴실/정산 판정, 회원 관리/알림·푸시의
 순수 함수, 웹푸시 암호화, 벌금/납부 처리, 회원 관리(CRUD/번호
 재배치), 퇴실 처리, 사이클 판정 정리, 알림/푸시 도메인, 사유반휴/
-일반반휴 도메인, 제보/캡처 도메인까지 총 12차에 걸쳐 분리했다.
-`resolveMemberNumber`/`findMemberNumberByEmail`(15곳 이상 공유 인증
-유틸)은 계속 제외 대상으로 남아있다. 남은 최대 후보는 12차 조사에서
-분리해둔 봇 상태/사용량 도메인(`handleBotSheetsUsageReport`,
-`handleInternalCycleBoundary`, `handleBotRegisterUrl`,
-`handleAdminUsageStatus`, `handleAdminBotStatus`,
-`handleAdminBotCommand`, `fetchCloudflareUsage` 등) — 상대적으로
-작은 규모라 13차 후보로 적합해 보인다. `buildPersonalStatus`/
-`buildRosterStatus`(여러 도메인이 공유하는 대형 집계 함수)는 계속
-index.js 잔류 + export 확대가 안전해 보이며, 별도 도메인으로 뺄지는
-이후 재검토한다. 테스트 없이 구조 변경부터 시작하지 않는다는 원칙,
-이동 직후 원본과 diff 대조하는 절차(8차부터), DO 키 기준 테스트
-격리(10차부터), 최상위 `const` 객체 리터럴의 TDZ 위험 점검(11차부터)
-모두 유지한다. **12차에서 새로 얻은 교훈**:
-1. index.js 잔여 참조를 grep해 "옮긴 함수를 index.js가 여전히
-   직접 호출하는 지점"(이번엔 `scheduled` cron 핸들러)이 없는지
-   반드시 확인한다 — export 누락은 최초 호출 시점(이번엔 5분마다)
-   에야 `ReferenceError`로 드러나 배포 후 발견하면 늦다.
-2. fetch mock의 URL 매처를 한글이 포함된 시트 range(예: `집계!D25`)
-   문자열 리터럴로 작성하면 실제 요청 URL은 `encodeURIComponent`를
-   거친 퍼센트 인코딩 형태라 매칭에 실패한다 — 폴백 mock이 조용히
-   대신 응답해버려 테스트가 잘못된 값으로 통과할 위험이 있으므로,
-   한글 range는 인코딩된 형태(`%EC...`) 또는 영문 파라미터(열/셀
-   좌표)만으로 매칭하는 것이 안전하다.
+일반반휴 도메인, 제보/캡처 도메인, 봇 상태/사용량 도메인까지 총
+13차에 걸쳐 분리했다. `resolveMemberNumber`/`findMemberNumberByEmail`
+(15곳 이상 공유 인증 유틸)은 계속 제외 대상으로 남아있다.
+`buildPersonalStatus`/`buildRosterStatus`(여러 도메인이 공유하는
+대형 집계 함수)도 index.js 잔류 + export 확대가 안전해 보이며,
+별도 도메인으로 뺄지는 이후 재검토한다. 지금까지 이동한 도메인들
+(exit.js, cycle.js, notify.js, leave.js, report.js, bot.js, members.js,
+fines.js 등)을 다 걷어내고 나면 index.js에는 로그인/세션/OAuth,
+시트 API 저수준 유틸(get/write/batch 등), 캐시(`_cachedCompute`류는
+cache.js에 이미 있음), 사용량 계측 클러스터, 개인 대시보드/명단
+집계(`buildPersonalStatus`, `buildRosterStatus`, `listAllMembers`
+경유 함수들), cron(`scheduled`)만 남는다 — 다음 차수를 잡는다면
+이 중 "로그인/세션/OAuth"가 비교적 독립적인 다음 후보로 보이나,
+`getBotAdminConfigStub`(OAuth refresh token 저장에도 재사용)처럼
+봇 도메인과 얽힌 지점이 있어 착수 전 재조사가 필요하다. 테스트
+없이 구조 변경부터 시작하지 않는다는 원칙, 이동 직후 원본과 diff
+대조하는 절차(8차부터), DO 키 기준 테스트 격리(10차부터), 최상위
+`const` 객체 리터럴의 TDZ 위험 점검(11차부터), 이동 후 라우팅
+테이블 전체를 grep해 실수로 삭제된 함수가 없는지 교차 검증(13차
+긴급 수정에서 얻은 교훈, 이제부터 필수)까지 모두 유지한다.
