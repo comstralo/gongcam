@@ -836,25 +836,127 @@ index.js 6,596→5,780줄(약 816줄 감소, 시작(10,984줄) 대비 총
 코드 자체는 문제없었음), `wrangler tail`로 실제 요청과 봇 트래픽이
 예외 없이("Ok") 처리됨을 확인했다.
 
+## 구조 개선 12차 — 제보/캡처 도메인 통합 테스트 + 이동 (2026-09-13)
+
+11차에서 예고한 대로 남은 최대 후보였던 제보/캡처 도메인을
+`src/report.js`(약 1,871줄)로 옮겼다. 조사 결과를 바탕으로
+AskUserQuestion으로 범위를 확인한 뒤 "조사된 전체 범위로 한 번에"
+진행하기로 하고, 44개 함수/상수를 한 번에 이동했다 — 이전 차수들과
+달리 이동 대상이 index.js 내에서 연속 블록이 아니라 여러 구간에
+걸쳐 다른 도메인(개인 대시보드 공용 유틸, 봇 상태/사용량 도메인)과
+촘촘히 섞여 있어, 구간마다 Read로 시작/끝 줄을 재확인하며 발췌
+이동(cherry-pick move)했다.
+
+**착수 전 조사에서 사람이 재검증해 범위를 두 차례 좁혔다**:
+1. `latestSlotDay`, `buildSlotHistory`, `getRowNotes`,
+   `getSheetIdByName`, `parseSlotNoteDateMs`, `msToStatusDay`,
+   `depositAgainOccurredDay` — 조사 에이전트가 이동 대상으로
+   분류했으나, 실제로는 exit.js(8차)와 `buildPersonalStatus`(개인
+   대시보드, index.js 잔류)가 공유하는 범용 함수임을 grep 재확인으로
+   발견해 제외하고 index.js에 export만 추가했다.
+2. `handleBotSheetsUsageReport`, `handleInternalCycleBoundary`,
+   `handleBotRegisterUrl`, `handleAdminUsageStatus`,
+   `handleAdminBotStatus`, `handleAdminBotCommand`,
+   `fetchCloudflareUsage` 등 6~7개 함수는 라우팅과 로직을 대조한
+   결과 제보/캡처가 아니라 별개의 "봇 상태/사용량" 도메인임을
+   확정하고 13차 이후 후보로 분리했다.
+
+**이동 대상(44개)**: 접수/쿨다운(`handleReport`,
+`handleListActiveCooldowns`, `handleReportCaptureDone`,
+`handleListReports`, `handleRequeueReport`, `getReportQueueStub`,
+`getReportVoteStub`, `checkReportCooldown`, `recordReportCooldown`,
+`markReportCaptureDone`, `listReportCooldowns`,
+`requireAdminOrCoReviewer`, 관련 상수), 캡처 목록/응답/투표
+(`handleAdminCapturesList`, `handleMyCaptures`,
+`handleMyCaptureDelete`, `handleMyOutputPen`,
+`handleCaptureTargetRespond`, `handleAdminCaptureVote`,
+`handleAdminCaptureFile`, `handleReportStatus`,
+`applyAutoRecognitionForExpired`), 승인/취소/삭제/반려취소
+(`handleAdminCaptureDecide`, `handleAdminCaptureCancel`,
+`handleAdminCaptureCancelMerit`, `handleAdminCaptureDelete`,
+`handleAdminCaptureRevert`, `applyOutputPenalty`, `applyReportMerit`,
+`applyTimeDeduction`, `cancelTimeDeduction`, `cancelOutputPenalty`,
+`cancelReportMerit`, `hasReporterAlreadyReceivedMeritToday`,
+`snapshotNextOccurrence`, `findStoredPenaltyMerit`,
+`fetchCaptureReviewStatus` 등)까지 세 그룹으로 나뉜다.
+`getCurrentCoReviewers`, `proxyToBotDashboard`/
+`proxyToBotDashboardRaw`, `getRosterStub`/`withMemberLock`, `getSheetIdByName`
+등 범용 유틸은 index.js에 남기고 export만 추가했다.
+
+**🔧 배포 전 코드 검토에서 발견한 버그**: report.js 작성 후 index.js
+잔여 참조를 grep하다가, 파일 끝의 `scheduled`(cron) 핸들러가
+`applyAutoRecognitionForExpired(env, data.items || [])`를 직접
+호출하고 있는데 이 함수가 export 없이 report.js로 옮겨져 있었다는
+것을 발견했다 — 배포했다면 5분마다 도는 cron이 매번
+`ReferenceError`로 실패했을 심각한 버그(11차 TDZ 버그와 유사하게
+실제 배포 전 단계에서 발견). `export async function
+applyAutoRecognitionForExpired`로 고치고 index.js가 9~11차와 동일한
+"실사용 import" 패턴으로 가져오도록 수정해 해결했다.
+
+**44개 함수 전체 diff 검증**: `git show HEAD:.../index.js`로 꺼낸
+11차 종료 시점 원본에서 정규식 기반 스크립트로 44개 함수를 각각
+추출해 report.js와 diff 대조했다. 43개는 완전 일치, `handleCaptureTargetRespond`
+1개만 주석 줄 들여쓰기가 원본(8칸, 명백한 오타)과 새 파일(4칸,
+정상 재작성) 간에 차이가 있어 — "로직 변경 없이 그대로 옮긴다"
+원칙에 따라 원본의 오타까지 그대로 재현해 완전 일치를 달성했다.
+
+**통합 테스트 3개 파일(59개 케이스)**:
+- `test/report-submit.test.js`(18개) — 접수/쿨다운/안전망 큐.
+  봇 오프라인(BOT_URL 미설정 → `proxyToBotDashboard`가 fetch 없이
+  즉시 null) 경로를 mock 없이 자연스럽게 검증.
+- `test/report-captures-list.test.js`(22개) — 관리자/본인 캡처
+  목록·삭제·응답·투표·파일·상태 조회. `handleAdminCaptureVote`가
+  `requireAdminOrCoReviewer`로 역할부터 검증하는 순서라, "severity
+  값이 잘못되면 400" 케이스는 실제 coReviewer 세션(부스터디장 시트
+  L3 값 mock)까지 갖춰야 도달함을 확인해 mock을 보강했다.
+- `test/report-decide.test.js`(19개) — 승인/취소/삭제/반려취소.
+  `applyOutputPenalty`/`applyReportMerit`가 실제로 "데이터" 시트
+  F~K(벌점)/R~V(제보상점) 슬롯에 쓰는지까지 fetch mock으로 검증했다.
+  최초 작성 시 슬롯 셀 위치를 `번호` 그대로(F5) 잘못 가정했으나
+  실제로는 `행 = 번호 + 3`(F8)이라 fetch 호출 로그로 원인을 찾아
+  수정했고, `집계!D25`/`R%3AV` 등 URL 매처가 한글 range의
+  `encodeURIComponent` 결과(`%EC%A7%91%EA%B3%84!D25`)와 매칭되지
+  않아 엉뚱한 폴백 mock으로 새어나간 것도 같은 방식으로 발견·수정했다.
+  봇 URL 미설정 상태를 활용해 "시트에는 반영됐지만 봇 manifest
+  갱신에 실패한" 502 자동 롤백 경로(승인 벌점/제보상점 되돌리기)도
+  실제 fetch 호출 검증으로 확인했다.
+
+index.js 5,780→3,937줄(약 1,843줄 감소, 시작(10,984줄) 대비 총
+**64.2% 감소** — 60%대 최초 돌파). `npm test` 기준 386개 테스트
+전부 통과(11차 종료 시점 327개 + 신규 59개). 배포 후 curl로
+`/report`, `/report-cooldowns`, `/reports`, `/reports/requeue`,
+`/reports/capture-done`, `/admin/captures*`, `/my-captures*`,
+`/my-output-pen`, `/captures/target-respond`, `/report-status`,
+`/admin/captures/decide`, `/admin/captures/vote` 전부 정상 401/403
+응답 확인, `wrangler tail`로 실제 요청이 예외 없이("Ok") 처리됨을
+확인했다.
+
 ## 다음 단계
 
 사이클 판정, 예치금/강제퇴실/정산 판정, 회원 관리/알림·푸시의
 순수 함수, 웹푸시 암호화, 벌금/납부 처리, 회원 관리(CRUD/번호
 재배치), 퇴실 처리, 사이클 판정 정리, 알림/푸시 도메인, 사유반휴/
-일반반휴 도메인까지 총 11차에 걸쳐 분리했다. `resolveMemberNumber`
-/`findMemberNumberByEmail`(15곳 이상 공유 인증 유틸)은 계속 제외
-대상으로 남아있다. 남은 최대 후보는 제보/캡처 도메인(약 2,274줄) —
-`applyOutputPenalty`/`handleAdminCaptureDecide` 같은 복잡한 분기
-함수가 많아 지금까지 중 가장 큰 사고 위험을 안고 있다. `buildPersonalStatus`
-/`buildRosterStatus`(여러 도메인이 공유하는 대형 집계 함수)는 계속
+일반반휴 도메인, 제보/캡처 도메인까지 총 12차에 걸쳐 분리했다.
+`resolveMemberNumber`/`findMemberNumberByEmail`(15곳 이상 공유 인증
+유틸)은 계속 제외 대상으로 남아있다. 남은 최대 후보는 12차 조사에서
+분리해둔 봇 상태/사용량 도메인(`handleBotSheetsUsageReport`,
+`handleInternalCycleBoundary`, `handleBotRegisterUrl`,
+`handleAdminUsageStatus`, `handleAdminBotStatus`,
+`handleAdminBotCommand`, `fetchCloudflareUsage` 등) — 상대적으로
+작은 규모라 13차 후보로 적합해 보인다. `buildPersonalStatus`/
+`buildRosterStatus`(여러 도메인이 공유하는 대형 집계 함수)는 계속
 index.js 잔류 + export 확대가 안전해 보이며, 별도 도메인으로 뺄지는
 이후 재검토한다. 테스트 없이 구조 변경부터 시작하지 않는다는 원칙,
 이동 직후 원본과 diff 대조하는 절차(8차부터), DO 키 기준 테스트
-격리(10차부터) 모두 유지한다. **11차에서 새로 얻은 교훈** — 새 파일이
-index.js를 import하면서 동시에 index.js가 그 파일을 import하는
-순환에서, 함수 선언(호이스팅되어 안전)과 달리 **모듈 최상위의 `const`
-객체 리터럴이 다른 모듈의 값을 즉시 참조하면 TDZ로 깨질 수 있다** —
-다음 차수에서 새 도메인 파일을 만들 때 최상위 상수가 index.js의
-값을 참조한다면 함수로 감싸 지연 평가하거나, 참조하는 값 자체를
-새 파일에 하드코딩(원본과 동일한 값이면 로직 변경 아님)하는 것을
-우선 검토한다.
+격리(10차부터), 최상위 `const` 객체 리터럴의 TDZ 위험 점검(11차부터)
+모두 유지한다. **12차에서 새로 얻은 교훈**:
+1. index.js 잔여 참조를 grep해 "옮긴 함수를 index.js가 여전히
+   직접 호출하는 지점"(이번엔 `scheduled` cron 핸들러)이 없는지
+   반드시 확인한다 — export 누락은 최초 호출 시점(이번엔 5분마다)
+   에야 `ReferenceError`로 드러나 배포 후 발견하면 늦다.
+2. fetch mock의 URL 매처를 한글이 포함된 시트 range(예: `집계!D25`)
+   문자열 리터럴로 작성하면 실제 요청 URL은 `encodeURIComponent`를
+   거친 퍼센트 인코딩 형태라 매칭에 실패한다 — 폴백 mock이 조용히
+   대신 응답해버려 테스트가 잘못된 값으로 통과할 위험이 있으므로,
+   한글 range는 인코딩된 형태(`%EC...`) 또는 영문 파라미터(열/셀
+   좌표)만으로 매칭하는 것이 안전하다.
