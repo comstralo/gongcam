@@ -808,107 +808,49 @@ async function _cachedCompute(env, key, ttlMs, compute) {
 // 직렬 처리하므로 이 절이 다루던 CAS 재시도 로직 자체가 필요 없어져
 // 삭제했다 — 자세한 배경은 `docs/CACHING_POLICY.md` §24.2.
 
-// leaveq:(사유반휴 봇 오프라인 대기열) 전용 인덱스. 이 큐는 KV에 남아있다
-// (자연 만료(TTL)가 없고 "봇에 전달됨/승인됨/반려됨/철회됨" 시점에 명시적으로
-// 사라져야 하는 데다, 봇이 몇 시간 꺼져 있어도 반드시 살아남아야 하는
-// 성격이라 DO의 휘발성 메모리로 옮기기엔 안 맞는다 — §24.3 참고). 추가/제거를 직접
-// 관리하는 전용 버전을 둔다. 🔧 [실측 계기] 2026-08-27 KV list() 하루
-// 한도(1,000회)가 실제로 소진되어 "/admin/members/roster"가 500을
-// 냈다(GraphQL 실측: list 1,102회/일). listQueuedReasonLeaveDays가
-// buildPersonalStatus 안에서 /status를 열 때마다 list()를 불러 사실상
-// 가장 빈번한 list() 발생원이었던 것이 확인되어, 이 큐도 인덱스 방식으로
-// 전환한다.
-const LEAVEQ_INDEX_KEY = "leaveqIndex:current";
-
-// 🔧 [2차 점검, 2026-09-11] exitRequestIndex(§37)와 구조적으로 동일한
-// 문제 — 모든 회원의 pending 신청 id가 이 하나의 배열에 섞여 있는데 락
-// 없이 "읽기→배열 조작→쓰기"만 한다. 추가(학생 본인 신청)와 삭제(학생
-// 철회, 봇 재기동 flush, 관리자 승인/반려 — 총 4곳)가 서로 다른 회원에
-// 대해 거의 동시에 일어나면(예: 학생 A가 신청하는 순간 관리자가 학생 B를
-// 승인/반려) 나중 쓰기가 먼저 반영을 덮어써 유령 pending이 남거나 실존
-// 항목이 사라질 수 있었다(경쟁 조건 재검증 완료). §36의 `leave:${회원}`
-// 락은 승인 시 시트 카운트 셀만 감싸고 이 인덱스 갱신은 명시적으로 락
-// 밖에 있어 부족하다 — 여러 회원 id가 섞인 전역 배열이라 회원 단위
-// 락으로는 서로 다른 회원 간 경쟁을 막을 수 없으므로, exitRequestIndex와
-// 동일하게 전역 락(`leaveQueueIndex:global`)으로 함수 내부를 감싼다.
-// 호출부(신청/철회/flush/승인/반려 총 6곳) 수정 없이 이 두 함수만으로
-// 전부 보호된다. 신청/처리는 회원 생애주기에 많아야 수 회, KV get/put
-// 각 1회 수준이라 직렬화로 인한 체감 지연은 무시할 만하다.
-async function _addToLeaveQueueIndex(env, item) {
-  await withMemberLock(env, "leaveQueueIndex:global", async () => {
-    const raw = await env.REPORTS_KV.get(LEAVEQ_INDEX_KEY);
-    let items = [];
-    if (raw) {
-      try {
-        items = JSON.parse(raw);
-      } catch {
-        items = [];
-      }
-    }
-    items.push(item);
-    await env.REPORTS_KV.put(LEAVEQ_INDEX_KEY, JSON.stringify(items));
-  });
-}
-
-async function _removeFromLeaveQueueIndex(env, id) {
-  await withMemberLock(env, "leaveQueueIndex:global", async () => {
-    const raw = await env.REPORTS_KV.get(LEAVEQ_INDEX_KEY);
-    if (!raw) return;
-    let items;
-    try {
-      items = JSON.parse(raw);
-    } catch {
-      return;
-    }
-    const next = items.filter((it) => it.id !== id);
-    if (next.length !== items.length) {
-      await env.REPORTS_KV.put(LEAVEQ_INDEX_KEY, JSON.stringify(next));
-    }
-  });
-}
-
+// 🔧 [KV → DO 이전, 2026-09-12] leaveq:(사유반휴 봇 오프라인 대기열)와
+// 그 전용 인덱스(leaveqIndex:current)를 LeaveQueue DO로 옮겼다. 이전엔
+// "자연 만료(TTL)가 없고 봇이 몇 시간 꺼져 있어도 반드시 살아남아야
+// 하는 성격이라 DO의 휘발성 메모리로 옮기기엔 안 맞는다"(§24.3)고
+// 판단해 KV에 남겨두고, list() 회피용으로 KV 안에서만 별도 인덱스를
+// 뒀었다. §46에서 확인했듯 그 우려는 "순수 메모리 DO"에만 해당한다 —
+// LeaveQueue는 UsageStats/ReportQueue와 동일하게 state.storage로
+// 영속화되므로 재시작해도 전량 복원된다. 인덱스 전용 전역 락
+// (leaveQueueIndex:global)도 DO가 요청을 직렬 처리해 경쟁 조건이
+// 구조적으로 불가능해지므로 함께 사라졌다(§47 참고). 회원 단위 락
+// (`leave:${memberNumber}`, "같은 회원이 같은 날 중복 신청하는 것" 방지
+// 목적)은 인덱스 보호와 무관하므로 그대로 유지된다.
 async function _readLeaveQueueIndex(env) {
-  const raw = await env.REPORTS_KV.get(LEAVEQ_INDEX_KEY);
-  if (!raw) return [];
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return [];
-  }
+  const res = await getLeaveQueueStub(env).fetch("https://do/leaveq/list");
+  const { items } = await res.json();
+  return items || [];
 }
 
 // 🔧 [PEN·MONEY 사이클 토글] 사유반휴 신청은 승인/반려 즉시 큐(leaveq:*)와
 // 봇 manifest에서 삭제되어 처리 이력이 어디에도 남지 않는다 — 지난 사이클
 // 조회를 지원하려면 처리 시점에 별도 영구 로그가 필요하다(사용자 지시).
 // 시트 백업과 동일한 "그 주(월요일 weekOf)" 단위로 묶어, 키 하나
-// (leaveHistory:{weekOf})에 그 주 처리 기록 전체를 배열로 누적한다 — TTL
-// 없이 영구 보관. 처리는 항상 "지금"(과거 사이클을 재처리할 방법은 없음)
-// 일어나므로, weekOf는 항상 currentWeekMondayKST()(처리 시각=지금 기준)로
-// 계산한다 — 사이클 조회 시 백업 파일의 weekOf와 그대로 매칭된다.
+// (LeaveQueue DO의 history:{weekOf})에 그 주 처리 기록 전체를 배열로
+// 누적한다 — TTL 없이 영구 보관. 처리는 항상 "지금"(과거 사이클을
+// 재처리할 방법은 없음) 일어나므로, weekOf는 항상
+// currentWeekMondayKST()(처리 시각=지금 기준)로 계산한다 — 사이클 조회
+// 시 백업 파일의 weekOf와 그대로 매칭된다. 🔧 [KV → DO 이전, 2026-09-12]
+// §47 참고 — get()/put()만 쓰고 list()와는 원래 무관했지만, leaveq:/
+// exitRequest:와 같은 도메인(LeaveQueue DO)에 함께 두어 일관성을
+// 맞췄다.
 async function _appendLeaveHistory(env, entry) {
   const weekOf = formatYYMMDD(currentWeekMondayKST());
-  const key = `leaveHistory:${weekOf}`;
-  const raw = await env.REPORTS_KV.get(key);
-  let items = [];
-  if (raw) {
-    try {
-      items = JSON.parse(raw);
-    } catch {
-      items = [];
-    }
-  }
-  items.push(entry);
-  await env.REPORTS_KV.put(key, JSON.stringify(items));
+  await getLeaveQueueStub(env).fetch("https://do/history/append", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ weekOf, entry }),
+  });
 }
 
 async function _readLeaveHistory(env, weekOf) {
-  const raw = await env.REPORTS_KV.get(`leaveHistory:${weekOf}`);
-  if (!raw) return [];
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return [];
-  }
+  const res = await getLeaveQueueStub(env).fetch(`https://do/history/get?weekOf=${encodeURIComponent(weekOf)}`);
+  const { items } = await res.json();
+  return items || [];
 }
 
 // fileId당 키가 하나뿐이라 무조건 KV .delete() 대상이 되는 종류(회원별로
@@ -957,7 +899,7 @@ const MEMBER_CACHE_GROUPS = {
   penalty: ["exitStatus", "penSlotGrid"],
   // 벌금 납부 상태 변경 — 개인 탭 31행(납부확인)만 바뀐다.
   fine: ["exitStatus", "memberRows", "weeklyPaidFine"],
-  // 퇴실 신청/동의/취소(KV) — exitStatus 계산의 입력값(EXIT_REQUEST_KV_PREFIX)만 바뀐다.
+  // 퇴실 신청/동의/취소(LeaveQueue DO) — exitStatus 계산의 입력값만 바뀐다.
   exitRequest: ["exitStatus"],
   // 참여상태(부스터디장 임명 등, 개인 탭 L3) 변경. coReviewers는 이 값을
   // 그대로 캐싱한 것이라 함께 무효화해야 임명/해제가 "송출 P 대상 처리"에
@@ -2279,27 +2221,24 @@ async function buildPersonalStatus(env, accessToken, fileId, memberNumber, membe
     "-";
 
   const { total: reportTotal } = reportScore;
-  const [{ rank: rawRank }, currentCycle, exitRequestRaw] = await Promise.all([
+  const [{ rank: rawRank }, currentCycle, exitRequestEntry] = await Promise.all([
     getMeritRank(env, accessToken, fileId, memberNumber),
     getCurrentPenCycle(env, accessToken, fileId),
     // 🔧 [고지지연 반영] depositRefundBreakdown이 amount 계산에 실제 퇴실
     // 신청일을 반영해야 하므로, 원래 이 아래(구 1758행)에서 뒤늦게 조회하던
     // 것을 이 병렬 조회로 앞당긴다.
-    env.REPORTS_KV.get(`${EXIT_REQUEST_KV_PREFIX}${memberNumber}`).catch(() => null),
+    // 🔧 [KV → DO 이전, 2026-09-12] §47 — LeaveQueue DO에서 조회.
+    getLeaveQueueStub(env)
+      .fetch(`https://do/exit/get?memberNumber=${encodeURIComponent(memberNumber)}`)
+      .then((r) => r.json())
+      .then((d) => d.entry)
+      .catch(() => null),
   ]);
   const penCounts = countCurrentCyclePen(outputPenSlots, currentCycle);
   const weeklyOutputPen = penCounts.outputPen;
   const weeklyTimePen = penCounts.timePen;
-  let exitRequestDate = null;
-  let exitAgreedAt = null;
-  try {
-    const parsedExitRequest = exitRequestRaw ? JSON.parse(exitRequestRaw) : null;
-    exitRequestDate = parsedExitRequest?.exitDate || null;
-    exitAgreedAt = parsedExitRequest?.agreedAt || null;
-  } catch {
-    exitRequestDate = null;
-    exitAgreedAt = null;
-  }
+  const exitRequestDate = exitRequestEntry?.exitDate || null;
+  const exitAgreedAt = exitRequestEntry?.agreedAt || null;
   const depositRefundBreakdownResult = depositRefundBreakdown(rows, penCounts, exitRequestDate);
   const zeroConditions = meritZeroConditions(rows, depositRefundBreakdownResult.daysSinceJoin, penCounts.total);
   const zeroReason = (zeroConditions.find((c) => c.met) || {}).label || null;
@@ -2393,8 +2332,8 @@ async function buildPersonalStatus(env, accessToken, fileId, memberNumber, membe
   );
 
   const depositAgainSplit = await buildDepositAgainSplit(env, accessToken, fileId, memberName, days, weekMonday);
-  // exitRequestRaw/exitRequestDate는 위(depositRefundBreakdown 호출 이전)에서
-  // 이미 조회·파싱해둔 값을 그대로 재사용한다.
+  // exitRequestEntry/exitRequestDate는 위(depositRefundBreakdown 호출 이전)에서
+  // 이미 조회해둔 값을 그대로 재사용한다.
 
   return {
     name: memberName,
@@ -2410,7 +2349,7 @@ async function buildPersonalStatus(env, accessToken, fileId, memberNumber, membe
     weekTotalConfirmed,
     depositRefundEstimate,
     depositRefundBreakdown: depositRefundBreakdownResult,
-    exitRequested: exitRequestRaw !== null,
+    exitRequested: exitRequestEntry !== null,
     exitRequestDate,
     exitAgreedAt,
     periodAttendanceRate,
@@ -3670,11 +3609,8 @@ function attachDeferralInfo(items, allItems) {
 // "다른 관리자 의견 반영"(공동 검토) 실제 구현 — 부스터디장이 제출한 의견을
 // 캡처 id별로 저장한다. 캡처 자체(제보 원본)는 REPORTS_KV가 아니라 로컬
 // 봇의 capture_manifest.py(플랫 JSON 파일)에 있으므로, 의견은 여기 KV에
-// 독립적으로 두고 목록 조회 시점에 join한다. TTL 7일 — 부스터디장이 최대
-// 2명뿐이라(사용자 확인) 항목당 최대 2회 KV.get만 필요해 KV.list() 없이도
-// 충분히 저렴하다.
-const REPORT_VOTE_KV_PREFIX = "reportVote:";
-const REPORT_VOTE_TTL_SECONDS = 7 * 24 * 60 * 60;
+// 독립적으로 두고 목록 조회 시점에 join한다. 🔧 [KV → DO 이전, 2026-09-12]
+// §47 — ReportVote DO로 이전(TTL 7일은 그대로, DO 내부에서 관리).
 // 🔧 [위반 O/X 단순화] 상/중/하/위반 아님(4단계, 평균 가중치 판정)에서
 // "위반 O"/"위반 X"(2단계, 전체 관리자 중 O가 CONSENSUS_THRESHOLD명 이상이면
 // 확정) 방식으로 바뀌었다(사용자 지시) — 프론트 SEVERITY_LEVELS와 동일.
@@ -3807,29 +3743,22 @@ async function handleAdminCapturesList(req, env, origin, url) {
 
   const fileId = env.GOOGLE_SHEET_FILE_ID;
   const coReviewers = await getCurrentCoReviewers(env, accessToken, fileId);
-  // 🔧 [사용자 지시, 2026-09-11] "화각 불량 제보 처리" 캐싱 정책 점검 —
-  // 안쪽 for...of가 항목당 부스터디장 수만큼(최대 2명) KV.get을 순차
-  // 대기했다(항목 20건이면 최대 40회 직렬). 각 get()에 이미 개별
-  // .catch(() => null)이 붙어 있어 실패해도 절대 reject로 전파되지
-  // 않으므로 Promise.all로 병렬화해도 에러 처리 방식은 그대로 유지된다
-  // — votes는 회원번호를 키로 하는 객체라 대입 순서와도 무관하다.
+  // 🔧 [KV → DO 이전, 2026-09-12] 예전엔 항목당 부스터디장 수만큼(최대
+  // 2명) KV.get을 병렬 호출했는데(§29), 이제 ReportVote DO의
+  // /vote/get-batch가 항목 하나당 DO fetch 1회로 부스터디장 전원의
+  // 투표를 한 번에 반환한다(§47).
+  const reportVoteStub = getReportVoteStub(env);
+  const numbers = coReviewers.map((m) => m.number);
   const items = await Promise.all(
     withOccurrenceAndDeferral.map(async (item) => {
-      const votes = {};
-      const voteEntries = await Promise.all(
-        coReviewers.map(async (m) => {
-          const raw = await env.REPORTS_KV.get(`${REPORT_VOTE_KV_PREFIX}${item.id}:${m.number}`).catch(() => null);
-          if (!raw) return null;
-          try {
-            return [m.number, JSON.parse(raw)];
-          } catch {
-            return null; // 손상된 값은 무시 — 미제출로 취급.
-          }
+      const res = await reportVoteStub
+        .fetch("https://do/vote/get-batch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: item.id, numbers }),
         })
-      );
-      for (const entry of voteEntries) {
-        if (entry) votes[entry[0]] = entry[1];
-      }
+        .catch(() => null);
+      const votes = res ? (await res.json()).votes || {} : {};
       return { ...item, votes };
     })
   );
@@ -4119,11 +4048,12 @@ async function handleAdminCaptureVote(req, env, origin) {
     if (!me) {
       return json({ error: "더 이상 부스터디장이 아니어서 의견을 제출할 수 없습니다." }, 403, origin);
     }
-    await env.REPORTS_KV.put(
-      `${REPORT_VOTE_KV_PREFIX}${id}:${me.number}`,
-      JSON.stringify({ name: me.name, severity, votedAt: Date.now() }),
-      { expirationTtl: REPORT_VOTE_TTL_SECONDS }
-    );
+    // 🔧 [KV → DO 이전, 2026-09-12] §47 — ReportVote DO로 이전.
+    await getReportVoteStub(env).fetch("https://do/vote/put", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, number: me.number, name: me.name, severity }),
+    });
     return json({ ok: true }, 200, origin);
   } catch (err) {
     return json({ error: "의견 제출 실패: " + err.message }, 500, origin);
@@ -5199,39 +5129,21 @@ async function handleGetLeaveApply(req, env, origin, url) {
 // 않는다), 프론트의 "직전과 같은 값이면 무시" 방어만으로는 반복 토글을
 // 못 막는다. 한 번의 토글마다 시트 쓰기 1회 + KV 삭제 1회
 // (invalidatePersonalStatusCache)가 실제로 발생하므로, 회원 1명당 1분에
-// LEAVE_APPLY_RATE_LIMIT_MAX회까지만 허용한다 — 정상 사용(신청 또는
-// 취소 한 번)은 전혀 걸리지 않고, 연타 스팸만 막는다. 고정 60초 창
-// 방식(슬라이딩 윈도우가 아님)이라 창 경계에서 약간의 버스트 여지는
-// 있지만, 이건 보안 목적이 아니라 남용 억제용이라 이 정도 근사로 충분하다.
-const LEAVE_APPLY_RATE_LIMIT_KEY_PREFIX = "leaveApplyRate:";
-const LEAVE_APPLY_RATE_LIMIT_WINDOW_SEC = 60;
-const LEAVE_APPLY_RATE_LIMIT_MAX = 2;
-
-// true면 이번 요청을 진행해도 됨(카운트 기록 완료), false면 이번 창에서
-// 한도를 이미 다 썼다는 뜻(레코드는 갱신하지 않음 — 거부된 시도까지
-// 카운트에 넣지 않는다).
+// 2회까지만 허용한다 — 정상 사용(신청 또는 취소 한 번)은 전혀 걸리지
+// 않고, 연타 스팸만 막는다. 고정 60초 창 방식(슬라이딩 윈도우가 아님)
+// 이라 창 경계에서 약간의 버스트 여지는 있지만, 이건 보안 목적이 아니라
+// 남용 억제용이라 이 정도 근사로 충분하다.
+// 🔧 [KV → DO 이전, 2026-09-12] §47 — ParticipantsRoster DO의
+// /leave-rate/check로 이전(순수 임시 상태, notices/reportCooldowns와
+// 동일한 배열 push+filter 패턴 재사용).
 async function checkAndRecordLeaveApplyRate(env, memberNumber) {
-  const key = `${LEAVE_APPLY_RATE_LIMIT_KEY_PREFIX}${memberNumber}`;
-  const now = Date.now();
-  let entry = null;
-  try {
-    const raw = await env.REPORTS_KV.get(key);
-    entry = raw ? JSON.parse(raw) : null;
-  } catch {
-    entry = null;
-  }
-  const windowMs = LEAVE_APPLY_RATE_LIMIT_WINDOW_SEC * 1000;
-  if (entry && now - entry.windowStart < windowMs) {
-    if (entry.count >= LEAVE_APPLY_RATE_LIMIT_MAX) return false;
-    await env.REPORTS_KV.put(key, JSON.stringify({ windowStart: entry.windowStart, count: entry.count + 1 }), {
-      expirationTtl: LEAVE_APPLY_RATE_LIMIT_WINDOW_SEC,
-    });
-    return true;
-  }
-  await env.REPORTS_KV.put(key, JSON.stringify({ windowStart: now, count: 1 }), {
-    expirationTtl: LEAVE_APPLY_RATE_LIMIT_WINDOW_SEC,
+  const res = await getRosterStub(env).fetch("https://do/leave-rate/check", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ memberNumber }),
   });
-  return true;
+  const { allowed } = await res.json();
+  return allowed;
 }
 
 async function handleSetLeaveApply(req, env, origin) {
@@ -5522,26 +5434,13 @@ async function handleSetReasonLeaveProof(req, env, origin) {
       // (handleGetReasonLeaveProof가 큐도 함께 조회).
       const queueId = crypto.randomUUID();
       const ts = Date.now();
-      // 🔧 [N+1 → list() 완전 제거] 처음엔 metadata 기반 list()로 N+1(list 후
-      // 매 키마다 get())만 없앴는데, list() 자체가 buildPersonalStatus를 거쳐
-      // /status를 열 때마다(useRefreshOnVisible 도입 이후 빈도 증가) 호출돼
-      // KV list() 하루 한도(1,000회)를 실제로 소진시킨 주된 원인이었다(2026-08-27
-      // 실측: "/admin/members/roster" 500 에러로 발견). cooldown:/notice:처럼
-      // 인덱스(LEAVEQ_INDEX_KEY)에 요약을 남겨 list() 없이 조회한다. metadata는
-      // (imageBase64 없이) 디버깅/전환기 안전망 목적으로 계속 남겨둔다. KV
-      // metadata는 1024바이트 제한이 있어 memberName/requesterEmail도 짧게 자른다.
-      const summary = {
-        id: queueId,
-        memberNumber,
-        memberName: (memberName || "").slice(0, 50),
-        day,
-        reason: (reason || "").slice(0, 200),
-        requesterEmail: (session.email || "").slice(0, 100),
-        count,
-        ts,
-      };
-      await env.REPORTS_KV.put(`leaveq:${queueId}`, JSON.stringify({ ...entry, ts }), { metadata: summary });
-      await _addToLeaveQueueIndex(env, summary);
+      // 🔧 [KV → DO 이전, 2026-09-12] leaveq: KV put + 인덱스 갱신을
+      // LeaveQueue DO 호출 한 번으로 대체(§47 참고).
+      await getLeaveQueueStub(env).fetch("https://do/leaveq/put", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: queueId, entry: { ...entry, ts } }),
+      });
       return { queueId };
     });
     if (lockResult.failure) {
@@ -5571,13 +5470,15 @@ async function handleCancelReasonLeaveProof(req, env, origin) {
     const accessToken = await getServiceAccountAccessToken(env);
     const memberNumber = await resolveMemberNumber(env, accessToken, session);
 
-    // 🔧 [list() 제거] list() 대신 인덱스에서 찾는다 — 배포 시점 기준으로
-    // 큐가 비어있음을 확인했으므로(2026-08-27) 별도 백필 없이 전환한다.
+    // 🔧 [KV → DO 이전, 2026-09-12] list() 대신 DO에서 찾는다.
     const queued = await _readLeaveQueueIndex(env);
     const match = queued.find((it) => it.memberNumber === memberNumber && it.day === day);
     if (match) {
-      await env.REPORTS_KV.delete(`leaveq:${match.id}`);
-      await _removeFromLeaveQueueIndex(env, match.id);
+      await getLeaveQueueStub(env).fetch("https://do/leaveq/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: match.id }),
+      });
       return json({ ok: true }, 200, origin);
     }
 
@@ -5599,22 +5500,22 @@ async function handleCancelReasonLeaveProof(req, env, origin) {
 }
 
 // 🔧 [봇 오프라인 대기열 배출] 봇이 재기동해 자기 URL을 등록하는 순간(=이제
-// 도달 가능해진 순간) KV에 쌓인 leaveq:* 항목을 순서대로 봇에 전달한다.
+// 도달 가능해진 순간) 대기열에 쌓인 leaveq 항목을 순서대로 봇에 전달한다.
 // 개별 항목 실패는 조용히 건너뛰고(다음 등록 시점에 재시도되도록 큐에 남김)
 // 전체 흐름을 막지 않는다 — register-url 응답 자체가 늦어지면 봇 기동에
-// 영향을 줄 수 있으므로 항목당 처리도 짧게 유지한다. 다른 leaveq: 조회
-// 함수들과 달리 여기는 의도적으로 list()를 그대로 둔다 — 봇 재기동은
-// 드문 이벤트라 빈도 부담이 없고, 인덱스(LEAVEQ_INDEX_KEY)가 어떤 이유로든
-// 실제 KV 항목과 어긋나더라도(예: 인덱스 쓰기만 실패) 이 함수가 실제 KV를
-// 직접 훑어 결국 모든 항목을 처리하는 안전망 역할을 한다.
+// 영향을 줄 수 있으므로 항목당 처리도 짧게 유지한다.
+// 🔧 [KV → DO 이전, 2026-09-12] 예전엔 "인덱스가 실제 KV와 어긋나도
+// 직접 list()로 훑는 안전망" 역할이었는데, LeaveQueue DO의 Map은 정의상
+// storage와 항상 동일한 단일 진실 소스라 그 어긋남 자체가 구조적으로
+// 발생할 수 없다 — /leaveq/list-full이 곧 유일한 데이터 소스이자
+// "인덱스"이므로 안전망이 무의미해지는 게 아니라 그 안전망이 막던 버그
+// 클래스가 원천 제거된 것이다(§47).
 async function flushQueuedReasonLeaveProofs(env) {
-  const list = await env.REPORTS_KV.list({ prefix: "leaveq:" });
-  for (const key of list.keys) {
-    const raw = await env.REPORTS_KV.get(key.name);
-    if (!raw) continue;
-    const queueId = key.name.slice("leaveq:".length);
+  const stub = getLeaveQueueStub(env);
+  const res = await stub.fetch("https://do/leaveq/list-full");
+  const { items } = await res.json();
+  for (const { id: queueId, ...entry } of items || []) {
     try {
-      const entry = JSON.parse(raw);
       // 큐의 원래 id를 그대로 봇에 전달한다 — 그러지 않으면 봇이 새 id로
       // 레코드를 만들어, 관리자가 이미 이 큐 id 기준으로 승인/반려하고
       // 큐를 지운 뒤에도 봇 쪽엔 처리되지 않은 유령 pending이 남는다
@@ -5627,13 +5528,19 @@ async function flushQueuedReasonLeaveProofs(env) {
         body: JSON.stringify({ ...entry, id: queueId }),
       });
       if (data) {
-        await env.REPORTS_KV.delete(key.name);
-        await _removeFromLeaveQueueIndex(env, queueId);
+        await stub.fetch("https://do/leaveq/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: queueId }),
+        });
       }
     } catch {
       // 파싱 실패 등 복구 불가능한 항목은 다음에도 계속 실패할 것이므로 지운다.
-      await env.REPORTS_KV.delete(key.name);
-      await _removeFromLeaveQueueIndex(env, queueId);
+      await stub.fetch("https://do/leaveq/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: queueId }),
+      });
     }
   }
 }
@@ -5722,12 +5629,12 @@ async function handleAdminLeaveProofFile(req, env, origin, url) {
   const id = url.searchParams.get("id") || "";
   if (!id) return json({ error: "id가 필요합니다." }, 400, origin);
 
-  // 큐(KV)에만 있는 신청이면 봇을 거치지 않고 저장된 base64를 그대로
+  // 큐(DO)에만 있는 신청이면 봇을 거치지 않고 저장된 base64를 그대로
   // 서빙한다 — 봇이 꺼져 있어도 증빙 미리보기가 가능해야 한다.
-  const queuedRaw = await env.REPORTS_KV.get(`leaveq:${id}`);
-  if (queuedRaw) {
+  const queuedRes = await getLeaveQueueStub(env).fetch(`https://do/leaveq/get?id=${encodeURIComponent(id)}`);
+  if (queuedRes.ok) {
     try {
-      const entry = JSON.parse(queuedRaw);
+      const { entry } = await queuedRes.json();
       const contentType = entry.imageExt === "png" ? "image/png" : "image/jpeg";
       return new Response(base64ToBytes(entry.imageBase64), {
         status: 200,
@@ -5785,19 +5692,22 @@ async function handleAdminLeaveProofDecide(req, env, origin) {
     return json({ error: "반려 사유를 입력해주세요." }, 400, origin);
   }
 
-  // 큐(KV)에만 있는 신청(봇이 아직 못 받은 것)인지 먼저 확인한다 — 이
+  // 큐(DO)에만 있는 신청(봇이 아직 못 받은 것)인지 먼저 확인한다 — 이
   // 경우 봇 프록시를 시도하지 않고 시트 반영 + 큐 삭제로 끝낸다(봇이
   // 꺼져 있어도 관리자가 승인/반려를 완결할 수 있어야 한다).
-  const queuedKey = `leaveq:${id}`;
-  const isQueued = (await env.REPORTS_KV.get(queuedKey)) !== null;
+  const leaveQueueStub = getLeaveQueueStub(env);
+  const isQueued = (await leaveQueueStub.fetch(`https://do/leaveq/get?id=${encodeURIComponent(id)}`)).ok;
 
   try {
     const accessToken = await getServiceAccountAccessToken(env);
 
     if (decision === "rejected") {
       if (isQueued) {
-        await env.REPORTS_KV.delete(queuedKey);
-        await _removeFromLeaveQueueIndex(env, id);
+        await leaveQueueStub.fetch("https://do/leaveq/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id }),
+        });
         // 큐 확인과 이 시점 사이에 flushQueuedReasonLeaveProofs가 끼어들어
         // 봇에도 같은 id로 레코드가 막 생겼을 수 있다 — 있으면 정리하고,
         // 없으면(대부분의 경우) 404로 조용히 무시된다. 결과와 무관하게
@@ -5880,8 +5790,11 @@ async function handleAdminLeaveProofDecide(req, env, origin) {
       // id로 pending 레코드가 막 생겼을 수 있다(레이스) — 있으면 approved로
       // 정리하고, 없으면 404로 조용히 무시된다. 이걸 빼먹으면 시트엔 이미
       // 반영됐는데 관리자 화면엔 처리 못하는 유령 pending이 남는다.
-      await env.REPORTS_KV.delete(queuedKey);
-      await _removeFromLeaveQueueIndex(env, id);
+      await leaveQueueStub.fetch("https://do/leaveq/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
       await proxyToBotDashboard(env, "/leave-proof/decide", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -6635,7 +6548,6 @@ async function listExitCandidates(env, accessToken, fileId) {
 // 실제 시트 반영(백업 탭 이동/초기화)은 여전히 관리자가 ExitProcessDialog로
 // 확정해야만 일어난다 — 이 KV 항목은 순수하게 "스터디원 목록"에 "퇴실 예약"
 // 뱃지를 보여주기 위한 상태일 뿐, 시트에는 아무 영향도 주지 않는다.
-const EXIT_REQUEST_KV_PREFIX = "exitRequest:";
 // 🔧 2026-09: 퇴실 확정 처리 결과(반환 예치금/차감 원인/처리 결과/퇴실유형)를
 // 영구 보존한다 — resultMsg(백업 탭 텍스트 박스)는 사람이 읽기 좋은 문자열
 // 하나로 뭉쳐져 있어, "참여 스터디원 목록"처럼 반환 예치금/차감 원인을
@@ -6648,64 +6560,14 @@ const EXIT_REQUEST_KV_PREFIX = "exitRequest:";
 // ("데이터 (감사)" 스냅샷과 동일한 이유, appendDataAuditSnapshot 주석 참고).
 // TTL 없음(영구) — "최근 N분"짜리 알림이 아니라 회계상 보존해야 할 이력이다.
 const EXIT_RESULT_KV_PREFIX = "exitResult:";
-// 🔧 [list() 제거] 회원 수(15명 내외)만큼의 작은 맵이라, cooldown:/notice:/
-// leaveq:와 동일한 이유로 list() 대신 인덱스를 쓴다 — 2026-08-27 KV list()
-// 하루 한도(1,000회) 소진으로 이 데이터를 쓰는 "/admin/members/roster"가
-// 500을 낸 것을 계기로 전환. 회원별로 최대 1건뿐이라 객체(map)로 관리한다.
-const EXIT_REQUEST_INDEX_KEY = "exitRequestIndex:current";
 
-// 🔧 [퇴실 프로세스 확장] 신청(exitDate)만으로는 관리자가 바로 정산 처리를
-// 할 수 없게 됐다 — 퇴실 예약일이 지나야 회원이 "예치금 정산액에 동의"까지
-// 눌러야 하고, 그 동의가 있어야만 관리자 쪽 "정산" 버튼이 활성화된다(사용자
-// 지시). 인덱스에도 ts(신청일자)/agreedAt(동의일자, 안 했으면 null)을 함께
-// 둔다.
-// 🔧 [2차 점검, 2026-09-11] 15명 전원의 신청 정보가 이 하나의 KV 키(맵)에
-// 몰려있어, 락 없이 "읽기→수정→쓰기"만 하면 회원 A가 신청/동의를 제출하는
-// 순간 관리자가 회원 B를 취소/확정하는 것처럼 서로 다른 회원의 항목을
-// 거의 동시에 건드릴 때 나중 쓰기가 먼저 반영을 통째로 덮어써 그 회원의
-// 항목이 에러 없이 조용히 사라질 수 있었다(경쟁 조건 재검증 완료). 신청/
-// 동의는 회원 본인이, 취소/확정은 주로 관리자가 트리거해 실제로 겹칠 수
-// 있는 조합이다. 회원별 개별 키로 구조를 바꾸면 전체 조회(listExitRequests)
-// 가 다시 KV list()를 필요로 해 §22에서 이미 겪은 할당량 소진 문제가
-// 재발하므로(위 EXIT_REQUEST_INDEX_KEY 주석 참고), 구조는 그대로 두고
-// withMemberLock으로 이 인덱스 전체를 하나의 임계구역으로 직렬화한다 —
-// 회원별 항목이 전부 같은 맵 안에 있어 회원 단위 락으로는 A/B 간 경쟁을
-// 막을 수 없으므로 고정 키(전역 락)를 쓴다. 신청/동의/취소/확정은 회원
-// 생애주기에서 많아야 몇 번뿐이고 KV get/put 각 1회 수준이라 직렬화로
-// 인한 체감 지연은 무시할 만하다.
-async function _setExitRequestIndexEntry(env, memberNumber, exitDate, ts, agreedAt) {
-  await withMemberLock(env, "exitRequestIndex:global", async () => {
-    const raw = await env.REPORTS_KV.get(EXIT_REQUEST_INDEX_KEY);
-    let map = {};
-    if (raw) {
-      try {
-        map = JSON.parse(raw);
-      } catch {
-        map = {};
-      }
-    }
-    map[memberNumber] = { exitDate: exitDate || null, ts: ts || null, agreedAt: agreedAt ?? null };
-    await env.REPORTS_KV.put(EXIT_REQUEST_INDEX_KEY, JSON.stringify(map));
-  });
-}
-
-async function _removeExitRequestIndexEntry(env, memberNumber) {
-  await withMemberLock(env, "exitRequestIndex:global", async () => {
-    const raw = await env.REPORTS_KV.get(EXIT_REQUEST_INDEX_KEY);
-    if (!raw) return;
-    let map;
-    try {
-      map = JSON.parse(raw);
-    } catch {
-      return;
-    }
-    if (memberNumber in map) {
-      delete map[memberNumber];
-      await env.REPORTS_KV.put(EXIT_REQUEST_INDEX_KEY, JSON.stringify(map));
-    }
-  });
-}
-
+// 🔧 [KV → DO 이전, 2026-09-12] exitRequest:{번호}와 그 인덱스
+// (exitRequestIndex:current)를 LeaveQueue DO로 옮겼다(§47). 회원별
+// 최대 1건이라 DO의 `Map<memberNumber, entry>` 자체가 인덱스 역할을
+// 겸하므로 별도 인덱스가 필요 없다. 인덱스 전용 전역 락
+// (exitRequestIndex:global, §37에서 "회원 A 신청과 관리자의 B 확정이
+// 겹치는 경쟁 조건" 방지 목적으로 도입)도 DO가 요청을 직렬 처리해
+// 경쟁 조건이 구조적으로 불가능해지므로 함께 사라졌다.
 async function handleSetExitRequest(req, env, origin) {
   const authHeader = req.headers.get("Authorization") || "";
   const token = authHeader.replace(/^Bearer\s+/i, "");
@@ -6723,11 +6585,11 @@ async function handleSetExitRequest(req, env, origin) {
     const ts = Date.now();
     // 새로 신청할 때마다 동의 상태는 초기화한다 — 신청을 취소했다가 다시
     // 하거나, 신청 날짜를 바꾸는 경우 이전 동의가 그대로 남아있으면 안 된다.
-    const exitRequestValue = { ts, exitDate: exitDate || null, agreedAt: null };
-    await env.REPORTS_KV.put(`${EXIT_REQUEST_KV_PREFIX}${memberNumber}`, JSON.stringify(exitRequestValue), {
-      metadata: exitRequestValue,
+    await getLeaveQueueStub(env).fetch("https://do/exit/put", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ memberNumber, exitDate: exitDate || null, ts, agreedAt: null }),
     });
-    await _setExitRequestIndexEntry(env, memberNumber, exitDate, ts, null);
     // 🔧 [고지지연 반영] exitRequestDate가 이제 depositRefundBreakdown의
     // amount 계산에 쓰이므로, 신청 직후 본인 화면(personalStatus)과 관리자
     // 목록(exitStatus 등 MEMBER_CACHE_PREFIXES 그룹)에 옛 반환액이 남지
@@ -6828,15 +6690,11 @@ async function handleAgreeExitRequest(req, env, origin) {
   try {
     const accessToken = await getServiceAccountAccessToken(env);
     const memberNumber = await resolveMemberNumber(env, accessToken, session);
-    const raw = await env.REPORTS_KV.get(`${EXIT_REQUEST_KV_PREFIX}${memberNumber}`);
-    if (!raw) return json({ error: "퇴실 신청 내역이 없습니다." }, 404, origin);
+    const leaveQueueStub = getLeaveQueueStub(env);
+    const existingRes = await leaveQueueStub.fetch(`https://do/exit/get?memberNumber=${encodeURIComponent(memberNumber)}`);
+    const { entry: existing } = await existingRes.json();
+    if (!existing) return json({ error: "퇴실 신청 내역이 없습니다." }, 404, origin);
 
-    let existing;
-    try {
-      existing = JSON.parse(raw);
-    } catch {
-      return json({ error: "퇴실 신청 정보를 읽을 수 없습니다." }, 500, origin);
-    }
     if (!existing.exitDate) {
       return json({ error: "마지막 참여일이 지정되지 않은 신청입니다." }, 400, origin);
     }
@@ -6845,11 +6703,11 @@ async function handleAgreeExitRequest(req, env, origin) {
     }
 
     const agreedAt = Date.now();
-    const updated = { ...existing, agreedAt };
-    await env.REPORTS_KV.put(`${EXIT_REQUEST_KV_PREFIX}${memberNumber}`, JSON.stringify(updated), {
-      metadata: updated,
+    await leaveQueueStub.fetch("https://do/exit/put", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ memberNumber, exitDate: existing.exitDate, ts: existing.ts, agreedAt }),
     });
-    await _setExitRequestIndexEntry(env, memberNumber, existing.exitDate, existing.ts, agreedAt);
     await Promise.all([
       invalidatePersonalStatusCache(env, env.GOOGLE_SHEET_FILE_ID, memberNumber),
       invalidateMemberCache(env, ["exitRequest"]),
@@ -6878,8 +6736,11 @@ async function handleCancelExitRequest(req, env, origin) {
       const accessToken = await getServiceAccountAccessToken(env);
       memberNumber = await resolveMemberNumber(env, accessToken, session);
     }
-    await env.REPORTS_KV.delete(`${EXIT_REQUEST_KV_PREFIX}${memberNumber}`);
-    await _removeExitRequestIndexEntry(env, memberNumber);
+    await getLeaveQueueStub(env).fetch("https://do/exit/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ memberNumber }),
+    });
     await Promise.all([
       invalidatePersonalStatusCache(env, env.GOOGLE_SHEET_FILE_ID, memberNumber),
       invalidateMemberCache(env, ["exitRequest"]),
@@ -6890,17 +6751,14 @@ async function handleCancelExitRequest(req, env, origin) {
   }
 }
 
-// number -> {exitDate} 맵. list() 대신 EXIT_REQUEST_INDEX_KEY 인덱스를 읽는다
-// (2026-08-27 KV list() 하루 한도 소진으로 이 함수를 쓰는 "/admin/members/roster"가
-// 500을 낸 것을 계기로 전환).
+// number -> {exitDate,ts,agreedAt} 맵. LeaveQueue DO에서 조회한다
+// (§47 — 2026-08-27 KV list() 하루 한도 소진으로 이 함수를 쓰는
+// "/admin/members/roster"가 500을 낸 것을 계기로 인덱스 방식으로
+// 전환했었고, 이번에 그 인덱스 자체를 DO로 옮겼다).
 async function listExitRequests(env) {
-  const raw = await env.REPORTS_KV.get(EXIT_REQUEST_INDEX_KEY);
-  if (!raw) return new Map();
-  try {
-    return new Map(Object.entries(JSON.parse(raw)));
-  } catch {
-    return new Map();
-  }
+  const res = await getLeaveQueueStub(env).fetch("https://do/exit/list");
+  const { items } = await res.json();
+  return new Map(Object.entries(items || {}));
 }
 
 // 🔧 [마지막 참여일 이후 집계 차단] 도움봇이 매 교시 시트에 기록하기 전,
@@ -7277,14 +7135,14 @@ const EXIT_KIND_VALUES = ["forced", "admin_forced", "settle", "deposit_again"];
 // fileId만 쓴다.
 async function resolveExitSourceFileId(env, accessToken, fileId, number, kind, cycleFileId) {
   if (kind === "settle") {
-    const exitRequestRaw = await env.REPORTS_KV.get(`${EXIT_REQUEST_KV_PREFIX}${number}`).catch(() => null);
-    if (exitRequestRaw) {
-      let exitDate;
-      try {
-        exitDate = JSON.parse(exitRequestRaw).exitDate;
-      } catch {
-        exitDate = null;
-      }
+    // 🔧 [KV → DO 이전, 2026-09-12] §47 — LeaveQueue DO에서 조회.
+    const exitRequestEntry = await getLeaveQueueStub(env)
+      .fetch(`https://do/exit/get?memberNumber=${encodeURIComponent(number)}`)
+      .then((r) => r.json())
+      .then((d) => d.entry)
+      .catch(() => null);
+    if (exitRequestEntry) {
+      const exitDate = exitRequestEntry.exitDate || null;
       if (exitDate && exitWeekResetPassed(exitDate)) {
         const backup = await findBackupForExitDate(env, accessToken, exitDate);
         if (!backup) {
@@ -7385,16 +7243,15 @@ async function computeExitResult(env, accessToken, fileId, number, name, kind, f
   // 🔧 [퇴실 프로세스 카드] "정산 퇴실자 처리" 다이얼로그의 "퇴실 프로세스"
   // 섹션(신청일자/예약일자/동의일자)에 쓰인다 — settle이 아닌 kind에서도
   // 신청 기록이 있으면(드묾) 참고용으로 함께 내려준다.
-  let exitProcess = null;
-  const exitRequestRaw = await env.REPORTS_KV.get(`${EXIT_REQUEST_KV_PREFIX}${number}`).catch(() => null);
-  if (exitRequestRaw) {
-    try {
-      const parsed = JSON.parse(exitRequestRaw);
-      exitProcess = { requestedAt: parsed.ts || null, exitDate: parsed.exitDate || null, agreedAt: parsed.agreedAt || null };
-    } catch {
-      exitProcess = null;
-    }
-  }
+  // 🔧 [KV → DO 이전, 2026-09-12] §47 — LeaveQueue DO에서 조회.
+  const exitRequestEntry = await getLeaveQueueStub(env)
+    .fetch(`https://do/exit/get?memberNumber=${encodeURIComponent(number)}`)
+    .then((r) => r.json())
+    .then((d) => d.entry)
+    .catch(() => null);
+  const exitProcess = exitRequestEntry
+    ? { requestedAt: exitRequestEntry.ts || null, exitDate: exitRequestEntry.exitDate || null, agreedAt: exitRequestEntry.agreedAt || null }
+    : null;
 
   return {
     discountRatio,
@@ -7761,17 +7618,16 @@ async function handleAdminExitConfirm(req, env, origin) {
     // 확인한다. confirm을 preview 없이 직접 호출하는 경로도 막아야 하므로
     // 여기서 다시 확인한다.
     if (kind === "settle") {
-      const exitRequestRaw = await env.REPORTS_KV.get(`${EXIT_REQUEST_KV_PREFIX}${member.number}`).catch(() => null);
-      if (!exitRequestRaw) {
+      // 🔧 [KV → DO 이전, 2026-09-12] §47 — LeaveQueue DO에서 조회.
+      const exitRequestEntry = await getLeaveQueueStub(env)
+        .fetch(`https://do/exit/get?memberNumber=${encodeURIComponent(member.number)}`)
+        .then((r) => r.json())
+        .then((d) => d.entry)
+        .catch(() => null);
+      if (!exitRequestEntry) {
         return json({ error: "퇴실 신청이 접수되지 않은 회원은 정산 퇴실로 처리할 수 없습니다." }, 400, origin);
       }
-      let exitRequestParsed;
-      try {
-        exitRequestParsed = JSON.parse(exitRequestRaw);
-      } catch {
-        exitRequestParsed = null;
-      }
-      if (!exitRequestParsed || !exitRequestParsed.agreedAt) {
+      if (!exitRequestEntry.agreedAt) {
         return json({ error: "회원이 예치금 정산액에 동의하지 않아 정산 퇴실로 처리할 수 없습니다." }, 400, origin);
       }
     }
@@ -7848,8 +7704,11 @@ async function handleAdminExitConfirm(req, env, origin) {
     }
     // 실제 처리가 확정됐으니 "퇴실 예약" 신청 표시도 함께 정리한다 — 시트가
     // 이미 초기화된 회원 번호에 예약 뱃지만 남아있으면 혼동을 준다.
-    await env.REPORTS_KV.delete(`${EXIT_REQUEST_KV_PREFIX}${member.number}`);
-    await _removeExitRequestIndexEntry(env, member.number);
+    await getLeaveQueueStub(env).fetch("https://do/exit/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ memberNumber: member.number }),
+    });
     await invalidateMemberCache(env, ["roster"]); // 참여상태/페널티 슬롯/시트 구조가 모두 바뀌었으므로 전체 무효화.
 
     return json({ ok: true, number: member.number, name: member.name, resultMsg: result.resultMsg }, 200, origin);
@@ -8559,6 +8418,11 @@ export class ParticipantsRoster {
     // expiresAt과 cooldown: TTL 둘 다 갱신), 여기선 한 배열이 둘 다 겸해
     // 그 동기화 자체가 필요 없어졌다.
     this.reportCooldowns = []; // { cooldownKey, id, nickname, mode, startedAt, capturedAt, expiresAt, selfCheck, reporterEmail }
+    // 🔧 [KV → DO 이전, 2026-09-12] 반휴 신청 레이트리밋(leaveApplyRate:,
+    // 60초 창에 최대 2회)도 notices/reportCooldowns와 동일한 이유로 이
+    // DO로 옮긴다(§47) — "지금 이 순간의 상태, 없어져도 그만"이라 순수
+    // 메모리로 충분하다(state.storage 영속화 불필요).
+    this.leaveApplyRates = []; // { memberNumber, windowStart, count, expiresAt }
   }
 
   async fetch(req) {
@@ -8616,6 +8480,28 @@ export class ParticipantsRoster {
         return new Response(JSON.stringify({ ok: true }), {
           headers: { "Content-Type": "application/json" },
         });
+      }
+      if (url.pathname === "/leave-rate/check") {
+        // 🔧 [KV → DO 이전, 2026-09-12] checkAndRecordLeaveApplyRate와
+        // 동일한 고정 60초 창 로직 — true면 이번 요청 진행 가능(카운트
+        // 기록 완료), false면 이번 창에서 한도(2회)를 이미 다 쓴 것(거부된
+        // 시도는 카운트하지 않음).
+        const { memberNumber } = await req.json();
+        const now = Date.now();
+        const windowMs = 60 * 1000;
+        const maxCount = 2;
+        this.leaveApplyRates = this.leaveApplyRates.filter((r) => r.expiresAt > now);
+        const entry = this.leaveApplyRates.find((r) => r.memberNumber === memberNumber);
+        if (entry) {
+          if (entry.count >= maxCount) {
+            return new Response(JSON.stringify({ allowed: false }), { headers: { "Content-Type": "application/json" } });
+          }
+          entry.count += 1;
+          entry.expiresAt = entry.windowStart + windowMs;
+        } else {
+          this.leaveApplyRates.push({ memberNumber, windowStart: now, count: 1, expiresAt: now + windowMs });
+        }
+        return new Response(JSON.stringify({ allowed: true }), { headers: { "Content-Type": "application/json" } });
       }
       if (url.pathname === "/report-cooldown/check") {
         const { cooldownKey } = await req.json();
@@ -8948,6 +8834,174 @@ export class ReportQueue {
 function getReportQueueStub(env) {
   const id = env.REPORT_QUEUE_DO.idFromName("report-queue");
   return env.REPORT_QUEUE_DO.get(id);
+}
+
+// 🔧 [사용자 지시, 2026-09-12] "전환 가능한 것들은 지금 전환하도록 하자"
+// — leaveq:(사유반휴 봇 오프라인 대기열)+leaveqIndex:current, exitRequest:
+// (퇴실 신청)+exitRequestIndex:current, leaveHistory:(사유반휴 처리 이력)
+// 세 KV 자료구조를 한 DO로 통합 이전한다. 셋 다 "사유반휴·퇴실 처리"라는
+// 같은 도메인이고 트래픽이 낮아(회원 15명, 생애주기당 수 회) 인스턴스를
+// 나눌 실익이 없다 — storage 키 prefix(leaveq:/exit:/history:)로만
+// 구분한다. ReportQueue와 동일하게 state.storage 기반 영속 DO라 §24.3이
+// 우려한 "재시작 시 소실" 위험이 없다(§46/§47 참고).
+export class LeaveQueue {
+  constructor(state) {
+    this.state = state;
+    this.leaveq = new Map(); // id -> entry(memberNumber, memberName, day, reason, requesterEmail, imageBase64, imageExt, count, ts)
+    this.exitRequests = new Map(); // memberNumber -> {exitDate, ts, agreedAt}
+    this.history = new Map(); // weekOf -> array
+    this.state.blockConcurrencyWhile(async () => {
+      const stored = await this.state.storage.list();
+      for (const [key, value] of stored) {
+        if (key.startsWith("leaveq:")) this.leaveq.set(key.slice(7), value);
+        else if (key.startsWith("exit:")) this.exitRequests.set(key.slice(5), value);
+        else if (key.startsWith("history:")) this.history.set(key.slice(8), value);
+      }
+    });
+  }
+
+  async fetch(req) {
+    const url = new URL(req.url);
+
+    if (req.method === "POST" && url.pathname === "/leaveq/put") {
+      const { id, entry } = await req.json();
+      this.leaveq.set(id, entry);
+      await this.state.storage.put(`leaveq:${id}`, entry);
+      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+    }
+    if (req.method === "POST" && url.pathname === "/leaveq/delete") {
+      const { id } = await req.json();
+      const existed = this.leaveq.delete(id);
+      await this.state.storage.delete(`leaveq:${id}`);
+      return new Response(JSON.stringify({ ok: true, existed }), { headers: { "Content-Type": "application/json" } });
+    }
+    if (req.method === "GET" && url.pathname === "/leaveq/get") {
+      const id = url.searchParams.get("id") || "";
+      const entry = this.leaveq.get(id);
+      if (!entry) return new Response(JSON.stringify({ entry: null }), { status: 404, headers: { "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ entry }), { headers: { "Content-Type": "application/json" } });
+    }
+    // 🔧 [응답 크기 절감] leaveq 항목은 imageBase64(증빙 사진)를 포함해
+    // 최대 수 MB에 달할 수 있다 — 목록(요약)이 필요한 호출부
+    // (listQueuedReasonLeaveDays/listQueuedReasonLeaveItems/취소 매칭)는
+    // 이미지를 뺀 요약만 받고, 실제로 전체 데이터가 필요한
+    // flushQueuedReasonLeaveProofs(봇에 그대로 전달)만 /leaveq/list-full로
+    // 구분한다.
+    if (req.method === "GET" && url.pathname === "/leaveq/list") {
+      const items = [...this.leaveq.entries()].map(([id, entry]) => ({
+        id,
+        memberNumber: entry.memberNumber,
+        memberName: entry.memberName,
+        day: entry.day,
+        reason: entry.reason,
+        requesterEmail: entry.requesterEmail,
+        count: entry.count || 1,
+        ts: entry.ts || 0,
+      }));
+      return new Response(JSON.stringify({ items }), { headers: { "Content-Type": "application/json" } });
+    }
+    if (req.method === "GET" && url.pathname === "/leaveq/list-full") {
+      const items = [...this.leaveq.entries()].map(([id, entry]) => ({ id, ...entry }));
+      return new Response(JSON.stringify({ items }), { headers: { "Content-Type": "application/json" } });
+    }
+
+    if (req.method === "POST" && url.pathname === "/exit/put") {
+      const { memberNumber, exitDate, ts, agreedAt } = await req.json();
+      const entry = { exitDate: exitDate || null, ts: ts || null, agreedAt: agreedAt ?? null };
+      this.exitRequests.set(memberNumber, entry);
+      await this.state.storage.put(`exit:${memberNumber}`, entry);
+      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+    }
+    if (req.method === "POST" && url.pathname === "/exit/delete") {
+      const { memberNumber } = await req.json();
+      this.exitRequests.delete(memberNumber);
+      await this.state.storage.delete(`exit:${memberNumber}`);
+      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+    }
+    if (req.method === "GET" && url.pathname === "/exit/get") {
+      const memberNumber = url.searchParams.get("memberNumber") || "";
+      const entry = this.exitRequests.get(memberNumber) || null;
+      return new Response(JSON.stringify({ entry }), { headers: { "Content-Type": "application/json" } });
+    }
+    if (req.method === "GET" && url.pathname === "/exit/list") {
+      const items = Object.fromEntries(this.exitRequests);
+      return new Response(JSON.stringify({ items }), { headers: { "Content-Type": "application/json" } });
+    }
+
+    if (req.method === "POST" && url.pathname === "/history/append") {
+      const { weekOf, entry } = await req.json();
+      const arr = this.history.get(weekOf) || [];
+      arr.push(entry);
+      this.history.set(weekOf, arr);
+      await this.state.storage.put(`history:${weekOf}`, arr);
+      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+    }
+    if (req.method === "GET" && url.pathname === "/history/get") {
+      const weekOf = url.searchParams.get("weekOf") || "";
+      const items = this.history.get(weekOf) || [];
+      return new Response(JSON.stringify({ items }), { headers: { "Content-Type": "application/json" } });
+    }
+
+    return new Response("method not allowed", { status: 405 });
+  }
+}
+
+function getLeaveQueueStub(env) {
+  const id = env.LEAVE_QUEUE_DO.idFromName("leave-queue");
+  return env.LEAVE_QUEUE_DO.get(id);
+}
+
+// 🔧 [사용자 지시, 2026-09-12] 제보 심각도 투표(부스터디장 최대 2명,
+// TTL 7일) — reportVote:{id}:{num}을 이 DO로 이전. LeaveQueue와 도메인이
+// 달라 별도 클래스로 분리했다.
+export class ReportVote {
+  constructor(state) {
+    this.state = state;
+    this.votes = new Map(); // "id:number" -> {name, severity, votedAt, expiresAt}
+    this.state.blockConcurrencyWhile(async () => {
+      const stored = await this.state.storage.list();
+      for (const [key, value] of stored) this.votes.set(key, value);
+    });
+  }
+
+  async fetch(req) {
+    const url = new URL(req.url);
+    const REPORT_VOTE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+    if (req.method === "POST" && url.pathname === "/vote/put") {
+      const { id, number, name, severity } = await req.json();
+      const key = `${id}:${number}`;
+      const value = { name, severity, votedAt: Date.now(), expiresAt: Date.now() + REPORT_VOTE_TTL_MS };
+      this.votes.set(key, value);
+      const puts = [this.state.storage.put(key, value)];
+      // 기회주의적 정리 — 이 id에 딸린 다른 투표 중 만료된 것도 함께 지운다.
+      const now = Date.now();
+      for (const [k, v] of this.votes) {
+        if (k.startsWith(`${id}:`) && v.expiresAt <= now) {
+          this.votes.delete(k);
+          puts.push(this.state.storage.delete(k));
+        }
+      }
+      await Promise.all(puts);
+      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+    }
+    if (req.method === "POST" && url.pathname === "/vote/get-batch") {
+      const { id, numbers } = await req.json();
+      const now = Date.now();
+      const votes = {};
+      for (const number of numbers || []) {
+        const v = this.votes.get(`${id}:${number}`);
+        if (v && v.expiresAt > now) votes[number] = { name: v.name, severity: v.severity, votedAt: v.votedAt };
+      }
+      return new Response(JSON.stringify({ votes }), { headers: { "Content-Type": "application/json" } });
+    }
+    return new Response("method not allowed", { status: 405 });
+  }
+}
+
+function getReportVoteStub(env) {
+  const id = env.REPORT_VOTE_DO.idFromName("report-vote");
+  return env.REPORT_VOTE_DO.get(id);
 }
 
 // _dailyUsageBuffer(index.js 상단)를 UsageStats DO로 배치 전송하고 비운다.

@@ -2096,7 +2096,68 @@ list 한도 자체는 여유가 있었지만(14% 수준), 사용자가 "옮겨�
 (`new_sqlite_classes = ["ReportQueue"]`)을 추가했다 — v1(`ParticipantsRoster`),
 v2(`UsageStats`)에 이어지는 순차 태그.
 
-## 47. 관련 문서
+## 47. leaveq:/exitRequest:/leaveHistory:/reportVote:/leaveApplyRate:를 KV에서 DO로 이전 (2026-09-12)
+
+§46에서 `report:{id}`를 영속 DO(`ReportQueue`)로 옮긴 뒤, "KV로 구현된
+나머지 쓰기·삭제 기능도 DO로 전환 가능한가"를 전수 검토했다(사용자
+지시: "전환 가능한 것들은 지금 전환하도록 하자"). 검토 결과 다섯 개를
+추가로 옮겼다 — 현재 시스템이 개발 중이라 실사용자가 없어(대기 중인
+leaveq/exitRequest/reportVote 항목이 API 실측으로 전부 0건임을 확인)
+마이그레이션 유실 위험이 없었다.
+
+**`LeaveQueue` DO**(신설, `UsageStats`/`ReportQueue`와 동일하게
+`state.storage` 기반 영속): 사유반휴 대기열(`leaveq:{id}` +
+`leaveqIndex:current`), 퇴실 신청(`exitRequest:{번호}` +
+`exitRequestIndex:current`), 사유반휴 처리 이력(`leaveHistory:
+{weekOf}`) 셋을 storage 키 prefix(`leaveq:`/`exit:`/`history:`)로
+구분해 통합했다 — 셋 다 "사유반휴·퇴실 처리"라는 같은 도메인이고
+트래픽이 낮아 인스턴스를 나눌 실익이 없었다. 퇴실 신청은 회원당 최대
+1건이라 DO의 `Map<memberNumber, entry>` 자체가 인덱스를 겸해 별도
+인덱스가 필요 없어졌다. §24.3에서 이 두 인덱스를 보호하던 전역 락
+(`leaveQueueIndex:global`, `exitRequestIndex:global`, §37/§39)도 DO가
+요청을 직렬 처리해 경쟁 조건이 구조적으로 불가능해지므로 함께
+제거됐다 — 회원 단위 락(`leave:${memberNumber}`, "같은 회원의 같은
+날 중복 신청" 방지 목적)은 인덱스 보호와 무관하므로 그대로 유지했다.
+
+`flushQueuedReasonLeaveProofs`(봇 재기동 시 큐 배출)는 원래 "인덱스가
+실제 KV와 어긋나도 list()로 직접 훑는 안전망" 역할이었는데, `LeaveQueue`
+DO의 Map은 정의상 storage와 항상 동일한 단일 진실 소스라 그 어긋남
+자체가 구조적으로 발생할 수 없다 — 안전망이 무의미해진 게 아니라 그
+안전망이 막던 버그 클래스가 원천 제거됐다.
+
+leaveq 항목은 imageBase64(증빙 사진)를 포함해 수 MB에 달할 수 있어,
+목록(요약)만 필요한 호출부는 이미지를 뺀 `/leaveq/list`를, 봇에 그대로
+전달해야 하는 `flushQueuedReasonLeaveProofs`만 전체를 반환하는
+`/leaveq/list-full`을 쓰도록 응답을 분리했다.
+
+**`ReportVote` DO**(신설, 영속): 제보 심각도 투표(`reportVote:{id}:
+{번호}`, TTL 7일, 부스터디장 최대 2명)를 이전. 도메인이 달라
+`LeaveQueue`와 분리했다. `handleAdminCapturesList`가 항목당 부스터디장
+수만큼(§29에서 이미 병렬화했던 KV.get) 하던 조회를 항목당 DO fetch
+1회(`/vote/get-batch`)로 더 줄였다.
+
+**`ParticipantsRoster` DO 확장**: 반휴 신청 레이트리밋
+(`leaveApplyRate:{번호}`, 60초 창에 최대 2회)은 "지금 이 순간의 상태,
+없어져도 그만"이라 §24.3의 "✅ 맞는 경우"에 정확히 해당해, 기존
+notices/reportCooldowns와 동일한 순수 메모리 배열 push+filter 패턴으로
+`/leave-rate/check` 엔드포인트를 추가했다(storage 영속화 불필요).
+
+`wrangler.toml`에 `LEAVE_QUEUE_DO`/`REPORT_VOTE_DO` 바인딩과
+`tag = "v4"` 마이그레이션(`new_sqlite_classes = ["LeaveQueue",
+"ReportVote"]`)을 추가했다.
+
+**검증**: Playwright로 프로덕션에서 퇴실 신청→동의→취소, 사유반휴
+신청→관리자 반려, 반휴 신청 61초 내 3회 연속 호출(3번째에서 정확히
+429) 전부 실제 왕복 확인. `wrangler tail`로 `do/leaveq/put`,
+`do/leaveq/delete`, `do/exit/put` 등이 예외 없이 호출됨을 실시간
+확인. `/admin/usage`로 이 5개 관련 KV put/delete/list가 배포 이후
+전혀 새로 발생하지 않음을 확인(과거 데이터만 남아있고 신규 항목 0건).
+배포 직후 변수명 리팩터링 누락(`exitRequestRaw` 잔재)으로 `/status`가
+500을 낸 것을 실측(Playwright 콘솔 에러)으로 발견해 즉시 수정·재배포
+했다 — 이런 리팩터링 후에는 grep으로 옛 변수명이 완전히 사라졌는지
+재확인하는 습관이 필요함을 재확인.
+
+## 48. 관련 문서
 
 - `docs/WEB_ADMIN.md` §3.1 — `applyOutputPenalty`/`applyReportMerit`/
   `applyTimeDeduction`가 실제로 호출되는 관리자 제보 처리 화면·플로우.
