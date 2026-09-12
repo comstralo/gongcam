@@ -327,7 +327,7 @@ const KV_USAGE_WINDOW_MIN = 30;
 // 임시 중계소일 뿐이다. 매 KV 호출마다 DO에 실시간 전송하면 "감시 기능이
 // 감시 대상 KV 할당량을 갉아먹는" 역설이 생기므로, DO에도 배치로만
 // 보낸다(DO 자체는 KV 할당량과 무관하지만 오버헤드 자체를 줄이는 목적).
-const _dailyUsageBuffer = new Map(); // "{date}|{path}|{email}|{op}" -> count
+const _dailyUsageBuffer = new Map(); // "{date}|{kind}|{path}|{email}|{op}" -> count
 
 // 🔧 [사용자 지시] "일일 중에서 30분내로 발생한것만 추려서 보여주면
 // 되잖아" — 원래는 isolate 로컬 메모리(_kvUsageCounters)로 "최근 30분"을
@@ -347,23 +347,31 @@ const _minuteUsageBuffer = new Map(); // "{minuteKey}|{kind}|{path}|{email}|{op}
 // 기억해둔다. isolate 재시작 시 비워져도 무해(그 경우 이메일로 대체 표시).
 const _emailNameMap = new Map(); // email -> memberName
 
+// 🔧 [사용자 지시] "여기 이메일로 보이는데?" — _emailNameMap이 isolate
+// 로컬이라 "이 요청을 처리한 isolate가 그 사용자를 아직 못 봤으면"
+// 이메일 그대로 보이는 문제가 있었다. 새로 관측된 (email, name) 쌍만
+// 여기 모아뒀다가 flushDailyUsageStats가 DO(UsageStats)에도 영구
+// 저장해, 어느 isolate가 응답을 만들든 DO의 전체 매핑을 참조할 수
+// 있게 한다.
+const _pendingNameFlush = new Map(); // email -> memberName (아직 DO로 안 보낸 것만)
+
 function _bumpKvUsageCounter(op, prefix, path, email, name) {
-  if (email && name) _emailNameMap.set(email, name);
+  if (email && name && _emailNameMap.get(email) !== name) {
+    _emailNameMap.set(email, name);
+    _pendingNameFlush.set(email, name);
+  }
   const minuteKey = new Date().toISOString().slice(0, 16); // "YYYY-MM-DDTHH:MM"
 
-  const dailyKey = `${todayUTCDateString()}|${path || "(cron/기타)"}|${email || "(익명)"}|${op}`;
+  // 🔧 [사용자 지시] "일일에서도 - 뒤에 캐시 유발 지점을 출력해줘" —
+  // kind(캐시 키 종류)도 하루 누적 키에 포함시켜, "30분" 뷰와 마찬가지로
+  // 어떤 캐시가 원인인지 바로 알 수 있게 한다.
+  const dailyKey = `${todayUTCDateString()}|${prefix}|${path || "(cron/기타)"}|${email || "(익명)"}|${op}`;
   _dailyUsageBuffer.set(dailyKey, (_dailyUsageBuffer.get(dailyKey) || 0) + 1);
 
   const minuteBucketKey = `${minuteKey}|${prefix}|${path || "(cron/기타)"}|${email || "(익명)"}|${op}`;
   _minuteUsageBuffer.set(minuteBucketKey, (_minuteUsageBuffer.get(minuteBucketKey) || 0) + 1);
 }
 
-// email을 화면 표시용 이름으로 바꾼다 — 매핑이 없으면(isolate 재시작 직후
-// 등) 이메일을 그대로 보여준다(집계 자체는 계속 정상 동작).
-function _displayNameForEmail(email) {
-  if (!email || email === "(익명)") return email || "(익명)";
-  return _emailNameMap.get(email) || email;
-}
 
 // "최근 5분간 kv_put:sheetCache:9 라고 찍혀" — 콜론 1개까지만 잘라
 // 접두사를 만들면 sheetCache:exitStatus:.../sheetCache:memberRows:... 등
@@ -3357,18 +3365,24 @@ async function handleAdminUsageStatus(req, env, origin) {
   // 조회 자체가 실패해도(신규 배포 직후 등) 전체 응답이 죽지 않도록 빈
   // 배열로 대체한다.
   // 🔧 [사용자 지시] "알아먹기 쉽게 실제 메뉴명을 적어줘. 그리고 이메일
-  // 말고 사용자 이름을 적고" — DO는 원본 경로/이메일을 저장하므로(집계
-  // 키 자체는 안정적으로 유지), 응답 직전에만 메뉴명·이름으로 치환한다.
-  // 이름 매핑은 이 isolate가 최근에 본 사용자만 알 수 있어(_emailNameMap),
-  // 모르는 이메일은 이메일 그대로 표시된다(집계 값 자체는 항상 정확).
+  // 말고 사용자 이름을 적고" → "여기 이메일로 보이는데?" — 처음엔
+  // isolate 로컬 _emailNameMap만으로 치환해, 이 요청을 처리한 isolate가
+  // 그 사용자를 아직 못 봤으면 이메일이 그대로 보이는 문제가 있었다.
+  // 이제 DO 응답의 names(모든 isolate가 관측한 email->name 전체 매핑)를
+  // 우선 쓰고, 거기 없으면 isolate 로컬 매핑, 그마저 없으면 이메일
+  // 그대로 표시한다(집계 값 자체는 항상 정확).
   const usageStub = getUsageStatsStub(env);
+  const displayNameWith = (doNames) => (email) => {
+    if (!email || email === "(익명)") return email || "(익명)";
+    return doNames[email] || _emailNameMap.get(email) || email;
+  };
   const dailyUsage = await usageStub
     .fetch(`https://do/today?date=${encodeURIComponent(todayUTCDateString())}`)
     .then((r) => r.json())
-    .then((d) => d.items || [])
-    .then((items) =>
-      items.map((it) => ({ ...it, path: _menuNameForPath(it.path), email: _displayNameForEmail(it.email) }))
-    )
+    .then((d) => {
+      const toName = displayNameWith(d.names || {});
+      return (d.items || []).map((it) => ({ ...it, path: _menuNameForPath(it.path), email: toName(it.email) }));
+    })
     .catch(() => []);
   // 🔧 [사용자 지시] "일일 중에서 30분내로 발생한것만 추려서 보여주면
   // 되잖아" — 기존 _getKvWriteBreakdown()(isolate 로컬 _kvUsageCounters)
@@ -3376,12 +3390,12 @@ async function handleAdminUsageStatus(req, env, origin) {
   const kvWriteBreakdown = await usageStub
     .fetch("https://do/recent")
     .then((r) => r.json())
-    .then((d) => d.items || [])
-    .then((items) =>
-      items
-        .map((it) => ({ ...it, path: _menuNameForPath(it.path), email: _displayNameForEmail(it.email) }))
-        .sort((a, b) => b.count - a.count)
-    )
+    .then((d) => {
+      const toName = displayNameWith(d.names || {});
+      return (d.items || [])
+        .map((it) => ({ ...it, path: _menuNameForPath(it.path), email: toName(it.email) }))
+        .sort((a, b) => b.count - a.count);
+    })
     .catch(() => []);
 
   return json(
@@ -8718,6 +8732,14 @@ export class UsageStats {
   constructor(state) {
     this.state = state;
     this.counts = new Map(); // "{date}|{path}|{email}|{op}" -> count
+    // 🔧 [사용자 지시] "이메일 말고 사용자 이름을 적고" — 처음엔
+    // _emailNameMap(index.js 상단, isolate 로컬 메모리)만으로 치환했는데,
+    // "이 요청을 처리한 isolate가 그 사용자를 아직 한 번도 못 봤으면"
+    // 이메일이 그대로 보이는 문제가 있었다(Cloudflare가 요청을 여러
+    // 서버로 분산 처리하는 한, isolate 로컬 매핑은 "일일"/"30분" 집계와
+    // 똑같은 구조적 한계를 겪는다). email→name 매핑도 여기 DO에 영구
+    // 저장해 isolate 무관하게 항상 알 수 있게 한다.
+    this.names = new Map(); // email -> memberName
     // ParticipantsRoster의 updatedAt 복구 패턴과 동일 — 재시작 시 영구
     // 저장소에서 전량 복원한다. 항목 수가 (보관 정책상 최대 7일)×(경로
     // 수십 개)×(사용자 15명 안팎)×(연산 3종) 수준이라 전량 로드에 무리가
@@ -8726,6 +8748,7 @@ export class UsageStats {
       const stored = await this.state.storage.list();
       for (const [key, value] of stored) {
         if (typeof value === "number") this.counts.set(key, value);
+        else if (typeof value === "string" && key.startsWith("n|")) this.names.set(key.slice(2), value);
       }
     });
   }
@@ -8733,13 +8756,18 @@ export class UsageStats {
   async fetch(req) {
     const url = new URL(req.url);
     if (req.method === "POST" && url.pathname === "/flush") {
-      const { entries, today } = await req.json();
+      const { entries, today, names } = await req.json();
       const puts = [];
-      for (const { date, path, email, op, count } of entries || []) {
-        const key = `${date}|${path}|${email}|${op}`;
+      for (const { date, kind, path, email, op, count } of entries || []) {
+        const key = `${date}|${kind}|${path}|${email}|${op}`;
         const next = (this.counts.get(key) || 0) + count;
         this.counts.set(key, next);
         puts.push(this.state.storage.put(key, next));
+      }
+      for (const [email, name] of Object.entries(names || {})) {
+        if (this.names.get(email) === name) continue;
+        this.names.set(email, name);
+        puts.push(this.state.storage.put(`n|${email}`, name));
       }
       // 보관 정책: 오늘(today, 호출부가 todayUTCDateString()로 계산해
       // 넘김) 기준 7일보다 오래된 키는 함께 정리한다 — DO 저장 공간이
@@ -8791,15 +8819,27 @@ export class UsageStats {
       const prefix = `${date}|`;
       const items = [];
       for (const [key, count] of this.counts) {
-        if (!key.startsWith(prefix)) continue;
+        if (key.startsWith("m|") || !key.startsWith(prefix)) continue;
         const rest = key.slice(prefix.length);
         const parts = rest.split("|");
         const op = parts.pop();
         const email = parts.pop();
+        // 🔧 [사용자 지시] "일일에서도 - 뒤에 캐시 유발 지점을 출력해줘" —
+        // kind를 daily 키에 추가하기 전(구버전)엔 세그먼트가 4개
+        // (path|email|op는 이미 pop됨 → path만 남음)였고, 이후(신버전)엔
+        // kind가 맨 앞에 하나 더 있다(5개: kind|path|email|op). 남은
+        // parts 길이로 구분해 과도기의 구버전 키도 깨지지 않게 읽는다
+        // (최대 7일 뒤 자연 소멸).
+        const kind = parts.length > 1 ? parts.shift() : "";
         const path = parts.join("|");
-        items.push({ path, email, op, count });
+        items.push({ kind, path, email, op, count });
       }
-      return new Response(JSON.stringify({ items }), { headers: { "Content-Type": "application/json" } });
+      // 🔧 [사용자 지시] "이메일 말고 사용자 이름을 적고" — names(email->name
+      // 전체 매핑)도 함께 내려줘 호출부가 isolate 로컬 매핑 없이 치환할
+      // 수 있게 한다.
+      return new Response(JSON.stringify({ items, names: Object.fromEntries(this.names) }), {
+        headers: { "Content-Type": "application/json" },
+      });
     }
     // 🔧 최근 30분(KV_USAGE_WINDOW_MIN) 이내 분단위 키만 (path·email·op)로
     // 합산해 반환한다 — isolate 로컬이던 기존 "30분" 뷰와 달리 모든
@@ -8823,7 +8863,9 @@ export class UsageStats {
         const path = parts.join("|");
         return { kind, path, email, op, count };
       });
-      return new Response(JSON.stringify({ items }), { headers: { "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ items, names: Object.fromEntries(this.names) }), {
+        headers: { "Content-Type": "application/json" },
+      });
     }
     return new Response("method not allowed", { status: 405 });
   }
@@ -8843,22 +8885,27 @@ function getUsageStatsStub(env) {
 async function flushDailyUsageStats(env) {
   const stub = getUsageStatsStub(env);
 
-  if (_dailyUsageBuffer.size > 0) {
+  if (_dailyUsageBuffer.size > 0 || _pendingNameFlush.size > 0) {
     const entries = [];
     for (const [key, count] of _dailyUsageBuffer) {
       const parts = key.split("|");
       const op = parts.pop();
       const email = parts.pop();
       const date = parts.shift();
+      const kind = parts.shift();
       const path = parts.join("|");
-      entries.push({ date, path, email, op, count });
+      entries.push({ date, kind, path, email, op, count });
     }
+    const names = Object.fromEntries(_pendingNameFlush);
     const res = await stub.fetch("https://do/flush", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ entries, today: todayUTCDateString() }),
+      body: JSON.stringify({ entries, today: todayUTCDateString(), names }),
     });
-    if (res.ok) _dailyUsageBuffer.clear();
+    if (res.ok) {
+      _dailyUsageBuffer.clear();
+      _pendingNameFlush.clear();
+    }
   }
 
   // 🔧 [사용자 지시] "일일 중에서 30분내로 발생한것만 추려서 보여주면

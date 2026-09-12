@@ -98,24 +98,19 @@ function UsageBreakdownGroup({
 }: {
   opLabel: string;
   recentRows: { op: string; kind: string; path: string; email: string; count: number }[];
-  dailyRows: { path: string; email: string; op: string; count: number }[];
+  dailyRows: { kind: string; path: string; email: string; op: string; count: number }[];
 }) {
-  const byPath = dailyRows.reduce<Record<string, Record<string, number>>>((acc, { path, email, count }) => {
-    const byEmail = (acc[path] ??= {});
-    byEmail[email] = (byEmail[email] || 0) + count;
-    return acc;
-  }, {});
-  // 🔧 [사용자 지시] "'[사용자명] 메뉴 - 영역' 으로 구분하고 카운트 횟수를
-  // 표시해달란거야. 지금처럼 캐시명으로 하지말고" — kind(캐시 키 종류)만
-  // 보여주던 걸, 누가(email) 어느 화면(path)의 어느 캐시 영역(kind)을
-  // 건드렸는지 알 수 있게 사용자 우선으로 그룹핑한다.
-  const byEmailRecent = recentRows.reduce<Record<string, { path: string; kind: string; count: number }[]>>(
-    (acc, { email, path, kind, count }) => {
-      (acc[email] ??= []).push({ path, kind, count });
+  // 🔧 [사용자 지시] "일일과 30분 필터링의 출력 유형이 다르잖아? 일일에
+  // 맞춰" → "일일에서도 - 뒤에 캐시 유발 지점을 출력해줘" — "30분"과
+  // "일일" 둘 다 메뉴(path)를 먼저 묶고, 그 아래 사용자별로 "영역(kind)"
+  // 까지 "사용자 - 영역" 형태로 함께 표시하는 동일한 구조로 통일한다.
+  const groupByPath = (rows: { path: string; email: string; kind: string; count: number }[]) =>
+    rows.reduce<Record<string, { email: string; kind: string; count: number }[]>>((acc, { path, email, kind, count }) => {
+      (acc[path] ??= []).push({ email, kind, count });
       return acc;
-    },
-    {}
-  );
+    }, {});
+  const byPathRecent = groupByPath(recentRows);
+  const byPathDaily = groupByPath(dailyRows);
   // 🔧 [사용자 지시] "PUT (쓰기) 옆에 토글 텍스트로 30분, 일일 을 넣고
   // 클릭하면 그에 맞는 값을 필터링 해서 보여줘" — 30분(이 서버 기준)과
   // 일일(DO 영구 저장) 두 목록을 늘 같이 보여주면 항목이 길어져 스캔하기
@@ -157,13 +152,13 @@ function UsageBreakdownGroup({
           {recentRows.length === 0 ? (
             <p className="pl-2 text-micro-lg text-muted-foreground/70 sm:text-xs">아직 집계된 기록이 없습니다.</p>
           ) : (
-            Object.entries(byEmailRecent).map(([email, rows]) => (
-              <div key={email} className="flex flex-col gap-0.5 pl-2">
-                <span className="truncate text-micro-lg font-medium sm:text-xs">[{email}]</span>
-                {rows.map(({ path, kind, count }) => (
-                  <div key={`${path}|${kind}`} className="flex items-center justify-between gap-2 pl-2">
+            Object.entries(byPathRecent).map(([path, rows]) => (
+              <div key={path} className="flex flex-col gap-0.5 pl-2">
+                <span className="truncate text-micro-lg font-medium sm:text-xs">{path}</span>
+                {rows.map(({ email, kind, count }) => (
+                  <div key={`${email}|${kind}`} className="flex items-center justify-between gap-2 pl-2">
                     <span className="truncate text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
-                      {path} - {kind}
+                      {email} - {kind}
                     </span>
                     <span className="shrink-0 text-micro-lg font-semibold tabular-nums sm:text-xs">{count}</span>
                   </div>
@@ -179,13 +174,13 @@ function UsageBreakdownGroup({
               아직 집계된 기록이 없습니다.
             </p>
           ) : (
-            Object.entries(byPath).map(([path, byEmail]) => (
+            Object.entries(byPathDaily).map(([path, rows]) => (
               <div key={path} className="flex flex-col gap-0.5 pl-2">
                 <span className="truncate text-micro-lg font-medium sm:text-xs">{path}</span>
-                {Object.entries(byEmail).map(([email, count]) => (
-                  <div key={email} className="flex items-center justify-between gap-2 pl-2">
+                {rows.map(({ email, kind, count }) => (
+                  <div key={`${email}|${kind}`} className="flex items-center justify-between gap-2 pl-2">
                     <span className="truncate text-micro-lg text-muted-foreground before:mr-1 before:content-['└'] sm:text-xs">
-                      {email}
+                      {email} - {kind}
                     </span>
                     <span className="shrink-0 text-micro-lg font-semibold tabular-nums sm:text-xs">{count}</span>
                   </div>

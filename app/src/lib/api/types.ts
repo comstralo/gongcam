@@ -733,11 +733,14 @@ export type AdminUsageResponse = {
   // 내려준다(못 찾으면 원래 경로/이메일 그대로, 세션 없는 요청이면
   // "(익명)").
   kvWriteBreakdown: { op: string; kind: string; path: string; email: string; count: number }[];
-  // 🔧 [사용량 모니터링 고도화] 위 kvWriteBreakdown과 달리 "하루(KST 자정
+  // 🔧 [사용량 모니터링 고도화] 위 kvWriteBreakdown과 달리 "하루(UTC 자정
   // 기준) 누적 · 관리자+학생 모두 포함 · Durable Object 영구 저장" 기준이라
   // isolate 재시작에도 유지된다. path/email은 위와 동일하게 메뉴명·이름으로
   // 치환되어 내려온다.
-  dailyUsage: { path: string; email: string; op: string; count: number }[];
+  // 🔧 [사용자 지시] "일일에서도 - 뒤에 캐시 유발 지점을 출력해줘" — kind
+  // (캐시 키 종류)도 함께 내려온다. 배포 직후 잠깐은 과도기 데이터라
+  // kind가 빈 문자열("")로 올 수 있다(DO의 /today 참고).
+  dailyUsage: { kind: string; path: string; email: string; op: string; count: number }[];
 };
 
 export type BotCommand = "restart";
