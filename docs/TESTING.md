@@ -752,24 +752,109 @@ index.js 7,202→6,596줄(약 606줄 감소, 시작(10,984줄) 대비 총 **40.0
 `/admin/push/*` 전부 정상 401/403 응답 확인, `wrangler tail`로 실제
 요청과 봇 트래픽이 예외 없이("Ok") 처리됨을 확인했다.
 
+## 구조 개선 11차 — 사유반휴/일반반휴 도메인 통합 테스트 + 이동, TDZ 버그 발견·수정 (2026-09-13)
+
+10차 조사에서 예고한 대로 사유반휴/일반반휴 도메인(즉시 신청·관리자
+대리 신청, 증빙 업로드→봇 대기열→관리자 승인/반려)을 `src/leave.js`
+로 옮겼다. 사전에 우려했던 `hasQueuedReasonLeaveProof`↔
+`buildPersonalStatus` 역참조 방향을 실제로 확인한 결과, 정확히는
+그 안의 `listQueuedReasonLeaveDays`를 `buildPersonalStatus`(개인
+대시보드, index.js 잔류)가 실사용으로 참조하는 것으로 확인됐다 —
+9~10차와 동일한 "실사용 import" 패턴으로 처리했다. 같은 이유로
+`flushQueuedReasonLeaveProofs`도 `handleBotRegisterUrl`(봇 도메인,
+index.js 잔류)이 실사용하므로 export해 재import했다.
+
+**🔧 이동 작업 중 심각한 실제 버그 발견·수정(TDZ)**: leave.js를
+작성한 직후 통합 테스트를 돌리자 모든 셀 range가 `1!CNaN`으로
+깨지는 것을 발견했다. 원인은 index.js의 leave.js `import` 구문
+(파일 상단, 250행대)이 index.js 자신의 `ROW_NORMAL_LEAVE_USE` 등
+`export const` 선언(파일 하단, 985행대)보다 앞서 실행된다는
+것이었다 — leave.js가 로드되는 시점에 그 상수들은 아직 초기화 전
+(TDZ)이라, leave.js 모듈 최상위에서 즉시 `LEAVE_TYPE_CONFIG = {
+normal: { useRow: ROW_NORMAL_LEAVE_USE, ... } }`를 만들면 그
+안의 모든 값이 `undefined`(계산 결과는 `NaN`)로 굳어버렸다. 6~10차
+에서 반복 검증된 "재export 전용 순환은 함수 호출 시점에만 지연
+평가되므로 안전하다"는 원칙이 **최상위에서 즉시 평가되는 객체
+리터럴에는 적용되지 않는다**는 걸 이번에 처음 발견했다 — 함수
+호이스팅과 달리 `const` 객체 리터럴은 모듈 로드 시점에 즉시
+실행되기 때문이다. `LEAVE_TYPE_CONFIG`를 `getLeaveTypeConfig(type)`
+함수로 감싸 실제 요청 처리 시점(index.js 전체 평가가 끝난 뒤)에만
+계산되도록 고쳐 해결했다. 통합 테스트의 fetch mock URL 검증이 이
+버그를 실제로 잡아냈다 — 배포 전에 발견되어 프로덕션에는 영향이
+없었다.
+
+**이동 대상(18개 함수 + 관련 상수)**: `_readLeaveQueueIndex`,
+`_appendLeaveHistory`, `_readLeaveHistory`(LeaveQueue DO 위임),
+`handleGetLeaveApply`, `checkAndRecordLeaveApplyRate`,
+`handleSetLeaveApply`, `handleAdminLeaveApply`,
+`handleGetReasonLeaveProof`, `listQueuedReasonLeaveDays`,
+`hasQueuedReasonLeaveProof`, `handleSetReasonLeaveProof`,
+`handleCancelReasonLeaveProof`, `flushQueuedReasonLeaveProofs`,
+`listQueuedReasonLeaveItems`, `handleAdminLeaveProofList`,
+`base64ToBytes`, `handleAdminLeaveProofFile`,
+`handleAdminLeaveProofDecide`. `proxyToBotDashboard`/
+`proxyToBotDashboardRaw`(제보 도메인도 공유하는 범용 봇 프록시),
+`corsHeaders`, `parseLeaveCount`, 4개 `ROW_*` 상수는 index.js에
+남기고 export만 추가했다.
+
+**8~10차 교훈 재적용**: 이동한 18개 함수와 관련 상수 전부를 `git
+show HEAD:.../index.js`로 꺼낸 원본과 자동 diff 대조해 완전히
+일치함을 확인했다 — `LEAVE_TYPE_CONFIG` 등 최상위 상수도 값 자체는
+원본과 동일하고, 지연 평가로 감싼 구조만 바뀌었다(로직 변경 없음
+원칙 유지, 감싸는 방식 변경은 TDZ 버그 수정을 위한 불가피한 최소
+개입).
+
+**통합 테스트 2개 파일(33개 케이스)**:
+- `test/leave-apply.test.js`(12개) — `handleGetLeaveApply`/
+  `handleSetLeaveApply`/`handleAdminLeaveApply`. 실제 workerd
+  ParticipantsRoster DO의 `leave-rate/check`(회원당 분당 2회 제한)
+  까지 실제로 태워 3번째 요청이 429가 나는지 검증한다. 월요일이
+  `STATUS_DAY_COLS[0]=2`(0-idx) → C열이라 사용 셀(`{번호}!C20`)과
+  잔여 셀(`{번호}!C{leftRow+1}`=40)이 둘 다 "!C"로 시작해 처음엔
+  행 번호 없이 구분하려다 mock이 꼬였다 — 행 번호까지 포함해 구분해
+  해결.
+- `test/leave-proof.test.js`(21개) — `handleGetReasonLeaveProof`/
+  `handleSetReasonLeaveProof`/`handleCancelReasonLeaveProof`/
+  `handleAdminLeaveProofList`/`handleAdminLeaveProofFile`/
+  `handleAdminLeaveProofDecide`. 봇 URL을 설정하지 않으면
+  `proxyToBotDashboard`가 fetch 없이 즉시 `null`을 반환하는 성질
+  (BotAdminConfigDO, 실제 workerd)을 활용해 "봇 오프라인" 경로
+  (LeaveQueue DO 큐 경유)를 mock 없이 자연스럽게 검증했다. 관리자
+  승인 테스트에서 `getSheetValues(...).catch(() => [])`가 mock
+  실패를 조용히 삼켜 range 오타(`!C20` vs 실제 `!C21`,
+  `ROW_REASON_LEAVE_USE+1`)를 우연히 통과시킬 뻔한 것을 write
+  호출 내용을 직접 로그로 찍어 발견·수정했다.
+
+index.js 6,596→5,780줄(약 816줄 감소, 시작(10,984줄) 대비 총
+**47.4% 감소**). `npm test` 기준 327개 테스트 전부 통과(10차 종료
+시점 294개 + 신규 33개). 배포 후 curl로 `/leave-apply`,
+`/admin/leave-apply`, `/reason-leave-proof`, `/reason-leave-proof/cancel`,
+`/admin/leave-proof`, `/admin/leave-proof/file`,
+`/admin/leave-proof/decide` 전부 정상 401/403 응답 확인(curl에
+한글 쿼리 파라미터를 직접 넘기면 URL 인코딩이 깨져 400이 나는
+현상을 발견 — `day=%EC%9B%94`로 인코딩해 재확인하니 정상 401,
+코드 자체는 문제없었음), `wrangler tail`로 실제 요청과 봇 트래픽이
+예외 없이("Ok") 처리됨을 확인했다.
+
 ## 다음 단계
 
 사이클 판정, 예치금/강제퇴실/정산 판정, 회원 관리/알림·푸시의
 순수 함수, 웹푸시 암호화, 벌금/납부 처리, 회원 관리(CRUD/번호
-재배치), 퇴실 처리, 사이클 판정 정리, 알림/푸시 도메인까지 총 10차에
-걸쳐 분리했다. `resolveMemberNumber`/`findMemberNumberByEmail`(15곳
-이상 공유 인증 유틸)은 계속 제외 대상으로 남아있다. 9차 조사에서
-파악한 다음 후보 중 남은 것은 규모 순으로: (1) 사유반휴/일반반휴
-도메인(약 760줄, `hasQueuedReasonLeaveProof`를 `buildPersonalStatus`
-가 역참조하는 방향인지 사전 확인 필요), (2) 제보/캡처 도메인(약
-2,274줄, 가장 크지만 `applyOutputPenalty`/`handleAdminCaptureDecide`
-같은 복잡한 분기 함수가 많아 8차형 사고 위험이 가장 큼 — 옮길 때
-원본 diff 대조를 원칙으로 삼는다). `buildPersonalStatus`/
-`buildRosterStatus`(여러 도메인이 공유하는 대형 집계 함수)는 계속
+재배치), 퇴실 처리, 사이클 판정 정리, 알림/푸시 도메인, 사유반휴/
+일반반휴 도메인까지 총 11차에 걸쳐 분리했다. `resolveMemberNumber`
+/`findMemberNumberByEmail`(15곳 이상 공유 인증 유틸)은 계속 제외
+대상으로 남아있다. 남은 최대 후보는 제보/캡처 도메인(약 2,274줄) —
+`applyOutputPenalty`/`handleAdminCaptureDecide` 같은 복잡한 분기
+함수가 많아 지금까지 중 가장 큰 사고 위험을 안고 있다. `buildPersonalStatus`
+/`buildRosterStatus`(여러 도메인이 공유하는 대형 집계 함수)는 계속
 index.js 잔류 + export 확대가 안전해 보이며, 별도 도메인으로 뺄지는
-이후 재검토한다. 테스트 없이 구조 변경부터 시작하지 않는다는 원칙과,
-이동 직후 원본과 diff 대조하는 절차(8차부터 도입) 둘 다 유지한다.
-10차에서 새로 얻은 교훈 — DO(Durable Object) 상태는 전역 싱글턴이라
-`GOOGLE_SHEET_FILE_ID`를 바꿔도 격리되지 않으므로, DO 키(회원번호,
-이메일 등)로 상태를 저장하는 함수를 테스트할 땐 케이스마다 그 키
-자체를 다르게 줘야 한다 — 이 원칙도 다음 차수부터 명시적으로 적용한다.
+이후 재검토한다. 테스트 없이 구조 변경부터 시작하지 않는다는 원칙,
+이동 직후 원본과 diff 대조하는 절차(8차부터), DO 키 기준 테스트
+격리(10차부터) 모두 유지한다. **11차에서 새로 얻은 교훈** — 새 파일이
+index.js를 import하면서 동시에 index.js가 그 파일을 import하는
+순환에서, 함수 선언(호이스팅되어 안전)과 달리 **모듈 최상위의 `const`
+객체 리터럴이 다른 모듈의 값을 즉시 참조하면 TDZ로 깨질 수 있다** —
+다음 차수에서 새 도메인 파일을 만들 때 최상위 상수가 index.js의
+값을 참조한다면 함수로 감싸 지연 평가하거나, 참조하는 값 자체를
+새 파일에 하드코딩(원본과 동일한 값이면 로직 변경 아님)하는 것을
+우선 검토한다.
