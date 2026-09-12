@@ -237,22 +237,16 @@ export function CycleSwitcher({
               ? `${formatDate(browsedSlot.weekOf)} ~ ${formatDate(browsedSlot.weekTo)}`
               : "데이터 없음"}
         </span>
-        {/* 🔧 [사용자 지시] "벌금 납부 처리 사이클 오인 방지" — 이 사이클에
-            미납 기록이 있음을 알리는 점. 건수·툴팁 없이 존재만 표시한다. */}
-        {browsedHasUnpaid && (
+        {/* 🔧 [사용자 지시] "벌금 납부 처리/예치금 재납 대상 사이클 오인
+            방지" — 애초에 무엇이 남았는지 알려주는 게 목적이 아니라 "이
+            사이클에 처리 안 된 게 남아있으니 확인해보라"는 단일 유도
+            신호라, 미납/forced를 굳이 색으로 구분하지 않고 점 하나로
+            합친다(사용자 지적: "어차피 확인하려면 전환해서 봐야 하니
+            구분할 실익이 없다"). 건수·툴팁 없이 존재만 표시한다. */}
+        {(browsedHasUnpaid || browsedHasForced) && (
           <span
-            aria-label="미납 기록 있음"
+            aria-label="확인이 필요한 처리 대상 있음"
             className="size-1.5 shrink-0 rounded-full bg-destructive sm:size-2"
-          />
-        )}
-        {/* 🔧 [사용자 지시] "예치금 재납 대상 사이클 오인 방지" — 이 사이클에
-            forced(페널티 2회 이상) 후보가 있음을 알리는 점. 미납 점과 같은
-            자리에 함께 뜰 수 있어 색을 구분한다(미납=destructive/빨강,
-            forced=amber/주황). */}
-        {browsedHasForced && (
-          <span
-            aria-label="예치금 재납 대상 있음"
-            className="size-1.5 shrink-0 rounded-full bg-amber-500 sm:size-2"
           />
         )}
       </div>
