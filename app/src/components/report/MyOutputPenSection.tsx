@@ -185,9 +185,10 @@ function groupByDay(items: MergedItem[]) {
     if (existing) existing.push(item);
     else map.set(key, [item]);
   }
-  // 최근 날짜가 위로 오도록 내림차순 정렬.
+  // 🔧 [사용자 지시] "12일이 9일보다 위에 있어" — 날짜 그룹은 오래된
+  // 날짜가 위로 오도록 오름차순 정렬(그룹 내부 항목의 정렬 방향과 통일).
   return Array.from(map.entries())
-    .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
     .map(([dateKey, groupItems]) => ({ dateKey, items: groupItems }));
 }
 
