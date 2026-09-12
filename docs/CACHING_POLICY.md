@@ -2157,7 +2157,61 @@ notices/reportCooldowns와 동일한 순수 메모리 배열 push+filter 패턴�
 했다 — 이런 리팩터링 후에는 grep으로 옛 변수명이 완전히 사라졌는지
 재확인하는 습관이 필요함을 재확인.
 
-## 48. 관련 문서
+## 48. 남은 6개 KV 자료구조를 DO로 이전 — exitResult/notifyPref/statusMessage/PUSH구독/botUrl/adminOAuth (2026-09-12)
+
+§46/§47에 이어 "KV로 구현된 나머지 것도 DO로 전환 가능한가"를 재검토했다.
+사용자 지시: "실익이 없더라도 기능적으로 차이 없이 변환 가능한 구조라면
+모두 변경하도록 해." — 남은 6개를 3개 DO로 그룹핑해 전환했다.
+
+**§47까지의 5개와의 중요한 차이**: 이번 6개는 이미 실사용 데이터가
+있었다(API 실측: 상태 메시지, 실제 등록된 푸시 구독 기기 등). 사용자가
+"기존 값이 있어도 모두 날려버려. 상관없어"라고 명시적으로 확인해,
+**백필 마이그레이션 없이** 그대로 전환했다 — 배포 후 알림 설정/상태
+메시지/푸시 구독이 초기화됨.
+
+**`MemberSettingsDO`**(신설, 영속): `notifyPref:`, `statusMessage:`,
+`exitResult:` 통합. storage 키 prefix(`pref:`/`status:`/`exit:`)로
+구분. 퇴실자 전원을 순회하며 개별 get을 병렬 호출하던 3곳
+(`handleAdminExitedMembers`/`handleAdminFinesAdminForcedCount`/
+`handleAdminBlacklist`)을 `GET /exit/list` 1회 호출로 대체했다(왕복
+N회→1회). `handleAdminExitBlacklist`(blacklist 필드만 뒤늦게 덮어쓰던
+get+merge+put)는 `/exit/patch`로 옮겨 DO 안에서 원자적으로 처리.
+
+**`PushSubscriptionsDO`**(신설, 영속): `PUSH_SUBS_KV` 전체(`sub:
+{email}:{hash}` 원본 + `subIndex:{email}` 인덱스). "인덱스 없으면
+list()로 자체복구"하던 마이그레이션 폴백은 DO가 최초 배포 시
+storage가 텅 빈 채로 시작하므로 완전히 불필요해져 삭제했다.
+`withMemberLock(env, "push:${email}", ...)`(구독/토글/이름변경/삭제
+레이스 방지용)도 DO의 직렬 처리로 구조적으로 불필요해져 제거 —
+원본 저장+인덱스 갱신을 `/subscribe` 한 번의 DO fetch로 원자적 처리.
+발송 실패(404/410) 시 정리도 개별 delete+개별 인덱스 put에서
+`/device/prune` 배치 처리로 축소.
+
+**`BotAdminConfigDO`**(신설, 영속): `bot:dashboard_url` +
+`admin_oauth:refresh_token`. `botUrl`은 쓰기는 드물지만 거의 모든 봇
+프록시 호출(`proxyToBotDashboard`)마다 읽혀 "쓰기 절감"이라는 DO 전환
+취지에는 안 맞았지만, 실측상 DO fetch(수 ms) 지연이
+`proxyToBotDashboard` 자체(봇 서버까지 수백ms~수초)에 비해 무시할
+수준이라 일관성을 위해 함께 전환했다(사용자 확인).
+
+**wrangler.toml**: `MEMBER_SETTINGS_DO`/`PUSH_SUBSCRIPTIONS_DO`/
+`BOT_ADMIN_CONFIG_DO` 바인딩 + `tag = "v5"` 마이그레이션 추가.
+
+**검증**: Playwright로 프로덕션에서 알림 설정 조회(초기값 확인)→토글→
+재조회, 상태 메시지 설정→삭제→재조회, 푸시 구독 등록→toggle→rename→
+remove 전체 사이클, 퇴실 관련 3개 엔드포인트(모두 200, 예외 없음)를
+전부 실제 왕복 검증했다. `wrangler tail`로 `do/status`,
+`do/status?memberNumber=1` 등이 예외 없이 호출됨을 확인. `/admin/usage`
+로 이 6개 관련 KV put/delete가 배포 후 전혀 발생하지 않음을 확인(새로
+찍힌 항목은 전부 `sheetCache:` 계열뿐).
+
+**후속 조치 필요**: `bot:dashboard_url`이 초기화되어 관리자 화면의
+봇 상태 조회가 실제 상태와 무관하게 "오프라인"으로 보인다 — 봇은
+프로세스 시작 시점에만 URL을 재등록하므로, 로컬 PC에서 봇
+(`study_manager_260418.py`)을 재시작해야 정상화된다(사용자가 직접
+재시작하기로 확인, 코드 변경 불필요).
+
+## 49. 관련 문서
 
 - `docs/WEB_ADMIN.md` §3.1 — `applyOutputPenalty`/`applyReportMerit`/
   `applyTimeDeduction`가 실제로 호출되는 관리자 제보 처리 화면·플로우.

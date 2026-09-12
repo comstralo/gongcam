@@ -30,6 +30,18 @@ class_name = "LeaveQueue"
 name = "REPORT_VOTE_DO"
 class_name = "ReportVote"
 
+[[durable_objects.bindings]]
+name = "MEMBER_SETTINGS_DO"
+class_name = "MemberSettingsDO"
+
+[[durable_objects.bindings]]
+name = "PUSH_SUBSCRIPTIONS_DO"
+class_name = "PushSubscriptionsDO"
+
+[[durable_objects.bindings]]
+name = "BOT_ADMIN_CONFIG_DO"
+class_name = "BotAdminConfigDO"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["ParticipantsRoster"]
@@ -45,6 +57,10 @@ new_sqlite_classes = ["ReportQueue"]
 [[migrations]]
 tag = "v4"
 new_sqlite_classes = ["LeaveQueue", "ReportVote"]
+
+[[migrations]]
+tag = "v5"
+new_sqlite_classes = ["MemberSettingsDO", "PushSubscriptionsDO", "BotAdminConfigDO"]
 
 # 90분 자동 위반인정(TARGET_RESPONSE_TIMEOUT_MS, index.js)이 관리자/대상자가
 # 화면을 열어야만 지연 평가되던 것을 보완 — 5분마다 만료된 항목을 스스로

@@ -209,8 +209,9 @@ function base64urlToBytesStd(std) {
 // 개인 Gmail 정책상 서비스 계정(파일 소유자가 아님)은 다른 사용자를 편집자로
 // 초대(공유)할 권한이 없다("Sorry, you do not have permission to share").
 // 그래서 시트 소유자(관리자)가 1회 OAuth 동의를 거쳐 발급한 refresh_token을
-// KV에 보관해두고, Drive 편집자 추가가 필요할 때만 그 토큰으로 위임 호출한다.
-const ADMIN_OAUTH_KV_KEY = "admin_oauth:refresh_token";
+// 보관해두고, Drive 편집자 추가가 필요할 때만 그 토큰으로 위임 호출한다.
+// 🔧 [KV → DO 이전, 2026-09-12] §49 — BotAdminConfigDO로 이전.
+const ADMIN_OAUTH_CONFIG_KEY = "adminOAuthRefreshToken";
 const ADMIN_OAUTH_REDIRECT_PATH = "/oauth/callback";
 const ADMIN_OAUTH_SCOPE = "https://www.googleapis.com/auth/drive";
 
@@ -246,7 +247,8 @@ async function getAdminAccessToken(env) {
   if (cachedAdminAccessToken && Date.now() - cachedAdminAccessTokenAt < ACCESS_TOKEN_CACHE_MS) {
     return cachedAdminAccessToken;
   }
-  const refreshToken = await env.REPORTS_KV.get(ADMIN_OAUTH_KV_KEY);
+  const refreshTokenRes = await getBotAdminConfigStub(env).fetch(`https://do/config?key=${ADMIN_OAUTH_CONFIG_KEY}`);
+  const { value: refreshToken } = await refreshTokenRes.json();
   if (!refreshToken) {
     throw new Error("관리자 위임 인증이 아직 설정되지 않았습니다. /oauth/authorize로 먼저 연동해주세요.");
   }
@@ -3094,10 +3096,14 @@ async function handleRequeueReport(req, env, origin) {
 // --- 도움봇(study_manager_260418.py) 원격 상태/명령 ---
 // 봇은 로컬 PC에서 Cloudflare Tunnel(cloudflared)로 자신의 로컬 상태
 // 서버를 외부에 노출한다. 이 Worker는 봇이 (재)시작될 때 등록해온
-// Tunnel URL을 KV에 저장해두고, 관리자가 상태를 조회하거나 재시작을
+// Tunnel URL을 저장해두고, 관리자가 상태를 조회하거나 재시작을
 // 누를 때만 그 URL로 즉시 요청을 프록시한다 — 주기적 폴링이 없으므로
-// KV 쓰기가 봇이 (재)시작될 때만 발생해 무료 티어 쓰기 한도에 안전하다.
-const BOT_URL_KV_KEY = "bot:dashboard_url";
+// 쓰기가 봇이 (재)시작될 때만 발생해 무료 티어 쓰기 한도에 안전하다.
+// 🔧 [KV → DO 이전, 2026-09-12] §49 — BotAdminConfigDO로 이전. 읽기는
+// 거의 모든 봇 프록시 호출마다 발생하지만, 실측상 DO fetch(수 ms) 지연은
+// proxyToBotDashboard 자체(봇 서버까지 수백ms~수초)에 비해 무시할
+// 수준이라 일관성을 위해 함께 옮겼다(사용자 확인).
+const BOT_URL_CONFIG_KEY = "botUrl";
 const BOT_PROXY_TIMEOUT_MS = 8000;
 
 async function handleBotRegisterUrl(req, env, origin) {
@@ -3111,7 +3117,11 @@ async function handleBotRegisterUrl(req, env, origin) {
     return json({ error: "url이 필요합니다." }, 400, origin);
   }
 
-  await env.REPORTS_KV.put(BOT_URL_KV_KEY, body.url);
+  await getBotAdminConfigStub(env).fetch("https://do/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key: BOT_URL_CONFIG_KEY, value: body.url }),
+  });
   // 봇이 방금 도달 가능해진 시점이므로, 오프라인 동안 쌓인 사유반휴 신청
   // 대기열을 바로 흘려보낸다.
   await flushQueuedReasonLeaveProofs(env);
@@ -3119,7 +3129,8 @@ async function handleBotRegisterUrl(req, env, origin) {
 }
 
 async function proxyToBotDashboard(env, path, options = {}) {
-  const url = await env.REPORTS_KV.get(BOT_URL_KV_KEY);
+  const urlRes = await getBotAdminConfigStub(env).fetch(`https://do/config?key=${BOT_URL_CONFIG_KEY}`);
+  const { value: url } = await urlRes.json();
   if (!url) return null;
 
   // 🔧 [사유반휴 대기 조회 지연 방지] buildPersonalStatus가 매 상태 조회마다
@@ -3420,7 +3431,8 @@ async function handleAdminBotCommand(req, env, origin) {
   // 없음"(502)과 구분하지 못하고 항상 502로만 응답했다. 관리자에게 정확한
   // 사유를 보여주기 위해 이 호출만은 proxyToBotDashboard를 거치지 않고
   // 직접 fetch해 상태 코드를 그대로 확인한다.
-  const botUrl = await env.REPORTS_KV.get(BOT_URL_KV_KEY);
+  const botUrlRes = await getBotAdminConfigStub(env).fetch(`https://do/config?key=${BOT_URL_CONFIG_KEY}`);
+  const { value: botUrl } = await botUrlRes.json();
   if (!botUrl) {
     return json({ error: "봇에 연결할 수 없습니다. 봇이 꺼져 있거나 Tunnel이 끊겼을 수 있습니다." }, 502, origin);
   }
@@ -3451,7 +3463,8 @@ async function handleAdminBotCommand(req, env, origin) {
 // 제보 캡처 파일(이미지/영상)은 바이너리이므로, 파싱하지 않고 Response를
 // 그대로 넘기는 버전이 별도로 필요하다.
 async function proxyToBotDashboardRaw(env, path) {
-  const url = await env.REPORTS_KV.get(BOT_URL_KV_KEY);
+  const urlRes = await getBotAdminConfigStub(env).fetch(`https://do/config?key=${BOT_URL_CONFIG_KEY}`);
+  const { value: url } = await urlRes.json();
   if (!url) return null;
 
   const controller = new AbortController();
@@ -6177,10 +6190,12 @@ async function handleAdminMembers(req, env, origin, url) {
 }
 
 // "퇴실 스터디원 목록" 전용 — 원본 스프레드시트에 남은 퇴실자 백업 탭
-// 각각에, 확정 처리 시점에 저장해둔 결과(EXIT_RESULT_KV_PREFIX)를 함께
-// 붙여 반환한다. 이 기능 도입(2026-09) 이전에 처리된 퇴실자는 그 시점에
-// 저장된 값이 없으므로 result: null로 내려간다 — 프론트가 "처리 결과를
-// 조회할 수 없습니다(이 기능 도입 이전 처리)"로 안내한다.
+// 각각에, 확정 처리 시점에 저장해둔 결과(MemberSettingsDO의 exitResult)를
+// 함께 붙여 반환한다. 이 기능 도입(2026-09) 이전에 처리된 퇴실자는 그
+// 시점에 저장된 값이 없으므로 result: null로 내려간다 — 프론트가 "처리
+// 결과를 조회할 수 없습니다(이 기능 도입 이전 처리)"로 안내한다.
+// 🔧 [KV → DO 이전, 2026-09-12] §49 — 퇴실자 전원에 대해 개별 get을
+// 병렬 호출하던 것을 /exit/list 1회 호출로 대체(왕복 횟수 N회→1회).
 async function handleAdminExitedMembers(req, env, origin) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
@@ -6190,20 +6205,13 @@ async function handleAdminExitedMembers(req, env, origin) {
     const fileId = env.GOOGLE_SHEET_FILE_ID;
     const exitedMembers = await listExitedMemberEntries(env, accessToken, fileId);
 
-    const members = await Promise.all(
-      exitedMembers.map(async (m) => {
-        const raw = await env.REPORTS_KV.get(`${EXIT_RESULT_KV_PREFIX}${m.name}`).catch(() => null);
-        let result = null;
-        if (raw) {
-          try {
-            result = JSON.parse(raw);
-          } catch {
-            result = null;
-          }
-        }
-        return { number: m.number, name: m.name, result };
-      })
-    );
+    const resultsRes = await getMemberSettingsStub(env).fetch("https://do/exit/list");
+    const { items: allResults } = await resultsRes.json();
+    const members = exitedMembers.map((m) => ({
+      number: m.number,
+      name: m.name,
+      result: allResults[m.name] || null,
+    }));
 
     return json({ members }, 200, origin);
   } catch (err) {
@@ -6225,6 +6233,7 @@ const FINE_UNPAID_ADMIN_FORCED_REASON_LABEL = "직권 사유: 벌금 시한 내 
 // 확정 시점 스냅샷)을 그대로 credit한다 — 한 사람이 여러 요일에 미납
 // 이었으면 각 요일 그룹에 1건씩 더해진다(각 요일 그룹의 "미납" 목록에
 // 실제로 그 사람이 있었으므로).
+// 🔧 [KV → DO 이전, 2026-09-12] §49 — /exit/list 1회 호출로 대체.
 async function handleAdminFinesAdminForcedCount(req, env, origin) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
@@ -6234,27 +6243,22 @@ async function handleAdminFinesAdminForcedCount(req, env, origin) {
     const fileId = env.GOOGLE_SHEET_FILE_ID;
     const exitedMembers = await listExitedMemberEntries(env, accessToken, fileId);
 
+    const resultsRes = await getMemberSettingsStub(env).fetch("https://do/exit/list");
+    const { items: allResults } = await resultsRes.json();
+
     const counts = Object.fromEntries(STATUS_DAYS.map((d) => [d, 0]));
-    await Promise.all(
-      exitedMembers.map(async (m) => {
-        const raw = await env.REPORTS_KV.get(`${EXIT_RESULT_KV_PREFIX}${m.name}`).catch(() => null);
-        if (!raw) return; // 이 기능 도입 이전 처리된 퇴실자는 저장된 결과가 없다.
-        let result;
-        try {
-          result = JSON.parse(raw);
-        } catch {
-          return;
-        }
-        if (result.kind !== "admin_forced") return;
-        const isFineReason = (result.reasons || []).some(
-          (r) => r.code === "admin_reason" && r.label === FINE_UNPAID_ADMIN_FORCED_REASON_LABEL
-        );
-        if (!isFineReason) return;
-        for (const day of result.breakdown?.fineUnpaidDays || []) {
-          if (day in counts) counts[day] += 1;
-        }
-      })
-    );
+    for (const m of exitedMembers) {
+      const result = allResults[m.name];
+      if (!result) continue; // 이 기능 도입 이전 처리된 퇴실자는 저장된 결과가 없다.
+      if (result.kind !== "admin_forced") continue;
+      const isFineReason = (result.reasons || []).some(
+        (r) => r.code === "admin_reason" && r.label === FINE_UNPAID_ADMIN_FORCED_REASON_LABEL
+      );
+      if (!isFineReason) continue;
+      for (const day of result.breakdown?.fineUnpaidDays || []) {
+        if (day in counts) counts[day] += 1;
+      }
+    }
 
     return json({ counts }, 200, origin);
   } catch (err) {
@@ -6559,7 +6563,7 @@ async function listExitCandidates(env, accessToken, fileId) {
 // 시점부터 옛 퇴실자의 처리 결과가 새 회원 것으로 오인될 위험이 있다
 // ("데이터 (감사)" 스냅샷과 동일한 이유, appendDataAuditSnapshot 주석 참고).
 // TTL 없음(영구) — "최근 N분"짜리 알림이 아니라 회계상 보존해야 할 이력이다.
-const EXIT_RESULT_KV_PREFIX = "exitResult:";
+// 🔧 [KV → DO 이전, 2026-09-12] §49 — MemberSettingsDO로 이전했다.
 
 // 🔧 [KV → DO 이전, 2026-09-12] exitRequest:{번호}와 그 인덱스
 // (exitRequestIndex:current)를 LeaveQueue DO로 옮겼다(§47). 회원별
@@ -7526,7 +7530,7 @@ async function performExitReset(env, accessToken, fileId, member, resultMsg, kin
   await invalidateMemberSlotCache(env, member.number);
 
   // 🔧 [블랙리스트 계정 저장] 확정 처리(handleAdminExitConfirm)가 이 값을
-  // EXIT_RESULT_KV_PREFIX 결과에 함께 담아, "신규 스터디원 등록" 화면이
+  // exitResult 결과에 함께 담아, "신규 스터디원 등록" 화면이
   // 블랙리스트 등록된 계정 재입력을 감지할 수 있게 한다(사용자 지시) —
   // 초기화 직전에만 D열 원본을 읽을 수 있으므로 여기서 뽑아 반환해야 한다.
   return { googleAccount: memberEmail, gooroomeeAccount: parseGooroomeeAccount(memberEmailRaw) };
@@ -7678,29 +7682,35 @@ async function handleAdminExitConfirm(req, env, origin) {
       // 🔧 [퇴실 처리 결과 영구 보존] "퇴실 스터디원 목록"이 반환 예치금/
       // 차감 원인/처리 결과/퇴실유형을 구조화된 카드로 보여줄 수 있도록,
       // 백업 탭 이름을 키로 저장한다(재납은 다시 정상 명단으로 복귀하므로
-      // 대상 아님 — EXIT_RESULT_KV_PREFIX 주석 참고).
+      // 대상 아님). 🔧 [KV → DO 이전, 2026-09-12] §49 — MemberSettingsDO로 이전.
       const backupName = `${member.name} (퇴실)`;
-      await env.REPORTS_KV.put(
-        `${EXIT_RESULT_KV_PREFIX}${backupName}`,
-        JSON.stringify({
-          kind,
-          kindStr: result.kindStr,
-          refundAmount: result.refundAmount,
-          heldAmount: result.heldAmount,
-          fineAlreadyPayment: result.fineAlreadyPayment,
-          breakdown: result.breakdown,
-          reasons: result.reasons,
-          processedDate: result.processedDate,
-          blacklist: isBlacklisted,
-          // 🔧 [블랙리스트 계정 대조] "신규 스터디원 등록"이 이 계정으로
-          // 재등록을 시도하는지 감지할 수 있도록 함께 저장한다 — 블랙리스트
-          // 여부와 무관하게 항상 채워두면, 이후 "퇴실 스터디원 목록"에서
-          // 블랙리스트를 뒤늦게 켜도(§블랙리스트 토글) 계정 정보가 이미
-          // 있어 곧바로 대조 대상이 된다.
-          googleAccount: exitAccounts?.googleAccount || "",
-          gooroomeeAccount: exitAccounts?.gooroomeeAccount || "",
+      await getMemberSettingsStub(env)
+        .fetch("https://do/exit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: backupName,
+            entry: {
+              kind,
+              kindStr: result.kindStr,
+              refundAmount: result.refundAmount,
+              heldAmount: result.heldAmount,
+              fineAlreadyPayment: result.fineAlreadyPayment,
+              breakdown: result.breakdown,
+              reasons: result.reasons,
+              processedDate: result.processedDate,
+              blacklist: isBlacklisted,
+              // 🔧 [블랙리스트 계정 대조] "신규 스터디원 등록"이 이 계정으로
+              // 재등록을 시도하는지 감지할 수 있도록 함께 저장한다 — 블랙리스트
+              // 여부와 무관하게 항상 채워두면, 이후 "퇴실 스터디원 목록"에서
+              // 블랙리스트를 뒤늦게 켜도(§블랙리스트 토글) 계정 정보가 이미
+              // 있어 곧바로 대조 대상이 된다.
+              googleAccount: exitAccounts?.googleAccount || "",
+              gooroomeeAccount: exitAccounts?.gooroomeeAccount || "",
+            },
+          }),
         })
-      ).catch(() => {});
+        .catch(() => {});
     }
     // 실제 처리가 확정됐으니 "퇴실 예약" 신청 표시도 함께 정리한다 — 시트가
     // 이미 초기화된 회원 번호에 예약 뱃지만 남아있으면 혼동을 준다.
@@ -7719,10 +7729,11 @@ async function handleAdminExitConfirm(req, env, origin) {
 
 // "퇴실 스터디원 목록"의 블랙리스트 등록/해제 토글(§ExitedMemberList) — 확정
 // 처리 시점을 놓쳤거나(forced/settle은 애초에 체크박스가 없었음) 판단을 나중에
-// 바꾼 경우를 위해, 이미 저장된 EXIT_RESULT_KV_PREFIX 결과의 blacklist 필드만
-// 뒤늦게 덮어쓴다. 토글이 아니라 프론트가 계산한 목표값을 명시적으로 보내게
+// 바꾼 경우를 위해, 이미 저장된 exitResult의 blacklist 필드만 뒤늦게
+// 덮어쓴다. 토글이 아니라 프론트가 계산한 목표값을 명시적으로 보내게
 // 해(다음 상태를 서버가 추측하지 않음) 중복 클릭으로 두 번 반전되는 사고를
-// 피한다.
+// 피한다. 🔧 [KV → DO 이전, 2026-09-12] §49 — MemberSettingsDO의
+// /exit/patch가 get+merge+put을 원자적으로 처리한다.
 async function handleAdminExitBlacklist(req, env, origin) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
@@ -7733,22 +7744,18 @@ async function handleAdminExitBlacklist(req, env, origin) {
   }
 
   try {
-    const raw = await env.REPORTS_KV.get(`${EXIT_RESULT_KV_PREFIX}${name}`);
-    if (!raw) {
+    const res = await getMemberSettingsStub(env).fetch("https://do/exit/patch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, patch: { blacklist } }),
+    });
+    if (res.status === 404) {
       return json(
         { error: "처리 결과를 조회할 수 없는 회원은 블랙리스트를 변경할 수 없습니다(이 기능 도입 이전 처리)." },
         404,
         origin
       );
     }
-    let result;
-    try {
-      result = JSON.parse(raw);
-    } catch {
-      return json({ error: "저장된 처리 결과가 손상되어 있습니다." }, 500, origin);
-    }
-    result.blacklist = blacklist;
-    await env.REPORTS_KV.put(`${EXIT_RESULT_KV_PREFIX}${name}`, JSON.stringify(result));
     return json({ ok: true, name, blacklist }, 200, origin);
   } catch (err) {
     return json({ error: "블랙리스트 변경 실패: " + err.message }, 500, origin);
@@ -7762,6 +7769,7 @@ async function handleAdminExitBlacklist(req, env, origin) {
 // 도입(2026-09) 이전에 처리된 블랙리스트 등록자는 계정 정보가 저장되지
 // 않았으므로 대조 대상에 포함되지 않는다(§handleAdminExitBlacklist 주석 참고
 // — 처리 결과 자체가 없으면 blacklist를 뒤늦게 켤 수도 없다).
+// 🔧 [KV → DO 이전, 2026-09-12] §49 — /exit/list 1회 호출로 대체.
 async function handleAdminBlacklist(req, env, origin) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
@@ -7771,17 +7779,9 @@ async function handleAdminBlacklist(req, env, origin) {
     const fileId = env.GOOGLE_SHEET_FILE_ID;
     const exitedMembers = await listExitedMemberEntries(env, accessToken, fileId);
 
-    const results = await Promise.all(
-      exitedMembers.map(async (m) => {
-        const raw = await env.REPORTS_KV.get(`${EXIT_RESULT_KV_PREFIX}${m.name}`).catch(() => null);
-        if (!raw) return null;
-        try {
-          return { name: m.name, ...JSON.parse(raw) };
-        } catch {
-          return null;
-        }
-      })
-    );
+    const resultsRes = await getMemberSettingsStub(env).fetch("https://do/exit/list");
+    const { items: allResults } = await resultsRes.json();
+    const results = exitedMembers.map((m) => (allResults[m.name] ? { name: m.name, ...allResults[m.name] } : null));
 
     const entries = results
       .filter((r) => r && r.blacklist === true)
@@ -7833,7 +7833,11 @@ async function handleAdminOAuthCallback(req, env, origin, url) {
 
   try {
     const tokenData = await exchangeAdminOAuthCode(env, code);
-    await env.REPORTS_KV.put(ADMIN_OAUTH_KV_KEY, tokenData.refresh_token);
+    await getBotAdminConfigStub(env).fetch("https://do/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: ADMIN_OAUTH_CONFIG_KEY, value: tokenData.refresh_token }),
+    });
     return new Response(
       "관리자 위임 인증이 완료되었습니다. 이 탭을 닫고 앱으로 돌아가세요.",
       { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } }
@@ -9004,6 +9008,262 @@ function getReportVoteStub(env) {
   return env.REPORT_VOTE_DO.get(id);
 }
 
+// 🔧 [사용자 지시, 2026-09-12] "실익이 없더라도 기능적으로 차이 없이
+// 변환 가능한 구조라면 모두 변경하도록 해" — 회원 개인화 설정 3종
+// (notifyPref:/statusMessage:/exitResult:)을 한 DO로 통합 이전한다.
+// 셋 다 "회원 개인 데이터, 키가 회원번호/이름, TTL 없음, 트래픽 낮음
+// (회원 15명 규모)"이라는 동일 프로필이라 인스턴스를 나눌 실익이 없다.
+// 🔧 [사용자 지시] "기존 값이 있어도 모두 날려버려. 상관없어" — 기존
+// KV 데이터는 백필하지 않는다(배포 후 초기화됨).
+export class MemberSettingsDO {
+  constructor(state) {
+    this.state = state;
+    this.prefs = new Map(); // memberNumber -> {category: boolean}
+    this.statusMsgs = new Map(); // memberNumber -> string
+    this.exitResults = new Map(); // "{이름} (퇴실)" -> object
+    this.state.blockConcurrencyWhile(async () => {
+      const stored = await this.state.storage.list();
+      for (const [key, value] of stored) {
+        if (key.startsWith("pref:")) this.prefs.set(key.slice(5), value);
+        else if (key.startsWith("status:")) this.statusMsgs.set(key.slice(7), value);
+        else if (key.startsWith("exit:")) this.exitResults.set(key.slice(5), value);
+      }
+    });
+  }
+
+  async fetch(req) {
+    const url = new URL(req.url);
+
+    if (req.method === "GET" && url.pathname === "/pref") {
+      const memberNumber = url.searchParams.get("memberNumber") || "";
+      const prefs = this.prefs.get(memberNumber) || null;
+      return new Response(JSON.stringify({ prefs }), { headers: { "Content-Type": "application/json" } });
+    }
+    if (req.method === "POST" && url.pathname === "/pref") {
+      const { memberNumber, prefs } = await req.json();
+      this.prefs.set(memberNumber, prefs);
+      await this.state.storage.put(`pref:${memberNumber}`, prefs);
+      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+    }
+
+    if (req.method === "GET" && url.pathname === "/status") {
+      const memberNumber = url.searchParams.get("memberNumber") || "";
+      const message = this.statusMsgs.get(memberNumber) || "";
+      return new Response(JSON.stringify({ message }), { headers: { "Content-Type": "application/json" } });
+    }
+    if (req.method === "POST" && url.pathname === "/status") {
+      const { memberNumber, message } = await req.json();
+      this.statusMsgs.set(memberNumber, message);
+      await this.state.storage.put(`status:${memberNumber}`, message);
+      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+    }
+    if (req.method === "DELETE" && url.pathname === "/status") {
+      const memberNumber = url.searchParams.get("memberNumber") || "";
+      this.statusMsgs.delete(memberNumber);
+      await this.state.storage.delete(`status:${memberNumber}`);
+      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+    }
+
+    if (req.method === "GET" && url.pathname === "/exit") {
+      const name = url.searchParams.get("name") || "";
+      const entry = this.exitResults.get(name) || null;
+      return new Response(JSON.stringify({ entry }), { headers: { "Content-Type": "application/json" } });
+    }
+    if (req.method === "POST" && url.pathname === "/exit") {
+      const { name, entry } = await req.json();
+      this.exitResults.set(name, entry);
+      await this.state.storage.put(`exit:${name}`, entry);
+      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+    }
+    // 🔧 [원자적 patch] handleAdminExitBlacklist는 기존 레코드의 blacklist
+    // 필드만 뒤늦게 덮어쓴다 — DO 안에서 get+merge+put을 한 번에 처리해
+    // Worker에서 get→put 사이에 다른 요청이 끼어들 여지를 없앤다(DO가
+    // 요청을 직렬 처리하므로 자동으로 원자적).
+    if (req.method === "POST" && url.pathname === "/exit/patch") {
+      const { name, patch } = await req.json();
+      const existing = this.exitResults.get(name);
+      if (!existing) return new Response(JSON.stringify({ ok: false, notFound: true }), { status: 404, headers: { "Content-Type": "application/json" } });
+      const updated = { ...existing, ...patch };
+      this.exitResults.set(name, updated);
+      await this.state.storage.put(`exit:${name}`, updated);
+      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+    }
+    // 🔧 [순회 조회 최적화] 퇴실자 전원에 대해 개별 get을 병렬 호출하던
+    // 3곳(handleAdminExitedMemberList/handleAdminFinesAdminForcedCount/
+    // handleAdminBlacklist)을 이 엔드포인트 1회 호출로 대체한다.
+    if (req.method === "GET" && url.pathname === "/exit/list") {
+      const items = Object.fromEntries(this.exitResults);
+      return new Response(JSON.stringify({ items }), { headers: { "Content-Type": "application/json" } });
+    }
+
+    return new Response("method not allowed", { status: 405 });
+  }
+}
+
+function getMemberSettingsStub(env) {
+  const id = env.MEMBER_SETTINGS_DO.idFromName("member-settings");
+  return env.MEMBER_SETTINGS_DO.get(id);
+}
+
+// 🔧 [사용자 지시, 2026-09-12] PUSH_SUBS_KV 전체(구독 원본 sub:{email}:
+// {hash} + 인덱스 subIndex:{email})를 이 DO로 이전한다. 도메인이
+// 명확히 분리되고(웹 푸시) 항목이 상대적으로 크므로(endpoint+keys)
+// 단독 DO로 둔다. 회원 15명×기기 2~3대 규모면 전체가 수십 KB 수준이라
+// DO storage에 전혀 무리 없다.
+export class PushSubscriptionsDO {
+  constructor(state) {
+    this.state = state;
+    this.subs = new Map(); // "sub:{email}:{hash}" -> {email, subscription, savedAt, deviceLabel, enabled}
+    this.index = new Map(); // email -> [{id, deviceLabel, enabled, savedAt}, ...]
+    this.state.blockConcurrencyWhile(async () => {
+      const stored = await this.state.storage.list();
+      for (const [key, value] of stored) {
+        if (key.startsWith("sub:")) this.subs.set(key, value);
+        else if (key.startsWith("idx:")) this.index.set(key.slice(4), value);
+      }
+    });
+  }
+
+  async fetch(req) {
+    const url = new URL(req.url);
+
+    // 🔧 [원자적 구독] 원본 put과 인덱스 갱신을 하나의 DO 호출로 합쳐
+    // Worker의 withMemberLock(env, `push:${email}`, ...)을 대체한다 —
+    // DO가 요청을 직렬 처리해 같은 이메일의 동시 구독 요청도 레이스
+    // 없이 순서대로 처리된다.
+    if (req.method === "POST" && url.pathname === "/subscribe") {
+      const { email, id, deviceLabel, savedAt, subscription } = await req.json();
+      const subValue = { email, subscription, savedAt, deviceLabel, enabled: true };
+      this.subs.set(id, subValue);
+      const devices = this.index.get(email) || [];
+      const idx = devices.findIndex((d) => d.id === id);
+      const entry = { id, deviceLabel, enabled: true, savedAt };
+      if (idx >= 0) devices[idx] = entry;
+      else devices.push(entry);
+      this.index.set(email, devices);
+      await Promise.all([this.state.storage.put(id, subValue), this.state.storage.put(`idx:${email}`, devices)]);
+      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+    }
+
+    if (req.method === "GET" && url.pathname === "/index") {
+      const email = url.searchParams.get("email") || "";
+      const devices = this.index.get(email) || [];
+      return new Response(JSON.stringify({ devices }), { headers: { "Content-Type": "application/json" } });
+    }
+
+    if (req.method === "GET" && url.pathname === "/sub") {
+      const id = url.searchParams.get("id") || "";
+      const entry = this.subs.get(id) || null;
+      return new Response(JSON.stringify({ entry }), { headers: { "Content-Type": "application/json" } });
+    }
+
+    if (req.method === "POST" && url.pathname === "/device/toggle") {
+      const { id, enabled } = await req.json();
+      const sub = this.subs.get(id);
+      if (!sub) return new Response(JSON.stringify({ ok: false, notFound: true }), { status: 404, headers: { "Content-Type": "application/json" } });
+      sub.enabled = !!enabled;
+      const devices = this.index.get(sub.email) || [];
+      const entry = devices.find((d) => d.id === id);
+      if (entry) entry.enabled = !!enabled;
+      await Promise.all([this.state.storage.put(id, sub), this.state.storage.put(`idx:${sub.email}`, devices)]);
+      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+    }
+
+    if (req.method === "POST" && url.pathname === "/device/rename") {
+      const { id, deviceLabel } = await req.json();
+      const sub = this.subs.get(id);
+      if (!sub) return new Response(JSON.stringify({ ok: false, notFound: true }), { status: 404, headers: { "Content-Type": "application/json" } });
+      sub.deviceLabel = deviceLabel;
+      const devices = this.index.get(sub.email) || [];
+      const entry = devices.find((d) => d.id === id);
+      if (entry) entry.deviceLabel = deviceLabel;
+      await Promise.all([this.state.storage.put(id, sub), this.state.storage.put(`idx:${sub.email}`, devices)]);
+      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+    }
+
+    if (req.method === "POST" && url.pathname === "/device/remove") {
+      const { id } = await req.json();
+      const sub = this.subs.get(id);
+      this.subs.delete(id);
+      const puts = [this.state.storage.delete(id)];
+      if (sub) {
+        const devices = (this.index.get(sub.email) || []).filter((d) => d.id !== id);
+        this.index.set(sub.email, devices);
+        puts.push(this.state.storage.put(`idx:${sub.email}`, devices));
+      }
+      await Promise.all(puts);
+      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+    }
+
+    // 🔧 [배치 정리] 발송 실패(404/410)로 죽은 구독을 정리할 때, 기존엔
+    // 실패마다 개별 delete+개별 인덱스 put이었던 것을 배열로 한 번에
+    // 처리한다 — email별로 인덱스 put을 한 번만 하도록 묶는다.
+    if (req.method === "POST" && url.pathname === "/device/prune") {
+      const { ids } = await req.json();
+      const affectedEmails = new Set();
+      const puts = [];
+      for (const id of ids || []) {
+        const sub = this.subs.get(id);
+        this.subs.delete(id);
+        puts.push(this.state.storage.delete(id));
+        if (sub) affectedEmails.add(sub.email);
+      }
+      for (const email of affectedEmails) {
+        const devices = (this.index.get(email) || []).filter((d) => !(ids || []).includes(d.id));
+        this.index.set(email, devices);
+        puts.push(this.state.storage.put(`idx:${email}`, devices));
+      }
+      await Promise.all(puts);
+      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+    }
+
+    return new Response("method not allowed", { status: 405 });
+  }
+}
+
+function getPushSubscriptionsStub(env) {
+  const id = env.PUSH_SUBSCRIPTIONS_DO.idFromName("push-subscriptions");
+  return env.PUSH_SUBSCRIPTIONS_DO.get(id);
+}
+
+// 🔧 [사용자 지시, 2026-09-12] 봇 터널 URL(bot:dashboard_url)과 관리자
+// Google OAuth 리프레시 토큰(admin_oauth:refresh_token) — 둘 다 "설정값
+// 하나, 쓰기 극히 드묾"이라는 동일 프로필. botUrl은 읽기가 매우 잦지만
+// (거의 모든 봇 프록시 호출) 실측상 DO fetch(수 ms) 지연은
+// proxyToBotDashboard 자체(봇 서버까지 수백ms~수초)에 비해 무시할
+// 수준이라 일관성을 위해 함께 옮긴다(사용자 확인).
+export class BotAdminConfigDO {
+  constructor(state) {
+    this.state = state;
+    this.config = new Map(); // "botUrl" | "adminOAuthRefreshToken" -> string
+    this.state.blockConcurrencyWhile(async () => {
+      const stored = await this.state.storage.list();
+      for (const [key, value] of stored) this.config.set(key, value);
+    });
+  }
+
+  async fetch(req) {
+    const url = new URL(req.url);
+    if (req.method === "GET" && url.pathname === "/config") {
+      const key = url.searchParams.get("key") || "";
+      const value = this.config.get(key) || null;
+      return new Response(JSON.stringify({ value }), { headers: { "Content-Type": "application/json" } });
+    }
+    if (req.method === "POST" && url.pathname === "/config") {
+      const { key, value } = await req.json();
+      this.config.set(key, value);
+      await this.state.storage.put(key, value);
+      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+    }
+    return new Response("method not allowed", { status: 405 });
+  }
+}
+
+function getBotAdminConfigStub(env) {
+  const id = env.BOT_ADMIN_CONFIG_DO.idFromName("bot-admin-config");
+  return env.BOT_ADMIN_CONFIG_DO.get(id);
+}
+
 // _dailyUsageBuffer(index.js 상단)를 UsageStats DO로 배치 전송하고 비운다.
 // 5분 cron(scheduled)에서 정기적으로 호출되고, handleAdminUsageStatus에서도
 // 응답 직전에 한 번 더 호출된다(🔧 [사용자 지시] "5분마다 갱신 이거 조건
@@ -9447,20 +9707,15 @@ const NOTIFY_CATEGORIES = {
   exit_result: "퇴실/재납 처리 결과",
   direct_message: "다른 참여자의 알림(귓속말)",
 };
-const NOTIFY_PREF_KV_PREFIX = "notifyPref:";
-
 function defaultNotifyPrefs() {
   return Object.fromEntries(Object.keys(NOTIFY_CATEGORIES).map((k) => [k, true]));
 }
 
+// 🔧 [KV → DO 이전, 2026-09-12] §49 — MemberSettingsDO로 이전.
 async function loadNotifyPrefs(env, memberNumber) {
-  const raw = await env.REPORTS_KV.get(`${NOTIFY_PREF_KV_PREFIX}${memberNumber}`).catch(() => null);
-  if (!raw) return defaultNotifyPrefs();
-  try {
-    return { ...defaultNotifyPrefs(), ...JSON.parse(raw) };
-  } catch {
-    return defaultNotifyPrefs();
-  }
+  const res = await getMemberSettingsStub(env).fetch(`https://do/pref?memberNumber=${encodeURIComponent(memberNumber)}`);
+  const { prefs } = await res.json();
+  return prefs ? { ...defaultNotifyPrefs(), ...prefs } : defaultNotifyPrefs();
 }
 
 async function handleGetNotifyPrefs(req, env, origin) {
@@ -9495,7 +9750,11 @@ async function handleSetNotifyPrefs(req, env, origin) {
     const memberNumber = await resolveMemberNumber(env, accessToken, session);
     const prefs = await loadNotifyPrefs(env, memberNumber);
     prefs[category] = !!enabled;
-    await env.REPORTS_KV.put(`${NOTIFY_PREF_KV_PREFIX}${memberNumber}`, JSON.stringify(prefs));
+    await getMemberSettingsStub(env).fetch("https://do/pref", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ memberNumber, prefs }),
+    });
     return json({ ok: true, prefs }, 200, origin);
   } catch (err) {
     return json({ error: "알림 설정 저장 실패: " + err.message }, 500, origin);
@@ -9507,12 +9766,13 @@ async function handleSetNotifyPrefs(req, env, origin) {
 // 오해로 인한 제보를 줄인다(사용자 요청). notifyPref와 동일하게 시트를
 // 건드리지 않고 KV에 회원번호를 키로 저장한다 — 15개 개인 탭 + template에
 // 새 셀을 추가하는 것보다 리스크가 훨씬 낮다.
-const STATUS_MESSAGE_KV_PREFIX = "statusMessage:";
 const STATUS_MESSAGE_MAX_LENGTH = 60;
 
+// 🔧 [KV → DO 이전, 2026-09-12] §49 — MemberSettingsDO로 이전.
 async function loadStatusMessage(env, memberNumber) {
-  const raw = await env.REPORTS_KV.get(`${STATUS_MESSAGE_KV_PREFIX}${memberNumber}`).catch(() => null);
-  return raw || "";
+  const res = await getMemberSettingsStub(env).fetch(`https://do/status?memberNumber=${encodeURIComponent(memberNumber)}`);
+  const { message } = await res.json();
+  return message || "";
 }
 
 // 본인 상태 메시지 조회 — [설정] 페이지가 현재 값을 입력창에 미리 채우는 데 쓴다.
@@ -9548,10 +9808,15 @@ async function handleSetStatusMessage(req, env, origin) {
   try {
     const accessToken = await getServiceAccountAccessToken(env);
     const memberNumber = await resolveMemberNumber(env, accessToken, session);
+    const stub = getMemberSettingsStub(env);
     if (trimmed) {
-      await env.REPORTS_KV.put(`${STATUS_MESSAGE_KV_PREFIX}${memberNumber}`, trimmed);
+      await stub.fetch("https://do/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ memberNumber, message: trimmed }),
+      });
     } else {
-      await env.REPORTS_KV.delete(`${STATUS_MESSAGE_KV_PREFIX}${memberNumber}`);
+      await stub.fetch(`https://do/status?memberNumber=${encodeURIComponent(memberNumber)}`, { method: "DELETE" });
     }
     return json({ ok: true, message: trimmed }, 200, origin);
   } catch (err) {
@@ -9613,7 +9878,8 @@ async function handleAdminPushSendCategory(req, env, origin) {
       );
     }
 
-    // 🔧 [KV list() 제거, 2026-09-11] subIndex:{이메일}로 대체.
+    // 🔧 [KV → DO 이전, 2026-09-12] §49 — PushSubscriptionsDO로 이전.
+    const pushStub = getPushSubscriptionsStub(env);
     const devices = await getPushDeviceIndex(env, member.email);
     if (devices.length === 0) {
       return json({ error: `${member.name}님은 아직 알림을 켜지 않았습니다.` }, 404, origin);
@@ -9625,27 +9891,24 @@ async function handleAdminPushSendCategory(req, env, origin) {
     });
 
     let sent = 0;
-    let indexChanged = false;
+    const missingIds = [];
     for (const device of devices) {
       // enabled가 false로 명시된 기기(사용자가 껐거나, 중복이라 정리한
       // 기기)는 건너뛴다. 필드가 아예 없는 옛 구독(이 기능 추가 전 저장된
       // 것)은 기존처럼 발송 대상으로 취급한다.
       if (device.enabled === false) continue;
-      const raw = await env.PUSH_SUBS_KV.get(device.id);
-      if (!raw) {
-        device._missing = true;
-        indexChanged = true;
+      const subRes = await pushStub.fetch(`https://do/sub?id=${encodeURIComponent(device.id)}`);
+      const { entry: parsed } = await subRes.json();
+      if (!parsed) {
+        missingIds.push(device.id);
         continue;
       }
-      const parsed = JSON.parse(raw);
       if (parsed.enabled === false) continue;
       const { subscription } = parsed;
       try {
         const res = await sendWebPush(subscription, payload, env);
         if (res.status === 404 || res.status === 410) {
-          await env.PUSH_SUBS_KV.delete(device.id);
-          device._missing = true;
-          indexChanged = true;
+          missingIds.push(device.id);
         } else if (res.status >= 200 && res.status < 300) {
           sent += 1;
         }
@@ -9653,12 +9916,12 @@ async function handleAdminPushSendCategory(req, env, origin) {
         // 개별 구독 발송 실패는 건너뛰고 나머지 구독에는 계속 시도한다.
       }
     }
-    if (indexChanged) {
-      await putPushDeviceIndex(
-        env,
-        member.email,
-        devices.filter((d) => !d._missing)
-      );
+    if (missingIds.length > 0) {
+      await pushStub.fetch("https://do/device/prune", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: missingIds }),
+      });
     }
 
     if (sent === 0) return json({ error: "알림 발송에 실패했습니다." }, 502, origin);
@@ -9704,81 +9967,17 @@ function guessDeviceLabel(userAgent) {
 // "기기별로 켜고 끌 수 있게" 사용자가 직접 죽은/중복 기기를 정리할 수
 // 있는 구조로 바꾼다 — deviceLabel(자동 추정)과 enabled(기본 true)를
 // 함께 저장하고, 발송 로직은 enabled가 false인 구독을 건너뛴다.
-// 🔧 [KV list() 제거, 2026-09-11] 회원 1명의 기기 목록을 PUSH_SUBS_KV.list
-// ({prefix:"sub:{이메일}:"})로 훑던 4곳(handleListPushDevices/
-// handlePushSendToMember/handlePushSendTest/handlePushSubscriptionStatus)이
-// 전부 list()를 하루 1,000회 예산에서 소진했다. 회원별 인덱스
-// subIndex:{이메일}(그 사람 기기의 id/deviceLabel/enabled/savedAt 배열)
-// 하나로 대체한다 — 기기 등록/토글/이름변경/삭제(4곳) 시점에 이 인덱스도
-// 함께 갱신해 항상 최신을 유지한다.
-//
-// 마이그레이션: 이 기능 배포 전에 이미 등록된 구독은 인덱스가 없다 —
-// getPushDeviceIndex가 인덱스를 못 찾으면 그 회원에 한해 딱 한 번
-// list()로 실제 구독을 훑어 인덱스를 새로 만들어둔다(자체 치유). 그
-// 이후로는 그 회원에 대해 다시는 list()가 필요 없다.
+// 🔧 [KV → DO 이전, 2026-09-12] §49 — PushSubscriptionsDO로 이전했다.
+// 예전엔 인덱스(subIndex:{이메일})가 KV에 있어 "인덱스 없으면 list()로
+// 자체복구"하는 마이그레이션 폴백이 필요했는데, DO는 최초 배포 시
+// storage가 텅 빈 채로 시작하므로(이번 전환에서 기존 데이터를 날리기로
+// 확정) 그 폴백 자체가 통째로 불필요해져 삭제했다. "읽기→배열 수정→
+// 쓰기" 레이스를 막던 withMemberLock(env, `push:${email}`, ...)도 DO가
+// 요청을 직렬 처리해 구조적으로 불필요해져 제거했다.
 async function getPushDeviceIndex(env, email) {
-  const raw = await env.PUSH_SUBS_KV.get(`subIndex:${email}`);
-  if (raw) {
-    try {
-      return JSON.parse(raw);
-    } catch {
-      // 손상된 인덱스는 아래 자체 복구 경로로 넘어간다.
-    }
-  }
-  const list = await env.PUSH_SUBS_KV.list({ prefix: `sub:${email}:` });
-  const devices = [];
-  for (const key of list.keys) {
-    const raw2 = await env.PUSH_SUBS_KV.get(key.name);
-    if (!raw2) continue;
-    try {
-      const parsed = JSON.parse(raw2);
-      devices.push({
-        id: key.name,
-        deviceLabel: parsed.deviceLabel || "알 수 없는 기기",
-        enabled: parsed.enabled !== false,
-        savedAt: parsed.savedAt || null,
-      });
-    } catch {
-      // 손상된 항목은 건너뜀.
-    }
-  }
-  await putPushDeviceIndex(env, email, devices);
-  return devices;
-}
-
-async function putPushDeviceIndex(env, email, devices) {
-  await env.PUSH_SUBS_KV.put(`subIndex:${email}`, JSON.stringify(devices));
-}
-
-// 🔧 [2차 점검, 2026-09-11] getPushDeviceIndex/putPushDeviceIndex를 쓰는
-// "읽기→배열 수정→쓰기"가 전부 락 없는 read-modify-write였다 — 같은
-// 사람이 두 기기에서 거의 동시에 구독/토글/이름변경/삭제를 시도하면
-// 나중 쓰기가 먼저 반영을 덮어써 한쪽의 변경이 조용히 사라질 수 있었다.
-// 더 나쁜 건 getPushDeviceIndex의 list() 자체 복구 폴백이 "subIndex:{이메일}
-// 키가 아예 없을 때만" 동작해(9198행 근처), 첫 구독 이후로는 인덱스가
-// 항상 존재하므로 이후 손상은 다시는 스스로 복구되지 않는다는 점이었다
-// (경쟁 조건 재검증 완료). 실제 발송(handlePushSendTest/handlePushSendToMember)
-// 도 오직 이 인덱스만 순회하므로, 인덱스에서 빠진 기기는 원본(sub:{이메일}:
-// {endpoint})이 KV에 남아있어도 알림을 영영 못 받는다. 공용 헬퍼 두 개만
-// withMemberLock(env, `push:${email}`, ...)으로 감싸면 toggle/rename/remove
-// 호출부는 수정 없이 전부 보호된다 — "첫 구독"(handlePushSubscribe)의
-// 읽기→쓰기 구간도 같은 락 키로 별도 감싼다.
-async function updatePushDeviceIndexEntry(env, email, id, updater) {
-  await withMemberLock(env, `push:${email}`, async () => {
-    const devices = await getPushDeviceIndex(env, email);
-    const idx = devices.findIndex((d) => d.id === id);
-    if (idx === -1) return;
-    updater(devices[idx]);
-    await putPushDeviceIndex(env, email, devices);
-  });
-}
-
-async function removePushDeviceIndexEntry(env, email, id) {
-  await withMemberLock(env, `push:${email}`, async () => {
-    const devices = await getPushDeviceIndex(env, email);
-    const next = devices.filter((d) => d.id !== id);
-    if (next.length !== devices.length) await putPushDeviceIndex(env, email, next);
-  });
+  const res = await getPushSubscriptionsStub(env).fetch(`https://do/index?email=${encodeURIComponent(email)}`);
+  const { devices } = await res.json();
+  return devices || [];
 }
 
 async function handlePushSubscribe(req, env, origin) {
@@ -9795,35 +9994,23 @@ async function handlePushSubscribe(req, env, origin) {
   const key = `sub:${session.email}:${await sha256Hex(subscription.endpoint)}`;
   const deviceLabel = guessDeviceLabel(req.headers.get("User-Agent"));
   const savedAt = Date.now();
-  await env.PUSH_SUBS_KV.put(
-    key,
-    JSON.stringify({ email: session.email, subscription, savedAt, deviceLabel, enabled: true })
-  );
-  // 🔧 [KV list() 제거, 2026-09-11] subIndex:{이메일}도 함께 갱신한다 —
-  // 같은 기기(endpoint)가 재구독하면 같은 key로 덮어써지므로 교체, 새
-  // 기기면 추가한다.
-  // 🔧 [2차 점검, 2026-09-11] 같은 사람이 두 기기에서 거의 동시에 구독을
-  // 시도하면 이 읽기→쓰기가 락 없이 경쟁해 한쪽의 등록이 인덱스에서
-  // 누락될 수 있었다(§updatePushDeviceIndexEntry 주석 참고) — 다른 인덱스
-  // 헬퍼(toggle/rename/remove)와 동일한 `push:${email}` 락으로 감싼다.
-  await withMemberLock(env, `push:${session.email}`, async () => {
-    const devices = await getPushDeviceIndex(env, session.email);
-    const idx = devices.findIndex((d) => d.id === key);
-    const entry = { id: key, deviceLabel, enabled: true, savedAt };
-    if (idx >= 0) devices[idx] = entry;
-    else devices.push(entry);
-    await putPushDeviceIndex(env, session.email, devices);
+  // 🔧 [원자적 구독] 원본 저장 + 인덱스 갱신을 DO의 /subscribe 한 번으로
+  // 처리한다(§PushSubscriptionsDO 주석 참고) — 같은 기기(endpoint)가
+  // 재구독하면 같은 key로 덮어써지므로 교체, 새 기기면 추가.
+  await getPushSubscriptionsStub(env).fetch("https://do/subscribe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: session.email, id: key, deviceLabel, savedAt, subscription }),
   });
 
   // 🔧 [알림 켜기 직후 상태가 안 바뀌던 문제 수정] 프론트가 구독 등록
   // 직후 곧바로 /push/devices를 다시 조회해 "이 기기가 서버에도 있는지"
-  // 확인하는데, Cloudflare KV는 쓰기 직후 list 조회에 결과적 일관성
-  // (eventual consistency)만 보장해 방금 쓴 값이 곧바로 안 보일 수 있다
+  // 확인하는데, 이전엔 Cloudflare KV의 쓰기 직후 결과적 일관성
+  // (eventual consistency) 때문에 방금 쓴 값이 곧바로 안 보일 수 있었다
   // (사용자 지적: "알림이 켜졌습니다" 메시지는 뜨는데 상단 상태·버튼은
-  // 계속 "꺼짐"으로 남아있었음). KV를 다시 조회하지 않아도 되도록, 방금
-  // 저장한 key 이름과 라벨을 그대로 응답에 실어준다 — "알림 받는 기기"
-  // 목록도 같은 이유로 재조회 직후엔 비어 보일 수 있어, 프론트가 이 값을
-  // 받아 낙관적으로 목록에 바로 얹을 수 있게 한다.
+  // 계속 "꺼짐"으로 남아있었음). DO 전환 후에는 이 문제 자체가 없지만
+  // (같은 DO가 쓰기 직후 읽기에도 항상 최신값을 반환), 재조회 왕복을
+  // 아끼기 위해 응답에 방금 저장한 값을 그대로 실어주는 관행은 유지한다.
   return json({ ok: true, deviceId: key, deviceLabel }, 200, origin);
 }
 
@@ -9867,14 +10054,14 @@ async function handlePushDeviceToggle(req, env, origin) {
     return json({ error: "잘못된 기기 정보입니다." }, 400, origin);
   }
 
-  const raw = await env.PUSH_SUBS_KV.get(id);
-  if (!raw) return json({ error: "이미 삭제된 기기입니다." }, 404, origin);
-  const parsed = JSON.parse(raw);
-  parsed.enabled = !!enabled;
-  await env.PUSH_SUBS_KV.put(id, JSON.stringify(parsed));
-  await updatePushDeviceIndexEntry(env, session.email, id, (d) => {
-    d.enabled = !!enabled;
+  // 🔧 [KV → DO 이전, 2026-09-12] §49 — PushSubscriptionsDO의
+  // /device/toggle이 원본 수정 + 인덱스 갱신을 원자적으로 처리한다.
+  const res = await getPushSubscriptionsStub(env).fetch("https://do/device/toggle", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, enabled: !!enabled }),
   });
+  if (res.status === 404) return json({ error: "이미 삭제된 기기입니다." }, 404, origin);
   return json({ ok: true }, 200, origin);
 }
 
@@ -9896,14 +10083,14 @@ async function handlePushDeviceRename(req, env, origin) {
   const trimmed = (deviceLabel || "").trim().slice(0, 30);
   if (!trimmed) return json({ error: "기기 이름을 입력해주세요." }, 400, origin);
 
-  const raw = await env.PUSH_SUBS_KV.get(id);
-  if (!raw) return json({ error: "이미 삭제된 기기입니다." }, 404, origin);
-  const parsed = JSON.parse(raw);
-  parsed.deviceLabel = trimmed;
-  await env.PUSH_SUBS_KV.put(id, JSON.stringify(parsed));
-  await updatePushDeviceIndexEntry(env, session.email, id, (d) => {
-    d.deviceLabel = trimmed;
+  // 🔧 [KV → DO 이전, 2026-09-12] §49 — PushSubscriptionsDO의
+  // /device/rename이 원본 수정 + 인덱스 갱신을 원자적으로 처리한다.
+  const res = await getPushSubscriptionsStub(env).fetch("https://do/device/rename", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, deviceLabel: trimmed }),
   });
+  if (res.status === 404) return json({ error: "이미 삭제된 기기입니다." }, 404, origin);
   return json({ ok: true, deviceLabel: trimmed }, 200, origin);
 }
 
@@ -9920,16 +10107,25 @@ async function handlePushDeviceRemove(req, env, origin) {
     return json({ error: "잘못된 기기 정보입니다." }, 400, origin);
   }
 
-  await env.PUSH_SUBS_KV.delete(id);
-  await removePushDeviceIndexEntry(env, session.email, id);
+  // 🔧 [KV → DO 이전, 2026-09-12] §49 — PushSubscriptionsDO의
+  // /device/remove가 원본 삭제 + 인덱스 갱신을 원자적으로 처리한다.
+  await getPushSubscriptionsStub(env).fetch("https://do/device/remove", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
   return json({ ok: true }, 200, origin);
 }
 
+// 🔧 [KV → DO 이전, 2026-09-12] §49 — 발송 루프는 그대로 두되, 구독
+// 원본 조회는 /sub?id=로, 발송 실패(404/410) 정리는 루프 종료 후
+// /device/prune 한 번으로 배치 처리한다(기존엔 실패마다 개별
+// delete+개별 인덱스 put이었음).
 async function handlePushSendTest(req, env, origin) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
 
-  // 🔧 [KV list() 제거, 2026-09-11] subIndex:{이메일}로 대체.
+  const pushStub = getPushSubscriptionsStub(env);
   const devices = await getPushDeviceIndex(env, admin.email);
   if (devices.length === 0) {
     return json({ error: "등록된 구독이 없습니다. 먼저 알림을 켜주세요." }, 404, origin);
@@ -9941,36 +10137,33 @@ async function handlePushSendTest(req, env, origin) {
   });
 
   const results = [];
-  let indexChanged = false;
+  const missingIds = [];
   for (const device of devices) {
     if (device.enabled === false) continue;
-    const raw = await env.PUSH_SUBS_KV.get(device.id);
-    if (!raw) {
-      device._missing = true;
-      indexChanged = true;
+    const subRes = await pushStub.fetch(`https://do/sub?id=${encodeURIComponent(device.id)}`);
+    const { entry: parsed } = await subRes.json();
+    if (!parsed) {
+      missingIds.push(device.id);
       continue;
     }
-    const parsed = JSON.parse(raw);
     if (parsed.enabled === false) continue;
     const { subscription } = parsed;
     try {
       const res = await sendWebPush(subscription, payload, env);
       if (res.status === 404 || res.status === 410) {
-        await env.PUSH_SUBS_KV.delete(device.id);
-        device._missing = true;
-        indexChanged = true;
+        missingIds.push(device.id);
       }
       results.push({ key: device.id, status: res.status });
     } catch (err) {
       results.push({ key: device.id, error: err.message });
     }
   }
-  if (indexChanged) {
-    await putPushDeviceIndex(
-      env,
-      admin.email,
-      devices.filter((d) => !d._missing)
-    );
+  if (missingIds.length > 0) {
+    await pushStub.fetch("https://do/device/prune", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: missingIds }),
+    });
   }
 
   return json({ ok: true, results }, 200, origin);
@@ -10056,8 +10249,8 @@ async function handlePushSendToMember(req, env, origin) {
     const member = members.find((m) => m.name === nickname);
     if (!member) return json({ error: `"${nickname}" 이름과 일치하는 등록 회원을 찾을 수 없습니다.` }, 404, origin);
 
-    // 🔧 [KV list() 제거, 2026-09-11] subIndex:{이메일}(§getPushDeviceIndex)로
-    // 대체 — 자체 복구 경로가 있어 기존 구독도 그대로 동작한다.
+    // 🔧 [KV → DO 이전, 2026-09-12] §49 — PushSubscriptionsDO로 이전.
+    const pushStub = getPushSubscriptionsStub(env);
     const devices = await getPushDeviceIndex(env, member.email);
     if (devices.length === 0) {
       return json({ error: `${member.name}님은 아직 알림을 켜지 않았습니다.` }, 404, origin);
@@ -10069,26 +10262,23 @@ async function handlePushSendToMember(req, env, origin) {
     });
 
     let sent = 0;
-    let indexChanged = false;
+    const missingIds = [];
     for (const device of devices) {
       if (device.enabled === false) continue;
-      const raw = await env.PUSH_SUBS_KV.get(device.id);
-      if (!raw) {
+      const subRes = await pushStub.fetch(`https://do/sub?id=${encodeURIComponent(device.id)}`);
+      const { entry: parsed } = await subRes.json();
+      if (!parsed) {
         // 인덱스에는 있지만 실제 구독이 사라진 경우(드묾) — 다음 정리 때
         // 인덱스에서도 걸러지도록 표시만 해두고 계속 진행한다.
-        device._missing = true;
-        indexChanged = true;
+        missingIds.push(device.id);
         continue;
       }
-      const parsed = JSON.parse(raw);
       if (parsed.enabled === false) continue;
       const { subscription } = parsed;
       try {
         const res = await sendWebPush(subscription, payload, env);
         if (res.status === 404 || res.status === 410) {
-          await env.PUSH_SUBS_KV.delete(device.id);
-          device._missing = true;
-          indexChanged = true;
+          missingIds.push(device.id);
         } else if (res.status >= 200 && res.status < 300) {
           sent += 1;
         }
@@ -10096,12 +10286,12 @@ async function handlePushSendToMember(req, env, origin) {
         // 개별 구독 발송 실패는 건너뛰고 나머지 구독에는 계속 시도한다.
       }
     }
-    if (indexChanged) {
-      await putPushDeviceIndex(
-        env,
-        member.email,
-        devices.filter((d) => !d._missing)
-      );
+    if (missingIds.length > 0) {
+      await pushStub.fetch("https://do/device/prune", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: missingIds }),
+      });
     }
 
     if (sent === 0) return json({ error: "알림 발송에 실패했습니다." }, 502, origin);
