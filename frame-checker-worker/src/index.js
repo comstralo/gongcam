@@ -7200,7 +7200,30 @@ function requiresFineUnpaidRecheck(kind, forcedReason) {
   return kind === "admin_forced" && (forcedReason || "").trim() === FINE_UNPAID_ADMIN_FORCED_REASON;
 }
 
+// 🔧 [사용자 지시] "자유 사유 직권 P의 사이클 오인 잠재 위험 차단" —
+// admin_forced는 서버가 자동으로 사이클을 판단해줄 근거(exitDate 같은
+// 날짜 필드)가 없어 cycleFileId 파라미터를 그대로 신뢰한다. "벌금 시한
+// 내 미납자" 고정 사유는 requiresFineUnpaidRecheck가 실제 미납 여부로
+// 재검증하지만, 관리자가 자유 입력한 사유는 검증할 조건 자체가 없어
+// cycleFileId가 함께 오면 "리셋된 이번 주 원본을 지난 주 데이터인 것
+// 처럼 계산해 그 빈 스냅샷을 감사 기록으로 영구 저장"하는 사고가
+// 가능하다. 현재 두 UI 경로(MemberRosterList=자유사유+cycle 없음,
+// AdminMoneyTab=cycle 있음+고정사유)가 이 조합을 우연히 만들지 않을
+// 뿐, 서버 API 자체엔 막는 검증이 없었다 — 향후 UI가 바뀌거나 API를
+// 직접 호출하면 조용히 재현되므로, "이 조합 자체를 거부"하는 방식으로
+// 근본 차단한다(§CACHING_POLICY.md 참고 예정).
+function isUnguardedAdminForcedCycleCombo(kind, forcedReason, cycleFileId) {
+  return kind === "admin_forced" && !!cycleFileId && !requiresFineUnpaidRecheck(kind, forcedReason);
+}
+
 async function computeExitResult(env, accessToken, fileId, number, name, kind, forcedReason, cycleFileId, forceFresh) {
+  if (isUnguardedAdminForcedCycleCombo(kind, forcedReason, cycleFileId)) {
+    // 🔧 err.status를 얹어 호출부가 메시지 문자열을 파싱하지 않고도 400과
+    // 500(예상 못한 서버 오류)을 구분해 응답하게 한다.
+    const err = new Error("직권 퇴실은 자유 입력 사유로 지난 사이클(백업) 시트를 대상으로 처리할 수 없습니다 — 이번 주 시트 기준으로만 처리해주세요.");
+    err.status = 400;
+    throw err;
+  }
   const { sourceFileId, fromBackup } = await resolveExitSourceFileId(env, accessToken, fileId, number, kind, cycleFileId);
   if (forceFresh) await invalidateMemberSlotCache(env, number, sourceFileId);
   const status = await buildPersonalStatus(env, accessToken, sourceFileId, number, name);
@@ -7354,7 +7377,10 @@ async function handleAdminExitPreview(req, env, origin) {
     }
     return json({ ok: true, ...result }, 200, origin);
   } catch (err) {
-    return json({ error: "퇴실 처리 미리보기 실패: " + err.message }, 500, origin);
+    // 🔧 computeExitResult가 err.status(예: 400)를 얹어 던지면 그대로
+    // 따른다 — isUnguardedAdminForcedCycleCombo처럼 관리자의 잘못된 입력
+    // 조합을 안내하는 에러는 500(서버 오류)이 아니어야 한다.
+    return json({ error: "퇴실 처리 미리보기 실패: " + err.message }, err.status || 500, origin);
   }
 }
 
@@ -7769,7 +7795,10 @@ async function handleAdminExitConfirm(req, env, origin) {
 
     return json({ ok: true, number: member.number, name: member.name, resultMsg: result.resultMsg }, 200, origin);
   } catch (err) {
-    return json({ error: "퇴실 처리 확정 실패: " + err.message }, 500, origin);
+    // 🔧 computeExitResult가 err.status(예: 400)를 얹어 던지면 그대로
+    // 따른다 — isUnguardedAdminForcedCycleCombo처럼 관리자의 잘못된 입력
+    // 조합을 안내하는 에러는 500(서버 오류)이 아니어야 한다.
+    return json({ error: "퇴실 처리 확정 실패: " + err.message }, err.status || 500, origin);
   }
 }
 

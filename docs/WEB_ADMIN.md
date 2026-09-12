@@ -842,6 +842,30 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
 읽히지 않는 필드)를 타입만 맞춘 더미 값으로 채워 넘긴다. 자세한 내용은
 §4 참고.
 
+> 🔧 **[2026-09-12] `admin_forced` + 자유 사유 + 지난 사이클 조합을
+> 서버가 원천 거부한다.** `admin_forced`는 서버가 자동으로 사이클을
+> 판단해줄 근거(exitDate 같은 날짜 필드)가 없어 프론트가 넘기는
+> `cycleFileId`를 그대로 신뢰한다. `AdminMoneyTab`(§4.1)의 "벌금 시한
+> 내 미납자" 고정 사유는 §4.1 문서화된 `fineUnpaidRecheckFailed`로
+> 재검증되지만, `MemberRosterList`(§3.5)처럼 관리자가 **자유 입력한
+> 사유**는 검증할 조건 자체가 없어, 만약 `cycleFileId`까지 함께 온다면
+> "이미 리셋된 이번 주 원본을 지난 주 데이터인 것처럼 계산해 그 빈
+> 스냅샷을 감사 기록(백업 탭)으로 영구 저장"하는 사고가 가능했다.
+> 현재 두 UI 호출부는 이 조합을 우연히 만들지 않는다 — `MemberRosterList`
+> 는 자유 사유이지만 `cycleFileId`를 아예 전달하지 않고(항상 이번 주),
+> `AdminMoneyTab`은 `cycleFileId`를 전달하지만 사유가 고정 문구다.
+> 하지만 이건 "UI가 우연히 막고 있을 뿐 서버 검증은 없는" 상태였다
+> (사용자 지적) — 향후 UI가 두 조건을 동시에 쓰도록 바뀌거나 API를
+> 직접 호출하면 조용히 재현된다. `computeExitResult`
+> (`frame-checker-worker/src/index.js`)에 `isUnguardedAdminForcedCycleCombo`
+> 헬퍼를 추가해, `kind === "admin_forced"`이고 `cycleFileId`가 있으면서
+> `requiresFineUnpaidRecheck`(고정 사유 여부)가 거짓인 조합 자체를
+> `err.status = 400`과 함께 즉시 거부한다 — `handleAdminExitPreview`/
+> `handleAdminExitConfirm` 양쪽 다 이 에러를 그대로 `err.status`로
+> 응답해, 시트에 아무것도 쓰기 전에 막는다. 현재 실사용 경로에는 영향이
+> 없고(회귀 없음, Playwright로 세 조합 모두 확인), 향후 UI 확장이나
+> API 직접 호출로부터의 방어용 가드다.
+
 이 표에 따라 다이얼로그 내부는 세 가지 렌더 분기로 나뉜다(`isAdminForcedOnly`/
 `isSettleOnly`/그 외):
 
