@@ -678,22 +678,98 @@ index.js 7,338→7,202줄(약 136줄 감소, 시작(10,984줄) 대비 총 34.4%
 `wrangler tail`로 실제 요청과 봇 트래픽이 예외 없이("Ok") 처리됨을
 확인했다.
 
+## 구조 개선 10차 — 알림/푸시 도메인 통합 테스트 + 이동 (2026-09-13)
+
+9차 조사에서 예고한 대로 알림/푸시 도메인(카테고리별 알림 설정,
+상태 메시지, 웹 푸시 구독/기기 관리/발송, 참여자 간 알림)을
+`src/notify.js`로 옮겼다. 조사 결과 이 도메인은 다른 도메인 파일
+(fines.js/exit.js/deposit.js/cycle.js)을 전혀 실사용하지 않는 순환
+없는 잎(leaf) 도메인이었다 — members.js의 `listAllMembers`만
+소비하고, 나머지는 push-crypto.js/member-utils.js의 이미 export된
+순수 함수와 index.js의 범용 뼈대 유틸(verifySession/
+getServiceAccountAccessToken/requireAdmin/json/getMemberSettingsStub)
+만 가져다 쓴다.
+
+**착수 전 조사에서 발견한 사실**: 같은 구역(index.js 5988~6864행)에
+알림/푸시가 아닌 함수들이 섞여 있었다 — `checkReportCooldown`류(제보
+도메인), `handlePutParticipants`/`handleGetParticipants`(참여자 명단
+도메인), `requireAdmin`/`requireAdminOrCoReviewer`(인증, 이미
+export), `handleMigrateFixCollectMoneyFormula`(일회성 마이그레이션).
+이들은 라우팅 매핑을 먼저 확인해 이번 범위에서 제외했다 — 라우팅
+테이블(`/push/*`, `/notify-prefs`, `/status-message*`,
+`/member-status-message`, `/admin/push/*`)과 정확히 일치하는 15개
+handle*만 골라 옮겼다.
+
+**이동 대상(22개)**: `getPushSubscriptionsStub`, `checkNoticeCooldown`
+/`recordNotice`/`listRecentNotices`(ParticipantsRoster DO 위임),
+`loadNotifyPrefs`, `handleGetNotifyPrefs`, `handleSetNotifyPrefs`,
+`loadStatusMessage`, `handleGetStatusMessage`, `handleSetStatusMessage`,
+`handleGetMemberStatusMessage`, `handleAdminPushSendCategory`,
+`getPushDeviceIndex`, `handlePushSubscribe`, `sha256Hex`,
+`handleListPushDevices`, `handlePushDeviceToggle`,
+`handlePushDeviceRename`, `handlePushDeviceRemove`,
+`handlePushSendTest`, `handlePushSubscriptionStatus`,
+`handlePushSendToMember`, `handleListRecentNotices`.
+`NOTIFY_CATEGORIES`(member-utils.js의 `defaultNotifyPrefs`와
+`handleAdminMembersRoster`도 참조하는 범용 상수)와 `getRosterStub`
+(withMemberLock 등 여러 도메인이 공유하는 DO 스텁, export만 추가)은
+index.js에 남겼다.
+
+**8~9차 교훈 재적용**: 이동한 22개 함수 전부를 `git show
+HEAD:frame-checker-worker/src/index.js`로 꺼낸 원본과 자동 diff
+대조해 완전히 일치함을 확인했다(주석 차이도 없음) — 8차의
+`computeExitResult` 재구성 오류를 반복하지 않았다.
+
+**통합 테스트 3개 파일(39개 케이스)**:
+- `test/notify-prefs.test.js`(13개) — `handleGetNotifyPrefs`/
+  `handleSetNotifyPrefs`/`handleGetStatusMessage`/
+  `handleSetStatusMessage`/`handleGetMemberStatusMessage`.
+  MemberSettingsDO(실제 workerd)에 저장된 값을 검증한다.
+- `test/notify-push-devices.test.js`(13개) — `handlePushSubscribe`/
+  `handleListPushDevices`/`handlePushDeviceToggle`/
+  `handlePushDeviceRename`/`handlePushDeviceRemove`/
+  `handlePushSubscriptionStatus`. PushSubscriptionsDO(실제 workerd)에
+  직접 기록된 값을 검증한다.
+- `test/notify-push-send.test.js`(13개) — `handleAdminPushSendCategory`/
+  `handlePushSendTest`/`handlePushSendToMember`/
+  `handleListRecentNotices`. `sendWebPush`가 실제 fetch로
+  `subscription.endpoint`에 POST하므로 5차(push-crypto)와 동일하게
+  유효한 VAPID 키쌍을 env에 심어 암호화 경로까지 실제로 태운다.
+  **DO 상태 격리 실수를 발견·수정**: "카테고리를 꺼둔 회원" 테스트와
+  "정상 발송" 테스트가 우연히 같은 회원번호(1)·이메일
+  (`member@test.com`)을 써서, `loadNotifyPrefs`/`getPushDeviceIndex`
+  가 참조하는 MemberSettingsDO/PushSubscriptionsDO(둘 다 전역
+  싱글턴, `GOOGLE_SHEET_FILE_ID`를 바꿔도 격리되지 않음)의 상태가
+  테스트 간에 새어나가 "정상 발송" 테스트가 실패했다 — 각기 다른
+  회원번호/이메일을 쓰도록 고쳐 해결했다. 6~9차의 "fileId를 다르게
+  줘서 캐시 오염 방지" 원칙이 DO 키에는 적용되지 않는다는 걸 보여준
+  사례라 이후 차수에서도 주의할 지점이다.
+
+index.js 7,202→6,596줄(약 606줄 감소, 시작(10,984줄) 대비 총 **40.0%
+감소** — 처음으로 40%를 넘었다). `npm test` 기준 294개 테스트 전부
+통과(9차 종료 시점 255개 + 신규 39개). 배포 후 curl로 `/push/*`,
+`/notify-prefs`, `/status-message*`, `/member-status-message`,
+`/admin/push/*` 전부 정상 401/403 응답 확인, `wrangler tail`로 실제
+요청과 봇 트래픽이 예외 없이("Ok") 처리됨을 확인했다.
+
 ## 다음 단계
 
 사이클 판정, 예치금/강제퇴실/정산 판정, 회원 관리/알림·푸시의
 순수 함수, 웹푸시 암호화, 벌금/납부 처리, 회원 관리(CRUD/번호
-재배치), 퇴실 처리, 사이클 판정 정리까지 총 9차에 걸쳐 분리했다.
-`resolveMemberNumber`/`findMemberNumberByEmail`(15곳 이상 공유 인증
-유틸, `findMemberNumberByEmail`은 9차에서 export만 추가하고 잔류)은
-계속 제외 대상으로 남아있다. 9차 조사에서 파악한 다음 후보는 규모
-순으로: (1) 알림/푸시 핸들러 도메인(약 598줄, 순환 의존 없음, 위험
-낮음 — 다음 순번으로 유력), (2) 사유반휴/일반반휴 도메인(약 760줄,
-`hasQueuedReasonLeaveProof`를 `buildPersonalStatus`가 역참조하는
-방향인지 사전 확인 필요), (3) 제보/캡처 도메인(약 2,274줄, 가장
-크지만 `applyOutputPenalty`/`handleAdminCaptureDecide` 같은 복잡한
-분기 함수가 많아 8차형 사고 위험이 가장 큼 — 옮길 때 원본 diff
-대조를 원칙으로 삼는다). `buildPersonalStatus`/`buildRosterStatus`
-(여러 도메인이 공유하는 대형 집계 함수)는 계속 index.js 잔류 +
-export 확대가 안전해 보이며, 별도 도메인으로 뺄지는 이후 재검토한다.
-테스트 없이 구조 변경부터 시작하지 않는다는 원칙과, 이동 직후 원본과
-diff 대조하는 절차(8차부터 도입, 9차로 재확인) 둘 다 유지한다.
+재배치), 퇴실 처리, 사이클 판정 정리, 알림/푸시 도메인까지 총 10차에
+걸쳐 분리했다. `resolveMemberNumber`/`findMemberNumberByEmail`(15곳
+이상 공유 인증 유틸)은 계속 제외 대상으로 남아있다. 9차 조사에서
+파악한 다음 후보 중 남은 것은 규모 순으로: (1) 사유반휴/일반반휴
+도메인(약 760줄, `hasQueuedReasonLeaveProof`를 `buildPersonalStatus`
+가 역참조하는 방향인지 사전 확인 필요), (2) 제보/캡처 도메인(약
+2,274줄, 가장 크지만 `applyOutputPenalty`/`handleAdminCaptureDecide`
+같은 복잡한 분기 함수가 많아 8차형 사고 위험이 가장 큼 — 옮길 때
+원본 diff 대조를 원칙으로 삼는다). `buildPersonalStatus`/
+`buildRosterStatus`(여러 도메인이 공유하는 대형 집계 함수)는 계속
+index.js 잔류 + export 확대가 안전해 보이며, 별도 도메인으로 뺄지는
+이후 재검토한다. 테스트 없이 구조 변경부터 시작하지 않는다는 원칙과,
+이동 직후 원본과 diff 대조하는 절차(8차부터 도입) 둘 다 유지한다.
+10차에서 새로 얻은 교훈 — DO(Durable Object) 상태는 전역 싱글턴이라
+`GOOGLE_SHEET_FILE_ID`를 바꿔도 격리되지 않으므로, DO 키(회원번호,
+이메일 등)로 상태를 저장하는 함수를 테스트할 땐 케이스마다 그 키
+자체를 다르게 줘야 한다 — 이 원칙도 다음 차수부터 명시적으로 적용한다.
