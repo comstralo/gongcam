@@ -78,12 +78,22 @@ import {
   isUnguardedAdminForcedCycleCombo,
   compareWeekOfDesc,
   currentCycleBackups,
+  listBackupFiles,
+  listCurrentCycleBackups,
+  resolveTargetFileId,
+  resolveExitSourceFileId,
+  resolveCaptureSourceFileId,
 } from "./cycle.js";
 export {
   requiresFineUnpaidRecheck,
   isUnguardedAdminForcedCycleCombo,
   compareWeekOfDesc,
   currentCycleBackups,
+  listBackupFiles,
+  listCurrentCycleBackups,
+  resolveTargetFileId,
+  resolveExitSourceFileId,
+  resolveCaptureSourceFileId,
 };
 
 const GOOGLE_CERTS_URL = "https://www.googleapis.com/oauth2/v3/certs";
@@ -575,7 +585,7 @@ function _menuNameForPath(path) {
 
 // fileId를 명시적으로 받는다 — 원본 시트뿐 아니라 지난 기록(Drive 백업 파일)도
 // 같은 조회 로직을 공유해야 하기 때문.
-async function getSheetValues(env, accessToken, fileId, range) {
+export async function getSheetValues(env, accessToken, fileId, range) {
   _bumpUsageCounter("sheets_read");
   const res = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${fileId}/values/${encodeURIComponent(range)}`,
@@ -603,7 +613,7 @@ async function getSheetValues(env, accessToken, fileId, range) {
 // 제보 승인 시 슬롯에 그대로 기록되므로(applyOutputPenalty 등), 안전망이
 // 너무 길면(예: 하루) 알림 실패 시 리셋 직후 최대 하루까지 잘못된 사이클
 // 번호가 슬롯에 찍힐 위험이 있어, 그 노출 시간을 2시간으로 절충했다.
-async function getCurrentPenCycle(env, accessToken, fileId) {
+export async function getCurrentPenCycle(env, accessToken, fileId) {
   return _cachedCompute(env, `penCycle:${fileId}`, 2 * 60 * 60_000, async () => {
     const rows = await getSheetValues(env, accessToken, fileId, "집계!D25");
     return parseInt((rows[0] && rows[0][0]) || "1", 10) || 1;
@@ -6389,15 +6399,6 @@ function exitDateSettled(exitDate) {
 }
 
 
-// exitDate가 속한 주의 자동 백업 파일(fileId)을 찾는다. sheet_reset이 아직
-// 그 주 백업을 만들지 않았으면(리셋 전, 또는 드물게 백업 실패) null.
-async function findBackupForExitDate(env, accessToken, exitDate) {
-  const weekOf = weekOfForDate(exitDate);
-  if (!weekOf) return null;
-  const backups = await listBackupFiles(env, accessToken);
-  return backups.find((b) => b.weekOf === weekOf) || null;
-}
-
 // 회원 본인이 "예치금 정산액에 동의합니다"를 누르는 API — 퇴실 예약일
 // (exitDate)의 일간 집계가 실제로 끝나야만(exitDateSettled) 누를 수 있다.
 // 이 동의가 있어야만 관리자의 "정산" 처리 버튼이 활성화된다 — 신청만으로
@@ -6814,99 +6815,6 @@ async function handleAdminExitCandidates(req, env, origin, url) {
 }
 
 const EXIT_KIND_VALUES = ["forced", "admin_forced", "settle", "deposit_again"];
-
-// 🔧 [sheet_reset 이후 정산 계산] kind === "settle"이고, 그 회원의 exitDate가
-// 속한 주의 sheet_reset이 이미 지났으면, 원본(fileId) 대신 그 주의 자동
-// 백업 파일에서 회원 상태를 읽어야 한다 — 원본은 이미 페널티 슬롯/재납
-// 상태가 초기화되어 exitDate 시점 값을 더 이상 정확히 담고 있지 않다
-// (사용자 지시: "지난 주 데이터를 가지고 계속 동일한 내용으로 계산").
-// 백업이 아직 없으면(리셋 전, 또는 드문 실패) 원본을 그대로 쓴다 — 이 경우
-// exitWeekResetPassed가 false이므로 애초에 이 분기를 타지 않는다.
-//
-// 🔧 [사용자 지시, 2026-09-10] "예치금 재납/벌금 납부는 익일이거나 하루
-// 이틀 늦게 처리될 수도 있는데, 지난주 시트 기준으로도 처리 가능해야
-// 하지 않나?" — settle은 회원의 exitDate로 관련 주차를 자동 판정하지만,
-// deposit_again(예치금 재납)·forced류는 그런 날짜가 없다. 대신 "예치금
-// 재납 대상자" 목록 자체가 이미 cycle 파라미터로 현재 진행 중인 1~3주차
-// 중 어느 시점을 보고 있는지 알고 있으므로(handleAdminExitCandidates),
-// 그 화면에서 확정을 누르면 프론트가 같은 cycleFileId를 함께 보내
-// "그 목록을 보면서 확정한 그 주차 데이터"로 계산하게 한다. resolveTargetFileId
-// 가 이미 "현재 사이클(1~3주차) 밖의 임의 fileId"를 거부하므로, 사이클을
-// 벗어난 파일을 계산 근거로 쓸 위험은 없다. settle의 자동 판정이 있으면
-// 그걸 그대로 우선한다 — 회원 스스로 신청한 exitDate가 더 정확하다.
-//
-// 🔧 [사용자 지시, 2026-09-10 재정정] 앱스크립트 원본(op/sh 이원 구조)을
-// 다시 확인한 결과, "실제 참여상태 변경·탭 정리는 항상 현재 시트에만 쓴다"는
-// 이전 설명은 틀렸다 — 원본은 관리자가 그 순간 실제로 연 파일(op, 리셋 이후
-// 처리라면 지난 주 백업 파일일 수 있음)에 백업 탭·처리결과를 남기고, 고정
-// ID로 연 이번 주 공유 시트(sh)에는 슬롯 청소(권한 회수·N번 리셋·데이터
-// 초기화)만 별도로 적용한다. performExitReset이 이 구조를 재현한다 —
-// sourceFileId(=이 함수가 반환하는 sourceFileId)가 fileId와 다르면(상황 B,
-// 지난 주 백업) 백업 탭·감사 스냅샷이 그 백업 파일에 생성되고, 이번 주
-// 공유 시트에서는 슬롯 청소만 일어난다. performDepositAgainReset(예치금
-// 재납 확정)은 다르다 — 재납은 "지금도 활동 중인 회원"의 처리라 그 회원의
-// 탭 자체가 항상 이번 주 시트에 존재하므로, sourceFileId 분리 없이 항상
-// fileId만 쓴다.
-export async function resolveExitSourceFileId(env, accessToken, fileId, number, kind, cycleFileId) {
-  if (kind === "settle") {
-    // 🔧 [KV → DO 이전, 2026-09-12] §47 — LeaveQueue DO에서 조회.
-    const exitRequestEntry = await getLeaveQueueStub(env)
-      .fetch(`https://do/exit/get?memberNumber=${encodeURIComponent(number)}`)
-      .then((r) => r.json())
-      .then((d) => d.entry)
-      .catch(() => null);
-    if (exitRequestEntry) {
-      const exitDate = exitRequestEntry.exitDate || null;
-      if (exitDate && exitWeekResetPassed(exitDate)) {
-        const backup = await findBackupForExitDate(env, accessToken, exitDate);
-        if (!backup) {
-          throw new Error("퇴실 예약 주차의 백업 시트를 아직 찾을 수 없습니다. 잠시 후 다시 시도해주세요.");
-        }
-        return { sourceFileId: backup.fileId, fromBackup: true };
-      }
-    }
-  }
-  if (cycleFileId) {
-    const { fileId: resolvedFileId } = await resolveTargetFileId(env, accessToken, cycleFileId);
-    return { sourceFileId: resolvedFileId, fromBackup: resolvedFileId !== fileId };
-  }
-  return { sourceFileId: fileId, fromBackup: false };
-}
-
-// 🔧 [사용자 지시] "화각 불량 제보 확인 — 벌점·상점을 제보 발생
-// 사이클에 기록" — handleAdminCaptureDecide는 cycle 파라미터 없이
-// 항상 실시간 원본에만 벌점(applyOutputPenalty)/제보상점
-// (applyReportMerit)을 썼다. 이 벌점은 강제퇴실/예치금 재납 판정의
-// 실질적 카운터라, 위반이 실제 발생한 사이클이 아니라 관리자가
-// 처리 버튼을 누른 시점의 사이클에 잘못 귀속되면 페널티 판정 자체가
-// 왜곡된다 — "그 사이클에 발생한 일은 그 사이클에 기록되어야 한다"
-// 는 원칙(사용자 확인)에 따라, 제보 발생 시각(ts)이 속한 주(월~일)의
-// fileId를 판정한다.
-export async function resolveCaptureSourceFileId(env, accessToken, fileId, ts) {
-  const weekOf = weekOfForDate(kstDateKey(ts));
-  if (!weekOf) return { sourceFileId: fileId, fromBackup: false };
-  const currentWeekOf = formatYYMMDD(currentWeekMondayKST());
-  // (a) 이번 주에 발생 — 원본 그대로.
-  if (weekOf === currentWeekOf) return { sourceFileId: fileId, fromBackup: false };
-  // (b) 같은 3주 사이클 안에서 주만 넘어간 경우 — 벌점 슬롯(F~K열)은
-  // 3주 사이클 전체가 공유하는 카운터라 그 주의 백업에 써도 원본과
-  // 이어진다. resolveTargetFileId가 "현재 사이클(최대 2개 백업)"
-  // 소속 여부를 검증해준다.
-  const { backups } = await listCurrentCycleBackups(env, accessToken);
-  const inCycle = backups.find((b) => b.weekOf === weekOf);
-  if (inCycle) return { sourceFileId: inCycle.fileId, fromBackup: true };
-  // (c) 이미 그 사이클 자체가 끝나버린 경우(다음 사이클로 넘어감) —
-  // 그 위반이 발생한 사이클은 리셋되어 죽었지만, 실제 발생 시점
-  // 기준으로 정확히 그 백업 파일에 기록해야 한다(사용자 확인) —
-  // 그래야 관리자가 그 사이클로 토글했을 때 강제퇴실/재납 판정에
-  // 반영된다. listBackupFiles(사이클 제약 없음)에서 직접 찾는다.
-  const allBackups = await listBackupFiles(env, accessToken);
-  const outOfCycle = allBackups.find((b) => b.weekOf === weekOf);
-  if (!outOfCycle) {
-    throw new Error("제보가 발생한 주차의 백업 시트를 아직 찾을 수 없습니다. 잠시 후 다시 시도해주세요.");
-  }
-  return { sourceFileId: outOfCycle.fileId, fromBackup: true };
-}
 
 // 실제로 시트를 바꾸지 않고 discount_ratio/사유/결과 메시지만 계산해 돌려준다.
 // 🔧 [2차 점검, 2026-09-11] Cloudflare KV 최종 일관성 재검증 — 벌점 승인
@@ -8018,51 +7926,6 @@ async function handleGrantMemberAccess(req, env, origin) {
   }
 }
 
-// --- 지난 기록: 앱스크립트가 매주 초기화 직전 Drive에 남기는 백업 시트를 조회 ---
-// 백업 파일명 패턴: "공부합시당 캠스터디 YYMMDD-YYMMDD" (+선택적 " (N)" 중복 접미사).
-// 이 파일들은 원본 시트를 통째로 복사한 사본이라 탭 구조(집계/1~15/권한관리 등)가 동일하다.
-// 이 폴더는 일반 사용자와 공유되어 있지 않고, 서비스 계정에게만 뷰어 권한이 부여되어 있다.
-
-const BACKUP_FILENAME_RE = /^공부합시당 캠스터디 (\d{6})-(\d{6})(?: \(\d+\))?$/;
-const BACKUP_HISTORY_START_WEEK_OF = "260810"; // 이 주차(포함)부터만 지난 기록으로 취급
-
-export async function listBackupFiles(env, accessToken) {
-  const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files?` +
-      new URLSearchParams({
-        q: `'${env.BACKUP_FOLDER_ID}' in parents and trashed = false and mimeType = 'application/vnd.google-apps.spreadsheet'`,
-        fields: "files(id,name)",
-        pageSize: "200",
-      }),
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
-  const data = await res.json();
-  if (!data.files) throw new Error("백업 폴더 조회 실패: " + JSON.stringify(data));
-
-  const backups = [];
-  for (const f of data.files) {
-    const m = f.name.match(BACKUP_FILENAME_RE);
-    if (!m) continue;
-    const weekOf = m[1];
-    if (weekOf < BACKUP_HISTORY_START_WEEK_OF) continue;
-    backups.push({ fileId: f.id, weekOf, weekTo: m[2] });
-  }
-  backups.sort(compareWeekOfDesc);
-  return backups;
-}
-
-// 관리자/일반 구분 없이 누구나 "현재 진행 중인 사이클(최대 3주) 중 이미
-// 백업된 주차"까지만 조회할 수 있다 — 그 이전 사이클(4주 이상 전)은
-// 대상이 아니다. MY/ALL 상단의 "사이클 토글"이 이 목록 + "현재"(실시간,
-// fileId 없음)를 함께 보여준다.
-export async function listCurrentCycleBackups(env, accessToken) {
-  const [backups, currentCycle] = await Promise.all([
-    listBackupFiles(env, accessToken),
-    getCurrentPenCycle(env, accessToken, env.GOOGLE_SHEET_FILE_ID),
-  ]);
-  return { backups: currentCycleBackups(backups, currentCycle), currentCycle };
-}
-
 // GET /cycles — 토글에 뿌릴 선택지 목록. "현재"(fileId: null, 실시간)를
 // 맨 앞에 두고, 그 뒤로 이미 백업된 주차를 최신순으로 나열한다.
 // member 쿼리 파라미터가 있으면 각 주차마다 그 회원이 그 시점 명단에 실제로
@@ -8195,23 +8058,6 @@ async function handleCycleList(req, env, origin, url) {
   } catch (err) {
     return json({ error: "사이클 목록 조회 실패: " + err.message }, 500, origin);
   }
-}
-
-// /status, /roster-status가 공통으로 쓰는 헬퍼 — cycle 쿼리 파라미터(백업
-// fileId)가 주어지면 그 백업이 "현재 진행 중인 사이클"에 실제로 속하는지
-// 검증한 뒤 그 fileId를 반환하고, 없으면 현재 활성 시트(GOOGLE_SHEET_FILE_ID)를
-// 반환한다 — 사이클 밖의 임의 fileId로 과거 무제한 조회를 막기 위한 검증이다.
-// 🔧 [가입일 이전 요일 비활성화용] fileId뿐 아니라 그 fileId가 어느 주(weekOf,
-// "YYMMDD" 형식의 월요일)인지도 함께 반환한다 — buildPersonalStatus가 요일별
-// 실제 캘린더 날짜를 계산해 "가입 전 요일"을 판정하는 데 쓴다. 실시간(라이브
-// 시트) 조회면 특정 백업 주차가 없으므로 weekOf는 null — 호출부가 "오늘
-// 기준 이번 주"로 직접 계산한다.
-export async function resolveTargetFileId(env, accessToken, cycleFileId) {
-  if (!cycleFileId) return { fileId: env.GOOGLE_SHEET_FILE_ID, weekOf: null };
-  const { backups } = await listCurrentCycleBackups(env, accessToken);
-  const backup = backups.find((b) => b.fileId === cycleFileId);
-  if (!backup) throw new Error("현재 사이클에 속하지 않는 기록입니다.");
-  return { fileId: backup.fileId, weekOf: backup.weekOf };
 }
 
 // 🔧 [구조 개선, 2026-09-13] Durable Object 클래스 8개는 src/durable-objects.js로

@@ -186,17 +186,48 @@ DO 클래스 자체 테스트는 없지만 `cycle-do.test.js`가
 직접 테스트가 없는 두 영역(DO 클래스, 캐시)일수록 배포 후 curl/
 `wrangler tail` 스모크를 더 꼼꼼히 반복했다.
 
+## 구조 개선 2차 — fetch/DO 의존 사이클 함수 분리 (2026-09-13)
+
+1차에서 남겨둔 fetch/DO 의존 사이클 함수를 마저 `cycle.js`로 옮겼다.
+착수 전 `getCurrentPenCycle`/`findBackupForExitDate`의 실제 호출부를
+grep으로 재조사한 결과, 애초 계획과 달리 **`getCurrentPenCycle`은
+사이클 전용이 아니라 `_computeReportScore`/`buildPersonalStatus`/
+`applyOutputPenalty`/`applyReportMerit`/`getAllExitRelevantStatus` 등
+벌점·제보점수·퇴실판정 도메인에서 6곳이나 직접 호출**하고 있었다 —
+`getSheetValues`와 같은 범용 유틸로 재분류해 **index.js에 남기고
+`export`만 추가**했다(계획을 구현 중 수정한 사례). `findBackupForExitDate`
+는 실제 호출부가 `resolveExitSourceFileId` 한 곳뿐이라 계획대로
+옮겼다.
+
+- **`cycle.js`에 추가로 옮긴 것**: `findBackupForExitDate`,
+  `resolveExitSourceFileId`, `resolveCaptureSourceFileId`,
+  `listBackupFiles`(+`BACKUP_FILENAME_RE`/`BACKUP_HISTORY_START_WEEK_OF`
+  상수), `listCurrentCycleBackups`, `resolveTargetFileId`.
+- **index.js에 남기고 `export`만 추가한 것**: `getSheetValues`(회원/
+  벌점/벌금/퇴실/반휴/감사 등 전 도메인에서 40회 이상 호출되는 저수준
+  유틸, `_bumpUsageCounter`라는 모듈 스코프 상태에도 의존),
+  `getCurrentPenCycle`(위 재조사로 범용 유틸임이 드러남). `cycle.js`
+  는 이 둘을 `import { getSheetValues, getCurrentPenCycle } from
+  "./index.js"`로 가져온다 — 1차에서 검증한 "재export 전용 순환"
+  패턴에 심볼이 늘어난 것뿐이라 새 위험은 없었다.
+- `getLeaveQueueStub`(durable-objects.js), `weekOfForDate`/
+  `kstDateKey`/`formatYYMMDD`/`currentWeekMondayKST`/
+  `exitWeekResetPassed`(date-utils.js)도 `cycle.js`가 직접 import한다.
+
+index.js 9,648→9,494줄(약 154줄 감소, 시작 대비 총 13.6% 감소).
+`npm test` 기준 52개 테스트 전부 통과 — `cycle-fetch.test.js`/
+`cycle-do.test.js`가 이제 `cycle.js` 구현 전체(순환 import 경로
+포함)를 실질적으로 검증한다. 배포 후 curl로 `/cycles`/`/status`
+정상 401 응답 확인, `wrangler tail`로 두 요청 모두 예외 없이
+"Ok" 처리됨을 확인했다.
+
 ## 다음 단계
 
-fetch 의존(`listBackupFiles`/`listCurrentCycleBackups`/
-`resolveTargetFileId`)과 DO+fetch+시계 의존
-(`resolveExitSourceFileId`/`resolveCaptureSourceFileId`) 함수는
-`getCurrentPenCycle`/`findBackupForExitDate`(sheets API 의존, 아직
-index.js에 남아있는 헬퍼)를 호출한다 — 이들을 옮기려면 sheets 저수준
-래퍼(`getSheetValues`, `getServiceAccountAccessToken` 등) 분리가
-먼저 필요하거나, 단계 4와 같은 방식으로 순환 import를 감수해야 한다.
-이후 벌점/벌금/예치금/상금 처리, 회원 관리, 알림/푸시 도메인은 아직
-테스트가 없으므로, "테스트 커버리지가 넓어지는 순서대로 파일을
-분리한다"는 원칙에 따라 해당 도메인 테스트를 먼저 작성한 뒤 같은
-패턴(함수 단위 발췌 + 재export)으로 이어간다. 테스트 없이 구조
+사이클 판정 도메인은 이번 2차로 사실상 완결됐다(`hasUnpaidFineInCycle`/
+`hasForcedCandidateInCycle`만 의존 체인이 깊어 index.js에 계속
+남긴다). 이후 벌점/벌금/예치금/상금 처리, 회원 관리, 알림/푸시
+도메인은 아직 테스트가 없으므로, "테스트 커버리지가 넓어지는
+순서대로 파일을 분리한다"는 원칙에 따라 해당 도메인 테스트를 먼저
+작성한 뒤 같은 패턴(함수 단위 발췌 + 필요시 재export, 범용 유틸은
+index.js에 남기고 export만 추가)으로 이어간다. 테스트 없이 구조
 변경부터 시작하지 않는다.
