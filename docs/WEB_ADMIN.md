@@ -1109,6 +1109,29 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
 - **납부된 총 벌금액**: 상단 요약 — `집계!D22`(`getWeeklyPaidFineTotal`,
   60초 캐시)를 그대로 읽는다.
 
+> 🔧 **[2026-09-12] 사이클 토글에 "미납 기록 있음" 점(dot) 배지 추가
+> — 사이클 오인 방지.** 이 화면 위쪽의 `CycleSwitcher`(§0의 사이클
+> 전환 UI)는 관리자가 지난 주 백업으로 전환하는 걸 깜빡하기 쉽다.
+> 벌금 미납 상태 셀엔 exitDate 같은 날짜 정보가 없어(§3.5의 퇴실
+> 처리와 달리) 서버가 스스로 "지금 조회 중인 사이클이 맞는지"
+> 판단할 근거가 원천적으로 없고, `sheet_reset()`이 매주 이 셀들을
+> 빈 문자열로 초기화하므로 사이클 전환을 깜빡한 채 "이번 주(리셋된
+> 원본)"만 보면 지난 주 미납자가 목록에서 통째로 사라져 "미납자
+> 없음"으로 오인하기 쉬웠다. `GET /cycles`가 `includeUnpaid=1`
+> 파라미터를 받으면 각 사이클(이번 주 + 백업 최대 2개)에 미납
+> 기록이 있는지(`hasUnpaidFineInCycle`, 내부적으로 `listUnpaidFines`
+> 재사용)를 계산해 `hasUnpaid`/`currentHasUnpaid`로 내려주고,
+> `CycleSwitcher`가 이를 날짜 라벨 옆 작은 점으로 표시한다(건수·툴팁
+> 없이 존재만). 이 화면(`AdminMoneyTab`)과 §3.1(`ReportReviewList`),
+> 본인 대시보드(`MyOutputPenSection`의 "내 화각 불량 제보", `StatusPage`)
+> 는 `includeUnpaid` prop으로 opt-in해 배지를 받지만, 전체 랭킹
+> (`RosterPage`)은 원래 "누가/얼마나 미납인지" 같은 개인 식별
+> 정보를 다루지 않는 화면이라 이 prop을 켜지 않는다 — 서버도
+> `includeUnpaid` 파라미터가 없으면 계산 자체를 생략해 응답에
+> `hasUnpaid` 필드가 아예 존재하지 않으므로, 화면에 안 그리는 것을
+> 넘어 개발자도구로 API 응답을 직접 봐도 신호가 없다(사용자 확인:
+> "굳이 확인하지 못하도록 처리해줘").
+
 ---
 
 ## 5. Bot · Sheet 탭 (`AdminBotSheetTab`)
