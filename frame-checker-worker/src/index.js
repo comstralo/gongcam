@@ -122,6 +122,22 @@ export {
 import { isSettlementVisibleToMembers, exitDateSettled } from "./exit-timing.js";
 export { isSettlementVisibleToMembers, exitDateSettled };
 
+// 🔧 [구조 개선, 2026-09-13] 회원 관리/알림·푸시 도메인의 완전 순수 함수
+// 6개는 src/member-utils.js로 옮겼다 — member-utils.js가 이 파일의
+// base64url/base64urlToBytes/NOTIFY_CATEGORIES를 import하므로(아래 export
+// 선언 참고) 순환이지만 재export 목적뿐이라 TDZ 위험이 없다. 이 6개는
+// index.js 다른 함수(createVapidAuthHeader/encryptPushPayload/
+// hkdfExpand/handleAdminCreateMember 등)가 그대로 참조하므로 재export는
+// 불필요하다 — 테스트가 필요하면 ../src/member-utils.js에서 직접 import.
+import {
+  parseGoogleEmail,
+  parseGooroomeeAccount,
+  guessDeviceLabel,
+  defaultNotifyPrefs,
+  buildVapidJwk,
+  concatBytes,
+} from "./member-utils.js";
+
 const GOOGLE_CERTS_URL = "https://www.googleapis.com/oauth2/v3/certs";
 const SESSION_TTL_SEC = 30 * 24 * 60 * 60;
 
@@ -141,12 +157,12 @@ function json(data, status, origin) {
   });
 }
 
-function base64url(bytes) {
+export function base64url(bytes) {
   let str = btoa(String.fromCharCode(...new Uint8Array(bytes)));
   return str.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-function base64urlToBytes(str) {
+export function base64urlToBytes(str) {
   str = str.replace(/-/g, "+").replace(/_/g, "/");
   while (str.length % 4) str += "=";
   const bin = atob(str);
@@ -1296,13 +1312,6 @@ function explainDay(total, goal, morning, confirmed) {
 // 사용자 확인). 로그인 매칭 등 "구글 이메일"이 필요한 모든 지점은 항상 이
 // 헬퍼로 앞부분만 뽑아 써야 한다 — 그러지 않으면 콤마가 이메일 문자열에
 // 섞여 정확 일치 비교가 깨진다.
-function parseGoogleEmail(rawCell) {
-  return (rawCell || "").split(",")[0].trim().toLowerCase();
-}
-function parseGooroomeeAccount(rawCell) {
-  const parts = (rawCell || "").split(",");
-  return (parts[1] || "").trim();
-}
 
 // 🔧 [데이터 시트 통합] "권한관리" 탭이 "데이터" 탭으로 흡수됐다.
 // 열 인덱스(B=번호, C=이름, D=이메일)는 그대로 유지되어 row[1]/row[2]/row[3]
@@ -8069,20 +8078,6 @@ async function handleGetParticipants(req, env, origin) {
 // 관리자 전용: 구독 등록은 로그인 세션만 있으면 누구나 가능하지만(자기 브라우저를 구독),
 // 발송(send)은 ADMIN_EMAIL 계정만 트리거할 수 있다.
 
-async function buildVapidJwk(privateKeyB64url, publicKeyB64url) {
-  const pubBytes = base64urlToBytes(publicKeyB64url);
-  const x = base64url(pubBytes.slice(1, 33));
-  const y = base64url(pubBytes.slice(33, 65));
-  return {
-    kty: "EC",
-    crv: "P-256",
-    x,
-    y,
-    d: privateKeyB64url,
-    ext: true,
-  };
-}
-
 async function createVapidAuthHeader(env, audience) {
   const jwk = await buildVapidJwk(env.VAPID_PRIVATE_KEY, env.VAPID_PUBLIC_KEY);
   const key = await crypto.subtle.importKey(
@@ -8181,17 +8176,6 @@ async function encryptPushPayload(payloadText, subscription, env) {
   ]);
 
   return concatBytes([header, ciphertext]);
-}
-
-function concatBytes(arrays) {
-  const total = arrays.reduce((sum, a) => sum + a.length, 0);
-  const out = new Uint8Array(total);
-  let offset = 0;
-  for (const a of arrays) {
-    out.set(a, offset);
-    offset += a.length;
-  }
-  return out;
 }
 
 async function hmacSha256Raw(keyBytes, dataBytes) {
@@ -8308,17 +8292,13 @@ async function handleMigrateFixCollectMoneyFormula(req, env, origin) {
 // 선호도를 저장/조회하는 것과 관리자가 종류를 골라 수동으로 테스트 발송하는
 // 것까지만 지원한다 — 실제 이벤트 연동은 이 저장값을 그대로 재사용해 이어갈
 // 예정.
-const NOTIFY_CATEGORIES = {
+export const NOTIFY_CATEGORIES = {
   report_result: "제보 처리 결과",
   leave_proof_result: "사유 반휴 처리 결과",
   fine_status: "벌금 상태 변경",
   exit_result: "퇴실/재납 처리 결과",
   direct_message: "다른 참여자의 알림(귓속말)",
 };
-function defaultNotifyPrefs() {
-  return Object.fromEntries(Object.keys(NOTIFY_CATEGORIES).map((k) => [k, true]));
-}
-
 // 🔧 [KV → DO 이전, 2026-09-12] §49 — MemberSettingsDO로 이전.
 async function loadNotifyPrefs(env, memberNumber) {
   const res = await getMemberSettingsStub(env).fetch(`https://do/pref?memberNumber=${encodeURIComponent(memberNumber)}`);
@@ -8545,27 +8525,6 @@ async function handleAdminPushSendCategory(req, env, origin) {
 // OS/브라우저 종류까지만 추정할 수 있다 — 같은 종류의 기기가 여러 대면
 // 이름이 겹칠 수 있다(정확한 개체 식별이 목적이 아니라, "대략 이런
 // 기기다"를 보여주는 용도).
-function guessDeviceLabel(userAgent) {
-  const ua = userAgent || "";
-  let os = "알 수 없는 기기";
-  if (/iPhone/i.test(ua)) os = "iPhone";
-  else if (/iPad/i.test(ua)) os = "iPad";
-  else if (/Android/i.test(ua)) os = "Android";
-  else if (/Macintosh/i.test(ua)) os = "Mac";
-  else if (/Windows/i.test(ua)) os = "Windows";
-  else if (/Linux/i.test(ua)) os = "Linux";
-
-  let browser = "";
-  if (/Edg\//i.test(ua)) browser = "Edge";
-  else if (/OPR\//i.test(ua) || /Opera/i.test(ua)) browser = "Opera";
-  else if (/Chrome\//i.test(ua)) browser = "Chrome";
-  else if (/CriOS\//i.test(ua)) browser = "Chrome";
-  else if (/FxiOS\//i.test(ua) || /Firefox\//i.test(ua)) browser = "Firefox";
-  else if (/Safari\//i.test(ua)) browser = "Safari";
-
-  return browser ? `${os} · ${browser}` : os;
-}
-
 // 🔧 [푸시 중복 발송 수정] 서비스워커 재등록·PWA 재설치·캐시 초기화 등으로
 // 브라우저가 새 endpoint를 발급하면, 기존엔 옛 구독을 정리하지 않고 계속
 // 추가만 해서 같은 사람 앞으로 죽은 구독이 무한정 쌓였다 — 발송 로직이

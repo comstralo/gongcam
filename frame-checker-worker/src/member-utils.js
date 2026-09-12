@@ -1,0 +1,79 @@
+// 🔧 [구조 개선, 2026-09-13] 회원 관리/알림·푸시 도메인에서 완전 순수하고
+// 짧은 함수 6개를 index.js에서 분리했다(docs/TESTING.md 참고) — 이 도메인
+// 핵심 함수(handleAdminCreateMember/moveMemberSlot/handleAdminMembersRoster
+// 등)는 fetch 4~8회 + DO 왕복이 뒤섞인 5~7단계 체인이라 순수 로직을 뽑아낼
+// 여지가 이미 소진되어 있고, 웹푸시 암호화 함수(HKDF/encryptPushPayload 등)
+// 는 RFC 표준 구현이라 이번 범위에서 제외했다(사용자 확인) — 이번엔 아래
+// 6개만 옮긴다. base64url/base64urlToBytes/NOTIFY_CATEGORIES는 index.js
+// 전역에서 광범위하게 쓰이는 범용 유틸이라 옮기지 않고 export만 추가해
+// 여기서 import한다.
+import { base64url, base64urlToBytes, NOTIFY_CATEGORIES } from "./index.js";
+
+// 🔧 [회원 계정 통합] "구글계정,구루미계정" 형식으로 한 셀에 함께 저장한다
+// (구루미 계정을 저장할 별도 컬럼이 없어 기존 이메일 칸에 함께 넣기로 함 —
+// 사용자 확인). 로그인 매칭 등 "구글 이메일"이 필요한 모든 지점은 항상 이
+// 헬퍼로 앞부분만 뽑아 써야 한다 — 그러지 않으면 콤마가 이메일 문자열에
+// 섞여 정확 일치 비교가 깨진다.
+export function parseGoogleEmail(rawCell) {
+  return (rawCell || "").split(",")[0].trim().toLowerCase();
+}
+export function parseGooroomeeAccount(rawCell) {
+  const parts = (rawCell || "").split(",");
+  return (parts[1] || "").trim();
+}
+
+export async function buildVapidJwk(privateKeyB64url, publicKeyB64url) {
+  const pubBytes = base64urlToBytes(publicKeyB64url);
+  const x = base64url(pubBytes.slice(1, 33));
+  const y = base64url(pubBytes.slice(33, 65));
+  return {
+    kty: "EC",
+    crv: "P-256",
+    x,
+    y,
+    d: privateKeyB64url,
+    ext: true,
+  };
+}
+
+export function concatBytes(arrays) {
+  const total = arrays.reduce((sum, a) => sum + a.length, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const a of arrays) {
+    out.set(a, offset);
+    offset += a.length;
+  }
+  return out;
+}
+
+export function defaultNotifyPrefs() {
+  return Object.fromEntries(Object.keys(NOTIFY_CATEGORIES).map((k) => [k, true]));
+}
+
+// User-Agent로 "이 기기가 대략 뭔지" 사람이 알아볼 수 있는 이름을 추정한다.
+// 브라우저는 보안상 실제 기기 고유명(예: 사용자가 붙인 아이폰 이름, PC
+// 계정명)을 웹사이트에 절대 넘겨주지 않으므로, User-Agent에서 뽑을 수 있는
+// OS/브라우저 종류까지만 추정할 수 있다 — 같은 종류의 기기가 여러 대면
+// 이름이 겹칠 수 있다(정확한 개체 식별이 목적이 아니라, "대략 이런
+// 기기다"를 보여주는 용도).
+export function guessDeviceLabel(userAgent) {
+  const ua = userAgent || "";
+  let os = "알 수 없는 기기";
+  if (/iPhone/i.test(ua)) os = "iPhone";
+  else if (/iPad/i.test(ua)) os = "iPad";
+  else if (/Android/i.test(ua)) os = "Android";
+  else if (/Macintosh/i.test(ua)) os = "Mac";
+  else if (/Windows/i.test(ua)) os = "Windows";
+  else if (/Linux/i.test(ua)) os = "Linux";
+
+  let browser = "";
+  if (/Edg\//i.test(ua)) browser = "Edge";
+  else if (/OPR\//i.test(ua) || /Opera/i.test(ua)) browser = "Opera";
+  else if (/Chrome\//i.test(ua)) browser = "Chrome";
+  else if (/CriOS\//i.test(ua)) browser = "Chrome";
+  else if (/FxiOS\//i.test(ua) || /Firefox\//i.test(ua)) browser = "Firefox";
+  else if (/Safari\//i.test(ua)) browser = "Safari";
+
+  return browser ? `${os} · ${browser}` : os;
+}

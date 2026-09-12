@@ -272,16 +272,73 @@ index.js 9,494→9,273줄(약 221줄 감소, 시작 대비 총 15.6% 감소).
 배포 후 curl로 `/status`/`/roster-status`/`/cycles` 정상 401 응답
 확인, `wrangler tail`로 예외 없이 "Ok" 처리됨을 확인했다.
 
+## 구조 개선 4차 — 회원 관리/알림·푸시 도메인의 작은 순수 함수 (2026-09-13)
+
+착수 전 조사로 이 도메인은 **이전 세 도메인과 성격이 다르다**는
+게 확인됐다 — 핵심 함수(`handleAdminCreateMember`, `moveMemberSlot`,
+`handleAdminMembersRoster` 등)는 전부 fetch 4~8회 + DO 왕복이
+뒤섞인 5~7단계 체인이라 순수 로직을 뽑아낼 여지가 이미 거의
+소진되어 있고, 웹푸시 암호화 함수(HKDF, `encryptPushPayload` 등)는
+RFC 8291/5869 표준 구현이라 it.each 대신 표준 벡터/왕복 검증이
+필요해 테스트 성격이 다르다. 사용자 확인을 거쳐 **범위를 완전
+순수하고 짧은 함수 6개로 좁혀** 진행했다 — 무리하게 fetch/DO
+함수를 순수 함수 테스트로 끌고 가지 않았다.
+
+- **`src/member-utils.js`(신설)**: `parseGoogleEmail`/
+  `parseGooroomeeAccount`("구글계정,구루미계정" 형식 셀 파싱),
+  `guessDeviceLabel`(User-Agent로 OS 6종×브라우저 6종 우선순위
+  판정), `defaultNotifyPrefs`(`NOTIFY_CATEGORIES` 키 전부 true로
+  초기화), `buildVapidJwk`(async이지만 `crypto.subtle` 없이 공개키
+  바이트를 x/y로 슬라이스하는 순수 함수), `concatBytes`(Uint8Array
+  이어붙이기). `base64url`/`base64urlToBytes`(20곳에서 쓰이는 범용
+  인코딩)와 `NOTIFY_CATEGORIES`(6곳에서 쓰이는 범용 상수)는
+  `getSheetValues`와 같은 방식으로 index.js에 남기고 `export`만
+  추가해 순환 import로 가져온다.
+- `buildVapidJwk`/`concatBytes`의 유일한 호출부는 각각
+  `createVapidAuthHeader`/`encryptPushPayload`·`hkdfExpand`(둘 다
+  이번에 제외한 암호화 함수, index.js 잔류)뿐이라 **재export 없이
+  import 문 하나로 해결**했다 — `hasForcedCandidateInCycle`
+  (3차)에서 이미 검증된 "제외 대상 함수도 새 모듈 의존이 생기는 건
+  괜찮다" 패턴과 동일.
+- **`test/member-utils.test.js`(신설)**: 6개 함수 전부 완전 순수라
+  한 파일에 모았다 — `guessDeviceLabel`은 실제 UA 문자열(iPhone+
+  Safari, Android+Chrome, Windows+Edge 등)을 it.each로, `buildVapidJwk`
+  는 65바이트 P-256 공개키(0x04+x32+y32)를 넣어 x/y가 정확히
+  1~33/33~65 구간으로 슬라이스되는지(오프바이원 회귀 방지) 검증했다.
+
+index.js 9,273→9,232줄(약 41줄 감소, 시작 대비 총 15.9% 감소 —
+짧은 함수들이라 이전 차수보다 감소폭은 작다). `npm test` 기준
+151개 테스트 전부 통과(기존 120개 + 신규 31개). 배포 후 curl로
+`/cycles`/`/admin/members/roster`/`/push/devices` 정상 401 응답
+확인, `wrangler tail`로 전부 예외 없이 "Ok" 처리됨을 확인했다.
+
+**총평**: 이 도메인은 순수 로직 비중이 낮아 모듈 분리로 큰 성과를
+내기 어렵다. `handleAdminCreateMember`/`moveMemberSlot`/
+`handleAdminMembersRoster` 등 핵심 함수를 테스트하려면 순수 정렬
+로직을 인라인에서 뽑아내는 리팩터링(예: `computeMemberReorderPlan`
+내부를 `computeReorderPlanFromRows`로 분리)이 선행되어야 하는데,
+이는 "테스트 확장" 범위를 넘어서는 별도 결정이 필요해 이번엔
+보류했다.
+
 ## 다음 단계
 
-사이클 판정과 예치금 반환/강제퇴실/정산 판정 도메인은 이번 3차로
-사실상 완결됐다(`hasUnpaidFineInCycle`/`hasForcedCandidateInCycle`,
-`listUnpaidFines`/`listPaidFines`/`listExemptFines`,
-`listExitCandidates`, `handleAdminPrizeSettle`,
-`moveMemberSlot`/`computeMemberReorderPlan`만 fetch/DO 의존이 깊거나
-절차형 트랜잭션이라 계속 index.js에 남긴다). 이후 회원 관리, 알림/
-푸시 도메인은 아직 테스트가 없으므로, "테스트 커버리지가 넓어지는
-순서대로 파일을 분리한다"는 원칙에 따라 해당 도메인 테스트를 먼저
-작성한 뒤 같은 패턴(함수 단위 발췌 + 필요시 재export, 범용 유틸은
-index.js에 남기고 export만 추가)으로 이어간다. 테스트 없이 구조
-변경부터 시작하지 않는다.
+사이클 판정, 예치금/강제퇴실/정산 판정, 회원 관리/알림·푸시의
+작은 순수 함수까지 총 4차에 걸쳐 분리했다. 남은 대상은 전부 다음
+중 하나에 해당해 계속 index.js에 남는다:
+- fetch/DO 의존이 4단계 이상으로 깊음: `hasUnpaidFineInCycle`/
+  `hasForcedCandidateInCycle`, `listUnpaidFines`/`listPaidFines`/
+  `listExemptFines`, `listExitCandidates`, `handleAdminPrizeSettle`,
+  `handleAdminCreateMember`, `moveMemberSlot`/
+  `computeMemberReorderPlan`, `handleAdminMembersRoster`.
+- RFC 표준 구현이라 테스트 성격이 다름: 웹푸시 암호화 함수 전체
+  (`createVapidAuthHeader`, `encryptPushPayload`, `hmacSha256Raw`,
+  `hkdfExtract`/`hkdfExpand`/`hkdf`, `sendWebPush`).
+- 이미 DO 테스트 인프라로 간접 커버됨: 쿨다운/레이트리밋 판정
+  (durable-objects.js의 DO 클래스 메서드 내부).
+
+추가로 커버리지를 넓히려면 다음 중 하나가 필요하다: (a) 위 fetch/DO
+깊은 함수들을 통합 테스트(fetch stub + 실제 DO)로 다루는 것으로
+전략을 바꾸거나, (b) `computeMemberReorderPlan` 등에서 순수 로직을
+뽑아내는 리팩터링을 먼저 승인받거나, (c) 웹푸시 암호화 함수를
+표준 벡터/왕복 검증 방식으로 별도 착수하는 것. 테스트 없이 구조
+변경부터 시작하지 않는다는 원칙은 유지한다.
