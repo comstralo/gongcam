@@ -54,6 +54,10 @@ export function CycleSwitcher({
   // 않는 화면은 이 prop을 안 켜서, 서버 응답에 관련 필드 자체가
   // 실리지 않게 한다(단순히 화면에 안 그리는 것과 다르다).
   includeUnpaid = false,
+  // 🔧 [사용자 지시] "예치금 재납 대상(forced) 사이클 오인 방지" — includeUnpaid와
+  // 동일한 원칙. true면 서버에 includeForced=1을 함께 보내 각 슬롯의 forced
+  // (페널티 2회 이상) 후보 존재 여부를 받아 점(dot)으로 표시한다.
+  includeForced = false,
 }: {
   selectedFileId: string | null;
   // week: 선택된 주차의 전체 정보(weekOf/weekTo 등) — "현재"를 고르면 null.
@@ -61,10 +65,12 @@ export function CycleSwitcher({
   onSelect: (fileId: string | null, week?: CycleWeek | null) => void;
   memberNumber?: string;
   includeUnpaid?: boolean;
+  includeForced?: boolean;
 }) {
   const { call } = useApi();
   const [weeks, setWeeks] = useState<CycleWeek[] | null>(null);
   const [currentHasUnpaid, setCurrentHasUnpaid] = useState(false);
+  const [currentHasForced, setCurrentHasForced] = useState(false);
   // 🔧 [버그 수정, 2026-09] 예전엔 이번 주가 사이클 몇 번째 주인지를
   // weeks.length(백업 개수)로 역산했다 — 그런데 sheet_reset이 백업을 뜨는
   // 시점과 사이클 값을 갱신하는 시점이 달라, 이번 주가 사이클 1주차로
@@ -85,6 +91,7 @@ export function CycleSwitcher({
     const params = new URLSearchParams();
     if (memberNumber) params.set("member", memberNumber);
     if (includeUnpaid) params.set("includeUnpaid", "1");
+    if (includeForced) params.set("includeForced", "1");
     const query = params.toString();
     call<CycleListResponse>(`/cycles${query ? `?${query}` : ""}`)
       .then((data) => {
@@ -92,6 +99,7 @@ export function CycleSwitcher({
         setWeeks(data.weeks || []);
         setCurrentWeekNumber(data.currentWeekNumber || 0);
         setCurrentHasUnpaid(data.currentHasUnpaid ?? false);
+        setCurrentHasForced(data.currentHasForced ?? false);
       })
       .catch(() => {
         if (!cancelled) setError(true);
@@ -100,7 +108,7 @@ export function CycleSwitcher({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [memberNumber, includeUnpaid, retryToken]);
+  }, [memberNumber, includeUnpaid, includeForced, retryToken]);
 
   // 🔧 [버그 수정] 훅은 조건부 return보다 항상 먼저 호출돼야 한다(React
   // 훅 규칙) — weeks/maxWeeks가 아직 없을 때도 슬롯 계산이 빈 배열
@@ -181,6 +189,7 @@ export function CycleSwitcher({
   const browsedIsCurrentWeek = browseIndex === currentWeekIndex;
   const browsedHasData = hasDataAt(browseIndex);
   const browsedHasUnpaid = browsedIsCurrentWeek ? currentHasUnpaid : !!browsedSlot?.hasUnpaid;
+  const browsedHasForced = browsedIsCurrentWeek ? currentHasForced : !!browsedSlot?.hasForced;
   const thisWeek = thisWeekRange();
 
   return (
@@ -234,6 +243,16 @@ export function CycleSwitcher({
           <span
             aria-label="미납 기록 있음"
             className="size-1.5 shrink-0 rounded-full bg-destructive sm:size-2"
+          />
+        )}
+        {/* 🔧 [사용자 지시] "예치금 재납 대상 사이클 오인 방지" — 이 사이클에
+            forced(페널티 2회 이상) 후보가 있음을 알리는 점. 미납 점과 같은
+            자리에 함께 뜰 수 있어 색을 구분한다(미납=destructive/빨강,
+            forced=amber/주황). */}
+        {browsedHasForced && (
+          <span
+            aria-label="예치금 재납 대상 있음"
+            className="size-1.5 shrink-0 rounded-full bg-amber-500 sm:size-2"
           />
         )}
       </div>

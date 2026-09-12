@@ -8380,6 +8380,27 @@ async function hasUnpaidFineInCycle(env, accessToken, fileId, memberNumber) {
   return unpaid.length > 0;
 }
 
+// 그 fileId(사이클)에 forced(자동 강제퇴실, "페널티 2회 이상") 후보가
+// 있는지 확인한다. memberNumber가 있으면 그 회원 한 명만, 없으면 전체
+// 회원 기준(listExitCandidates와 동일 필터 — §6532의 "페널티 대상자"
+// 조건 그대로 재사용). getAllExitRelevantStatus가 이미 fileId별 10분
+// 캐시(exitStatus:{fileId})이므로, "예치금 재납 대상 처리" 화면이 같은
+// fileId를 방금 조회했다면 캐시를 그대로 재사용한다.
+async function hasForcedCandidateInCycle(env, accessToken, fileId, memberNumber) {
+  if (memberNumber) {
+    const members = await listAllMembers(env, accessToken, fileId);
+    const member = members.find((m) => m.number === memberNumber);
+    if (!member) return false;
+    const statuses = await getAllExitRelevantStatus(env, accessToken, fileId, members);
+    const status = statuses.find((s) => s && s.member.number === memberNumber);
+    if (!status || /^(퇴실자|재납자)/.test(status.partiStatus)) return false;
+    const forced = calcForcedOutDeposit(status.breakdown);
+    return !!forced && forced.reasons.some((r) => r.code === "penalty_2_or_more");
+  }
+  const candidates = await listExitCandidates(env, accessToken, fileId);
+  return candidates.length > 0;
+}
+
 // 🔧 [사용자 지시] "벌금 납부 처리에서 사이클 오인 방지" — 관리자가
 // 사이클 토글을 지난 주로 전환하는 걸 깜빡하면 이미 리셋된 이번 주
 // 원본만 보고 "미납자 없음"으로 오인해 실제 미납자를 방치할 수 있다
@@ -8404,6 +8425,7 @@ async function handleCycleList(req, env, origin, url) {
     const { backups, currentCycle } = await listCurrentCycleBackups(env, accessToken);
     const memberParam = url ? url.searchParams.get("member") : null;
     const includeUnpaid = url ? url.searchParams.get("includeUnpaid") : null;
+    const includeForced = url ? url.searchParams.get("includeForced") : null;
 
     let targetMemberNumber = null;
     if (memberParam === "self") {
@@ -8424,6 +8446,9 @@ async function handleCycleList(req, env, origin, url) {
         if (includeUnpaid) {
           week.hasUnpaid = await hasUnpaidFineInCycle(env, accessToken, b.fileId, targetMemberNumber);
         }
+        if (includeForced) {
+          week.hasForced = await hasForcedCandidateInCycle(env, accessToken, b.fileId, targetMemberNumber);
+        }
         return week;
       })
     );
@@ -8443,6 +8468,14 @@ async function handleCycleList(req, env, origin, url) {
     };
     if (includeUnpaid) {
       result.currentHasUnpaid = await hasUnpaidFineInCycle(
+        env,
+        accessToken,
+        env.GOOGLE_SHEET_FILE_ID,
+        targetMemberNumber
+      );
+    }
+    if (includeForced) {
+      result.currentHasForced = await hasForcedCandidateInCycle(
         env,
         accessToken,
         env.GOOGLE_SHEET_FILE_ID,

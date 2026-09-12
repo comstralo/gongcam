@@ -407,6 +407,30 @@ components/admin/shared.tsx — 공용 프리미티브(§6): SectionCard/Section
 > `c.timePenHistory`를 그대로 넘기도록 고쳤다 — 이제 이력이 없으면
 > "해당 없음"이 정직하게 뜬다.
 
+> 🔧 **[2026-09-12] 사이클 토글에 "forced 후보 있음" 점(dot) 배지
+> 추가.** §4.1의 "미납 기록 있음" 배지와 같은 배경 — 관리자가 사이클
+> 전환을 깜빡한 채 이 화면을 열면, 이미 리셋된 이번 주 원본은
+> 페널티 누적이 없어 "forced 후보 없음"으로 보이지만 실제로는 지난
+> 주에 조건을 충족한 회원이 있을 수 있다. 다만 이 오인은 §4.1의
+> 벌금 미납과 달리 "계산이 틀어지는" 위험이 아니라 "정당한 후보가
+> 목록에 안 뜨는" 안전한 실패였다(`calcForcedOutDeposit`이 조건
+> 미충족 시 `null`을 반환해 처리 자체가 조용히 막힐 뿐, 잘못된
+> 금액이 나가거나 잘못된 데이터가 저장되지 않는다) — 그래서 서버
+> 가드가 아니라 §4.1과 동일한 UX 개선(배지)만으로 충분하다고
+> 판단했다(사용자 확인). `GET /cycles`에 `includeForced=1` 파라미터를
+> 추가하면 `hasForcedCandidateInCycle`(`frame-checker-worker/src/
+> index.js`)이 `listExitCandidates`와 완전히 동일한 필터(`penalty_2_or_more`)
+> 로 그 사이클에 forced 후보가 있는지 계산해 `hasForced`/
+> `currentHasForced`로 내려주고, `CycleSwitcher`가 이를 점으로
+> 표시한다(미납 점=빨강, forced 점=주황, 색으로 구분). `includeUnpaid`
+> 와 마찬가지로 명시적으로 opt-in한 화면(`AdminMoneyTab`,
+> `MyOutputPenSection`의 "self", `StatusPage`)에서만 계산·응답되고,
+> `hasForcedCandidateInCycle`은 `getAllExitRelevantStatus`(이미
+> `exitStatus:{fileId}` 10분 캐시)를 재사용해 무거운 재조회가 없다.
+> `memberNumber`가 있으면(본인 대시보드) "그 회원이 그 사이클에
+> forced 조건이었는지"로, 없으면(관리자 화면) "전체 중 forced 후보
+> 존재 여부"로 계산한다 — §4.1과 동일한 설계.
+
 ### 3.3 사유 반휴 신청 처리 (`ReasonLeaveReviewList`) — PEN · Money 탭
 
 > 🔧 2026-09: 화면 제목이 "사유 반휴 신청" → "사유 반휴 신청 대상 처리" →

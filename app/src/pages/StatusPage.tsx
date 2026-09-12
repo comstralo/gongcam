@@ -200,6 +200,7 @@ export function StatusPage({
           onSelect={onSelectCycle}
           memberNumber={selected === SELF_VALUE ? "self" : selected}
           includeUnpaid
+          includeForced
         />
       )}
       {membersError && (

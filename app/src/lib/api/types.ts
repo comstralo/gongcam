@@ -291,6 +291,11 @@ export type CycleWeek = {
   // 명의 미납 여부, 없으면 전체 회원 중 미납자 존재 여부. includeUnpaid를
   // 안 보낸 화면(예: 전체 랭킹)의 응답에는 이 필드 자체가 없다.
   hasUnpaid?: boolean;
+  // 🔧 [사용자 지시] "예치금 재납 대상(forced) 사이클 오인 방지" — hasUnpaid와
+  // 동일한 조건부 계산(요청에 includeForced=1이 있을 때만), member 파라미터가
+  // 있으면 그 회원이 이 주차에 forced(페널티 2회 이상) 조건이었는지, 없으면
+  // 전체 회원 중 forced 후보 존재 여부.
+  hasForced?: boolean;
 };
 
 export type CycleListResponse = {
@@ -309,6 +314,9 @@ export type CycleListResponse = {
   // 내려오는, "이번 주"(실시간) 슬롯의 미납 여부. weeks 배열엔 이번 주가
   // 없어 별도 필드로 둔다.
   currentHasUnpaid?: boolean;
+  // 🔧 [사용자 지시] CycleWeek.hasForced와 동일한 조건(includeForced=1)에서만
+  // 내려오는, "이번 주"(실시간) 슬롯의 forced 후보 존재 여부.
+  currentHasForced?: boolean;
 };
 
 export type AdminMember = {

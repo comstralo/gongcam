@@ -387,7 +387,13 @@ export function MyOutputPenSection({
           refreshDisabledReason="새로 접수된 내역이 없습니다"
         />
         <CollapsiblePanel className="flex flex-col gap-4">
-          <CycleSwitcher selectedFileId={cycleFileId} onSelect={setCycleFileId} memberNumber="self" includeUnpaid />
+          <CycleSwitcher
+            selectedFileId={cycleFileId}
+            onSelect={setCycleFileId}
+            memberNumber="self"
+            includeUnpaid
+            includeForced
+          />
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
