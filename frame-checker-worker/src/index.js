@@ -12,6 +12,80 @@
 //   4. 있으면 서버가 서명한 세션 토큰 발급 (HMAC-SHA256, 24시간 만료)
 //   5. 이후 /report 호출 시 이 세션 토큰을 다시 검증
 
+// 🔧 [구조 개선, 2026-09-13] Durable Object 클래스 8개는 src/durable-objects.js로
+// 분리했다(docs/TESTING.md 참고) — wrangler.toml의 durable_objects.bindings가
+// main 파일(이 파일)의 named export를 찾으므로 아래에서 재export한다.
+import {
+  ParticipantsRoster,
+  UsageStats,
+  ReportQueue,
+  LeaveQueue,
+  getLeaveQueueStub,
+  ReportVote,
+  MemberSettingsDO,
+  PushSubscriptionsDO,
+  BotAdminConfigDO,
+} from "./durable-objects.js";
+export {
+  ParticipantsRoster,
+  UsageStats,
+  ReportQueue,
+  LeaveQueue,
+  getLeaveQueueStub,
+  ReportVote,
+  MemberSettingsDO,
+  PushSubscriptionsDO,
+  BotAdminConfigDO,
+};
+
+// 🔧 [구조 개선, 2026-09-13] 캐시 인프라는 src/cache.js로 옮겼다 — 이
+// 3개 wrapper만 외부에서 호출되므로(docs/TESTING.md 참고) 재export는
+// 불필요하다(테스트가 직접 import하지 않음).
+import { _cachedCompute, invalidateMemberCache, invalidateMemberSlotCache } from "./cache.js";
+
+// 🔧 [구조 개선, 2026-09-13] 순수 날짜/시간 유틸은 src/date-utils.js로
+// 옮겼다 — 테스트가 직접 import하는 6개(currentWeekMondayKST/formatYYMMDD/
+// kstDateKey/exitDateMidnightUtcMs/weekOfForDate/exitWeekResetPassed)는
+// 재export한다(docs/TESTING.md 참고).
+import {
+  formatISODate,
+  todayKSTDateString,
+  todayUTCDateString,
+  kstDateOffsetString,
+  currentWeekMondayKST,
+  formatYYMMDD,
+  kstDateKey,
+  exitDateMidnightUtcMs,
+  weekOfForDate,
+  exitWeekResetPassed,
+} from "./date-utils.js";
+export {
+  currentWeekMondayKST,
+  formatYYMMDD,
+  kstDateKey,
+  exitDateMidnightUtcMs,
+  weekOfForDate,
+  exitWeekResetPassed,
+};
+
+// 🔧 [구조 개선, 2026-09-13] 완전 순수한 사이클 판정 함수는 src/cycle.js로
+// 옮겼다 — cycle.js가 FINE_UNPAID_ADMIN_FORCED_REASON을 이 파일에서
+// import하므로(위 export const 선언 참고) 여기서 다시 cycle.js를
+// import하는 것은 순환이지만, 재export 목적뿐이라 TDZ 위험이 없다
+// (docs/TESTING.md 참고).
+import {
+  requiresFineUnpaidRecheck,
+  isUnguardedAdminForcedCycleCombo,
+  compareWeekOfDesc,
+  currentCycleBackups,
+} from "./cycle.js";
+export {
+  requiresFineUnpaidRecheck,
+  isUnguardedAdminForcedCycleCombo,
+  compareWeekOfDesc,
+  currentCycleBackups,
+};
+
 const GOOGLE_CERTS_URL = "https://www.googleapis.com/oauth2/v3/certs";
 const SESSION_TTL_SEC = 30 * 24 * 60 * 60;
 
@@ -631,175 +705,6 @@ async function writeSheetValues(env, accessToken, fileId, valueRanges) {
   return data;
 }
 
-// 🔧 [429 방지 — 2계층 캐시] Sheets API 읽기 쿼터(분당 60회/사용자)를 아낀다.
-// 인메모리(모듈 스코프 Map)만으로는 불충분하다는 걸 실측으로 확인했다
-// (2026-08): Cloudflare Workers는 요청을 여러 독립된 isolate로 분산하고,
-// 각 isolate가 자기만의 모듈 스코프를 갖기 때문에 — 브라우저 하나가 같은
-// TCP 연결을 재사용하며 연달아 조회할 때만 인메모리 캐시가 히트하고,
-// 서로 다른 사용자(또는 새 연결)가 요청하면 사실상 매번 캐시 미스가 나서
-// 15명이 각자 접속하는 정상적인 사용 패턴에서도 분당 60회를 순식간에
-// 넘겨 429가 재현됐다. 그래서 캐시를 KV(REPORTS_KV, 계정 전체에서 전역
-// 공유됨)에도 함께 저장한다 — 인메모리는 "같은 isolate 안에서 즉시 재사용"
-// 용도로 그대로 남기고(레이턴시 이득), KV는 "다른 isolate/사용자끼리도
-// 공유" 용도로 추가한다. KV 쓰기는 하루 1,000회로 Sheets 읽기(분당 60)
-// 보다 훨씬 빡빡하므로, _cacheSet은 캐시 미스가 났을 때만(=TTL 동안
-// 최초 1회만) 호출되는 지금 구조를 그대로 유지해 쓰기 폭주를 피한다.
-const _sheetCache = new Map(); // key -> { value, expiresAt } (인메모리, 1차)
-const KV_CACHE_PREFIX = "sheetCache:";
-
-function _cacheGet(key) {
-  const entry = _sheetCache.get(key);
-  if (!entry) return undefined;
-  if (Date.now() > entry.expiresAt) {
-    _sheetCache.delete(key);
-    return undefined;
-  }
-  return entry.value;
-}
-
-// KV(2차, isolate 경계를 넘어 공유됨)까지 확인하는 비동기 버전. 히트하면
-// 인메모리에도 채워 같은 isolate의 다음 요청은 KV 왕복 없이 즉시 반환한다.
-async function _cacheGetAsync(env, key) {
-  const local = _cacheGet(key);
-  if (local !== undefined) return local;
-  try {
-    const raw = await env.REPORTS_KV.get(`${KV_CACHE_PREFIX}${key}`);
-    if (!raw) return undefined;
-    const entry = JSON.parse(raw);
-    if (Date.now() > entry.expiresAt) return undefined;
-    _sheetCache.set(key, entry);
-    return entry.value;
-  } catch {
-    return undefined;
-  }
-}
-
-function _cacheSet(key, value, ttlMs) {
-  _sheetCache.set(key, { value, expiresAt: Date.now() + ttlMs });
-  // _bumpUsageCounter와 동일한 저비용 방어책 — _sheetCache는 만료된 항목을
-  // "다시 읽힐 때만" 지우는 지연삭제뿐이라, 한 번 쓰고 다시 안 읽는 키는
-  // isolate가 오래 살아있으면 계속 쌓일 수 있다(실무 위험은 낮지만 공짜로
-  // 막을 수 있어 추가). 항목이 많아지면 이미 만료된 것들만 훑어 지운다.
-  if (_sheetCache.size > 300) {
-    const now = Date.now();
-    for (const [k, entry] of _sheetCache) {
-      if (now > entry.expiresAt) _sheetCache.delete(k);
-    }
-  }
-}
-
-// 인메모리 + KV 양쪽에 쓴다. KV expirationTtl은 최소 60초라는 제약이 있어,
-// 그보다 짧은 ttlMs를 그대로 넘기면 Cloudflare가 에러를 낸다 — KV의 만료는
-// 넉넉히(ttl의 4배 또는 최소 60초) 잡고, 실제 "몇 초짜리 캐시인지" 판단은
-// 우리가 저장한 expiresAt 값으로 한다(만료된 값은 위 _cacheGetAsync가 걸러냄).
-async function _cacheSetAsync(env, key, value, ttlMs) {
-  _cacheSet(key, value, ttlMs);
-  try {
-    const expiresAt = Date.now() + ttlMs;
-    await env.REPORTS_KV.put(`${KV_CACHE_PREFIX}${key}`, JSON.stringify({ value, expiresAt }), {
-      expirationTtl: Math.max(60, Math.ceil((ttlMs * 4) / 1000)),
-    });
-  } catch {
-    // KV 저장 실패해도 인메모리 캐시는 이미 세팅됐으니 이번 요청은 정상 진행한다.
-  }
-}
-
-// 캐시가 비어있는 순간(콜드 상태 직후, 또는 TTL 만료 직후) 같은 isolate로
-// 여러 요청이 거의 동시에 몰리면, 다들 "캐시에 없네"를 보고 각자 compute()를
-// 처음부터 실행해 시트를 중복으로 읽는다(cache stampede) — 실측: 관리자
-// 페이지 하나에 여러 섹션이 동시에 마운트되며 겪음(2026-08). 이미 같은
-// 키를 계산 중인 Promise가 있으면 새로 계산하지 않고 그 결과를 나눠 쓰게
-// 해서, 동시 요청이 몇 개든 실제 compute()는 1회만 실행되게 한다. 계산이
-// 끝나면(성공/실패 무관) in-flight 등록을 지운다 — 실패를 캐시하지 않아
-// 다음 요청이 재시도할 수 있게 하기 위함이다.
-const _inFlight = new Map(); // key -> Promise<value>
-
-// invalidateMemberCache/writeSheetValues의 무효화는 _inFlight를 전혀 모른다
-// — 계산이 이미 진행 중일 때 무효화가 일어나면, 그 계산은 "무효화 이전
-// 시점"의 낡은 데이터를 읽고 있는 셈인데 끝나고 나서 그 낡은 값을 새
-// TTL로 다시 캐시에 써버려 방금 한 무효화를 무의미하게 만든다(실측 아님,
-// 코드 검토로 확인된 경쟁 조건 — 2026-08). 세대 번호를 두고, 계산 시작
-// 시점의 세대를 기억해뒀다가 끝난 뒤 세대가 그대로일 때만 캐시에 쓴다 —
-// 계산 도중 무효화가 끼어들었으면 이번 결과는 호출자에게만 돌려주고
-// 캐시는 건드리지 않아, 다음 요청이 진짜 최신 값을 다시 읽게 한다.
-//
-// invalidateMemberCache는 9개 prefix(members:/meta:/exitStatus:/memberRows:/
-// reportScore:/outputPenSlots:/penSlotGrid:/weeklyPaidFine:/rosterStatus:)를
-// 항상 통째로(부분적으로가 아니라) 무효화하므로, 이 그룹 전체에 대해 키
-// 하나짜리 전역 카운터만 두면 충분하다 — 회원별로 갈라지는 outputPenSlots:/
-// reportScore:는 아직 계산 중이라 특정 회원 키가 _sheetCache에 존재하지도
-// 않는 시점에 무효화가 끼어들 수 있어(그래서 키별 Map으로는 놓칠 수 있음),
-// "이 그룹에 속하는 키인지"만 판별해 그룹 공통 카운터를 쓰는 편이 더
-// 정확하다. personalStatusBundle:(writeSheetValues가 개별 무효화)처럼
-// 정확히 어떤 키를 지우는지 아는 경우는 키별 Map으로 정밀하게 추적한다.
-// 🔧 [중복 캐시 통합, 2026-09-10] meritRank: 캐시 키는 폐지됐다 —
-// getMeritRank가 rosterStatus:(buildRosterStatus)를 그대로 재사용하도록
-// 바뀌었다(§16 참고). 이 목록에서도 제거.
-// 🔧 [캐싱 통합, 2026-09] reportScore:/outputPenSlots: 캐시 키는 폐지됐다 —
-// personalStatusBundle:(§getPersonalStatusBundle)이 셋(개인 탭 원본 포함)을
-// 하나로 합쳐 캐싱한다. 이 목록에서도 제거(personalStatusBundle:은 회원별
-// 키라 fileId당 1개를 전제하는 이 prefix 목록·MEMBER_CACHE_UNCONDITIONAL_KEYS
-// 방식으로는 지울 수 없고, invalidateMemberSlotCache/invalidatePersonalStatusCache
-// 가 회원 번호를 알 때 개별적으로 지운다 — 기존 personalStatus:도 항상 이
-// 방식이었다).
-const MEMBER_CACHE_PREFIXES = [
-  "members:",
-  "meta:",
-  "exitStatus:",
-  "memberRows:",
-  "penSlotGrid:",
-  "weeklyPaidFine:",
-  "rosterStatus:",
-  "adminMemberList:",
-  "dataSheetRows:",
-  "coReviewers:",
-];
-let _memberCacheGeneration = 0;
-const _cacheGeneration = new Map(); // key -> generation number (member-cache 그룹 외의 개별 키용)
-
-function _isMemberCacheKey(key) {
-  return MEMBER_CACHE_PREFIXES.some((p) => key.startsWith(p));
-}
-
-function _currentGeneration(key) {
-  return _isMemberCacheKey(key) ? _memberCacheGeneration : _cacheGeneration.get(key) || 0;
-}
-
-function _bumpCacheGeneration(key) {
-  if (_isMemberCacheKey(key)) {
-    _memberCacheGeneration += 1;
-  } else {
-    _cacheGeneration.set(key, (_cacheGeneration.get(key) || 0) + 1);
-  }
-}
-
-function _bumpMemberCacheGeneration() {
-  _memberCacheGeneration += 1;
-}
-
-async function _cachedCompute(env, key, ttlMs, compute) {
-  const cached = await _cacheGetAsync(env, key);
-  if (cached !== undefined) return cached;
-
-  const existing = _inFlight.get(key);
-  if (existing) return existing;
-
-  const generationAtStart = _currentGeneration(key);
-  const promise = (async () => {
-    try {
-      const value = await compute();
-      if (_currentGeneration(key) === generationAtStart) {
-        await _cacheSetAsync(env, key, value, ttlMs);
-      }
-      return value;
-    } finally {
-      _inFlight.delete(key);
-    }
-  })();
-  _inFlight.set(key, promise);
-  return promise;
-}
-
 // 🔧 [KV → DO 이전, 2026-09-11] "진행 중인 제보 쿨다운"/"최근 전송된 알림"
 // 목록은 예전엔 여기(REPORTS_KV)에 "파일당 1개 키 + CAS 유사 재시도"
 // 방식의 라이브 인덱스로 있었다(list() 자체는 이미 없앤 상태였다). 이제는
@@ -855,176 +760,6 @@ async function _readLeaveHistory(env, weekOf) {
   return items || [];
 }
 
-// fileId당 키가 하나뿐이라 무조건 KV .delete() 대상이 되는 종류(회원별로
-// 갈라지는 outputPenSlots:/reportScore:는 별도 처리 — 아래 함수의 prefix
-// 루프에서 인메모리에 존재하는 것만 지운다).
-//
-// 🔧 [사용자 지시, 2026-09] penCycle 추가 — 매주 앱스크립트 sheet_reset()이
-// 시트에 직접 쓰는 값(집계!D25)이라 Worker 쪽 쓰기 경로가 없어 원래
-// 무효화 그룹 밖이었다. 그러다 보니 "일주일에 한 번만 바뀌는 값"인데도
-// TTL(5분)만큼 자주 재확인·재기록됐다 — 앱스크립트가 리셋 직후
-// `_notifyWorkerCacheInvalidate({groups:["cycle"]})`로 즉시 알려주도록
-// 바꾸고(study_sw/assets/appscript.js), 그 대신 TTL을 2시간으로 크게
-// 늘렸다(getCurrentPenCycle). 알림이 실패해도(네트워크 오류 등) 최악의
-// 경우 2시간 안에는 자연 TTL 만료로 스스로 정정된다 — 제보 승인 시
-// 이 값을 슬롯에 그대로 기록하므로(applyOutputPenalty 등), 리셋 직후
-// 오래 낡아있으면 잘못된 사이클 번호가 슬롯에 찍힐 위험이 있어 하루
-// 종일 같은 긴 TTL 대신 2시간으로 절충했다.
-const MEMBER_CACHE_UNCONDITIONAL_KEYS = ["members", "meta", "exitStatus", "memberRows", "penSlotGrid", "weeklyPaidFine", "penCycle", "rosterStatus", "adminMemberList", "dataSheetRows", "coReviewers"];
-
-// 🔧 [불필요한 KV 삭제 절감, 2026-09] 호출부가 실제로 건드린 시트 범위에
-// 맞는 그룹만 넘기면, 무관한 캐시까지 매번 함께 지우는 낭비를 피할 수 있다
-// — 특히 가장 빈번한 제보 처리(penalty)가 회원 명단/시트 메타/상점 순위/
-// 개인 탭 배치처럼 무관한 4종까지 매번 함께 지우고 있었다
-// (docs/CACHING_POLICY.md §11 실측 근거).
-const MEMBER_CACHE_GROUPS = {
-  // 회원 명단/시트 구조 자체가 바뀌는 저빈도 조작(신규등록/퇴실/번호이동)
-  // 전용 — 9종 전부와 관련 있으므로 groups를 생략(=전체)했을 때와 동일하다.
-  // 🔧 [캐싱 통합, 2026-09] reportScore/outputPenSlots는 personalStatusBundle
-  // 로 흡수됐다 — 이 그룹이 실제로 회원별 캐시까지 지우는 경로는 여전히
-  // invalidateMemberSlotCache(각 호출부가 번호를 알 때 명시 호출)가 담당한다.
-  roster: [...MEMBER_CACHE_UNCONDITIONAL_KEYS], // penCycle/rosterStatus/adminMemberList 포함 9종 전부
-  // 제보 승인/취소/반려·유예 — 벌점(outputPenSlots)·제보상점(reportScore)
-  // 슬롯만 바뀐다. 다음 슬롯 미리보기(penSlotGrid)와 퇴실 후보 판정
-  // (exitStatus)도 이 슬롯을 입력으로 쓰므로 함께 포함한다.
-  //
-  // 🔧 [의도적 방치, 2026-09-10] rosterStatus(RANK/MY 탭이 함께 쓰는 상점·
-  // 순위 캐시, §16)는 실제로 이 그룹의 변경에 영향받지만(집계 F열 수식이
-  // 페널티 유무를 조건으로 삼음), 표시만 최대 30분 지연될 뿐 다른 데이터
-  // 정합성엔 영향이 없다고 판단해 이 그룹에서 의도적으로 뺐다(사용자 확인,
-  // 원래는 meritRank: 캐시 단독 논의였으나 §16에서 getMeritRank가
-  // rosterStatus를 재사용하도록 통합되며 이 판단도 함께 적용된다).
-  // 🔧 [캐싱 통합, 2026-09] outputPenSlots/reportScore가 personalStatusBundle
-  // 로 흡수되며 이 그룹에서도 빠졌다 — 제보 처리 호출부는 이미 전부
-  // invalidateMemberSlotCache(대상자·제보자 번호)를 함께 호출해 그 회원의
-  // personalStatusBundle을 명시적으로 지운다(§invalidateMemberSlotCache 참고).
-  penalty: ["exitStatus", "penSlotGrid"],
-  // 벌금 납부 상태 변경 — 개인 탭 31행(납부확인)만 바뀐다.
-  fine: ["exitStatus", "memberRows", "weeklyPaidFine"],
-  // 퇴실 신청/동의/취소(LeaveQueue DO) — exitStatus 계산의 입력값만 바뀐다.
-  exitRequest: ["exitStatus"],
-  // 참여상태(부스터디장 임명 등, 개인 탭 L3) 변경. coReviewers는 이 값을
-  // 그대로 캐싱한 것이라 함께 무효화해야 임명/해제가 "송출 P 대상 처리"에
-  // 즉시 반영된다(§getCurrentCoReviewers 참고).
-  partiStatus: ["exitStatus", "coReviewers"],
-  // 앱스크립트 sheet_reset()이 매주 집계!D25(페널티 사이클)를 갱신한
-  // 직후 호출하는 전용 그룹 — penCycle 하나만 좁게 지운다.
-  cycle: ["penCycle"],
-  // 🔧 [RANK 탭 캐싱 추가, 2026-09-10] "상금 정산 집행" 마킹(집계!P6)처럼
-  // rosterStatus(buildRosterStatus 결과)에만 영향을 주는 저빈도 조작 전용.
-  rosterOnly: ["rosterStatus"],
-  // 🔧 [members: TTL 상향 대응, 2026-09-11] members:가 10분→2시간으로 늘면서,
-  // 제보 승인(applyOutputPenalty)/제보상점 지급(applyReportMerit)이 "이
-  // 닉네임/이메일이 몇 번 회원인지"를 낡은 명단으로 잘못 확정해 벌점을
-  // 엉뚱한 회원(번호 재사용 시)에게 적을 위험이 생긴다 — 하루 10건 미만인
-  // 저빈도 액션이라, listAllMembers 호출 직전에 이 좁은 그룹만 무효화해
-  // 그 즉시 최신 명단으로 다시 계산되게 한다(§members 참고). members는
-  // dataSheetRows에서 파생되므로 dataSheetRows도 함께 지워야 "새로
-  // 계산하지만 재료는 낡은" 상태를 피할 수 있다. exitStatus/penSlotGrid
-  // 등 무관한 캐시까지 지우는 기본 roster 그룹보다 좁게 잡아 불필요한
-  // KV 삭제를 아낀다.
-  memberIdentity: ["members", "dataSheetRows"],
-  // 🔧 [사용자 지시, 2026-09-11] "신규 등록이 왜 벌점/벌금/사이클 캐시까지
-  // 매번 지우나" — handleAdminCreateMember가 실제로 쓰는 셀은 개인탭
-  // B2/I2/L3/O3와 데이터!D/E열뿐이라(시트 생성·삭제 없음), 그 범위와
-  // 무관한 meta:(탭 구조)/penSlotGrid:(데이터!F~K)/weeklyPaidFine:
-  // (집계!D22)/penCycle:(집계!D25, 앱스크립트 전용)은 낡지 않는다 —
-  // roster 그룹(9종 전부)보다 좁혀 이 4종의 불필요한 KV 삭제를 아낀다.
-  // members/dataSheetRows(이메일 D/E열)·exitStatus·memberRows(참여상태
-  // L3 등)·rosterStatus(집계 수식이 B2/L3를 즉시 반영)·adminMemberList
-  // (members 경유)·coReviewers(members 의존, 보수적으로 포함)는 실제로
-  // 낡으므로 그대로 남긴다. 번호 재사용 시 잔존 개인별 캐시는 이 그룹과
-  // 별개로 invalidateMemberSlotCache가 이미 방어한다(handleAdminCreateMember
-  // 호출부 참고).
-  newMember: ["members", "dataSheetRows", "exitStatus", "memberRows", "rosterStatus", "adminMemberList", "coReviewers"],
-};
-
-// 시트 구조(권한관리·데이터 D~V 등)를 바꾸는 쓰기 작업 뒤에 호출해 캐시가
-// 오래된 명단/메타를 계속 돌려주지 않게 한다. 인메모리는 즉시 지우고,
-// KV는 비동기로 지운다(호출부가 await하지 않아도 되도록 fire-and-forget).
-// groups를 생략하면 기존과 동일하게 9종 전부를 무효화한다(안전한 기본값) —
-// 호출부가 실제로 어떤 시트 범위를 바꿨는지 확실할 때만 좁은 그룹을 넘겨
-// 무관한 KV 삭제를 줄인다(docs/CACHING_POLICY.md §11).
-//
-// 🔧 [사용자 지시, 2026-09-10] "예치금 재납/벌금 납부는 지난주 시트에도
-// 쓸 수 있어야 한다" — 이 함수는 원래 KV 쪽 무조건 삭제 대상(9종 중 7종)의
-// 파일 구분을 env.GOOGLE_SHEET_FILE_ID로 하드코딩하고 있었다. 벌금 처리가
-// 이제 과거 사이클(백업 fileId)에도 쓸 수 있게 되면서, 그 경우 무효화도
-// 같은 백업 fileId를 대상으로 해야 한다 — 기본값은 그대로 현재 시트라
-// 기존 호출부(전부 세 번째 인자를 안 넘김)는 동작이 전혀 바뀌지 않는다.
-function invalidateMemberCache(env, groups, fileId) {
-  const targetFileId = fileId || (env && env.GOOGLE_SHEET_FILE_ID);
-  const activeKeys = groups ? [...new Set(groups.flatMap((g) => MEMBER_CACHE_GROUPS[g]))] : MEMBER_CACHE_GROUPS.roster;
-  const activePrefixes = activeKeys.map((name) => `${name}:`);
-  // 인메모리는 그룹 전체를 늘 세대 카운터 하나로 무효화한다(공짜 — 좁혀도
-  // KV 삭제 횟수가 줄지 않으므로 아낄 이유가 없고, 좁히면 오히려 "이번엔
-  // 무효화 안 된 인메모리 키가 남아있는" gap이 생길 위험만 커진다).
-  // 🔧 [경쟁 조건 수정] 지금 진행 중인 계산(_inFlight, 아직 _sheetCache에
-  // 없어 아래 루프에 안 걸리는 것들 포함)이 있다면, 그 계산이 끝나도
-  // _cachedCompute가 세대 불일치를 감지해 캐시에 쓰지 않는다.
-  _bumpMemberCacheGeneration();
-  const kvDeletes = [];
-  for (const key of _sheetCache.keys()) {
-    if (activePrefixes.some((p) => key.startsWith(p))) {
-      _sheetCache.delete(key);
-      if (env) kvDeletes.push(env.REPORTS_KV.delete(`${KV_CACHE_PREFIX}${key}`).catch(() => {}));
-    }
-  }
-  // exitStatus/memberRows/members/meta/penSlotGrid/weeklyPaidFine/rosterStatus는
-  // fileId별로 키가 하나뿐이라 인메모리에 아직 없어도(다른 isolate가 채운
-  // KV 항목일 수 있음) KV 쪽은 무조건 지운다 — 이번 호출이 실제로 건드린
-  // 그룹에 속하는 것만.
-  if (env) {
-    for (const name of MEMBER_CACHE_UNCONDITIONAL_KEYS) {
-      if (activeKeys.includes(name)) {
-        kvDeletes.push(env.REPORTS_KV.delete(`${KV_CACHE_PREFIX}${name}:${targetFileId}`).catch(() => {}));
-      }
-    }
-  }
-  return Promise.all(kvDeletes);
-}
-
-// outputPenSlots:/reportScore:는 회원별 키라 invalidateMemberCache가 KV를
-// 콕 집어 못 지운다(위 주석 참고) — 원래는 performExitReset/moveMemberSlot/
-// handleAdminCreateMember(번호 재사용 대비, 2026-09)처럼 "번호 1개당 1회"만
-// 실행되는 저빈도 관리자 조작에서만 호출해, 그 번호에 한해 KV까지 명시적으로
-// 지웠다.
-//
-// 🔧 [사용자 지시, 2026-09] "제보 승인/취소 후 최대 5분/30분 지연도 즉시
-// 삭제로 바꿔라" — 하루 제보 처리 건수가 많아야 10건 내외임을 확인해(건당
-// 최대 2명 × 2개 캐시 = 하루 40회 미만 추가 삭제, KV 예산에 무시할 수준),
-// applyOutputPenalty/applyReportMerit/cancelOutputPenalty/cancelReportMerit
-// 호출부(handleAdminCaptureCancel/CancelMerit/Decide/Delete/Revert 등
-// invalidateMemberCache(env, ["penalty"]) 호출 6곳)에서도 그 액션이 실제로
-// 건드린 회원 번호(대상자·제보자, 최대 2명)에 한해 이 함수를 함께 호출한다
-// — "번호 재사용" 대비용으로 좁게 쓰이던 함수가 이제 일반적인 제보 처리
-// 경로에서도 쓰인다.
-// 🔧 [사용자 지시, 2026-09-12 재점검] "벌점·상점을 제보 발생 사이클에
-// 기록"으로 바뀌면서, 이 6곳 모두 fileId 인자(sourceFileId — 원본이
-// 아닐 수 있음)를 반드시 함께 넘겨야 한다. 인자를 생략하면
-// invalidateMemberCache/invalidateMemberSlotCache는 항상
-// env.GOOGLE_SHEET_FILE_ID로 기본값이 잡히는데, 시트 쓰기는 이미
-// sourceFileId(지난 사이클 백업일 수 있음)에서 이뤄진 뒤라 — 캐시만
-// 엉뚱한(원본) 파일 걸 지우고 실제로 바뀐 파일의 캐시는 그대로 남아
-// 최대 TTL만큼 갱신되지 않는 불일치가 있었다(실제 발견된 버그, 수정
-// 완료).
-// 🔧 [캐싱 통합, 2026-09] outputPenSlots/reportScore가 personalStatusBundle:
-// 하나로 합쳐지면서(§getPersonalStatusBundle), 이 둘을 개별적으로 지우던
-// 과거 키(outputPenSlots:/reportScore:)는 더 이상 존재하지 않는다 —
-// personalStatusBundle: 하나만 지우면 셋(개인 탭 원본 포함) 다 함께
-// 재계산된다.
-// fileId를 생략하면 항상 "지금 진행 중인" 현재 시트(env.GOOGLE_SHEET_FILE_ID)
-// 기준으로 지운다 — 기존 호출부(벌점/상점 처리 등)는 전부 현재 시트만
-// 다루므로 이 기본값으로 충분하다. 과거 백업 파일도 다룰 수 있는 호출부
-// (computeExitResult 등)는 실제로 조회한 sourceFileId를 명시해야 그 파일의
-// 캐시가 정확히 지워진다.
-function invalidateMemberSlotCache(env, memberNumber, fileId) {
-  if (!env) return Promise.resolve();
-  const targetFileId = fileId || env.GOOGLE_SHEET_FILE_ID;
-  const cacheKey = `personalStatusBundle:${targetFileId}:${memberNumber}`;
-  _sheetCache.delete(cacheKey);
-  return env.REPORTS_KV.delete(`${KV_CACHE_PREFIX}${cacheKey}`).catch(() => {});
-}
 
 // 스프레드시트 메타(모든 탭의 sheetId/title)를 가져온다. 시트 복사/삭제/서식
 // 지정은 이름이 아니라 숫자 sheetId를 요구하므로, 이름→sheetId 매핑에 쓰인다.
@@ -1923,15 +1658,6 @@ const MORNING_GOAL_MINUTES = 180;
 // 개인 탭 rows(A1:U... 2차원 배열)에서 요일별 days 배열을 만든다. 순수 함수로
 // 분리해 실시간/과거 시트뿐 아니라 "예치금 재납 전" 백업 탭 스냅샷에도 그대로
 // 재사용한다(buildDepositAgainSnapshot).
-// Date 객체를 "YYYY-MM-DD"로 포맷한다. toISOString()은 UTC로 변환하며 자정을
-// 넘나들 위험이 있어(이 값들은 이미 정오 무렵으로 만들어지므로 실제로는 안전
-// 하지만), 명시적으로 로컬 필드에서 직접 조립해 시간대 변환에 의존하지 않는다.
-function formatISODate(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
 
 // buildPersonalStatus가 넘겨주는 "이 조회가 보여주는 주의 월요일" 기준으로,
 // 요일 인덱스(0=월 ... 6=일)에 해당하는 실제 캘린더 날짜를 계산한다.
@@ -1943,73 +1669,11 @@ function dayDateAt(weekMonday, dayIndex) {
   return formatISODate(d);
 }
 
-// KST(UTC+9) 기준 "지금"을 나타내는 Date. Cloudflare Workers는 로컬 타임존이
-// 항상 UTC라서, UTC Date에 9시간을 더해두고 이후 반드시 UTC getter(getUTCDate,
-// getUTCDay 등)로만 읽으면 KST 기준 값이 정확히 나온다 — 로컬 getter를 쓰면
-// (Workers 로컬=UTC이므로) 다시 UTC로 되돌아가버리니 주의.
-function nowKST() {
-  return new Date(Date.now() + 9 * 60 * 60 * 1000);
-}
-
-// KST 기준 "오늘"의 "YYYY-MM-DD" 문자열. formatISODate는 로컬 getter를
-// 쓰므로, nowKST()가 만든 "UTC 시각이지만 KST 날짜를 담고 있는" Date를
-// 그대로 넘기면 정확한 KST 날짜 문자열이 나온다(Workers 로컬=UTC).
-function todayKSTDateString() {
-  return formatISODate(nowKST());
-}
-
-// UTC 기준 "오늘"의 "YYYY-MM-DD" 문자열(Workers 로컬=UTC이므로 그냥
-// formatISODate(new Date())). 🔧 [사용자 지시] "UTC 기준으로 해줘야지.
-// 결국 한도에 따른 사용치를 보고 싶은건데" — 사용량 모니터링의 "일일"
-// 집계(_dailyUsageBuffer/UsageStats DO)가 KST 자정 기준이면, 같은 화면
-// 위쪽의 Cloudflare 실측 게이지(fetchCloudflareUsage, 실제 한도가
-// 리셋되는 UTC 자정 기준)와 하루 경계가 9시간 어긋나 합계가 안 맞아
-// 보였다 — 둘 다 "한도 대비 사용량"이 목적이므로 같은 기준으로 통일한다.
-function todayUTCDateString() {
-  return formatISODate(new Date());
-}
-
-// KST 기준 "오늘 + N일"(N이 음수면 과거) 날짜의 "YYYY-MM-DD" 문자열. 신규
-// 회원 등록 시 "첫 참여일"을 오늘부터 앞으로 일주일 이내로만 허용하는 범위
-// 검증에 쓴다(handleAdminCreateMember) — 날짜 문자열끼리는 사전식 비교가 곧
-// 날짜 비교와 같아, 별도 파싱 없이 `날짜문자열 <= kstDateOffsetString(6)`로
-// 바로 비교할 수 있다.
-function kstDateOffsetString(days) {
-  const d = nowKST();
-  d.setUTCDate(d.getUTCDate() + days);
-  return formatISODate(d);
-}
-
-// KST(UTC+9) 기준 "이번 주 월요일" 자정을 계산한다. 다른 KST 계산(예:
-// isSettlementVisibleToMembers)과 동일하게, UTC Date에 9시간을 더해두고
-// UTC getter로 읽는 트릭을 쓴다 — Cloudflare Workers는 로컬 타임존이 항상
-// UTC라서, 이렇게 만든 Date를 이후 formatISODate(로컬 getter)로 그대로
-// 포맷해도 KST 기준 날짜가 정확히 나온다.
-export function currentWeekMondayKST() {
-  const kstNow = nowKST();
-  const jsDay = kstNow.getUTCDay(); // 일=0 ... 토=6
-  const mondayOffset = (jsDay + 6) % 7; // 오늘이 월요일로부터 며칠째인지(월=0)
-  const monday = new Date(kstNow.getTime());
-  monday.setUTCDate(monday.getUTCDate() - mondayOffset);
-  monday.setUTCHours(0, 0, 0, 0);
-  return monday;
-}
-
 // 백업 파일명에서 온 weekOf("YYMMDD", 그 주의 월요일)를 Date로 파싱한다.
 function parseWeekOfToMonday(weekOf) {
   const m = /^(\d{2})(\d{2})(\d{2})$/.exec(weekOf || "");
   if (!m) return null;
   return new Date(Date.UTC(2000 + parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10)));
-}
-
-// UTC Date를 "YYMMDD"로 포맷한다(백업 파일명 weekOf와 동일한 규칙) — UTC
-// getter를 쓰므로, currentWeekMondayKST()/parseWeekOfToMonday()가 만든
-// "UTC 자정이지만 KST 날짜를 담은" Date를 그대로 넘기면 KST 기준 날짜가 나온다.
-export function formatYYMMDD(date) {
-  const yy = String(date.getUTCFullYear()).slice(-2);
-  const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(date.getUTCDate()).padStart(2, "0");
-  return `${yy}${mm}${dd}`;
 }
 
 // RosterPage(대시보드 "랭킹"/"상금 정산")의 타이틀에 "YYMMDD-YYMMDD 주간"을
@@ -3643,10 +3307,6 @@ function attachDeferralInfo(items, allItems) {
 // 확정) 방식으로 바뀌었다(사용자 지시) — 프론트 SEVERITY_LEVELS와 동일.
 const REPORT_SEVERITY_VALUES = ["yes", "no"];
 
-// KST(Asia/Seoul) 기준 "YYYY-MM-DD" 날짜 문자열 — "당일" 판정에 쓴다.
-export function kstDateKey(ts) {
-  return new Date(ts).toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" }); // sv-SE 로케일이 YYYY-MM-DD를 그대로 출력.
-}
 
 // 🔧 [3주 사이클 토글] weekOf("YYMMDD", 백업 파일명의 그 주 월요일)를 "그
 // 월요일 00:00 KST"의 진짜 UTC epoch ms로 변환한다. exitDateSettled류가 쓰는
@@ -6306,7 +5966,7 @@ async function handleAdminExitedMembers(req, env, origin) {
 // 사유: " prefix를 붙인 뒤의 label 형태라 원본과 직접 비교할 수 없어,
 // 아래 label 상수를 이 원본으로부터 파생시켜 두 상수가 항상 일치하게
 // 유지한다(§46 근처의 "관련 문서" 앞에 §CACHING_POLICY.md 기록 참고).
-const FINE_UNPAID_ADMIN_FORCED_REASON = "벌금 시한 내 미납자";
+export const FINE_UNPAID_ADMIN_FORCED_REASON = "벌금 시한 내 미납자";
 const FINE_UNPAID_ADMIN_FORCED_REASON_LABEL = `직권 사유: ${FINE_UNPAID_ADMIN_FORCED_REASON}`;
 
 // 🔧 2026-09: "직권 P : N건" 배지(§PaidFineList 요일 헤더) 실제 구현 —
@@ -6728,55 +6388,6 @@ function exitDateSettled(exitDate) {
   return Date.now() >= settledAtUtcMs;
 }
 
-// exitDate("YYYY-MM-DD")의 KST 자정을 UTC ms로 계산 — exitDateSettled와
-// 동일한 변환(KST는 UTC+9이므로 "그 날짜 00:00 KST" = "그 날짜 00:00 UTC - 9시간").
-export function exitDateMidnightUtcMs(exitDate) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(exitDate || "");
-  if (!m) return null;
-  return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) - 9 * 60 * 60 * 1000;
-}
-
-// exitDate가 속한 주(월~일)의 월요일을 "YYMMDD"로 반환 — appscript.js의
-// get_last_week_date_range()가 만드는 백업 파일명 접두부와 동일한 포맷.
-// sheet_reset()이 매주 월요일 새벽에 "그 주(월~일) 백업"을 만들 때 쓰는
-// 이름 규칙을 그대로 역산해, exitDate가 어느 백업 파일에 담겨야 하는지 찾는다.
-export function weekOfForDate(exitDate) {
-  const midnightMs = exitDateMidnightUtcMs(exitDate);
-  if (midnightMs === null) return null;
-  // exitDate(KST 자정)를 "UTC 시각이지만 KST 날짜를 담고 있는" Date로 다시
-  // 만들어 nowKST()와 동일한 트릭으로 요일(getUTCDay)을 읽는다.
-  const kstDate = new Date(midnightMs + 9 * 60 * 60 * 1000);
-  const jsDay = kstDate.getUTCDay(); // 일=0 ... 토=6
-  const mondayOffset = (jsDay + 6) % 7; // 이 날짜가 월요일로부터 며칠째인지(월=0)
-  const monday = new Date(midnightMs - mondayOffset * 24 * 60 * 60 * 1000);
-  const mondayKst = new Date(monday.getTime() + 9 * 60 * 60 * 1000);
-  const yy = String(mondayKst.getUTCFullYear()).slice(-2);
-  const mm = String(mondayKst.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(mondayKst.getUTCDate()).padStart(2, "0");
-  return `${yy}${mm}${dd}`;
-}
-
-// 🔧 [sheet_reset 이후 원본 오염 문제] exitDate가 속한 주의 sheet_reset
-// (그 다음 월요일 오전 5~6시 KST)이 이미 지났으면, 원본 시트는 더 이상
-// exitDate 시점의 정확한 값을 담고 있지 않다(페널티 사이클 순환, 재납
-// 상태 초기화 등) — 이 경우 원본이 아니라 그 주의 자동 백업 파일을 봐야
-// 한다(사용자 지시). "오늘이 며칠인지"가 아니라 반드시 "exitDate가 속한
-// 주의 리셋 시점"을 기준으로 계산해야 한다 — 그렇지 않으면 exitDate가
-// 월요일인 경우 "오늘도 월요일이니 리셋이 지났다"고 착각해, 실제로는
-// exitDate가 담긴 백업이 아직 없는데(그 백업은 다음 주 월요일에야 생김)
-// 엉뚱한 전전주 백업을 참조하게 된다(사용자 지적).
-export function exitWeekResetPassed(exitDate) {
-  const midnightMs = exitDateMidnightUtcMs(exitDate);
-  if (midnightMs === null) return false;
-  const kstDate = new Date(midnightMs + 9 * 60 * 60 * 1000);
-  const jsDay = kstDate.getUTCDay();
-  const mondayOffset = (jsDay + 6) % 7; // 이 날짜가 월요일로부터 며칠째인지(월=0)
-  const mondayMidnightUtcMs = midnightMs - mondayOffset * 24 * 60 * 60 * 1000;
-  // 그 주 월요일 자정(KST) + 7일 + 6시간 = 다음 주 월요일 06:00 KST.
-  // sheet_reset은 5~6시 사이 실행되므로 여유를 두고 6시를 기준으로 삼는다.
-  const resetAtUtcMs = mondayMidnightUtcMs + 7 * 24 * 60 * 60 * 1000 + 6 * 60 * 60 * 1000;
-  return Date.now() >= resetAtUtcMs;
-}
 
 // exitDate가 속한 주의 자동 백업 파일(fileId)을 찾는다. sheet_reset이 아직
 // 그 주 백업을 만들지 않았으면(리셋 전, 또는 드물게 백업 실패) null.
@@ -7316,35 +6927,6 @@ export async function resolveCaptureSourceFileId(env, accessToken, fileId, ts) {
 // true로 넘긴다 — 미리보기(handleAdminExitPreview)는 다이얼로그를 열 때,
 // 그리고 사유 입력 중 300ms 디바운스로 반복 호출되는 조회 전용 경로라
 // 매번 강제 무효화하면 불필요한 KV delete+Sheets 재조회가 쌓인다.
-// 🔧 [사용자 지시] "직권 P 사이클 오인 방지" — admin_forced는 settle과
-// 달리 exitDate로 서버가 자동으로 지난 주 백업을 찾아주는 로직이 없고,
-// 오직 프론트가 넘기는 cycle 파라미터에만 의존한다(resolveExitSourceFileId
-// 참고). 프론트의 cycleFileId는 화면을 열면 항상 null(=이번 주)로
-// 시작하므로, 관리자가 사이클 전환을 깜빡한 채 "벌금 시한 내 미납자"
-// 고정 사유로 확정하면 이미 초기화됐을 수 있는 이번 주 원본을 계산
-// 근거로 써버릴 위험이 있었다. 이 고정 사유일 때만, 계산 기준 시트에서
-// 실제로 미납 상태인지 재검증한다 — 관리자가 자유 입력한 사유(미납과
-// 무관한 처리)는 검증 대상이 아니다.
-export function requiresFineUnpaidRecheck(kind, forcedReason) {
-  return kind === "admin_forced" && (forcedReason || "").trim() === FINE_UNPAID_ADMIN_FORCED_REASON;
-}
-
-// 🔧 [사용자 지시] "자유 사유 직권 P의 사이클 오인 잠재 위험 차단" —
-// admin_forced는 서버가 자동으로 사이클을 판단해줄 근거(exitDate 같은
-// 날짜 필드)가 없어 cycleFileId 파라미터를 그대로 신뢰한다. "벌금 시한
-// 내 미납자" 고정 사유는 requiresFineUnpaidRecheck가 실제 미납 여부로
-// 재검증하지만, 관리자가 자유 입력한 사유는 검증할 조건 자체가 없어
-// cycleFileId가 함께 오면 "리셋된 이번 주 원본을 지난 주 데이터인 것
-// 처럼 계산해 그 빈 스냅샷을 감사 기록으로 영구 저장"하는 사고가
-// 가능하다. 현재 두 UI 경로(MemberRosterList=자유사유+cycle 없음,
-// AdminMoneyTab=cycle 있음+고정사유)가 이 조합을 우연히 만들지 않을
-// 뿐, 서버 API 자체엔 막는 검증이 없었다 — 향후 UI가 바뀌거나 API를
-// 직접 호출하면 조용히 재현되므로, "이 조합 자체를 거부"하는 방식으로
-// 근본 차단한다(§CACHING_POLICY.md 참고 예정).
-export function isUnguardedAdminForcedCycleCombo(kind, forcedReason, cycleFileId) {
-  return kind === "admin_forced" && !!cycleFileId && !requiresFineUnpaidRecheck(kind, forcedReason);
-}
-
 async function computeExitResult(env, accessToken, fileId, number, name, kind, forcedReason, cycleFileId, forceFresh) {
   if (isUnguardedAdminForcedCycleCombo(kind, forcedReason, cycleFileId)) {
     // 🔧 err.status를 얹어 호출부가 메시지 문자열을 파싱하지 않고도 400과
@@ -8443,12 +8025,6 @@ async function handleGrantMemberAccess(req, env, origin) {
 
 const BACKUP_FILENAME_RE = /^공부합시당 캠스터디 (\d{6})-(\d{6})(?: \(\d+\))?$/;
 const BACKUP_HISTORY_START_WEEK_OF = "260810"; // 이 주차(포함)부터만 지난 기록으로 취급
-const CYCLE_MAX_LEN = 3; // 사이클 하나는 최대 3주 — 안전장치(사이클값이 리셋되지 않는 이상 상황 대비)
-
-// weekOf(파일명의 시작일 YYMMDD)로 최신순 정렬
-export function compareWeekOfDesc(a, b) {
-  return b.weekOf.localeCompare(a.weekOf);
-}
 
 export async function listBackupFiles(env, accessToken) {
   const res = await fetch(
@@ -8473,24 +8049,6 @@ export async function listBackupFiles(env, accessToken) {
   }
   backups.sort(compareWeekOfDesc);
   return backups;
-}
-
-// 🔧 [버그 수정, 2026-09] "최신 백업부터 훑다가 사이클값 1을 만나면(포함)
-// 멈춘다"는 이전 로직은 현재 시트가 지금 1주차로 막 시작된 시점에 완전히
-// 틀린 결과를 낸다 — sheet_reset()(appscript.js)은 D25(사이클)를 갱신하기
-// *전에* 백업을 먼저 뜨므로, 백업 파일엔 항상 "그 주가 실제로 몇 주차였는지"
-// 값이 그대로 남는다(1→2→3→1 순환). 즉 지금이 1주차라면 지난 주 백업은
-// 리셋 직전 원본이 3주차였을 때 만들어졌으니 사이클값=3이고, 그 앞은 2, 그
-// 앞(3주 전)에야 1을 만난다 — 옛 로직대로면 "1을 만날 때까지"가 방금 끝난
-// 이전 사이클 3주 전체를 통째로 반환해버려, 1주차인 지금은 아직 이번
-// 사이클의 백업이 하나도 없어야 하는데도 "현재 사이클 백업 3개"로 잘못
-// 응답했다. 현재 시트 자체의 사이클 값(currentCycle)을 먼저 읽어 "이번
-// 사이클에서 이미 지난 주가 몇 주인지"(currentCycle - 1)를 정확히 계산하고,
-// 그 개수만큼만 최신 백업을 모은다 — 1주차면 0개, 2주차면 1개(사이클값=1인
-// 것 하나), 3주차면 2개(사이클값 2, 1인 것 순서대로)를 반환한다.
-export function currentCycleBackups(backups, currentCycle) {
-  const wantedCount = Math.min(CYCLE_MAX_LEN - 1, Math.max(0, currentCycle - 1));
-  return backups.slice(0, wantedCount);
 }
 
 // 관리자/일반 구분 없이 누구나 "현재 진행 중인 사이클(최대 3주) 중 이미
@@ -8656,483 +8214,11 @@ export async function resolveTargetFileId(env, accessToken, cycleFileId) {
   return { fileId: backup.fileId, weekOf: backup.weekOf };
 }
 
-// --- 실시간 참여자 명단: 로컬 봇이 PUT으로 갱신, 제보 페이지가 GET으로 조회 ---
-// KV는 쓰기 횟수가 하루 1,000회로 제한되어 수 초 간격 갱신에 부적합하므로
-// 쓰기 제한이 없는 Durable Object(단일 인스턴스, 메모리 상주)를 사용한다.
-
-const PARTICIPANTS_STALE_MS = 60 * 1000;
-
-// 슬롯 배정 락(아래 ParticipantsRoster의 /lock/acquire)에서 한 대기자가
-// 최대 기다릴 시간 — 이보다 오래 걸리면 락을 쥔 요청이 죽었거나 비정상적으로
-// 지연되는 것으로 보고 대기를 포기시켜, 영구 데드락으로 이어지지 않게 한다.
-// applyOutputPenalty/applyReportMerit 한 번의 실행 시간(Sheets API 호출
-// 몇 번, 수백ms~수 초)보다 넉넉히 길게 잡는다.
-const LOCK_WAIT_TIMEOUT_MS = 15000;
-
-// 🔧 [버그 수정] applyOutputPenalty/applyReportMerit는 "빈 슬롯 찾기 →
-// 쓰기"가 락 없는 read-modify-write라, 같은 대상자(또는 같은 제보자)에게
-// 밀린 제보 여러 건을 관리자가 빠르게 연속 승인하면(백로그 정리 시 흔한
-// 패턴) 둘 다 같은 빈 슬롯을 읽어 하나가 조용히 덮어써지는 레이스가 있었다.
-// 이 Durable Object는 이미 단일 인스턴스로 모든 요청을 순차(직렬) 처리하는
-// 성질을 그대로 이용해, 키(닉네임/제보자 이메일)별 순번 대기열을 메모리에
-// 두는 최소한의 뮤텍스로 쓴다 — Sheets API 호출 자체는 여전히 Worker에서
-// 하되, "acquire"(내 차례가 될 때까지 대기 후 티켓 발급)와 "release"(다음
-// 대기자에게 순번 넘기기) 두 요청으로 임계구역을 감싼다.
-export class ParticipantsRoster {
-  constructor(state) {
-    this.state = state;
-    this.members = [];
-    this.updatedAt = 0;
-    // 🔧 [버그 수정, 2026-09-11] "교시 제한 시간도 아닌데 도움봇이 꺼져있다고
-    // 뜬다"는 제보 — this.updatedAt은 순수 인메모리 필드라, Cloudflare가
-    // 이 DO를 유휴 시 자동 종료했다가 다음 요청에서 새 인스턴스로 재시작시키면
-    // (트래픽에 따라 수시로 일어남, 이 앱이 제어할 수 없는 플랫폼 동작)
-    // updatedAt이 다시 0으로 리셋됐다 — 재시작 직후 봇은 실제로 멀쩡히
-    // 동작 중인데도 "Date.now() - 0"이 항상 PARTICIPANTS_STALE_MS(60초)를
-    // 넘어 stale:true를 잘못 반환하고, 다음 봇 PUT(최대 약 10~15초 이내)이
-    // 오면 다시 정상화되는 패턴이었다(간헐적으로 "잠깐" 뜨는 증상과 일치).
-    // DO의 영구 저장소(this.state.storage)에 매 PUT마다 updatedAt을 함께
-    // 저장해두고, 재시작 시 blockConcurrencyWhile로 그 값을 복구해 재시작
-    // 여부와 무관하게 "마지막으로 실제 갱신된 시각"을 정확히 유지한다 —
-    // 첫 구동(진짜 아무도 PUT한 적 없음)이면 저장된 값이 없어 0 그대로
-    // 유지되므로 stale:true가 맞게 나온다.
-    this.state.blockConcurrencyWhile(async () => {
-      const stored = await this.state.storage.get("updatedAt");
-      if (typeof stored === "number") this.updatedAt = stored;
-    });
-    this.locks = new Map(); // key -> { holding: bool, queue: [resolve, ...] }
-    // 🔧 [KV list() 제거, 2026-09-11] "PUSH 알림 전송"의 쿨다운(닉네임별
-    // 재전송 제한)·"최근 전송된 알림" 목록을 원래 KV(notice-cooldown:/
-    // noticeIndex:current)에 뒀었는데, 이 DO가 이미 "전 세계에 단 하나뿐인
-    // 인스턴스"라 같은 목적(참여자 명단)에 더해 이 상태도 얹을 수 있다 —
-    // KV처럼 하루 쓰기 한도(1,000회)에 걸리지 않고, get→put 사이 경합도
-    // 없이(요청이 이 인스턴스로 직렬 처리됨) 원자적으로 처리된다. 만료
-    // 판정용 expiresAt만 함께 저장해 매 조회 시 걸러낸다 — KV의
-    // _appendToLiveIndex/_readLiveIndex와 같은 원리지만 DO 안에서는 CAS
-    // 재시도 로직 자체가 필요 없다(단일 인스턴스가 이미 직렬화해주므로).
-    this.notices = []; // { nickname, message, senderName, ts, expiresAt }
-    // 🔧 [KV list() 무관, KV 쓰기 한도 제거, 2026-09-11] "진행 중인 제보"
-    // (ActiveReportsSection, 15초 폴링)도 notices와 같은 이유로 여기로
-    // 옮긴다 — cooldownKey(코드상 `cooldown:{nickname}`/
-    // `selfcheck-cooldown:{email}`와 동일한 문자열을 그대로 재사용, 두
-    // 종류가 섞이지 않도록) 존재 여부로 429 차단을 판정하고, 같은 배열을
-    // "최근 진행된 제보" 표시에도 그대로 쓴다 — KV 시절엔 이 둘(차단 판정용
-    // cooldown: 키, 표시용 COOLDOWN_INDEX_KEY 인덱스)이 서로 다른 저장소라
-    // 수동으로 동기화해야 했는데(_markCaptureDoneInLiveIndex가 인덱스
-    // expiresAt과 cooldown: TTL 둘 다 갱신), 여기선 한 배열이 둘 다 겸해
-    // 그 동기화 자체가 필요 없어졌다.
-    this.reportCooldowns = []; // { cooldownKey, id, nickname, mode, startedAt, capturedAt, expiresAt, selfCheck, reporterEmail }
-    // 🔧 [KV → DO 이전, 2026-09-12] 반휴 신청 레이트리밋(leaveApplyRate:,
-    // 60초 창에 최대 2회)도 notices/reportCooldowns와 동일한 이유로 이
-    // DO로 옮긴다(§47) — "지금 이 순간의 상태, 없어져도 그만"이라 순수
-    // 메모리로 충분하다(state.storage 영속화 불필요).
-    this.leaveApplyRates = []; // { memberNumber, windowStart, count, expiresAt }
-  }
-
-  async fetch(req) {
-    if (req.method === "PUT") {
-      const { members } = await req.json();
-      this.members = Array.isArray(members) ? members.slice(0, 200) : [];
-      this.updatedAt = Date.now();
-      // 이 DO가 나중에 재시작돼도 "마지막으로 실제 갱신된 시각"을 이어받을
-      // 수 있도록 영구 저장소에도 함께 남긴다(위 생성자 주석 참고). 실패해도
-      // 조용히 넘어간다 — 최악의 경우 다음 재시작 때만 이 문제가 재발할
-      // 뿐, 이번 요청의 본 응답(멤버 목록 갱신)을 막을 이유는 아니다.
-      this.state.storage.put("updatedAt", this.updatedAt).catch((e) => console.error("[ParticipantsRoster] updatedAt 영구 저장 실패:", e));
-      return new Response(JSON.stringify({ ok: true }), {
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-    if (req.method === "GET") {
-      const url = new URL(req.url);
-      if (url.pathname === "/notice/list") {
-        const now = Date.now();
-        this.notices = this.notices.filter((n) => n.expiresAt > now);
-        return new Response(JSON.stringify({ items: this.notices }), {
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      if (url.pathname === "/report-cooldown/list") {
-        const now = Date.now();
-        this.reportCooldowns = this.reportCooldowns.filter((c) => c.expiresAt > now);
-        return new Response(JSON.stringify({ items: this.reportCooldowns }), {
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      const stale = Date.now() - this.updatedAt > PARTICIPANTS_STALE_MS;
-      return new Response(
-        JSON.stringify({ members: this.members, updatedAt: this.updatedAt, stale }),
-        { headers: { "Content-Type": "application/json" } }
-      );
-    }
-    if (req.method === "POST") {
-      const url = new URL(req.url);
-      if (url.pathname === "/notice/check") {
-        const { nickname } = await req.json();
-        const now = Date.now();
-        this.notices = this.notices.filter((n) => n.expiresAt > now);
-        const onCooldown = this.notices.some((n) => n.nickname === nickname);
-        return new Response(JSON.stringify({ onCooldown }), {
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      if (url.pathname === "/notice/record") {
-        const { nickname, message, senderName, cooldownSec } = await req.json();
-        const now = Date.now();
-        this.notices = this.notices.filter((n) => n.expiresAt > now);
-        this.notices.push({ nickname, message, senderName, ts: now, expiresAt: now + cooldownSec * 1000 });
-        return new Response(JSON.stringify({ ok: true }), {
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      if (url.pathname === "/leave-rate/check") {
-        // 🔧 [KV → DO 이전, 2026-09-12] checkAndRecordLeaveApplyRate와
-        // 동일한 고정 60초 창 로직 — true면 이번 요청 진행 가능(카운트
-        // 기록 완료), false면 이번 창에서 한도(2회)를 이미 다 쓴 것(거부된
-        // 시도는 카운트하지 않음).
-        const { memberNumber } = await req.json();
-        const now = Date.now();
-        const windowMs = 60 * 1000;
-        const maxCount = 2;
-        this.leaveApplyRates = this.leaveApplyRates.filter((r) => r.expiresAt > now);
-        const entry = this.leaveApplyRates.find((r) => r.memberNumber === memberNumber);
-        if (entry) {
-          if (entry.count >= maxCount) {
-            return new Response(JSON.stringify({ allowed: false }), { headers: { "Content-Type": "application/json" } });
-          }
-          entry.count += 1;
-          entry.expiresAt = entry.windowStart + windowMs;
-        } else {
-          this.leaveApplyRates.push({ memberNumber, windowStart: now, count: 1, expiresAt: now + windowMs });
-        }
-        return new Response(JSON.stringify({ allowed: true }), { headers: { "Content-Type": "application/json" } });
-      }
-      if (url.pathname === "/report-cooldown/check") {
-        const { cooldownKey } = await req.json();
-        const now = Date.now();
-        this.reportCooldowns = this.reportCooldowns.filter((c) => c.expiresAt > now);
-        const onCooldown = this.reportCooldowns.some((c) => c.cooldownKey === cooldownKey);
-        return new Response(JSON.stringify({ onCooldown }), {
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      if (url.pathname === "/report-cooldown/record") {
-        const { cooldownKey, id, nickname, mode, selfCheck, reporterEmail, cooldownSec } = await req.json();
-        const now = Date.now();
-        this.reportCooldowns = this.reportCooldowns.filter((c) => c.expiresAt > now);
-        this.reportCooldowns.push({
-          cooldownKey,
-          id,
-          nickname,
-          mode,
-          startedAt: now,
-          capturedAt: null,
-          expiresAt: now + cooldownSec * 1000,
-          selfCheck: !!selfCheck,
-          reporterEmail,
-        });
-        return new Response(JSON.stringify({ ok: true }), {
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      if (url.pathname === "/report-cooldown/capture-done") {
-        // 🔧 [촬영 완료 후 20분 재시작] KV 시절 _markCaptureDoneInLiveIndex와
-        // 동일한 로직 — capturedAt부터 원래 쿨다운 길이(expiresAt-startedAt)
-        // 만큼 다시 카운트한다. 여긴 배열 하나가 차단 판정과 표시를 겸하므로
-        // KV처럼 cooldown: 키를 별도로 재기입할 필요가 없다.
-        const { id, capturedAt } = await req.json();
-        const now = Date.now();
-        this.reportCooldowns = this.reportCooldowns.filter((c) => c.expiresAt > now || c.id === id);
-        const item = this.reportCooldowns.find((c) => c.id === id);
-        if (item && !item.capturedAt) {
-          const cooldownSec = Math.round((item.expiresAt - item.startedAt) / 1000);
-          item.capturedAt = capturedAt;
-          item.expiresAt = capturedAt + cooldownSec * 1000;
-        }
-        this.reportCooldowns = this.reportCooldowns.filter((c) => c.expiresAt > now);
-        return new Response(JSON.stringify({ ok: true }), {
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      const key = url.searchParams.get("key");
-      if (!key) return new Response(JSON.stringify({ error: "key required" }), { status: 400 });
-      if (url.pathname === "/lock/acquire") {
-        let entry = this.locks.get(key);
-        if (!entry) {
-          entry = { holding: false, queue: [] };
-          this.locks.set(key, entry);
-        }
-        if (!entry.holding) {
-          entry.holding = true;
-        } else {
-          // 🔧 [버그 수정] 원래는 타임아웃 없이 무기한 대기했다 — 락을 쥔
-          // 요청이 release 없이 죽으면(Worker 강제종료 등, 드물지만 가능)
-          // entry.holding이 영원히 true로 남아 이후 같은 key의 모든 acquire가
-          // 무한 대기하는 영구 데드락이 됐다. 게다가 대기자가 존재하는 것
-          // 자체가 DO를 "처리 중인 요청이 남아있다"로 보이게 해, 유휴 시
-          // 자연 evict(재시작으로 this.locks가 초기화되는 자가치유)조차
-          // 막을 수 있었다. LOCK_WAIT_TIMEOUT_MS 안에 못 받으면 큐에서
-          // 자기 항목을 직접 제거하고 "실패"로 응답해, 상위(withMemberLock)가
-          // 락 없이 진행하도록 한다 — 죽은 락 보유자로 인한 무한 대기 사슬을
-          // 끊는다. release가 나중에 이 항목을 next()로 깨우는 레이스를
-          // 막기 위해, 깨워진 콜백이 "이미 시간초과로 빠졌는지"를 own 배열
-          // 참조로 직접 확인해 제거한다(splice는 항등 비교라 안전).
-          const waiter = { resolve: null };
-          const waitPromise = new Promise((resolve) => {
-            waiter.resolve = resolve;
-            entry.queue.push(waiter);
-          });
-          const acquiredInTime = await Promise.race([
-            waitPromise.then(() => true),
-            new Promise((resolve) => setTimeout(() => resolve(false), LOCK_WAIT_TIMEOUT_MS)),
-          ]);
-          if (!acquiredInTime) {
-            const idx = entry.queue.indexOf(waiter);
-            if (idx !== -1) entry.queue.splice(idx, 1); // 아직 안 깨워졌으면 큐에서 제거.
-            return new Response(JSON.stringify({ ok: false, timedOut: true }), {
-              status: 503,
-              headers: { "Content-Type": "application/json" },
-            });
-          }
-        }
-        return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
-      }
-      if (url.pathname === "/lock/release") {
-        const entry = this.locks.get(key);
-        if (entry) {
-          const next = entry.queue.shift();
-          if (next) {
-            next.resolve(); // 다음 대기자가 락을 이어받는다(holding은 계속 true).
-          } else {
-            entry.holding = false;
-            this.locks.delete(key);
-          }
-        }
-        return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
-      }
-    }
-    return new Response("method not allowed", { status: 405 });
-  }
-}
-
-// 🔧 [사용량 모니터링 고도화, 2026-09-11] "하루 동안, 어느 메뉴에서, 어느
-// 사용자에 의해 KV 쓰기·삭제·목록조회가 발생했는지"를 재시작에도 유지되게
-// 기록하는 전용 DO. ParticipantsRoster(참여자 명단/락/공지/쿨다운)와는
-// 책임이 달라 별도 클래스로 뒀다 — 이 DO는 SQL API 없이
-// ParticipantsRoster의 updatedAt과 동일한 단순 key-value 패턴만 쓴다
-// (회원 15명·관리자 3명 규모에서 SQL은 과함). 키는
-// "{date}|{path}|{email}|{op}"(date는 todayUTCDateString과 동일한 UTC
-// YYYY-MM-DD — 🔧 [사용자 지시] "UTC 기준으로 해줘야지. 결국 한도에
-// 따른 사용치를 보고 싶은건데": 같은 화면 위쪽 Cloudflare 실측 게이지가
-// 실제 한도 리셋 시점인 UTC 자정 기준이라 여기도 맞춤), 값은 누적 카운트
-// 정수. 매 KV 호출마다 이 DO에 실시간 fetch하지 않고(오버헤드 + "감시가
-// 감시 대상을 갉아먹는" 역설 방지), index.js의 _dailyUsageBuffer가 5분
-// cron에서 배치로 /flush를 호출한다.
-export class UsageStats {
-  constructor(state) {
-    this.state = state;
-    this.counts = new Map(); // "{date}|{path}|{email}|{op}" -> count
-    // 🔧 [사용자 지시] "이메일 말고 사용자 이름을 적고" — 처음엔
-    // _emailNameMap(index.js 상단, isolate 로컬 메모리)만으로 치환했는데,
-    // "이 요청을 처리한 isolate가 그 사용자를 아직 한 번도 못 봤으면"
-    // 이메일이 그대로 보이는 문제가 있었다(Cloudflare가 요청을 여러
-    // 서버로 분산 처리하는 한, isolate 로컬 매핑은 "일일"/"30분" 집계와
-    // 똑같은 구조적 한계를 겪는다). email→name 매핑도 여기 DO에 영구
-    // 저장해 isolate 무관하게 항상 알 수 있게 한다.
-    this.names = new Map(); // email -> memberName
-    // ParticipantsRoster의 updatedAt 복구 패턴과 동일 — 재시작 시 영구
-    // 저장소에서 전량 복원한다. 항목 수가 (보관 정책상 최대 7일)×(경로
-    // 수십 개)×(사용자 15명 안팎)×(연산 3종) 수준이라 전량 로드에 무리가
-    // 없다.
-    this.state.blockConcurrencyWhile(async () => {
-      const stored = await this.state.storage.list();
-      for (const [key, value] of stored) {
-        if (typeof value === "number") this.counts.set(key, value);
-        else if (typeof value === "string" && key.startsWith("n|")) this.names.set(key.slice(2), value);
-      }
-    });
-  }
-
-  async fetch(req) {
-    const url = new URL(req.url);
-    if (req.method === "POST" && url.pathname === "/flush") {
-      const { entries, today, names } = await req.json();
-      const puts = [];
-      for (const { date, kind, path, email, op, count } of entries || []) {
-        const key = `${date}|${kind}|${path}|${email}|${op}`;
-        const next = (this.counts.get(key) || 0) + count;
-        this.counts.set(key, next);
-        puts.push(this.state.storage.put(key, next));
-      }
-      for (const [email, name] of Object.entries(names || {})) {
-        if (this.names.get(email) === name) continue;
-        this.names.set(email, name);
-        puts.push(this.state.storage.put(`n|${email}`, name));
-      }
-      // 보관 정책: 오늘(today, 호출부가 todayUTCDateString()로 계산해
-      // 넘김) 기준 7일보다 오래된 키는 함께 정리한다 — DO 저장 공간이
-      // 무한정 쌓이지 않게 하는 목적. 문자열 YYYY-MM-DD는 사전순 비교가
-      // 날짜순 비교와 일치해 Date 파싱 없이 바로 비교 가능하다.
-      if (today) {
-        const cutoffDate = new Date(today);
-        cutoffDate.setDate(cutoffDate.getDate() - 7);
-        const cutoff = cutoffDate.toISOString().slice(0, 10);
-        for (const key of this.counts.keys()) {
-          if (key.startsWith("m|")) continue; // 분단위 키는 아래 /flush-recent가 별도 정리
-          const keyDate = key.slice(0, key.indexOf("|"));
-          if (keyDate < cutoff) {
-            this.counts.delete(key);
-            puts.push(this.state.storage.delete(key));
-          }
-        }
-      }
-      await Promise.all(puts);
-      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
-    }
-    // 🔧 [사용자 지시] "일일 중에서 30분내로 발생한것만 추려서 보여주면
-    // 되잖아" — /flush와 별개 엔드포인트로 분단위(m|{minuteKey}|...) 키를
-    // 반영하고, 30분보다 오래된 분단위 키는 여기서 함께 정리한다(daily
-    // 키와 달리 자정 넘어가는 걸 기다릴 필요 없이 즉시 정리 가능).
-    if (req.method === "POST" && url.pathname === "/flush-recent") {
-      const { entries } = await req.json();
-      const puts = [];
-      for (const { minuteKey, kind, path, email, op, count } of entries || []) {
-        const key = `m|${minuteKey}|${kind}|${path}|${email}|${op}`;
-        const next = (this.counts.get(key) || 0) + count;
-        this.counts.set(key, next);
-        puts.push(this.state.storage.put(key, next));
-      }
-      const cutoff = Date.now() - KV_USAGE_WINDOW_MIN * 60_000;
-      for (const key of this.counts.keys()) {
-        if (!key.startsWith("m|")) continue;
-        const minuteKey = key.slice(2, 18); // "m|" 제거 후 "YYYY-MM-DDTHH:MM"(16자)
-        if (new Date(minuteKey + ":00Z").getTime() < cutoff) {
-          this.counts.delete(key);
-          puts.push(this.state.storage.delete(key));
-        }
-      }
-      await Promise.all(puts);
-      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
-    }
-    if (req.method === "GET" && url.pathname === "/today") {
-      const date = url.searchParams.get("date") || "";
-      const prefix = `${date}|`;
-      const items = [];
-      for (const [key, count] of this.counts) {
-        if (key.startsWith("m|") || !key.startsWith(prefix)) continue;
-        const rest = key.slice(prefix.length);
-        const parts = rest.split("|");
-        const op = parts.pop();
-        const email = parts.pop();
-        // 🔧 [사용자 지시] "일일에서도 - 뒤에 캐시 유발 지점을 출력해줘" —
-        // kind를 daily 키에 추가하기 전(구버전)엔 세그먼트가 4개
-        // (path|email|op는 이미 pop됨 → path만 남음)였고, 이후(신버전)엔
-        // kind가 맨 앞에 하나 더 있다(5개: kind|path|email|op). 남은
-        // parts 길이로 구분해 과도기의 구버전 키도 깨지지 않게 읽는다
-        // (최대 7일 뒤 자연 소멸).
-        const kind = parts.length > 1 ? parts.shift() : "";
-        const path = parts.join("|");
-        items.push({ kind, path, email, op, count });
-      }
-      // 🔧 [사용자 지시] "이메일 말고 사용자 이름을 적고" — names(email->name
-      // 전체 매핑)도 함께 내려줘 호출부가 isolate 로컬 매핑 없이 치환할
-      // 수 있게 한다.
-      return new Response(JSON.stringify({ items, names: Object.fromEntries(this.names) }), {
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-    // 🔧 최근 30분(KV_USAGE_WINDOW_MIN) 이내 분단위 키만 (path·email·op)로
-    // 합산해 반환한다 — isolate 로컬이던 기존 "30분" 뷰와 달리 모든
-    // isolate의 기록을 DO 하나로 모은 뒤 필터링하므로 항상 완전한 값이다.
-    if (req.method === "GET" && url.pathname === "/recent") {
-      const cutoff = Date.now() - KV_USAGE_WINDOW_MIN * 60_000;
-      const totals = new Map(); // "{kind}|{path}|{email}|{op}" -> count
-      for (const [key, count] of this.counts) {
-        if (!key.startsWith("m|")) continue;
-        const minuteKey = key.slice(2, 18);
-        const ts = Date.parse(minuteKey + ":00Z");
-        if (Number.isNaN(ts) || ts < cutoff) continue;
-        const groupKey = key.slice(19); // "m|" + minuteKey(16) + "|" 제거
-        totals.set(groupKey, (totals.get(groupKey) || 0) + count);
-      }
-      const items = [...totals.entries()].map(([groupKey, count]) => {
-        const parts = groupKey.split("|");
-        const op = parts.pop();
-        const email = parts.pop();
-        const kind = parts.shift();
-        const path = parts.join("|");
-        return { kind, path, email, op, count };
-      });
-      return new Response(JSON.stringify({ items, names: Object.fromEntries(this.names) }), {
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-    return new Response("method not allowed", { status: 405 });
-  }
-}
-
+// 🔧 [구조 개선, 2026-09-13] Durable Object 클래스 8개는 src/durable-objects.js로
+// 옮겼다(파일 상단 import/재export 참고) — 아래 stub 헬퍼만 여기 남겼다.
 function getUsageStatsStub(env) {
   const id = env.USAGE_STATS_DO.idFromName("usage-stats");
   return env.USAGE_STATS_DO.get(id);
-}
-
-// 🔧 [사용자 지시, 2026-09-12] "list 말고 다른 방식으로 구현은 어려운
-// 구조야 현재?" → "그럼 옮겨버려" — handleListReports(GET /reports, 10분
-// 안전망 폴링)가 REPORTS_KV.list({prefix:"report:"})로 하루 대부분의
-// KV list() 호출(약 144회/일)을 차지했다. 이 큐를 KV에서 이 DO로
-// 옮겨 put/delete/list 세 연산 모두 KV 할당량에서 뺀다.
-// docs/CACHING_POLICY.md §24.3은 "report:{id}는 DO로 옮기면 안 된다"고
-// 적어뒀지만, 그 결론은 순수 메모리 DO(재시작 시 빈 상태로 리셋)에만
-// 해당한다 — 여기는 UsageStats와 동일하게 state.storage를 실제로 써서
-// 재시작해도 blockConcurrencyWhile로 전량 복원되므로, §24.3이 우려한
-// "봇이 몇 시간 꺼져 있는 동안 안전망 큐가 소실될 위험"이 발생하지
-// 않는다(사용자 확인: 기능면에서 차이 없음).
-export class ReportQueue {
-  constructor(state) {
-    this.state = state;
-    this.entries = new Map(); // id -> entry(JSON 객체, expiresAt 필드 포함)
-    this.state.blockConcurrencyWhile(async () => {
-      const stored = await this.state.storage.list();
-      for (const [id, entry] of stored) this.entries.set(id, entry);
-    });
-  }
-
-  async fetch(req) {
-    const url = new URL(req.url);
-    if (req.method === "POST" && url.pathname === "/put") {
-      const { entry, ttlSec } = await req.json();
-      const expiresAt = Date.now() + ttlSec * 1000;
-      const stored = { ...entry, expiresAt };
-      this.entries.set(entry.id, stored);
-      await this.state.storage.put(entry.id, stored);
-      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
-    }
-    if (req.method === "POST" && url.pathname === "/delete") {
-      const { id } = await req.json();
-      this.entries.delete(id);
-      await this.state.storage.delete(id);
-      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
-    }
-    // handleListReports가 하던 "list + 각 get + 각 delete + 정렬해 반환"
-    // 전부를 한 번의 DO fetch로 대체한다 — 만료 안 된 항목만 반환하고
-    // (KV 시절과 동일하게 "조회 즉시 소비"), 이미 만료된 항목은 반환
-    // 없이 조용히 지운다(KV expirationTtl 자동 만료 대신 여기서 직접
-    // 판정).
-    if (req.method === "POST" && url.pathname === "/drain") {
-      const now = Date.now();
-      const items = [];
-      const puts = [];
-      for (const [id, entry] of this.entries) {
-        if (entry.expiresAt > now) items.push(entry);
-        this.entries.delete(id);
-        puts.push(this.state.storage.delete(id));
-      }
-      await Promise.all(puts);
-      items.sort((a, b) => a.ts - b.ts);
-      return new Response(JSON.stringify({ items }), { headers: { "Content-Type": "application/json" } });
-    }
-    return new Response("method not allowed", { status: 405 });
-  }
 }
 
 function getReportQueueStub(env) {
@@ -9140,283 +8226,9 @@ function getReportQueueStub(env) {
   return env.REPORT_QUEUE_DO.get(id);
 }
 
-// 🔧 [사용자 지시, 2026-09-12] "전환 가능한 것들은 지금 전환하도록 하자"
-// — leaveq:(사유반휴 봇 오프라인 대기열)+leaveqIndex:current, exitRequest:
-// (퇴실 신청)+exitRequestIndex:current, leaveHistory:(사유반휴 처리 이력)
-// 세 KV 자료구조를 한 DO로 통합 이전한다. 셋 다 "사유반휴·퇴실 처리"라는
-// 같은 도메인이고 트래픽이 낮아(회원 15명, 생애주기당 수 회) 인스턴스를
-// 나눌 실익이 없다 — storage 키 prefix(leaveq:/exit:/history:)로만
-// 구분한다. ReportQueue와 동일하게 state.storage 기반 영속 DO라 §24.3이
-// 우려한 "재시작 시 소실" 위험이 없다(§46/§47 참고).
-export class LeaveQueue {
-  constructor(state) {
-    this.state = state;
-    this.leaveq = new Map(); // id -> entry(memberNumber, memberName, day, reason, requesterEmail, imageBase64, imageExt, count, ts)
-    this.exitRequests = new Map(); // memberNumber -> {exitDate, ts, agreedAt}
-    this.history = new Map(); // weekOf -> array
-    this.state.blockConcurrencyWhile(async () => {
-      const stored = await this.state.storage.list();
-      for (const [key, value] of stored) {
-        if (key.startsWith("leaveq:")) this.leaveq.set(key.slice(7), value);
-        else if (key.startsWith("exit:")) this.exitRequests.set(key.slice(5), value);
-        else if (key.startsWith("history:")) this.history.set(key.slice(8), value);
-      }
-    });
-  }
-
-  async fetch(req) {
-    const url = new URL(req.url);
-
-    if (req.method === "POST" && url.pathname === "/leaveq/put") {
-      const { id, entry } = await req.json();
-      this.leaveq.set(id, entry);
-      await this.state.storage.put(`leaveq:${id}`, entry);
-      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
-    }
-    if (req.method === "POST" && url.pathname === "/leaveq/delete") {
-      const { id } = await req.json();
-      const existed = this.leaveq.delete(id);
-      await this.state.storage.delete(`leaveq:${id}`);
-      return new Response(JSON.stringify({ ok: true, existed }), { headers: { "Content-Type": "application/json" } });
-    }
-    if (req.method === "GET" && url.pathname === "/leaveq/get") {
-      const id = url.searchParams.get("id") || "";
-      const entry = this.leaveq.get(id);
-      if (!entry) return new Response(JSON.stringify({ entry: null }), { status: 404, headers: { "Content-Type": "application/json" } });
-      return new Response(JSON.stringify({ entry }), { headers: { "Content-Type": "application/json" } });
-    }
-    // 🔧 [응답 크기 절감] leaveq 항목은 imageBase64(증빙 사진)를 포함해
-    // 최대 수 MB에 달할 수 있다 — 목록(요약)이 필요한 호출부
-    // (listQueuedReasonLeaveDays/listQueuedReasonLeaveItems/취소 매칭)는
-    // 이미지를 뺀 요약만 받고, 실제로 전체 데이터가 필요한
-    // flushQueuedReasonLeaveProofs(봇에 그대로 전달)만 /leaveq/list-full로
-    // 구분한다.
-    if (req.method === "GET" && url.pathname === "/leaveq/list") {
-      const items = [...this.leaveq.entries()].map(([id, entry]) => ({
-        id,
-        memberNumber: entry.memberNumber,
-        memberName: entry.memberName,
-        day: entry.day,
-        reason: entry.reason,
-        requesterEmail: entry.requesterEmail,
-        count: entry.count || 1,
-        ts: entry.ts || 0,
-      }));
-      return new Response(JSON.stringify({ items }), { headers: { "Content-Type": "application/json" } });
-    }
-    if (req.method === "GET" && url.pathname === "/leaveq/list-full") {
-      const items = [...this.leaveq.entries()].map(([id, entry]) => ({ id, ...entry }));
-      return new Response(JSON.stringify({ items }), { headers: { "Content-Type": "application/json" } });
-    }
-
-    if (req.method === "POST" && url.pathname === "/exit/put") {
-      const { memberNumber, exitDate, ts, agreedAt } = await req.json();
-      const entry = { exitDate: exitDate || null, ts: ts || null, agreedAt: agreedAt ?? null };
-      this.exitRequests.set(memberNumber, entry);
-      await this.state.storage.put(`exit:${memberNumber}`, entry);
-      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
-    }
-    if (req.method === "POST" && url.pathname === "/exit/delete") {
-      const { memberNumber } = await req.json();
-      this.exitRequests.delete(memberNumber);
-      await this.state.storage.delete(`exit:${memberNumber}`);
-      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
-    }
-    if (req.method === "GET" && url.pathname === "/exit/get") {
-      const memberNumber = url.searchParams.get("memberNumber") || "";
-      const entry = this.exitRequests.get(memberNumber) || null;
-      return new Response(JSON.stringify({ entry }), { headers: { "Content-Type": "application/json" } });
-    }
-    if (req.method === "GET" && url.pathname === "/exit/list") {
-      const items = Object.fromEntries(this.exitRequests);
-      return new Response(JSON.stringify({ items }), { headers: { "Content-Type": "application/json" } });
-    }
-
-    if (req.method === "POST" && url.pathname === "/history/append") {
-      const { weekOf, entry } = await req.json();
-      const arr = this.history.get(weekOf) || [];
-      arr.push(entry);
-      this.history.set(weekOf, arr);
-      await this.state.storage.put(`history:${weekOf}`, arr);
-      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
-    }
-    if (req.method === "GET" && url.pathname === "/history/get") {
-      const weekOf = url.searchParams.get("weekOf") || "";
-      const items = this.history.get(weekOf) || [];
-      return new Response(JSON.stringify({ items }), { headers: { "Content-Type": "application/json" } });
-    }
-
-    return new Response("method not allowed", { status: 405 });
-  }
-}
-
-export function getLeaveQueueStub(env) {
-  const id = env.LEAVE_QUEUE_DO.idFromName("leave-queue");
-  return env.LEAVE_QUEUE_DO.get(id);
-}
-
-// 🔧 [사용자 지시, 2026-09-12] 제보 심각도 투표(부스터디장 최대 2명,
-// TTL 7일) — reportVote:{id}:{num}을 이 DO로 이전. LeaveQueue와 도메인이
-// 달라 별도 클래스로 분리했다.
-export class ReportVote {
-  constructor(state) {
-    this.state = state;
-    this.votes = new Map(); // "id:number" -> {name, severity, votedAt, expiresAt}
-    this.state.blockConcurrencyWhile(async () => {
-      const stored = await this.state.storage.list();
-      for (const [key, value] of stored) this.votes.set(key, value);
-    });
-  }
-
-  async fetch(req) {
-    const url = new URL(req.url);
-    const REPORT_VOTE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-
-    if (req.method === "POST" && url.pathname === "/vote/put") {
-      const { id, number, name, severity } = await req.json();
-      const key = `${id}:${number}`;
-      const value = { name, severity, votedAt: Date.now(), expiresAt: Date.now() + REPORT_VOTE_TTL_MS };
-      this.votes.set(key, value);
-      const puts = [this.state.storage.put(key, value)];
-      // 기회주의적 정리 — 이 id에 딸린 다른 투표 중 만료된 것도 함께 지운다.
-      const now = Date.now();
-      for (const [k, v] of this.votes) {
-        if (k.startsWith(`${id}:`) && v.expiresAt <= now) {
-          this.votes.delete(k);
-          puts.push(this.state.storage.delete(k));
-        }
-      }
-      await Promise.all(puts);
-      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
-    }
-    if (req.method === "POST" && url.pathname === "/vote/get-batch") {
-      const { id, numbers } = await req.json();
-      const now = Date.now();
-      const votes = {};
-      for (const number of numbers || []) {
-        const v = this.votes.get(`${id}:${number}`);
-        if (v && v.expiresAt > now) votes[number] = { name: v.name, severity: v.severity, votedAt: v.votedAt };
-      }
-      return new Response(JSON.stringify({ votes }), { headers: { "Content-Type": "application/json" } });
-    }
-    return new Response("method not allowed", { status: 405 });
-  }
-}
-
 function getReportVoteStub(env) {
   const id = env.REPORT_VOTE_DO.idFromName("report-vote");
   return env.REPORT_VOTE_DO.get(id);
-}
-
-// 🔧 [사용자 지시, 2026-09-12] "실익이 없더라도 기능적으로 차이 없이
-// 변환 가능한 구조라면 모두 변경하도록 해" — 회원 개인화 설정 3종
-// (notifyPref:/statusMessage:/exitResult:)을 한 DO로 통합 이전한다.
-// 셋 다 "회원 개인 데이터, 키가 회원번호/이름, TTL 없음, 트래픽 낮음
-// (회원 15명 규모)"이라는 동일 프로필이라 인스턴스를 나눌 실익이 없다.
-// 🔧 [사용자 지시] "기존 값이 있어도 모두 날려버려. 상관없어" — 기존
-// KV 데이터는 백필하지 않는다(배포 후 초기화됨).
-export class MemberSettingsDO {
-  constructor(state) {
-    this.state = state;
-    this.prefs = new Map(); // memberNumber -> {category: boolean}
-    this.statusMsgs = new Map(); // memberNumber -> string
-    this.exitResults = new Map(); // "{이름} (퇴실)" -> object
-    this.lastLogins = new Map(); // memberNumber -> {ts, ip}
-    this.state.blockConcurrencyWhile(async () => {
-      const stored = await this.state.storage.list();
-      for (const [key, value] of stored) {
-        if (key.startsWith("pref:")) this.prefs.set(key.slice(5), value);
-        else if (key.startsWith("status:")) this.statusMsgs.set(key.slice(7), value);
-        else if (key.startsWith("exit:")) this.exitResults.set(key.slice(5), value);
-        else if (key.startsWith("login:")) this.lastLogins.set(key.slice(6), value);
-      }
-    });
-  }
-
-  async fetch(req) {
-    const url = new URL(req.url);
-
-    if (req.method === "GET" && url.pathname === "/pref") {
-      const memberNumber = url.searchParams.get("memberNumber") || "";
-      const prefs = this.prefs.get(memberNumber) || null;
-      return new Response(JSON.stringify({ prefs }), { headers: { "Content-Type": "application/json" } });
-    }
-    if (req.method === "POST" && url.pathname === "/pref") {
-      const { memberNumber, prefs } = await req.json();
-      this.prefs.set(memberNumber, prefs);
-      await this.state.storage.put(`pref:${memberNumber}`, prefs);
-      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
-    }
-
-    if (req.method === "GET" && url.pathname === "/status") {
-      const memberNumber = url.searchParams.get("memberNumber") || "";
-      const message = this.statusMsgs.get(memberNumber) || "";
-      return new Response(JSON.stringify({ message }), { headers: { "Content-Type": "application/json" } });
-    }
-    if (req.method === "POST" && url.pathname === "/status") {
-      const { memberNumber, message } = await req.json();
-      this.statusMsgs.set(memberNumber, message);
-      await this.state.storage.put(`status:${memberNumber}`, message);
-      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
-    }
-    if (req.method === "DELETE" && url.pathname === "/status") {
-      const memberNumber = url.searchParams.get("memberNumber") || "";
-      this.statusMsgs.delete(memberNumber);
-      await this.state.storage.delete(`status:${memberNumber}`);
-      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
-    }
-
-    if (req.method === "GET" && url.pathname === "/exit") {
-      const name = url.searchParams.get("name") || "";
-      const entry = this.exitResults.get(name) || null;
-      return new Response(JSON.stringify({ entry }), { headers: { "Content-Type": "application/json" } });
-    }
-    if (req.method === "POST" && url.pathname === "/exit") {
-      const { name, entry } = await req.json();
-      this.exitResults.set(name, entry);
-      await this.state.storage.put(`exit:${name}`, entry);
-      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
-    }
-    // 🔧 [원자적 patch] handleAdminExitBlacklist는 기존 레코드의 blacklist
-    // 필드만 뒤늦게 덮어쓴다 — DO 안에서 get+merge+put을 한 번에 처리해
-    // Worker에서 get→put 사이에 다른 요청이 끼어들 여지를 없앤다(DO가
-    // 요청을 직렬 처리하므로 자동으로 원자적).
-    if (req.method === "POST" && url.pathname === "/exit/patch") {
-      const { name, patch } = await req.json();
-      const existing = this.exitResults.get(name);
-      if (!existing) return new Response(JSON.stringify({ ok: false, notFound: true }), { status: 404, headers: { "Content-Type": "application/json" } });
-      const updated = { ...existing, ...patch };
-      this.exitResults.set(name, updated);
-      await this.state.storage.put(`exit:${name}`, updated);
-      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
-    }
-    // 🔧 [순회 조회 최적화] 퇴실자 전원에 대해 개별 get을 병렬 호출하던
-    // 3곳(handleAdminExitedMemberList/handleAdminFinesAdminForcedCount/
-    // handleAdminBlacklist)을 이 엔드포인트 1회 호출로 대체한다.
-    if (req.method === "GET" && url.pathname === "/exit/list") {
-      const items = Object.fromEntries(this.exitResults);
-      return new Response(JSON.stringify({ items }), { headers: { "Content-Type": "application/json" } });
-    }
-
-    // 🔧 [KV → DO 이전, 2026-09-12] lastLogin:{번호}를 이 DO로 이전 —
-    // "최근 접속일자·IP" 기록(로그인마다 1회 put)과 조회(관리자 "참여
-    // 스터디원 목록"이 회원 전원을 병렬 get 하던 것)를 함께 옮긴다.
-    if (req.method === "POST" && url.pathname === "/last-login") {
-      const { memberNumber, ts, ip } = await req.json();
-      const value = { ts, ip };
-      this.lastLogins.set(memberNumber, value);
-      await this.state.storage.put(`login:${memberNumber}`, value);
-      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
-    }
-    // 🔧 [순회 조회 최적화] 회원 전원에 대해 개별 get을 병렬 호출하던
-    // handleAdminMembersRoster를 이 엔드포인트 1회 호출로 대체한다.
-    if (req.method === "GET" && url.pathname === "/last-login/list") {
-      const items = Object.fromEntries(this.lastLogins);
-      return new Response(JSON.stringify({ items }), { headers: { "Content-Type": "application/json" } });
-    }
-
-    return new Response("method not allowed", { status: 405 });
-  }
 }
 
 function getMemberSettingsStub(env) {
@@ -9424,164 +8236,16 @@ function getMemberSettingsStub(env) {
   return env.MEMBER_SETTINGS_DO.get(id);
 }
 
-// 🔧 [사용자 지시, 2026-09-12] PUSH_SUBS_KV 전체(구독 원본 sub:{email}:
-// {hash} + 인덱스 subIndex:{email})를 이 DO로 이전한다. 도메인이
-// 명확히 분리되고(웹 푸시) 항목이 상대적으로 크므로(endpoint+keys)
-// 단독 DO로 둔다. 회원 15명×기기 2~3대 규모면 전체가 수십 KB 수준이라
-// DO storage에 전혀 무리 없다.
-export class PushSubscriptionsDO {
-  constructor(state) {
-    this.state = state;
-    this.subs = new Map(); // "sub:{email}:{hash}" -> {email, subscription, savedAt, deviceLabel, enabled}
-    this.index = new Map(); // email -> [{id, deviceLabel, enabled, savedAt}, ...]
-    this.state.blockConcurrencyWhile(async () => {
-      const stored = await this.state.storage.list();
-      for (const [key, value] of stored) {
-        if (key.startsWith("sub:")) this.subs.set(key, value);
-        else if (key.startsWith("idx:")) this.index.set(key.slice(4), value);
-      }
-    });
-  }
-
-  async fetch(req) {
-    const url = new URL(req.url);
-
-    // 🔧 [원자적 구독] 원본 put과 인덱스 갱신을 하나의 DO 호출로 합쳐
-    // Worker의 withMemberLock(env, `push:${email}`, ...)을 대체한다 —
-    // DO가 요청을 직렬 처리해 같은 이메일의 동시 구독 요청도 레이스
-    // 없이 순서대로 처리된다.
-    if (req.method === "POST" && url.pathname === "/subscribe") {
-      const { email, id, deviceLabel, savedAt, subscription } = await req.json();
-      const subValue = { email, subscription, savedAt, deviceLabel, enabled: true };
-      this.subs.set(id, subValue);
-      const devices = this.index.get(email) || [];
-      const idx = devices.findIndex((d) => d.id === id);
-      const entry = { id, deviceLabel, enabled: true, savedAt };
-      if (idx >= 0) devices[idx] = entry;
-      else devices.push(entry);
-      this.index.set(email, devices);
-      await Promise.all([this.state.storage.put(id, subValue), this.state.storage.put(`idx:${email}`, devices)]);
-      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
-    }
-
-    if (req.method === "GET" && url.pathname === "/index") {
-      const email = url.searchParams.get("email") || "";
-      const devices = this.index.get(email) || [];
-      return new Response(JSON.stringify({ devices }), { headers: { "Content-Type": "application/json" } });
-    }
-
-    if (req.method === "GET" && url.pathname === "/sub") {
-      const id = url.searchParams.get("id") || "";
-      const entry = this.subs.get(id) || null;
-      return new Response(JSON.stringify({ entry }), { headers: { "Content-Type": "application/json" } });
-    }
-
-    if (req.method === "POST" && url.pathname === "/device/toggle") {
-      const { id, enabled } = await req.json();
-      const sub = this.subs.get(id);
-      if (!sub) return new Response(JSON.stringify({ ok: false, notFound: true }), { status: 404, headers: { "Content-Type": "application/json" } });
-      sub.enabled = !!enabled;
-      const devices = this.index.get(sub.email) || [];
-      const entry = devices.find((d) => d.id === id);
-      if (entry) entry.enabled = !!enabled;
-      await Promise.all([this.state.storage.put(id, sub), this.state.storage.put(`idx:${sub.email}`, devices)]);
-      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
-    }
-
-    if (req.method === "POST" && url.pathname === "/device/rename") {
-      const { id, deviceLabel } = await req.json();
-      const sub = this.subs.get(id);
-      if (!sub) return new Response(JSON.stringify({ ok: false, notFound: true }), { status: 404, headers: { "Content-Type": "application/json" } });
-      sub.deviceLabel = deviceLabel;
-      const devices = this.index.get(sub.email) || [];
-      const entry = devices.find((d) => d.id === id);
-      if (entry) entry.deviceLabel = deviceLabel;
-      await Promise.all([this.state.storage.put(id, sub), this.state.storage.put(`idx:${sub.email}`, devices)]);
-      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
-    }
-
-    if (req.method === "POST" && url.pathname === "/device/remove") {
-      const { id } = await req.json();
-      const sub = this.subs.get(id);
-      this.subs.delete(id);
-      const puts = [this.state.storage.delete(id)];
-      if (sub) {
-        const devices = (this.index.get(sub.email) || []).filter((d) => d.id !== id);
-        this.index.set(sub.email, devices);
-        puts.push(this.state.storage.put(`idx:${sub.email}`, devices));
-      }
-      await Promise.all(puts);
-      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
-    }
-
-    // 🔧 [배치 정리] 발송 실패(404/410)로 죽은 구독을 정리할 때, 기존엔
-    // 실패마다 개별 delete+개별 인덱스 put이었던 것을 배열로 한 번에
-    // 처리한다 — email별로 인덱스 put을 한 번만 하도록 묶는다.
-    if (req.method === "POST" && url.pathname === "/device/prune") {
-      const { ids } = await req.json();
-      const affectedEmails = new Set();
-      const puts = [];
-      for (const id of ids || []) {
-        const sub = this.subs.get(id);
-        this.subs.delete(id);
-        puts.push(this.state.storage.delete(id));
-        if (sub) affectedEmails.add(sub.email);
-      }
-      for (const email of affectedEmails) {
-        const devices = (this.index.get(email) || []).filter((d) => !(ids || []).includes(d.id));
-        this.index.set(email, devices);
-        puts.push(this.state.storage.put(`idx:${email}`, devices));
-      }
-      await Promise.all(puts);
-      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
-    }
-
-    return new Response("method not allowed", { status: 405 });
-  }
-}
-
 function getPushSubscriptionsStub(env) {
   const id = env.PUSH_SUBSCRIPTIONS_DO.idFromName("push-subscriptions");
   return env.PUSH_SUBSCRIPTIONS_DO.get(id);
-}
-
-// 🔧 [사용자 지시, 2026-09-12] 봇 터널 URL(bot:dashboard_url)과 관리자
-// Google OAuth 리프레시 토큰(admin_oauth:refresh_token) — 둘 다 "설정값
-// 하나, 쓰기 극히 드묾"이라는 동일 프로필. botUrl은 읽기가 매우 잦지만
-// (거의 모든 봇 프록시 호출) 실측상 DO fetch(수 ms) 지연은
-// proxyToBotDashboard 자체(봇 서버까지 수백ms~수초)에 비해 무시할
-// 수준이라 일관성을 위해 함께 옮긴다(사용자 확인).
-export class BotAdminConfigDO {
-  constructor(state) {
-    this.state = state;
-    this.config = new Map(); // "botUrl" | "adminOAuthRefreshToken" -> string
-    this.state.blockConcurrencyWhile(async () => {
-      const stored = await this.state.storage.list();
-      for (const [key, value] of stored) this.config.set(key, value);
-    });
-  }
-
-  async fetch(req) {
-    const url = new URL(req.url);
-    if (req.method === "GET" && url.pathname === "/config") {
-      const key = url.searchParams.get("key") || "";
-      const value = this.config.get(key) || null;
-      return new Response(JSON.stringify({ value }), { headers: { "Content-Type": "application/json" } });
-    }
-    if (req.method === "POST" && url.pathname === "/config") {
-      const { key, value } = await req.json();
-      this.config.set(key, value);
-      await this.state.storage.put(key, value);
-      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
-    }
-    return new Response("method not allowed", { status: 405 });
-  }
 }
 
 function getBotAdminConfigStub(env) {
   const id = env.BOT_ADMIN_CONFIG_DO.idFromName("bot-admin-config");
   return env.BOT_ADMIN_CONFIG_DO.get(id);
 }
+
 
 // _dailyUsageBuffer(index.js 상단)를 UsageStats DO로 배치 전송하고 비운다.
 // 5분 cron(scheduled)에서 정기적으로 호출되고, handleAdminUsageStatus에서도

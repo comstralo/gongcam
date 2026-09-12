@@ -121,10 +121,82 @@ workerd 런타임 안에서도 그대로 통하는지 `listBackupFiles`로
 구문 확인, 배포 후 Playwright로 관리자 화면(퇴실 처리, 제보 확인)
 회귀 없음 확인, `wrangler tail`로 예외 0건 확인.
 
-## 향후 구조 개선과의 관계
+## 구조 개선 1차 — 안전 구간 모듈 분리 (2026-09-13)
 
-이 테스트 인프라는 파일 분리(`src/index.js`를 여러 모듈로 쪼개는
-작업)를 위한 사전 안전망이다. 테스트 커버리지가 사이클 판정 → 벌점/
-벌금/예치금/상금 처리 → DO 클래스 순으로 넓어지면, 그 순서대로
-파일을 분리해도 각 단계에서 "옮기기 전/후 동작이 같은지"를 자동으로
-확인할 수 있다. 테스트 없이 구조 변경부터 시작하지 않는다.
+테스트 안전망 위에서 `src/index.js`(약 11,000줄)를 여러 ES 모듈로
+분리하는 작업을 처음 실행했다. 4단계 모두 "새 파일 생성 → index.js
+에서 코드 제거 → import 추가 → 테스트가 참조하는 심볼은 index.js
+에서 재export" 순서로 진행했고, 매 단계 `npm test` 전체 통과 +
+`node --check` + `wrangler deploy` + curl/Playwright 스모크를
+게이트로 삼았다.
+
+- **단계 1 — `src/durable-objects.js`**: 완전히 독립적인(this.state/
+  this.state.storage와 JS 내장 객체만 사용, index.js의 다른 헬퍼를
+  전혀 호출하지 않는) Durable Object 클래스 8개(`ParticipantsRoster`,
+  `UsageStats`, `ReportQueue`, `LeaveQueue`, `getLeaveQueueStub`,
+  `ReportVote`, `MemberSettingsDO`, `PushSubscriptionsDO`,
+  `BotAdminConfigDO`)를 옮겼다. `wrangler.toml`의
+  `durable_objects.bindings[].class_name`이 main 파일의 named
+  export를 찾으므로 index.js가 이 8개를 재export한다 — stub 헬퍼
+  (`getUsageStatsStub` 등, `env.BINDING.get(id)`만 하는 함수)는 136개
+  handle* 함수 전역에서 호출되므로 이동 범위를 최소화하기 위해
+  index.js에 남겼다. 약 870줄 감소(10,984→10,116).
+- **단계 2 — `src/cache.js`**: 캐시 인프라(`_sheetCache`/`_inFlight`/
+  `_memberCacheGeneration`/`MEMBER_CACHE_PREFIXES`/
+  `MEMBER_CACHE_GROUPS` 등)를 옮겼다. 외부에는 `_cachedCompute`/
+  `invalidateMemberCache`/`invalidateMemberSlotCache` 3개 wrapper만
+  export한다(테스트가 직접 import하지 않으므로 index.js 재export는
+  불필요). 이 블록 중간에 물리적으로 끼어 있던 leave-history 함수 3개
+  (`_readLeaveQueueIndex`/`_appendLeaveHistory`/`_readLeaveHistory`,
+  캐시 상태와 무관하고 `getLeaveQueueStub`/`formatYYMMDD`에만 의존)는
+  index.js에 그대로 남겼다. 약 334줄 감소(10,116→9,782).
+- **단계 3 — `src/date-utils.js`**: 순수 날짜/시간 유틸 11개
+  (`formatISODate`, `nowKST`, `todayKSTDateString`,
+  `todayUTCDateString`, `kstDateOffsetString`, `currentWeekMondayKST`,
+  `formatYYMMDD`, `kstDateKey`, `exitDateMidnightUtcMs`,
+  `weekOfForDate`, `exitWeekResetPassed`)를 옮겼다. 이 함수들에
+  의존하지만 도메인 로직에 더 가까운 `dayDateAt`/
+  `parseWeekOfToMonday`/`currentWeekRangeYYMMDD`는 index.js에 남기고
+  `formatISODate`/`currentWeekMondayKST`/`formatYYMMDD`를 import해
+  쓴다. 약 100줄 감소(9,782→9,683, 이후 단계 4의 import 추가분 포함
+  9,648).
+- **단계 4 — `src/cycle.js`**: 완전 순수한 사이클 판정 함수 4개
+  (`requiresFineUnpaidRecheck`, `isUnguardedAdminForcedCycleCombo`,
+  `compareWeekOfDesc`, `currentCycleBackups`)를 옮겼다.
+  `requiresFineUnpaidRecheck`가 참조하는
+  `FINE_UNPAID_ADMIN_FORCED_REASON` 상수는 index.js의 다른 곳
+  (`FINE_UNPAID_ADMIN_FORCED_REASON_LABEL`)에서도 쓰여 index.js에
+  남기고 `export const`로 노출, `cycle.js`가 import한다 — 이때
+  `cycle.js → index.js`(상수 import)와 `index.js → cycle.js`(재export)
+  양방향 import가 생겨 **이 프로젝트에서 처음으로 순환 import가
+  발생**했다. index.js는 재export 목적으로만 `cycle.js`를 import하고
+  최상위에서 그 값을 즉시 평가하지 않으므로(전부 handle* 함수 본문
+  안, 즉 요청 처리 시점에 지연 호출됨) TDZ 문제 없이 정상 동작함을
+  `npm test`(52개 테스트 통과, 특히 두 함수가 서로 여집합 관계임을
+  확인하는 테스트가 순환 경로를 실제로 왕복시킴)와 `wrangler deploy`
+  양쪽으로 확인했다. `listBackupFiles`/`listCurrentCycleBackups`(아직
+  index.js에 남아있는 fetch 의존 함수)는 이 4개 함수 중
+  `compareWeekOfDesc`/`currentCycleBackups`를 `cycle.js`에서
+  import해서 쓴다. 약 40줄 감소(최종 9,648줄, 시작 대비 약 12.2% 감소).
+
+DO 클래스 자체 테스트는 없지만 `cycle-do.test.js`가
+`env.LEAVE_QUEUE_DO`를 실제로 기동시켜 재export 경로를 실질적으로
+검증했고, 캐시 인프라도 `resolveExitSourceFileId` 등이 내부적으로
+`invalidateMemberSlotCache`를 호출하는 경로를 통해 간접 검증됐다 —
+직접 테스트가 없는 두 영역(DO 클래스, 캐시)일수록 배포 후 curl/
+`wrangler tail` 스모크를 더 꼼꼼히 반복했다.
+
+## 다음 단계
+
+fetch 의존(`listBackupFiles`/`listCurrentCycleBackups`/
+`resolveTargetFileId`)과 DO+fetch+시계 의존
+(`resolveExitSourceFileId`/`resolveCaptureSourceFileId`) 함수는
+`getCurrentPenCycle`/`findBackupForExitDate`(sheets API 의존, 아직
+index.js에 남아있는 헬퍼)를 호출한다 — 이들을 옮기려면 sheets 저수준
+래퍼(`getSheetValues`, `getServiceAccountAccessToken` 등) 분리가
+먼저 필요하거나, 단계 4와 같은 방식으로 순환 import를 감수해야 한다.
+이후 벌점/벌금/예치금/상금 처리, 회원 관리, 알림/푸시 도메인은 아직
+테스트가 없으므로, "테스트 커버리지가 넓어지는 순서대로 파일을
+분리한다"는 원칙에 따라 해당 도메인 테스트를 먼저 작성한 뒤 같은
+패턴(함수 단위 발췌 + 재export)으로 이어간다. 테스트 없이 구조
+변경부터 시작하지 않는다.
