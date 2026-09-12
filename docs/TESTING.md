@@ -450,18 +450,89 @@ index.js 9,093→8,967줄(약 126줄 감소, 시작 대비 총 18.4% 감소).
 `wrangler tail`로 실사용 트래픽(봇 PUT, `/bot/exit-requests`)이
 예외 없이 처리됨을 확인했다.
 
+## 구조 개선 7차 — 회원 관리(CRUD/번호 재배치) 도메인 통합 테스트 + 이동 (2026-09-13)
+
+6차에서 확립한 "fetch mock + 실제 workerd DO 통합 테스트를 먼저
+깐 뒤 도메인을 통째로 이동"하는 전략을 두 번째로 적용했다. 대상은
+"회원 관리"(CRUD·번호 재배치) 도메인.
+
+**착수 전 조사에서 계획을 세 차례 좁혔다** — 서브에이전트의 최초
+조사를 그대로 믿지 않고, 실행 직전 각 함수를 실제로 grep해 재검증한
+결과다:
+1. `resolveMemberNumber`/`findMemberNumberByEmail`은 회원 관리
+   전용이 아니라 로그인/제보/반휴 등 **15곳 이상이 공유하는 인증
+   유틸**이라 제외했다(`withMemberLock`/`getRosterStub`과 동일한
+   성격, 사용자 확인).
+2. `handleAdminMemberStatus`(→`buildPersonalStatus`, exit 신청 DO
+   조회까지 얽힘)와 `handleAdminMembersRoster`(→
+   `listActiveMembersWithExitInfo`, exit 도메인 판정 로직 포함)는
+   둘 다 예상보다 훨씬 무거워 통합 테스트 비용과 순환 복잡도가
+   지나치게 커서 제외했다(사용자 확인).
+3. `getCurrentCoReviewers`는 애초 계획에는 이동 대상이었으나,
+   구현 중 재확인(`grep -n "getCurrentCoReviewers("`)한 결과 제보
+   (`handleAdminCapturesList`/`handleAdminCaptureVote`), 권한 조회
+   (`handleMyRole`), 인증(`requireAdminOrCoReviewer`)까지 5곳
+   이상이 쓰는 범용 함수임을 발견해 index.js에 남기기로 계획을
+   스스로 수정했다.
+
+**`src/members.js`(신설)**: `grantSheetAccess`, `getDataSheetRows`,
+`listAllMembers`, `handleAdminMembers`, `handleAdminSetPartiStatus`,
+`handleAdminOpenSlots`, `computeMemberReorderPlan`,
+`handleAdminMemberReorderPreview`, `moveMemberSlot`,
+`handleAdminMemberReorder`, `handleAdminCreateMember`,
+`handleGrantMemberAccess`. `withMemberLock`/`getRosterStub`, 범용
+시트 조작 유틸 6종(`getSheetIdsByNames`/`spreadsheetBatchUpdate`/
+`copySheetToSpreadsheet`/`copySheetWithName`/
+`protectSheetForOwnerAndService`/`getSpreadsheetMeta`),
+`listExitedMemberEntries`, `getCurrentCoReviewers`,
+`getAdminAccessToken`은 exit 도메인 등 다른 도메인도 공유하는
+범용 유틸이라 index.js에 남기고 export만 추가했다. `listAllMembers`
+는 `fines.js`가 여전히 `./index.js`에서 import하므로(6차 잔재),
+index.js가 `members.js`에서 재import해 재export한다 — 6차의
+`listUnpaidFines`와 동일한 패턴.
+
+**통합 테스트 3개 파일**:
+- `test/members-fetch.test.js` — `listAllMembers`,
+  `getDataSheetRows`, `getCurrentCoReviewers`,
+  `computeMemberReorderPlan`(읽기 전용, fetch mock만 필요) 5개
+  케이스.
+- `test/members-handlers.test.js` — `handleAdminMembers`,
+  `handleAdminOpenSlots`, `handleAdminMemberReorderPreview`,
+  `handleGrantMemberAccess` 9개 케이스. `handleAdminMembers`가
+  내부적으로 `listExitedMemberEntries`(스프레드시트 메타 조회)도
+  호출한다는 걸 테스트 작성 중 실패로 발견해 mock을 보강했다.
+- `test/members-mutations.test.js` — `handleAdminSetPartiStatus`,
+  `moveMemberSlot`, `handleAdminMemberReorder`,
+  `handleAdminCreateMember` 12개 케이스. `moveMemberSlot`은
+  계획대로 fetch mock 10종 이상(메타 조회/`:copyTo`/시트
+  보호/`:batchUpdate`/`values:batchUpdate`)을 조합해 탭 삭제→
+  이름변경→template 복사→값 이전까지 예외 없이 끝나는지 검증했다.
+  `getSheetValues`가 항상 `init` 인자를 넘긴다는 걸 놓쳐
+  `!L3 && !init` 조건이 항상 거짓이 되는 mock 버그를 처음엔 만들었다
+  — `getSheetValues(...).catch(() => [])`가 이 실패를 조용히
+  삼켜 "스터디장은 변경할 수 없다" 테스트가 거짓으로 통과할 뻔한
+  것을 assertion 실패로 잡아내 수정했다.
+
+index.js 8,967→8,463줄(약 504줄 감소, 시작(10,984줄) 대비 총
+22.9% 감소). `npm test` 기준 216개 테스트 전부 통과(기존 190개 +
+신규 26개). 배포 후 `/admin/members`, `/admin/members/open-slots`,
+`/admin/members/reorder-preview`, `/admin/members`(POST),
+`/admin/members/grant-access`, `/admin/members/parti-status`,
+`/admin/members/reorder` 전부 인증 없이 403 정상 응답 확인,
+`wrangler tail`로 실제 요청들이 예외 없이("Ok") 처리됨을 확인했다.
+
 ## 다음 단계
 
 사이클 판정, 예치금/강제퇴실/정산 판정, 회원 관리/알림·푸시의
-순수 함수, 웹푸시 암호화, 벌금/납부 처리(fetch 통합 테스트 첫
-사례)까지 총 6차에 걸쳐 분리했다. 다음 후보는 "회원 관리"(933줄)
-— `handleAdminMemberStatus`가 exit 도메인의
-`buildExitedMemberSnapshot`을 호출해 생기는 상호 순환을 먼저
-해결해야 한다(재export로 우회하거나 exit 도메인과 함께 옮기는
-방식 검토). `moveMemberSlot`은 fetch mock 10종 이상이 필요해 6차
-경험을 바탕으로 mock 헬퍼를 재사용/확장할 필요가 있다. "퇴실
-처리"(1,255줄)는 회원 관리보다 더 깊고 cycle.js/deposit.js 모두와
-얽혀 있어 회원 관리 이후로 순서를 미룬다. 테스트 없이 구조 변경부터
-시작하지 않는다는 원칙은 유지한다 — 이번 6차처럼 통합 테스트
-작성 자체가 실제 버그를 잡아내는 안전망 역할을 하므로, 순서를
-건너뛰지 않는다.
+순수 함수, 웹푸시 암호화, 벌금/납부 처리, 회원 관리(CRUD/번호
+재배치)까지 총 7차에 걸쳐 분리했다. 다음 후보는 "퇴실
+처리"(1,255줄) — cycle.js/deposit.js 모두와 얽혀 있고, 이번에
+제외한 `handleAdminMemberStatus`/`handleAdminMembersRoster`가
+의존하는 `buildPersonalStatus`/`listActiveMembersWithExitInfo`도
+이 도메인에 속해 있어 함께 정리할 기회가 된다. `resolveMemberNumber`
+/`findMemberNumberByEmail`(15곳 이상 공유 인증 유틸)은 여러 차수에
+걸쳐 계속 제외 대상으로 남아있다 — 별도로 "인증/조회 유틸" 차수를
+만들어 다룰지, 계속 index.js에 남길지는 퇴실 처리 이후 재검토한다.
+테스트 없이 구조 변경부터 시작하지 않는다는 원칙은 유지한다 —
+6차·7차 모두 통합 테스트 작성 자체가 실제 버그/mock 결함을 잡아내는
+안전망 역할을 했으므로, 순서를 건너뛰지 않는다.
