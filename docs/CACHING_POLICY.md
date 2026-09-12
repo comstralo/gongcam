@@ -2278,7 +2278,57 @@ confirm에도 중복 배치한 것은 이 코드베이스가 이미 지켜온 "�
 200 정상 진행 확인 — 회귀 없음, ③ `wrangler tail`로 관련 요청 전부
 `outcome: ok`, 예외 0건 확인).
 
-## 51. 관련 문서
+## 51. 인증/인가 전수 조사 + 방어적 강화 2건 (2026-09-12)
+
+§46~50에서 계속해온 "주간 경계(사이클) 오인" 조사가 정상 권한을
+가진 관리자의 실수를 전제로 한 것이었다면, 이번엔 관점을 바꿔
+"악의적이거나 비정상적인 사용자가 개발자도구/curl로 API를 직접
+조작해 데이터 정합성을 깨뜨리거나 권한을 벗어난 조작을 할 수
+있는지"를 전수 조사했다(사용자 지시).
+
+**결론**: 관리자 권한 탈취, 다른 회원 데이터 조작, 인증 우회 등
+핵심 위협 모델에서는 실질적 허점이 발견되지 않았다 — `requireAdmin`
+계열은 오직 서버가 서명 검증한 세션의 이메일과 서버 시크릿
+(`ADMIN_EMAIL`)만 비교하고, 회원 본인 데이터를 다루는 API는 전부
+클라이언트가 보낸 회원번호가 아니라 세션 이메일로 서버가 직접
+`resolveMemberNumber`를 도출해 신뢰 사슬에 조작 가능한 지점이 없다.
+제보 발생 시각(`ts`)도 `/report`에서는 서버가 자체 생성하며,
+이번에 §50에서 손댄 `resolveCaptureSourceFileId`가 신뢰하는 `ts`는
+`requireAdmin`을 통과해야만 도달하는 `/admin/captures/decide`에서만
+오므로 일반 회원이 주입할 경로가 없다.
+
+조사 중 발견한 방어적 강화 여지 2가지를 실제로 반영했다(사용자
+확인, 실질적 위험은 낮지만 비용 대비 이득이 있다고 판단):
+
+- **관리자 이메일 비교 일관성**: `session.email === (env.ADMIN_EMAIL
+  || "").toLowerCase()` 형태로 좌변에만 `.toLowerCase()`가 빠진
+  지점이 3곳(`handleGetLeaveApply`/`handleRosterStatus`의 admin
+  분기, `requireAdminFromQuery`, `requireAdminOrCoReviewer`) 있었다.
+  `session.email`이 로그인 시점(`completeLogin`)부터 항상 소문자로
+  정규화되어 있어 지금 당장 위험은 없지만, 향후 이메일 저장 경로가
+  추가되며 이 정규화를 빠뜨리면 그 즉시 관리자 판정에 구멍이 생기는
+  잠재적 회귀 위험이라 양쪽 다 `.toLowerCase()`로 통일했다.
+- **관리자 OAuth 콜백 CSRF 방어(`state` 파라미터)**: `handleAdminOAuthCallback`
+  이 원래 Google이 돌려주는 `code`만 확인하고, 이 콜백 요청이 실제로
+  `handleAdminOAuthAuthorize`가 시작한 흐름인지는 검증하지 않았다 —
+  표준 OAuth CSRF 공격(공격자가 자신의 OAuth 흐름에서 받은 `code`를
+  피해자(관리자)의 브라우저로 열게 유도해 공격자의 Drive 위임 권한이
+  관리자 계정에 연결되게 만드는 유형)의 여지가 있었다. 별도 저장소
+  없이 기존 `signSession`/`verifySession`(HMAC 서명 + `exp` 검증)을
+  그대로 재사용해, `handleAdminOAuthAuthorize`가 `purpose:
+  "admin_oauth_state"` 필드를 가진 10분 만료 stateless 토큰을 생성해
+  `state` 파라미터로 실어 보내고, 콜백에서 서명·만료·`purpose`를
+  재검증한다 — 없거나 위조되면 400으로 즉시 거부, 정상 발급된
+  `state`만 통과한다. `purpose` 필드로 일반 로그인 세션 토큰과
+  혼동될 여지를 원천 차단했다.
+
+검증: `node --check` → `wrangler deploy` → 기존 관리자 API(회귀
+없음 확인) + `state` 없음/위조 시 400 거부 + `authorize`가 발급한
+진짜 `state`는 통과(가짜 `code`라 토큰교환 자체는 실패하지만 그건
+별개 단계)를 curl/Playwright로 확인, `wrangler tail`로 예외 0건
+확인.
+
+## 52. 관련 문서
 
 - `docs/WEB_ADMIN.md` §3.1 — `applyOutputPenalty`/`applyReportMerit`/
   `applyTimeDeduction`가 실제로 호출되는 관리자 제보 처리 화면·플로우.

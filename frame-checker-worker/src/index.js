@@ -5182,7 +5182,12 @@ async function handleGetLeaveApply(req, env, origin, url) {
   if (numberParam) {
     const sheetNum = parseInt(numberParam, 10);
     if (!sheetNum || sheetNum < 1 || sheetNum > 15) return json({ error: "잘못된 요청입니다." }, 400, origin);
-    const isAdminSession = session.email === (env.ADMIN_EMAIL || "").toLowerCase();
+    // 🔧 [사용자 지시] "관리자 판정 비교 일관성" — session.email은 로그인
+    // 시점부터 항상 소문자로 정규화되어 있어 지금은 위험이 없지만, 다른
+    // 관리자 판정 지점(requireAdmin 등)과 동일하게 양쪽 다 소문자화해
+    // 향후 이메일 저장 경로가 추가돼도 이 비교만 조용히 어긋나는 회귀를
+    // 막는다.
+    const isAdminSession = (session.email || "").toLowerCase() === (env.ADMIN_EMAIL || "").toLowerCase();
     if (!isAdminSession) return json({ error: "관리자만 다른 회원을 조회할 수 있습니다." }, 403, origin);
   }
 
@@ -6155,7 +6160,9 @@ async function handleRosterStatus(req, env, origin, url) {
     // 일반 참여자에게는 이 항목 자체를 숨긴다(스터디장 개인 페널티 여부를
     // 노출하지 않기 위함) — 값을 응답에서 아예 빼서 프론트가 있는지
     // 여부로 노출 판단을 하게 한다.
-    const isAdmin = session.email === (env.ADMIN_EMAIL || "").toLowerCase();
+    // 🔧 [사용자 지시] "관리자 판정 비교 일관성" — 위 5185행과 동일한
+    // 이유로 양쪽 다 소문자화.
+    const isAdmin = (session.email || "").toLowerCase() === (env.ADMIN_EMAIL || "").toLowerCase();
     if (!roster.depositOuterIncluded && !isAdmin) {
       delete roster.depositOuter;
     }
@@ -8002,13 +8009,28 @@ async function requireAdminFromQuery(req, env, url) {
   const token = url.searchParams.get("token") || "";
   const session = await verifySession(token, env.SESSION_SECRET);
   if (!session) return null;
-  if (session.email !== (env.ADMIN_EMAIL || "").toLowerCase()) return null;
+  if ((session.email || "").toLowerCase() !== (env.ADMIN_EMAIL || "").toLowerCase()) return null;
   return session;
 }
+
+// 🔧 [사용자 지시] "관리자 OAuth 콜백 CSRF 방어" — 콜백(handleAdminOAuthCallback)
+// 이 원래 code 파라미터만 확인하고 이 요청이 실제로 handleAdminOAuthAuthorize
+// 가 시작한 흐름인지 검증하지 않았다. 표준 OAuth state 파라미터를 도입해,
+// authorize 단계에서 서버가 서명한 1회용 값(짧은 만료)을 실어 보내고 콜백에서
+// 그 서명·만료·용도(purpose)를 재검증한다 — 별도 저장소 없이 signSession/
+// verifySession(HMAC 서명, exp 검증)을 그대로 재사용하는 stateless 방식.
+// purpose 필드로 일반 로그인 세션과 절대 혼동되지 않게 구분한다.
+const ADMIN_OAUTH_STATE_PURPOSE = "admin_oauth_state";
+const ADMIN_OAUTH_STATE_TTL_SEC = 10 * 60; // authorize→콜백까지 사람이 오가는 흐름이라 10분이면 충분.
 
 async function handleAdminOAuthAuthorize(req, env, origin, url) {
   const admin = await requireAdminFromQuery(req, env, url);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
+
+  const state = await signSession(
+    { purpose: ADMIN_OAUTH_STATE_PURPOSE, email: admin.email, exp: Date.now() / 1000 + ADMIN_OAUTH_STATE_TTL_SEC },
+    env.SESSION_SECRET
+  );
 
   const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   authUrl.searchParams.set("client_id", env.ADMIN_OAUTH_CLIENT_ID);
@@ -8018,6 +8040,7 @@ async function handleAdminOAuthAuthorize(req, env, origin, url) {
   authUrl.searchParams.set("access_type", "offline");
   authUrl.searchParams.set("prompt", "consent");
   authUrl.searchParams.set("login_hint", admin.email);
+  authUrl.searchParams.set("state", state);
 
   return Response.redirect(authUrl.toString(), 302);
 }
@@ -8027,6 +8050,11 @@ async function handleAdminOAuthCallback(req, env, origin, url) {
   const error = url.searchParams.get("error");
   if (error) return new Response(`연동 실패: ${error}`, { status: 400 });
   if (!code) return new Response("code 파라미터가 없습니다.", { status: 400 });
+
+  const state = await verifySession(url.searchParams.get("state") || "", env.SESSION_SECRET);
+  if (!state || state.purpose !== ADMIN_OAUTH_STATE_PURPOSE) {
+    return new Response("state 파라미터가 유효하지 않거나 만료되었습니다. 처음부터 다시 시도해주세요.", { status: 400 });
+  }
 
   try {
     const tokenData = await exchangeAdminOAuthCode(env, code);
@@ -9941,7 +9969,7 @@ async function requireAdminOrCoReviewer(req, env) {
   const token = authHeader.replace(/^Bearer\s+/i, "");
   const session = await verifySession(token, env.SESSION_SECRET);
   if (!session) return null;
-  if (session.email === (env.ADMIN_EMAIL || "").toLowerCase()) {
+  if ((session.email || "").toLowerCase() === (env.ADMIN_EMAIL || "").toLowerCase()) {
     return { ...session, role: "admin" };
   }
   try {
