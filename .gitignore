@@ -1,6 +1,10 @@
 # frame-checker-worker: Wrangler 로컬 상태/캐시만 제외한다 — 시크릿은
 # 전부 env.*(wrangler secret) 바인딩으로 관리되어 소스에 없음을 확인했다.
 frame-checker-worker/.wrangler/
+# 🔧 [테스트 인프라 도입, 2026-09-12] vitest/@cloudflare/vitest-plugin
+# devDependencies — package-lock.json은 버전 고정을 위해 추적하되,
+# node_modules 자체는 재생성 가능하므로 제외.
+frame-checker-worker/node_modules/
 # Playwright 점검용 로그인 우회(POST /dev/login)의 DEV_LOGIN_SECRET —
 # wrangler secret으로 프로덕션에 등록된 값과 동일한 사본을 로컬에서만
 # 보관한다. 유출되면 명단에 등록된 아무 이메일로나 세션을 발급받을 수

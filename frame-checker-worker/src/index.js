@@ -1985,7 +1985,7 @@ function kstDateOffsetString(days) {
 // UTC getter로 읽는 트릭을 쓴다 — Cloudflare Workers는 로컬 타임존이 항상
 // UTC라서, 이렇게 만든 Date를 이후 formatISODate(로컬 getter)로 그대로
 // 포맷해도 KST 기준 날짜가 정확히 나온다.
-function currentWeekMondayKST() {
+export function currentWeekMondayKST() {
   const kstNow = nowKST();
   const jsDay = kstNow.getUTCDay(); // 일=0 ... 토=6
   const mondayOffset = (jsDay + 6) % 7; // 오늘이 월요일로부터 며칠째인지(월=0)
@@ -2005,7 +2005,7 @@ function parseWeekOfToMonday(weekOf) {
 // UTC Date를 "YYMMDD"로 포맷한다(백업 파일명 weekOf와 동일한 규칙) — UTC
 // getter를 쓰므로, currentWeekMondayKST()/parseWeekOfToMonday()가 만든
 // "UTC 자정이지만 KST 날짜를 담은" Date를 그대로 넘기면 KST 기준 날짜가 나온다.
-function formatYYMMDD(date) {
+export function formatYYMMDD(date) {
   const yy = String(date.getUTCFullYear()).slice(-2);
   const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(date.getUTCDate()).padStart(2, "0");
@@ -3644,7 +3644,7 @@ function attachDeferralInfo(items, allItems) {
 const REPORT_SEVERITY_VALUES = ["yes", "no"];
 
 // KST(Asia/Seoul) 기준 "YYYY-MM-DD" 날짜 문자열 — "당일" 판정에 쓴다.
-function kstDateKey(ts) {
+export function kstDateKey(ts) {
   return new Date(ts).toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" }); // sv-SE 로케일이 YYYY-MM-DD를 그대로 출력.
 }
 
@@ -6730,7 +6730,7 @@ function exitDateSettled(exitDate) {
 
 // exitDate("YYYY-MM-DD")의 KST 자정을 UTC ms로 계산 — exitDateSettled와
 // 동일한 변환(KST는 UTC+9이므로 "그 날짜 00:00 KST" = "그 날짜 00:00 UTC - 9시간").
-function exitDateMidnightUtcMs(exitDate) {
+export function exitDateMidnightUtcMs(exitDate) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(exitDate || "");
   if (!m) return null;
   return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) - 9 * 60 * 60 * 1000;
@@ -6740,7 +6740,7 @@ function exitDateMidnightUtcMs(exitDate) {
 // get_last_week_date_range()가 만드는 백업 파일명 접두부와 동일한 포맷.
 // sheet_reset()이 매주 월요일 새벽에 "그 주(월~일) 백업"을 만들 때 쓰는
 // 이름 규칙을 그대로 역산해, exitDate가 어느 백업 파일에 담겨야 하는지 찾는다.
-function weekOfForDate(exitDate) {
+export function weekOfForDate(exitDate) {
   const midnightMs = exitDateMidnightUtcMs(exitDate);
   if (midnightMs === null) return null;
   // exitDate(KST 자정)를 "UTC 시각이지만 KST 날짜를 담고 있는" Date로 다시
@@ -6765,7 +6765,7 @@ function weekOfForDate(exitDate) {
 // 월요일인 경우 "오늘도 월요일이니 리셋이 지났다"고 착각해, 실제로는
 // exitDate가 담긴 백업이 아직 없는데(그 백업은 다음 주 월요일에야 생김)
 // 엉뚱한 전전주 백업을 참조하게 된다(사용자 지적).
-function exitWeekResetPassed(exitDate) {
+export function exitWeekResetPassed(exitDate) {
   const midnightMs = exitDateMidnightUtcMs(exitDate);
   if (midnightMs === null) return false;
   const kstDate = new Date(midnightMs + 9 * 60 * 60 * 1000);
@@ -7325,7 +7325,7 @@ async function resolveCaptureSourceFileId(env, accessToken, fileId, ts) {
 // 근거로 써버릴 위험이 있었다. 이 고정 사유일 때만, 계산 기준 시트에서
 // 실제로 미납 상태인지 재검증한다 — 관리자가 자유 입력한 사유(미납과
 // 무관한 처리)는 검증 대상이 아니다.
-function requiresFineUnpaidRecheck(kind, forcedReason) {
+export function requiresFineUnpaidRecheck(kind, forcedReason) {
   return kind === "admin_forced" && (forcedReason || "").trim() === FINE_UNPAID_ADMIN_FORCED_REASON;
 }
 
@@ -7341,7 +7341,7 @@ function requiresFineUnpaidRecheck(kind, forcedReason) {
 // 뿐, 서버 API 자체엔 막는 검증이 없었다 — 향후 UI가 바뀌거나 API를
 // 직접 호출하면 조용히 재현되므로, "이 조합 자체를 거부"하는 방식으로
 // 근본 차단한다(§CACHING_POLICY.md 참고 예정).
-function isUnguardedAdminForcedCycleCombo(kind, forcedReason, cycleFileId) {
+export function isUnguardedAdminForcedCycleCombo(kind, forcedReason, cycleFileId) {
   return kind === "admin_forced" && !!cycleFileId && !requiresFineUnpaidRecheck(kind, forcedReason);
 }
 
