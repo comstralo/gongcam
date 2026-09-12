@@ -2054,7 +2054,49 @@ email(구글 계정) 어디에도 `|` 문자가 올 수 없어 안전함을 확�
 7일 보관 정책이 실제 코드에 구현돼 있음을 재확인, `wrangler.toml`의
 `v2` 마이그레이션이 `v1`과 충돌 없이 공존함을 확인.
 
-## 46. 관련 문서
+## 46. `report:` 안전망 큐를 KV에서 영속 DO로 이전 (2026-09-12) — §24.3 결론 정정
+
+§24.3에서 "❌ 안 맞는 경우"로 `report:{id}`(봇이 못 가져간 제보를 나중에
+재시도로 집어가야 하는 안전망 큐)를 명시적으로 꼽았었다. 그 판단
+자체는 여전히 유효하지만 — **순수 메모리 DO**(`state.storage` 미사용,
+`ParticipantsRoster`의 notices/reportCooldowns처럼 재시작 시 빈 배열로
+리셋되는 방식)에만 해당된다는 전제를 명확히 해둔다. 이번엔 §45에서
+신설한 `UsageStats`와 동일하게 **`state.storage`를 실제로 쓰는 영속
+DO**로 옮겼으므로, 재시작(유휴·재배포)해도 생성자의
+`blockConcurrencyWhile`이 storage에서 전량 복원해 §24.3이 우려한
+"봇이 몇 시간 꺼져 있는 동안 안전망 큐가 소실될 위험"이 발생하지
+않는다(사용자 확인: "기능면에서 차이 없다").
+
+계기는 관리자 "사용량 모니터링"에서 KV list() 하루 사용량(1,000회 한도
+중 실측 약 59~144회/일)의 사실상 전부가 `handleListReports`(GET
+/reports, 도움봇의 10분 안전망 폴링)의
+`REPORTS_KV.list({prefix:"report:"})`에서 나온다는 게 확인된 것이다.
+list 한도 자체는 여유가 있었지만(14% 수준), 사용자가 "옮겨버려"라고
+명시적으로 결정해 진행했다.
+
+**신설 DO**: `ReportQueue`(index.js, `UsageStats` 클래스 바로 뒤) —
+`this.entries = new Map()`(id → entry, `expiresAt` 필드 포함)를
+`state.storage`와 항상 동기화. 엔드포인트 3개:
+- `POST /put` — `{entry, ttlSec}`을 받아 `expiresAt = Date.now() +
+  ttlSec*1000`을 붙여 저장(KV `put`+`expirationTtl` 대체).
+- `POST /delete` — `{id}` 삭제(KV `delete` 대체).
+- `POST /drain` — 만료 안 된 항목 전부를 `ts` 오름차순으로 반환하고
+  그 자리에서 전부 삭제, 이미 만료된 항목은 반환 없이 조용히 삭제
+  (KV의 `list` + 각 `get` + 각 `delete` + 정렬을 한 번의 DO fetch로
+  대체 — Cloudflare KV의 `expirationTtl` 자동 만료 대신 여기서 직접
+  타임스탬프로 판정).
+
+`getReportQueueStub(env)`는 `env.REPORT_QUEUE_DO.idFromName("report-queue")`
+로 여느 DO와 동일한 싱글턴 패턴. `handleReport`/`handleListReports`/
+`handleRequeueReport` 세 함수는 KV 호출을 위 세 엔드포인트 호출로
+바꿨을 뿐, 엔드포인트 경로·요청/응답 형식·도움봇 쪽
+(`report_intake.py`) 코드는 전혀 바뀌지 않았다.
+
+`wrangler.toml`에 `REPORT_QUEUE_DO` 바인딩과 `tag = "v3"` 마이그레이션
+(`new_sqlite_classes = ["ReportQueue"]`)을 추가했다 — v1(`ParticipantsRoster`),
+v2(`UsageStats`)에 이어지는 순차 태그.
+
+## 47. 관련 문서
 
 - `docs/WEB_ADMIN.md` §3.1 — `applyOutputPenalty`/`applyReportMerit`/
   `applyTimeDeduction`가 실제로 호출되는 관리자 제보 처리 화면·플로우.

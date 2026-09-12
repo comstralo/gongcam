@@ -2931,8 +2931,14 @@ async function handleReport(req, env, origin) {
     // 자체를 요청마다 고유하게 만든다(report_intake.py 참고).
     isAdmin,
   };
-  await env.REPORTS_KV.put(`report:${id}`, JSON.stringify(entry), {
-    expirationTtl: REPORT_TTL_SEC,
+  // 🔧 [KV → DO 이전, 2026-09-12] 안전망 큐(report:{id})를 ReportQueue DO로
+  // 옮겼다(§ReportQueue 클래스 주석 참고) — KV put/delete/list 세 연산이
+  // 여기서 전부 빠진다.
+  const reportQueue = getReportQueueStub(env);
+  await reportQueue.fetch("https://do/put", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ entry, ttlSec: REPORT_TTL_SEC }),
   });
   // 🔧 [KV → DO 이전, 2026-09-11] 쿨다운 기록 + "진행 중인 제보" 표시를
   // 하나의 DO 호출로 겸한다 — KV 시절엔 cooldownKey(차단 판정용)와
@@ -2985,7 +2991,11 @@ async function handleReport(req, env, origin) {
     body: JSON.stringify(entry),
   });
   if (pushed && pushed.started) {
-    await env.REPORTS_KV.delete(`report:${id}`);
+    await reportQueue.fetch("https://do/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
   }
 
   return json({ ok: true }, 200, origin);
@@ -3091,21 +3101,19 @@ async function handleInternalCycleBoundary(req, env, origin) {
   }
 }
 
+// 🔧 [KV → DO 이전, 2026-09-12] ReportQueue DO의 /drain이 "list + 각
+// get + 각 delete + 정렬"을 전부 대체한다(§ReportQueue 클래스 주석
+// 참고) — 응답 형태(entries 배열 그대로, ok 래핑 없음)는 이전과 동일해
+// report_intake.py 쪽 코드는 손댈 필요가 없다.
 async function handleListReports(req, env, origin) {
   const botSecret = req.headers.get("X-Bot-Secret");
   if (!botSecret || botSecret !== env.BOT_SECRET) {
     return json({ error: "unauthorized" }, 401, origin);
   }
 
-  const list = await env.REPORTS_KV.list({ prefix: "report:" });
-  const entries = [];
-  for (const key of list.keys) {
-    const raw = await env.REPORTS_KV.get(key.name);
-    if (raw) entries.push(JSON.parse(raw));
-    await env.REPORTS_KV.delete(key.name);
-  }
-  entries.sort((a, b) => a.ts - b.ts);
-  return json(entries, 200, origin);
+  const res = await getReportQueueStub(env).fetch("https://do/drain", { method: "POST" });
+  const { items } = await res.json();
+  return json(items, 200, origin);
 }
 
 // 🔧 [버그 수정] 안전망 폴링(report_intake.py의 _poll_and_start_captures,
@@ -3133,11 +3141,13 @@ async function handleRequeueReport(req, env, origin) {
     // 원래 접수로부터 이미 TTL이 다 지났다 — 더는 재시도 가치가 없다.
     return json({ ok: true, requeued: false }, 200, origin);
   }
-  // Cloudflare KV expirationTtl은 최소 60초 이상이어야 한다 — TTL 만료
-  // 직전(60초 미만 남음)이어도 다음 안전망 주기(10분 뒤)까지는 버티게
-  // 최소값을 보장한다.
-  await env.REPORTS_KV.put(`report:${entry.id}`, JSON.stringify(entry), {
-    expirationTtl: Math.max(remainingSec, 60),
+  // 🔧 [KV → DO 이전, 2026-09-12] DO에는 KV expirationTtl 같은 강제
+  // 최솟값이 없지만, TTL 만료 직전(60초 미만 남음)이어도 다음 안전망
+  // 주기(10분 뒤)까지는 버티도록 기존과 동일하게 최소 60초를 보장한다.
+  await getReportQueueStub(env).fetch("https://do/put", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ entry, ttlSec: Math.max(remainingSec, 60) }),
   });
   return json({ ok: true, requeued: true }, 200, origin);
 }
@@ -8874,6 +8884,70 @@ export class UsageStats {
 function getUsageStatsStub(env) {
   const id = env.USAGE_STATS_DO.idFromName("usage-stats");
   return env.USAGE_STATS_DO.get(id);
+}
+
+// 🔧 [사용자 지시, 2026-09-12] "list 말고 다른 방식으로 구현은 어려운
+// 구조야 현재?" → "그럼 옮겨버려" — handleListReports(GET /reports, 10분
+// 안전망 폴링)가 REPORTS_KV.list({prefix:"report:"})로 하루 대부분의
+// KV list() 호출(약 144회/일)을 차지했다. 이 큐를 KV에서 이 DO로
+// 옮겨 put/delete/list 세 연산 모두 KV 할당량에서 뺀다.
+// docs/CACHING_POLICY.md §24.3은 "report:{id}는 DO로 옮기면 안 된다"고
+// 적어뒀지만, 그 결론은 순수 메모리 DO(재시작 시 빈 상태로 리셋)에만
+// 해당한다 — 여기는 UsageStats와 동일하게 state.storage를 실제로 써서
+// 재시작해도 blockConcurrencyWhile로 전량 복원되므로, §24.3이 우려한
+// "봇이 몇 시간 꺼져 있는 동안 안전망 큐가 소실될 위험"이 발생하지
+// 않는다(사용자 확인: 기능면에서 차이 없음).
+export class ReportQueue {
+  constructor(state) {
+    this.state = state;
+    this.entries = new Map(); // id -> entry(JSON 객체, expiresAt 필드 포함)
+    this.state.blockConcurrencyWhile(async () => {
+      const stored = await this.state.storage.list();
+      for (const [id, entry] of stored) this.entries.set(id, entry);
+    });
+  }
+
+  async fetch(req) {
+    const url = new URL(req.url);
+    if (req.method === "POST" && url.pathname === "/put") {
+      const { entry, ttlSec } = await req.json();
+      const expiresAt = Date.now() + ttlSec * 1000;
+      const stored = { ...entry, expiresAt };
+      this.entries.set(entry.id, stored);
+      await this.state.storage.put(entry.id, stored);
+      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+    }
+    if (req.method === "POST" && url.pathname === "/delete") {
+      const { id } = await req.json();
+      this.entries.delete(id);
+      await this.state.storage.delete(id);
+      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+    }
+    // handleListReports가 하던 "list + 각 get + 각 delete + 정렬해 반환"
+    // 전부를 한 번의 DO fetch로 대체한다 — 만료 안 된 항목만 반환하고
+    // (KV 시절과 동일하게 "조회 즉시 소비"), 이미 만료된 항목은 반환
+    // 없이 조용히 지운다(KV expirationTtl 자동 만료 대신 여기서 직접
+    // 판정).
+    if (req.method === "POST" && url.pathname === "/drain") {
+      const now = Date.now();
+      const items = [];
+      const puts = [];
+      for (const [id, entry] of this.entries) {
+        if (entry.expiresAt > now) items.push(entry);
+        this.entries.delete(id);
+        puts.push(this.state.storage.delete(id));
+      }
+      await Promise.all(puts);
+      items.sort((a, b) => a.ts - b.ts);
+      return new Response(JSON.stringify({ items }), { headers: { "Content-Type": "application/json" } });
+    }
+    return new Response("method not allowed", { status: 405 });
+  }
+}
+
+function getReportQueueStub(env) {
+  const id = env.REPORT_QUEUE_DO.idFromName("report-queue");
+  return env.REPORT_QUEUE_DO.get(id);
 }
 
 // _dailyUsageBuffer(index.js 상단)를 UsageStats DO로 배치 전송하고 비운다.

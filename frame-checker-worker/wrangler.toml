@@ -18,6 +18,10 @@ class_name = "ParticipantsRoster"
 name = "USAGE_STATS_DO"
 class_name = "UsageStats"
 
+[[durable_objects.bindings]]
+name = "REPORT_QUEUE_DO"
+class_name = "ReportQueue"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["ParticipantsRoster"]
@@ -25,6 +29,10 @@ new_sqlite_classes = ["ParticipantsRoster"]
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["UsageStats"]
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["ReportQueue"]
 
 # 90분 자동 위반인정(TARGET_RESPONSE_TIMEOUT_MS, index.js)이 관리자/대상자가
 # 화면을 열어야만 지연 평가되던 것을 보완 — 5분마다 만료된 항목을 스스로
