@@ -69,32 +69,57 @@ npm run test:watch  # watch 모드
 없음(직권 P 자유사유+cycle 차단 등 실제 API 동작) 확인, `wrangler
 tail`로 예외 0건 확인.
 
-### 3단계 — 다음 세션에서 진행 예정
+### 3단계 완료 (2026-09-13)
 
-fetch(Google Sheets/Drive API)/Durable Object stub/모듈 스코프
-캐시(`_sheetCache`/`_inFlight`)가 얽힌 함수들은 이번 범위에서
-제외했다 — 순수 함수로 안전망과 패턴을 먼저 확립한 뒤 진행하는 게
-안전하다고 판단했다:
+fetch(Google Sheets/Drive API)와 Durable Object에 의존하는 사이클
+판정 함수들을 테스트 대상에 추가했다. 착수 전 가장 먼저
+`vi.stubGlobal("fetch", ...)`가 `@cloudflare/vitest-plugin`의 실제
+workerd 런타임 안에서도 그대로 통하는지 `listBackupFiles`로
+스파이크 검증했고(통과), 이 전략을 나머지 함수로 그대로 확장했다.
 
-- `resolveExitSourceFileId` — `getLeaveQueueStub(env)`(DO) + Drive
-  API fetch(`findBackupForExitDate`) 의존.
-- `resolveCaptureSourceFileId` — Drive+Sheets fetch 의존. **함정**:
-  `ts` 인자와 별개로 내부에서 `currentWeekMondayKST()`가 "지금"을
-  암묵적으로 다시 읽으므로, 테스트 시 `ts`와 시스템 시계(fake timer)
-  를 반드시 일관되게 맞춰야 한다.
-- `resolveTargetFileId`, `listCurrentCycleBackups`, `listBackupFiles`
-  — Drive/Sheets API fetch 체인.
-- `hasUnpaidFineInCycle`/`hasForcedCandidateInCycle` — 다단 캐시
-  (`_cachedCompute`) 경유. **주의**: 이 캐시들은 모듈 스코프 `Map`
-  (`_sheetCache`/`_inFlight`)에 저장되므로, 테스트마다 서로 다른
-  `fileId`를 쓰거나 모듈을 재로드(`vi.resetModules()`)해서 격리해야
-  한다 — 안 그러면 이전 테스트의 mock 응답이 "캐시 히트"로 다음
-  테스트에 새어 들어갈 수 있다.
+이번 조사로 `currentCycleBackups`(`index.js:8491`)와
+`compareWeekOfDesc`(`index.js:8449`)가 완전한 순수 함수임을 새로
+발견해 `export`를 추가하고 `test/cycle-pure.test.js`에 소급
+편입했다 — 특히 `currentCycleBackups`는 §"1~2단계" 이전에 실제로
+고쳤던 버그(`sheet_reset()`이 D25 갱신 전에 백업을 먼저 뜨는 순서
+때문에 생긴 사이클 오프바이원)의 재발 방지 테스트 그 자체다.
 
-외부 네트워크(`fetch`) mock 전략은 `vi.spyOn(globalThis, "fetch")`가
-Cloudflare 공식 레시피로 제시된다 — 이 프로젝트는 fetch 호출이
-코드 전반에 흩어져 있어, 3단계를 시작하기 전에 소규모로 이 mock
-패턴을 먼저 검증하는 게 안전하다.
+- **`test/cycle-fetch.test.js`**(신설) — Drive/Sheets API fetch에만
+  의존하는 함수: `listBackupFiles`(파일명 패턴 필터링, 히스토리
+  시작 주차 이전 제외, weekOf 내림차순 정렬), `resolveTargetFileId`
+  (cycleFileId 없으면 fetch 없이 즉시 반환/있으면 현재 사이클 소속
+  검증), `listCurrentCycleBackups`(currentCycle 값에 따라 정확히
+  0~2개만 반환). `env`는 `cloudflare:test`의 실제 바인딩을
+  얕은 복사해 `GOOGLE_SHEET_FILE_ID`/`BACKUP_FOLDER_ID`(secret이라
+  `wrangler.toml`엔 없음)만 테스트용 값으로 덮어썼다.
+- **`test/cycle-do.test.js`**(신설) — DO+fetch+시계가 모두 얽힌 핵심
+  함수 2개:
+  - `resolveExitSourceFileId` — `getLeaveQueueStub(env)`가 mock이
+    아니라 **실제 LeaveQueue Durable Object**로 동작함을 그대로
+    이용해, 테스트 시작 전 `/exit/put`으로 실제 퇴실 신청 데이터를
+    심어둔 뒤 `exitWeekResetPassed`를 fake timer로 리셋 전/후 두
+    가지로 나눠 검증했다(리셋 전엔 원본 반환, 후엔
+    `findBackupForExitDate`가 찾은 백업 반환). `kind`가 `settle`이
+    아니거나 신청 자체가 없는 경우의 `cycleFileId` 폴백 분기도 함께
+    검증.
+  - `resolveCaptureSourceFileId` — 문서에 미리 적어둔 "함정"(`ts`와
+    별개로 내부에서 `currentWeekMondayKST()`가 "지금"을 암묵적으로
+    다시 읽는 것)을 그대로 재현해, `ts`와 시스템 시계를 함께
+    맞춘 뒤 3가지 분기(이번 주 발생/같은 사이클 내 지난 주/이미
+    사이클이 끝난 지난 주)를 각각 검증했다 — 이게 오늘 세션에서
+    수정한 "화각 불량 제보 확인 사이클 기록" 버그의 근본 로직에
+    대한 회귀 테스트다.
+
+`hasUnpaidFineInCycle`/`hasForcedCandidateInCycle`은 계획대로 이번
+범위에서 계속 제외했다 — `listAllMembers`→`getSharedMemberRows`/
+`getAllExitRelevantStatus`→`listUnpaidFines`/`listExitCandidates`/
+`calcForcedOutDeposit` 등 의존 체인이 매우 깊어, mock으로 모든 분기를
+정확히 재현하는 비용이 얻는 확신보다 크다고 판단했다 — 이 두 함수는
+계속 Playwright 프로덕션 검증에 의존한다.
+
+`npm test` 기준 52개 테스트 전부 통과. `node --check`로 export 추가
+구문 확인, 배포 후 Playwright로 관리자 화면(퇴실 처리, 제보 확인)
+회귀 없음 확인, `wrangler tail`로 예외 0건 확인.
 
 ## 향후 구조 개선과의 관계
 

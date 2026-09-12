@@ -5,6 +5,8 @@
 // 회귀 없이 유지되는지 확인하는 안전망이다.
 import { describe, expect, it } from "vitest";
 import {
+  compareWeekOfDesc,
+  currentCycleBackups,
   exitDateMidnightUtcMs,
   formatYYMMDD,
   isUnguardedAdminForcedCycleCombo,
@@ -124,5 +126,33 @@ describe("formatYYMMDD", () => {
   it("UTC getter로 연/월/일을 2자리씩 패딩해 YYMMDD를 만든다", () => {
     expect(formatYYMMDD(new Date(Date.UTC(2026, 8, 7)))).toBe("260907"); // 9월(0-indexed 8)
     expect(formatYYMMDD(new Date(Date.UTC(2026, 0, 1)))).toBe("260101"); // 1월 1일(한 자리 월/일)
+  });
+});
+
+describe("compareWeekOfDesc", () => {
+  it("weekOf 문자열을 최신순(내림차순)으로 정렬한다", () => {
+    const items = [{ weekOf: "260810" }, { weekOf: "260824" }, { weekOf: "260817" }];
+    items.sort(compareWeekOfDesc);
+    expect(items.map((i) => i.weekOf)).toEqual(["260824", "260817", "260810"]);
+  });
+});
+
+describe("currentCycleBackups", () => {
+  // 🔧 [버그 수정, 2026-09] sheet_reset()이 D25(사이클)를 갱신하기 *전에*
+  // 백업을 먼저 뜨므로, 백업 파일엔 항상 "그 주가 실제로 몇 주차였는지"
+  // 값이 남는다 — 이 재발 방지 테스트 자체가 그 수정의 핵심이다.
+  const backups = [{ weekOf: "260824" }, { weekOf: "260817" }, { weekOf: "260810" }, { weekOf: "260803" }];
+
+  it.each([
+    [1, []],
+    [2, [{ weekOf: "260824" }]],
+    [3, [{ weekOf: "260824" }, { weekOf: "260817" }]],
+  ])("currentCycle=%s -> 최신 %s개만 반환한다", (currentCycle, expected) => {
+    expect(currentCycleBackups(backups, currentCycle)).toEqual(expected);
+  });
+
+  it("currentCycle이 CYCLE_MAX_LEN(3)을 넘거나 비정상 값이어도 최대 2개로 고정된다", () => {
+    expect(currentCycleBackups(backups, 4)).toEqual([{ weekOf: "260824" }, { weekOf: "260817" }]);
+    expect(currentCycleBackups(backups, 0)).toEqual([]);
   });
 });

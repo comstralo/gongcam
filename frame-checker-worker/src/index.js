@@ -7236,7 +7236,7 @@ const EXIT_KIND_VALUES = ["forced", "admin_forced", "settle", "deposit_again"];
 // 재납 확정)은 다르다 — 재납은 "지금도 활동 중인 회원"의 처리라 그 회원의
 // 탭 자체가 항상 이번 주 시트에 존재하므로, sourceFileId 분리 없이 항상
 // fileId만 쓴다.
-async function resolveExitSourceFileId(env, accessToken, fileId, number, kind, cycleFileId) {
+export async function resolveExitSourceFileId(env, accessToken, fileId, number, kind, cycleFileId) {
   if (kind === "settle") {
     // 🔧 [KV → DO 이전, 2026-09-12] §47 — LeaveQueue DO에서 조회.
     const exitRequestEntry = await getLeaveQueueStub(env)
@@ -7271,7 +7271,7 @@ async function resolveExitSourceFileId(env, accessToken, fileId, number, kind, c
 // 왜곡된다 — "그 사이클에 발생한 일은 그 사이클에 기록되어야 한다"
 // 는 원칙(사용자 확인)에 따라, 제보 발생 시각(ts)이 속한 주(월~일)의
 // fileId를 판정한다.
-async function resolveCaptureSourceFileId(env, accessToken, fileId, ts) {
+export async function resolveCaptureSourceFileId(env, accessToken, fileId, ts) {
   const weekOf = weekOfForDate(kstDateKey(ts));
   if (!weekOf) return { sourceFileId: fileId, fromBackup: false };
   const currentWeekOf = formatYYMMDD(currentWeekMondayKST());
@@ -8446,11 +8446,11 @@ const BACKUP_HISTORY_START_WEEK_OF = "260810"; // 이 주차(포함)부터만 �
 const CYCLE_MAX_LEN = 3; // 사이클 하나는 최대 3주 — 안전장치(사이클값이 리셋되지 않는 이상 상황 대비)
 
 // weekOf(파일명의 시작일 YYMMDD)로 최신순 정렬
-function compareWeekOfDesc(a, b) {
+export function compareWeekOfDesc(a, b) {
   return b.weekOf.localeCompare(a.weekOf);
 }
 
-async function listBackupFiles(env, accessToken) {
+export async function listBackupFiles(env, accessToken) {
   const res = await fetch(
     `https://www.googleapis.com/drive/v3/files?` +
       new URLSearchParams({
@@ -8488,7 +8488,7 @@ async function listBackupFiles(env, accessToken) {
 // 사이클에서 이미 지난 주가 몇 주인지"(currentCycle - 1)를 정확히 계산하고,
 // 그 개수만큼만 최신 백업을 모은다 — 1주차면 0개, 2주차면 1개(사이클값=1인
 // 것 하나), 3주차면 2개(사이클값 2, 1인 것 순서대로)를 반환한다.
-function currentCycleBackups(backups, currentCycle) {
+export function currentCycleBackups(backups, currentCycle) {
   const wantedCount = Math.min(CYCLE_MAX_LEN - 1, Math.max(0, currentCycle - 1));
   return backups.slice(0, wantedCount);
 }
@@ -8497,7 +8497,7 @@ function currentCycleBackups(backups, currentCycle) {
 // 백업된 주차"까지만 조회할 수 있다 — 그 이전 사이클(4주 이상 전)은
 // 대상이 아니다. MY/ALL 상단의 "사이클 토글"이 이 목록 + "현재"(실시간,
 // fileId 없음)를 함께 보여준다.
-async function listCurrentCycleBackups(env, accessToken) {
+export async function listCurrentCycleBackups(env, accessToken) {
   const [backups, currentCycle] = await Promise.all([
     listBackupFiles(env, accessToken),
     getCurrentPenCycle(env, accessToken, env.GOOGLE_SHEET_FILE_ID),
@@ -8648,7 +8648,7 @@ async function handleCycleList(req, env, origin, url) {
 // 실제 캘린더 날짜를 계산해 "가입 전 요일"을 판정하는 데 쓴다. 실시간(라이브
 // 시트) 조회면 특정 백업 주차가 없으므로 weekOf는 null — 호출부가 "오늘
 // 기준 이번 주"로 직접 계산한다.
-async function resolveTargetFileId(env, accessToken, cycleFileId) {
+export async function resolveTargetFileId(env, accessToken, cycleFileId) {
   if (!cycleFileId) return { fileId: env.GOOGLE_SHEET_FILE_ID, weekOf: null };
   const { backups } = await listCurrentCycleBackups(env, accessToken);
   const backup = backups.find((b) => b.fileId === cycleFileId);
@@ -9250,7 +9250,7 @@ export class LeaveQueue {
   }
 }
 
-function getLeaveQueueStub(env) {
+export function getLeaveQueueStub(env) {
   const id = env.LEAVE_QUEUE_DO.idFromName("leave-queue");
   return env.LEAVE_QUEUE_DO.get(id);
 }
