@@ -2211,7 +2211,31 @@ remove 전체 사이클, 퇴실 관련 3개 엔드포인트(모두 200, 예외 �
 (`study_manager_260418.py`)을 재시작해야 정상화된다(사용자가 직접
 재시작하기로 확인, 코드 변경 불필요).
 
-## 49. 관련 문서
+## 49. `lastLogin:` 전환 + KV 전수 재검토 (2026-09-12) — 사실상 전환 완료
+
+§48 이후 "KV → DO로 전환할만한 여지가 있는 구조가 더 없는지" 재검토를
+요청받아 `env.REPORTS_KV`/`env.PUSH_SUBS_KV`의 **모든** 호출(get 포함)을
+처음부터 다시 전수 grep했다. 그 결과 `lastLogin:{번호}`(로그인 시 접속
+시각·IP 기록, `completeLogin`) 하나를 추가로 발견해 `MemberSettingsDO`
+에 네 번째 필드(`lastLogins`)로 이전했다.
+
+- `POST /last-login` — 로그인마다 1회 기록.
+- `GET /last-login/list` — 관리자 "참여 스터디원 목록"이 회원 전원을
+  개별 병렬 get 하던 것을 1회 호출로 대체(§48의 `/exit/list`와 동일
+  패턴). 이 기능 도입 이전의 "순수 타임스탬프 문자열" 하위호환 파싱
+  코드는, 이번 전환에서 기존 데이터를 애초에 날리기로 했으므로 함께
+  삭제했다.
+
+**재검토 결론**: 이후 `env.REPORTS_KV.*`/`env.PUSH_SUBS_KV.*` 전체를
+다시 grep한 결과, 남은 실제 호출은 `KV_CACHE_PREFIX`(`sheetCache:`)
+12종 캐시(§24.3에서 이미 "DO는 전 세계 단일 인스턴스라 병렬 읽기
+병목이 되므로 부적합"으로 확정, 재검토 대상 아님)뿐이었다.
+`env.PUSH_SUBS_KV`는 코드상 호출 0건(완전히 §48에서 전환 완료).
+`withMemberLock` 등 락 관련 코드도 전부 `ParticipantsRoster` DO
+기반이라 KV 잔재 없음. 즉 **"KV가 구조적으로 필수인 것(캐시 12종)"을
+제외한 모든 KV 쓰기/삭제/조회 지점이 DO로 전환 완료**된 상태다.
+
+## 50. 관련 문서
 
 - `docs/WEB_ADMIN.md` §3.1 — `applyOutputPenalty`/`applyReportMerit`/
   `applyTimeDeduction`가 실제로 호출되는 관리자 제보 처리 화면·플로우.

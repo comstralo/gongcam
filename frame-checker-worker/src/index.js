@@ -2662,11 +2662,16 @@ async function completeLogin(req, env, origin, googleUser, { recordLastLogin = t
   // 시각·IP를 보여줄 수 있도록 기록한다 — 로그인 자체를 막으면 안 되므로
   // 실패해도 조용히 넘어간다. CF-Connecting-IP는 Cloudflare가 프록시 체인을
   // 거쳐도 실제 클라이언트 IP로 신뢰하는 헤더다(X-Forwarded-For처럼 클라이언트가
-  // 임의로 위조해 넣을 수 없다).
+  // 임의로 위조해 넣을 수 없다). 🔧 [KV → DO 이전, 2026-09-12] §49 —
+  // MemberSettingsDO로 이전.
   if (member && recordLastLogin) {
     const ip = req.headers.get("CF-Connecting-IP") || "";
-    await env.REPORTS_KV
-      .put(`lastLogin:${member.number}`, JSON.stringify({ ts: Date.now(), ip }))
+    await getMemberSettingsStub(env)
+      .fetch("https://do/last-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ memberNumber: member.number, ts: Date.now(), ip }),
+      })
       .catch(() => {});
   }
 
@@ -6919,23 +6924,15 @@ async function handleAdminMembersRoster(req, env, origin) {
       });
     }
 
-    // 최근 접속일자·IP — 회원마다 lastLogin:{번호} 키를 개별 조회한다(회원
-    // 수가 15명 규모라 병렬 조회로 충분히 저렴하다). 이 기능 추가 이전에
-    // 저장된 값은 순수 타임스탬프 문자열이라 JSON.parse가 실패하는데, 이
-    // 경우 구형 포맷으로 보고 ts만 있는 것으로 취급한다(ip는 알 수 없음).
+    // 🔧 [KV → DO 이전, 2026-09-12] §49 — 회원마다 개별 병렬 get 하던 것을
+    // MemberSettingsDO의 /last-login/list 1회 호출로 대체(왕복 N회→1회).
+    const lastLoginRes = await getMemberSettingsStub(env).fetch("https://do/last-login/list");
+    const { items: lastLoginItems } = await lastLoginRes.json();
     const lastLoginByNumber = new Map(
-      await Promise.all(
-        members.map(async (m) => {
-          const raw = await env.REPORTS_KV.get(`lastLogin:${m.number}`).catch(() => null);
-          if (!raw) return [m.number, { ts: null, ip: "" }];
-          try {
-            const parsed = JSON.parse(raw);
-            return [m.number, { ts: parsed.ts || null, ip: parsed.ip || "" }];
-          } catch {
-            return [m.number, { ts: Number(raw) || null, ip: "" }];
-          }
-        })
-      )
+      members.map((m) => {
+        const entry = lastLoginItems[m.number];
+        return [m.number, entry ? { ts: entry.ts || null, ip: entry.ip || "" } : { ts: null, ip: "" }];
+      })
     );
 
     // 🔧 [참여유형 = 목표시간 유형] "참여유형"은 스터디장/부스터디장 구분이
@@ -9021,12 +9018,14 @@ export class MemberSettingsDO {
     this.prefs = new Map(); // memberNumber -> {category: boolean}
     this.statusMsgs = new Map(); // memberNumber -> string
     this.exitResults = new Map(); // "{이름} (퇴실)" -> object
+    this.lastLogins = new Map(); // memberNumber -> {ts, ip}
     this.state.blockConcurrencyWhile(async () => {
       const stored = await this.state.storage.list();
       for (const [key, value] of stored) {
         if (key.startsWith("pref:")) this.prefs.set(key.slice(5), value);
         else if (key.startsWith("status:")) this.statusMsgs.set(key.slice(7), value);
         else if (key.startsWith("exit:")) this.exitResults.set(key.slice(5), value);
+        else if (key.startsWith("login:")) this.lastLogins.set(key.slice(6), value);
       }
     });
   }
@@ -9093,6 +9092,23 @@ export class MemberSettingsDO {
     // handleAdminBlacklist)을 이 엔드포인트 1회 호출로 대체한다.
     if (req.method === "GET" && url.pathname === "/exit/list") {
       const items = Object.fromEntries(this.exitResults);
+      return new Response(JSON.stringify({ items }), { headers: { "Content-Type": "application/json" } });
+    }
+
+    // 🔧 [KV → DO 이전, 2026-09-12] lastLogin:{번호}를 이 DO로 이전 —
+    // "최근 접속일자·IP" 기록(로그인마다 1회 put)과 조회(관리자 "참여
+    // 스터디원 목록"이 회원 전원을 병렬 get 하던 것)를 함께 옮긴다.
+    if (req.method === "POST" && url.pathname === "/last-login") {
+      const { memberNumber, ts, ip } = await req.json();
+      const value = { ts, ip };
+      this.lastLogins.set(memberNumber, value);
+      await this.state.storage.put(`login:${memberNumber}`, value);
+      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+    }
+    // 🔧 [순회 조회 최적화] 회원 전원에 대해 개별 get을 병렬 호출하던
+    // handleAdminMembersRoster를 이 엔드포인트 1회 호출로 대체한다.
+    if (req.method === "GET" && url.pathname === "/last-login/list") {
+      const items = Object.fromEntries(this.lastLogins);
       return new Response(JSON.stringify({ items }), { headers: { "Content-Type": "application/json" } });
     }
 
