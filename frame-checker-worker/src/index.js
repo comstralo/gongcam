@@ -3935,6 +3935,10 @@ async function handleMyOutputPen(req, env, origin, url) {
       // "유예" 결정에서만 채워지는 시간 차감 확정값(사용자 지시: 유예도
       // 확정으로 표시).
       timeDeduction: item.timeDeduction || null,
+      // 🔧 [사용자 지시] "벌점·상점을 제보 발생 사이클에 기록" — 새로고침
+      // 등으로 applied[item.id](이 세션 로컬 상태)를 잃어도 이 스냅샷으로
+      // "취소" 버튼이 정확한 파일에서 롤백할 수 있게 한다.
+      sourceFileId: item.sourceFileId || null,
     }));
     return json({ items }, 200, origin);
   } catch (err) {
@@ -4547,14 +4551,19 @@ async function handleAdminCaptureCancel(req, env, origin) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
 
-  const { number, col, deductedMinutes, dayCol } = await req.json().catch(() => ({}));
+  const { number, col, deductedMinutes, dayCol, sourceFileId } = await req.json().catch(() => ({}));
   if (!number || !col) {
     return json({ error: "number와 col이 필요합니다." }, 400, origin);
   }
 
   try {
     const accessToken = await getServiceAccountAccessToken(env);
-    await cancelOutputPenalty(env, accessToken, env.GOOGLE_SHEET_FILE_ID, number, col, deductedMinutes || 0, dayCol || null);
+    // 🔧 [사용자 지시] "벌점·상점을 제보 발생 사이클에 기록" — 실제로
+    // 벌점을 쓴 파일(sourceFileId, handleAdminCaptureDecide 응답으로
+    // 프론트가 들고 있음)에서 취소해야 한다. 없으면(옛 클라이언트 등)
+    // 원본으로 폴백한다.
+    const fileId = sourceFileId || env.GOOGLE_SHEET_FILE_ID;
+    await cancelOutputPenalty(env, accessToken, fileId, number, col, deductedMinutes || 0, dayCol || null);
     await invalidateMemberCache(env, ["penalty"]); // 페널티 슬롯이 바뀌었으므로 관련 캐시만 무효화.
     await invalidateMemberSlotCache(env, number); // 이 회원의 outputPenSlots/reportScore는 KV까지 즉시.
     return json({ ok: true }, 200, origin);
@@ -4570,14 +4579,15 @@ async function handleAdminCaptureCancelMerit(req, env, origin) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
 
-  const { number, col } = await req.json().catch(() => ({}));
+  const { number, col, sourceFileId } = await req.json().catch(() => ({}));
   if (!number || !col) {
     return json({ error: "number와 col이 필요합니다." }, 400, origin);
   }
 
   try {
     const accessToken = await getServiceAccountAccessToken(env);
-    await cancelReportMerit(env, accessToken, env.GOOGLE_SHEET_FILE_ID, number, col);
+    const fileId = sourceFileId || env.GOOGLE_SHEET_FILE_ID;
+    await cancelReportMerit(env, accessToken, fileId, number, col);
     await invalidateMemberCache(env, ["penalty"]); // 제보상점 슬롯이 바뀌었으므로 관련 캐시만 무효화.
     await invalidateMemberSlotCache(env, number); // 이 회원의 outputPenSlots/reportScore는 KV까지 즉시.
     return json({ ok: true }, 200, origin);
@@ -4672,10 +4682,25 @@ async function handleAdminCaptureDecide(req, env, origin) {
   let meritResult = null;
   let timeDeductionResult = null;
   let deferredOccurrenceSnapshot = null;
+  // 🔧 [사용자 지시] "벌점·상점을 제보 발생 사이클에 기록" — 아래 모든
+  // 분기(승인/유예/반려 포함)가 이 하나의 fileId를 공유한다. ts가 속한
+  // 주가 이번 주면 원본 그대로, 아니면 그 주의 백업 파일로 판정된다.
+  let accessTokenForSource, sourceFileId;
+  try {
+    accessTokenForSource = await getServiceAccountAccessToken(env);
+    ({ sourceFileId } = await resolveCaptureSourceFileId(
+      env,
+      accessTokenForSource,
+      env.GOOGLE_SHEET_FILE_ID,
+      ts
+    ));
+  } catch (err) {
+    return json({ error: "제보 사이클 판정 실패: " + err.message }, 500, origin);
+  }
   if (decision === "approved" || decision === "rejected_recognized" || decision === "deferred") {
     try {
-      const accessToken = await getServiceAccountAccessToken(env);
-      const fileId = env.GOOGLE_SHEET_FILE_ID;
+      const accessToken = accessTokenForSource;
+      const fileId = sourceFileId;
 
       if (decision === "approved") {
         if (!nickname) return json({ error: "nickname이 필요합니다." }, 400, origin);
@@ -4745,8 +4770,7 @@ async function handleAdminCaptureDecide(req, env, origin) {
     // 쓰지 않는 경로라 조회 실패는 조용히 무시(null 유지, nextOccurrence로
     // 폴백)해도 안전하다 — 반려 처리 자체를 막을 이유는 아니다.
     try {
-      const accessToken = await getServiceAccountAccessToken(env);
-      deferredOccurrenceSnapshot = await snapshotNextOccurrence(env, accessToken, env.GOOGLE_SHEET_FILE_ID, nickname);
+      deferredOccurrenceSnapshot = await snapshotNextOccurrence(env, accessTokenForSource, sourceFileId, nickname);
     } catch {
       // 조회만 실패한 것 — 반려 처리는 계속 진행, 스냅샷 없이 nextOccurrence로 폴백.
     }
@@ -4766,6 +4790,11 @@ async function handleAdminCaptureDecide(req, env, origin) {
       merit: meritResult,
       timeDeduction: timeDeductionResult,
       deferredOccurrence: deferredOccurrenceSnapshot,
+      // 🔧 [사용자 지시] "벌점·상점을 제보 발생 사이클에 기록" — 이후
+      // 취소/삭제/되돌리기(handleAdminCaptureCancel 등)가 새로고침
+      // 후에도(findStoredPenaltyMerit 폴백) 정확한 파일에서 롤백할
+      // 수 있도록 manifest에도 함께 남긴다.
+      sourceFileId,
     }),
   });
   if (!data) {
@@ -4778,14 +4807,15 @@ async function handleAdminCaptureDecide(req, env, origin) {
     // manifest 어디에도 연결되지 않아 findStoredPenaltyMerit로도 찾을 수
     // 없는 고아 기록으로 영구히 남았다(폐기/반려취소로도 되돌릴 길이 없음).
     // 여기서 실패하면 방금 쓴 시트 기록을 즉시 되돌려, 재시도가 항상
-    // "처음부터 다시"가 되도록 한다.
+    // "처음부터 다시"가 되도록 한다. 롤백도 반드시 같은 sourceFileId에서
+    // 이뤄져야 한다 — 실제로 쓴 곳과 다른 파일에서 취소하면 엉뚱한 슬롯을
+    // 건드리거나 아무 효과 없이 조용히 끝난다.
     if (penaltyResult && penaltyResult.number && penaltyResult.col) {
       try {
-        const accessToken = await getServiceAccountAccessToken(env);
         await cancelOutputPenalty(
           env,
-          accessToken,
-          env.GOOGLE_SHEET_FILE_ID,
+          accessTokenForSource,
+          sourceFileId,
           penaltyResult.number,
           penaltyResult.col,
           penaltyResult.deductedMinutes || 0,
@@ -4801,8 +4831,7 @@ async function handleAdminCaptureDecide(req, env, origin) {
     }
     if (meritResult && meritResult.number && meritResult.col) {
       try {
-        const accessToken = await getServiceAccountAccessToken(env);
-        await cancelReportMerit(env, accessToken, env.GOOGLE_SHEET_FILE_ID, meritResult.number, meritResult.col);
+        await cancelReportMerit(env, accessTokenForSource, sourceFileId, meritResult.number, meritResult.col);
       } catch (rollbackErr) {
         return json(
           { error: `봇에 연결할 수 없고, 제보상점 롤백도 실패했습니다(수동 확인 필요: ${rollbackErr.message}).` },
@@ -4813,11 +4842,10 @@ async function handleAdminCaptureDecide(req, env, origin) {
     }
     if (timeDeductionResult && timeDeductionResult.number) {
       try {
-        const accessToken = await getServiceAccountAccessToken(env);
         await cancelTimeDeduction(
           env,
-          accessToken,
-          env.GOOGLE_SHEET_FILE_ID,
+          accessTokenForSource,
+          sourceFileId,
           timeDeductionResult.number,
           timeDeductionResult.deductedMinutes || 0,
           timeDeductionResult.dayCol || null
@@ -4837,7 +4865,11 @@ async function handleAdminCaptureDecide(req, env, origin) {
     }
     return json({ error: "봇에 연결할 수 없습니다. 시트 반영은 자동으로 되돌렸으니 다시 시도해주세요." }, 502, origin);
   }
-  return json({ ...data, penalty: penaltyResult, merit: meritResult, timeDeduction: timeDeductionResult }, 200, origin);
+  return json(
+    { ...data, penalty: penaltyResult, merit: meritResult, timeDeduction: timeDeductionResult, sourceFileId },
+    200,
+    origin
+  );
 }
 
 // 특정 캡처 id에 저장된 penalty/merit을 찾는다 — 관리자가 새로고침해
@@ -4855,7 +4887,15 @@ async function handleAdminCaptureDecide(req, env, origin) {
 async function findStoredPenaltyMerit(env, id) {
   const data = await proxyToBotDashboard(env, `/captures/one?id=${encodeURIComponent(id)}`);
   const item = data && data.item;
-  return { penalty: item?.penalty || null, merit: item?.merit || null, timeDeduction: item?.timeDeduction || null };
+  return {
+    penalty: item?.penalty || null,
+    merit: item?.merit || null,
+    timeDeduction: item?.timeDeduction || null,
+    // 🔧 [사용자 지시] "벌점·상점을 제보 발생 사이클에 기록" — handleAdminCaptureDecide
+    // 가 manifest에 함께 저장해둔 sourceFileId. 프론트가 이 값을 안 보내도
+    // (새로고침 등) 여기서 폴백해 정확한 파일에서 롤백할 수 있게 한다.
+    sourceFileId: item?.sourceFileId || null,
+  };
 }
 
 // capture id의 봇 manifest상 현재 reviewStatus만 가볍게 조회한다
@@ -4880,15 +4920,17 @@ async function handleAdminCaptureDelete(req, env, origin) {
   const body = await req.json().catch(() => ({}));
   const { id } = body;
   if (!id) return json({ error: "id가 필요합니다." }, 400, origin);
-  let { penalty, merit } = body;
+  let { penalty, merit, sourceFileId } = body;
   if (!penalty && !merit) {
-    ({ penalty, merit } = await findStoredPenaltyMerit(env, id));
+    ({ penalty, merit, sourceFileId } = await findStoredPenaltyMerit(env, id));
   }
 
   if ((penalty && penalty.number && penalty.col) || (merit && merit.number && merit.col)) {
     try {
       const accessToken = await getServiceAccountAccessToken(env);
-      const fileId = env.GOOGLE_SHEET_FILE_ID;
+      // 🔧 [사용자 지시] "벌점·상점을 제보 발생 사이클에 기록" — 실제로
+      // 벌점/상점을 쓴 파일에서 취소해야 한다.
+      const fileId = sourceFileId || env.GOOGLE_SHEET_FILE_ID;
       if (penalty && penalty.number && penalty.col) {
         await cancelOutputPenalty(env, accessToken, fileId, penalty.number, penalty.col, penalty.deductedMinutes || 0, penalty.dayCol || null);
       }
@@ -4929,7 +4971,7 @@ async function handleAdminCaptureRevert(req, env, origin) {
   const body = await req.json().catch(() => ({}));
   const { id, skipMeritLookup } = body;
   if (!id) return json({ error: "id가 필요합니다." }, 400, origin);
-  let { merit } = body;
+  let { merit, sourceFileId } = body;
   // 🔧 [버그 수정] cancel()이 별도로 이미 cancel-merit을 호출해 시트를
   // 되돌린 뒤 상태만 pending으로 되돌리려는 경우, merit을 굳이 안 보냈다고
   // 폴백 조회를 하면 manifest에 아직 남아있는 옛 merit 값을 다시 찾아
@@ -4938,13 +4980,16 @@ async function handleAdminCaptureRevert(req, env, origin) {
   // "직접 이미 처리했다"고 명시하면 폴백을 건너뛴다.
   let timeDeduction = null;
   if (!merit && !skipMeritLookup) {
-    ({ merit, timeDeduction } = await findStoredPenaltyMerit(env, id));
+    ({ merit, timeDeduction, sourceFileId } = await findStoredPenaltyMerit(env, id));
   }
+  // 🔧 [사용자 지시] "벌점·상점을 제보 발생 사이클에 기록" — 실제로
+  // 상점/시간차감을 쓴 파일에서 회수해야 한다.
+  const fileId = sourceFileId || env.GOOGLE_SHEET_FILE_ID;
 
   if (merit && merit.number && merit.col) {
     try {
       const accessToken = await getServiceAccountAccessToken(env);
-      await cancelReportMerit(env, accessToken, env.GOOGLE_SHEET_FILE_ID, merit.number, merit.col);
+      await cancelReportMerit(env, accessToken, fileId, merit.number, merit.col);
       await invalidateMemberCache(env, ["penalty"]); // 제보상점 슬롯이 바뀌었으므로 관련 캐시만 무효화.
       await invalidateMemberSlotCache(env, merit.number); // 이 회원의 outputPenSlots/reportScore는 KV까지 즉시.
     } catch (err) {
@@ -4962,7 +5007,7 @@ async function handleAdminCaptureRevert(req, env, origin) {
       await cancelTimeDeduction(
         env,
         accessToken,
-        env.GOOGLE_SHEET_FILE_ID,
+        fileId,
         timeDeduction.number,
         timeDeduction.deductedMinutes || 0,
         timeDeduction.dayCol || null
@@ -7188,6 +7233,41 @@ async function resolveExitSourceFileId(env, accessToken, fileId, number, kind, c
     return { sourceFileId: resolvedFileId, fromBackup: resolvedFileId !== fileId };
   }
   return { sourceFileId: fileId, fromBackup: false };
+}
+
+// 🔧 [사용자 지시] "화각 불량 제보 확인 — 벌점·상점을 제보 발생
+// 사이클에 기록" — handleAdminCaptureDecide는 cycle 파라미터 없이
+// 항상 실시간 원본에만 벌점(applyOutputPenalty)/제보상점
+// (applyReportMerit)을 썼다. 이 벌점은 강제퇴실/예치금 재납 판정의
+// 실질적 카운터라, 위반이 실제 발생한 사이클이 아니라 관리자가
+// 처리 버튼을 누른 시점의 사이클에 잘못 귀속되면 페널티 판정 자체가
+// 왜곡된다 — "그 사이클에 발생한 일은 그 사이클에 기록되어야 한다"
+// 는 원칙(사용자 확인)에 따라, 제보 발생 시각(ts)이 속한 주(월~일)의
+// fileId를 판정한다.
+async function resolveCaptureSourceFileId(env, accessToken, fileId, ts) {
+  const weekOf = weekOfForDate(kstDateKey(ts));
+  if (!weekOf) return { sourceFileId: fileId, fromBackup: false };
+  const currentWeekOf = formatYYMMDD(currentWeekMondayKST());
+  // (a) 이번 주에 발생 — 원본 그대로.
+  if (weekOf === currentWeekOf) return { sourceFileId: fileId, fromBackup: false };
+  // (b) 같은 3주 사이클 안에서 주만 넘어간 경우 — 벌점 슬롯(F~K열)은
+  // 3주 사이클 전체가 공유하는 카운터라 그 주의 백업에 써도 원본과
+  // 이어진다. resolveTargetFileId가 "현재 사이클(최대 2개 백업)"
+  // 소속 여부를 검증해준다.
+  const { backups } = await listCurrentCycleBackups(env, accessToken);
+  const inCycle = backups.find((b) => b.weekOf === weekOf);
+  if (inCycle) return { sourceFileId: inCycle.fileId, fromBackup: true };
+  // (c) 이미 그 사이클 자체가 끝나버린 경우(다음 사이클로 넘어감) —
+  // 그 위반이 발생한 사이클은 리셋되어 죽었지만, 실제 발생 시점
+  // 기준으로 정확히 그 백업 파일에 기록해야 한다(사용자 확인) —
+  // 그래야 관리자가 그 사이클로 토글했을 때 강제퇴실/재납 판정에
+  // 반영된다. listBackupFiles(사이클 제약 없음)에서 직접 찾는다.
+  const allBackups = await listBackupFiles(env, accessToken);
+  const outOfCycle = allBackups.find((b) => b.weekOf === weekOf);
+  if (!outOfCycle) {
+    throw new Error("제보가 발생한 주차의 백업 시트를 아직 찾을 수 없습니다. 잠시 후 다시 시도해주세요.");
+  }
+  return { sourceFileId: outOfCycle.fileId, fromBackup: true };
 }
 
 // 실제로 시트를 바꾸지 않고 discount_ratio/사유/결과 메시지만 계산해 돌려준다.

@@ -863,6 +863,11 @@ export type CaptureReviewItem = {
   // 적용만 안 됐을 뿐 확정으로 표시"), 그 확정값을 "확정 차감시간"에
   // 보여주기 위해 필요하다. 지연이 없었거나(20분 이하) 유예가 아니면 null.
   timeDeduction: TimeDeductionResult | null;
+  // 🔧 [사용자 지시] "벌점·상점을 제보 발생 사이클에 기록" — penalty/
+  // merit/timeDeduction이 실제로 기록된 파일 id(봇 manifest 스냅샷).
+  // 새로고침으로 applied[item.id]를 잃어도 이 값으로 "취소"가 정확한
+  // 파일에서 롤백된다.
+  sourceFileId: string | null;
 };
 
 // "내 화각 점검" 기록 — GET /my-captures가 내려주는 항목. 관리자 목록
@@ -992,6 +997,12 @@ export type CaptureDecideResponse = {
   merit?: ReportMeritResult | { error: string } | null;
   // decision === "deferred"일 때만 채워진다(응답 지연 시간 차감).
   timeDeduction?: TimeDeductionResult | null;
+  // 🔧 [사용자 지시] "벌점·상점을 제보 발생 사이클에 기록" — 실제로
+  // penalty/merit/timeDeduction이 기록된 Google Sheets 파일 id. 이후
+  // 취소/삭제/되돌리기(cancel-penalty/cancel-merit/delete/revert) 요청에
+  // 그대로 실어 보내야 정확한 파일에서 롤백된다. decision === "rejected"
+  // (시트에 아무것도 안 씀)면 이 값은 무의미하다.
+  sourceFileId?: string | null;
 };
 
 export type CaptureDeleteResponse = {

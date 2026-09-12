@@ -38,6 +38,10 @@ type AppliedResult = {
   // "유예" 결정에서만 채워지는 응답 지연 시간 차감 확정값(벌점과 별개로
   // 적용됨).
   timeDeduction: TimeDeductionResult | null;
+  // 🔧 [사용자 지시] "벌점·상점을 제보 발생 사이클에 기록" — penalty/
+  // merit/timeDeduction이 실제로 기록된 파일 id. 취소/삭제/되돌리기 시
+  // 그대로 다시 보내야 정확한 파일에서 롤백된다.
+  sourceFileId: string | null;
 };
 
 const STATUS_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
@@ -544,6 +548,7 @@ export function ReportReviewList({
               penalty: data.penalty ?? null,
               merit: data.merit ?? null,
               timeDeduction: data.timeDeduction ?? null,
+              sourceFileId: data.sourceFileId ?? null,
             },
           }));
         }
@@ -573,11 +578,15 @@ export function ReportReviewList({
   function revertReject(item: CaptureReviewItem) {
     const result = applied[item.id];
     const meritToCancel = result?.merit && !("error" in result.merit) ? result.merit : null;
+    // 🔧 [사용자 지시] "벌점·상점을 제보 발생 사이클에 기록" — meritToCancel
+    // 이 있으면(반려 (인정)으로 이미 제보상점이 부여된 경우) 그게 실제로
+    // 기록된 파일에서 회수해야 한다.
+    const sourceFileId = meritToCancel ? (result?.sourceFileId ?? item.sourceFileId) : undefined;
     setDecidingId(item.id);
     setError(null);
     call<CaptureRevertResponse>("/admin/captures/revert", {
       method: "POST",
-      body: { id: item.id, merit: meritToCancel },
+      body: { id: item.id, merit: meritToCancel, sourceFileId },
     })
       .then(() => {
         setRejected((prev) => {
@@ -680,6 +689,9 @@ export function ReportReviewList({
     const merit = applied[item.id]?.merit ?? item.merit;
     if (!penalty && !merit) return;
     const meritToCancel = merit && !("error" in merit) ? merit : null;
+    // 🔧 [사용자 지시] "벌점·상점을 제보 발생 사이클에 기록" — 실제로
+    // 벌점/상점이 기록된 파일에서 취소해야 한다.
+    const sourceFileId = applied[item.id]?.sourceFileId ?? item.sourceFileId;
     // 🔧 [부분 실패 대응] 시트 취소(cancel-penalty/cancel-merit)까지는 이미
     // 끝났는데 마지막 /admin/captures/revert(서버 reviewStatus 되돌리기)만
     // 네트워크 오류 등으로 실패하면, 시트는 깨끗한데 봇 manifest만
@@ -703,13 +715,14 @@ export function ReportReviewList({
                   col: penalty.col,
                   deductedMinutes: penalty.deductedMinutes,
                   dayCol: penalty.dayCol,
+                  sourceFileId,
                 },
               })
             : Promise.resolve(),
           meritToCancel
             ? call<{ ok: boolean }>("/admin/captures/cancel-merit", {
                 method: "POST",
-                body: { number: meritToCancel.number, col: meritToCancel.col },
+                body: { number: meritToCancel.number, col: meritToCancel.col, sourceFileId },
               })
             : Promise.resolve(),
         ]);
@@ -765,9 +778,13 @@ export function ReportReviewList({
     setError(null);
     const result = applied[item.id];
     const meritToCancel = result?.merit && !("error" in result.merit) ? result.merit : null;
+    // 🔧 [사용자 지시] "벌점·상점을 제보 발생 사이클에 기록" — 로컬
+    // 상태가 없으면(새로고침 등) item.sourceFileId로 폴백, 그것도 없으면
+    // 서버가 findStoredPenaltyMerit으로 자체 폴백한다.
+    const sourceFileId = result?.sourceFileId ?? item.sourceFileId;
     call<CaptureDeleteResponse>("/admin/captures/delete", {
       method: "POST",
-      body: { id: item.id, penalty: result?.penalty || null, merit: meritToCancel },
+      body: { id: item.id, penalty: result?.penalty || null, merit: meritToCancel, sourceFileId },
     })
       .then(() => {
         setItems((prev) => (prev ? prev.filter((i) => i.id !== item.id) : prev));
