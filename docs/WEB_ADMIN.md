@@ -421,15 +421,16 @@ components/admin/shared.tsx — 공용 프리미티브(§6): SectionCard/Section
 > 추가하면 `hasForcedCandidateInCycle`(`frame-checker-worker/src/
 > index.js`)이 `listExitCandidates`와 완전히 동일한 필터(`penalty_2_or_more`)
 > 로 그 사이클에 forced 후보가 있는지 계산해 `hasForced`/
-> `currentHasForced`로 내려주고, `CycleSwitcher`가 이를 점으로
-> 표시한다(미납 점=빨강, forced 점=주황, 색으로 구분). `includeUnpaid`
-> 와 마찬가지로 명시적으로 opt-in한 화면(`AdminMoneyTab`,
-> `MyOutputPenSection`의 "self", `StatusPage`)에서만 계산·응답되고,
-> `hasForcedCandidateInCycle`은 `getAllExitRelevantStatus`(이미
-> `exitStatus:{fileId}` 10분 캐시)를 재사용해 무거운 재조회가 없다.
-> `memberNumber`가 있으면(본인 대시보드) "그 회원이 그 사이클에
-> forced 조건이었는지"로, 없으면(관리자 화면) "전체 중 forced 후보
-> 존재 여부"로 계산한다 — §4.1과 동일한 설계.
+> `currentHasForced`로 내려준다. `includeUnpaid`와 마찬가지로
+> 명시적으로 opt-in한 화면(`AdminMoneyTab`, `MyOutputPenSection`의
+> "self", `StatusPage`)에서만 계산·응답되고, `hasForcedCandidateInCycle`
+> 은 `getAllExitRelevantStatus`(이미 `exitStatus:{fileId}` 10분 캐시)
+> 를 재사용해 무거운 재조회가 없다. `memberNumber`가 있으면(본인
+> 대시보드) "그 회원이 그 사이클에 forced 조건이었는지"로, 없으면
+> (관리자 화면) "전체 중 forced 후보 존재 여부"로 계산한다 — §4.1과
+> 동일한 설계. 화면 표시 방식(점 → 글로우로 재설계된 최종 형태)은
+> §4.1 참고 — 두 조건(미납/forced) 모두 같은 `CycleSwitcher` UI를
+> 공유한다.
 
 ### 3.3 사유 반휴 신청 처리 (`ReasonLeaveReviewList`) — PEN · Money 탭
 
@@ -1179,6 +1180,28 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
 > `hasUnpaid` 필드가 아예 존재하지 않으므로, 화면에 안 그리는 것을
 > 넘어 개발자도구로 API 응답을 직접 봐도 신호가 없다(사용자 확인:
 > "굳이 확인하지 못하도록 처리해줘").
+
+> 🔧 **[2026-09-12] 표시 방식 재설계 — 점 2개(색 구분) → 점 1개(통합)
+> → 화살표/배지 글로우.** §3.2에서 forced 배지가 추가되며 미납(빨강)/
+> forced(주황) 점 2개가 같은 자리에 뜰 수 있게 됐는데, "어차피 확인
+> 하려면 그 사이클로 전환해서 봐야 하니 뭐가 문제인지 색으로 구분할
+> 실익이 없다"는 지적으로 우선 점 하나로 통합했다(`hasUnpaid ||
+> hasForced`). 그 다음 "지금 이번 주 화면에 있어도 지난 주에 미처리가
+> 남아있다는 걸 미리 알려주고 싶다"는 요구가 이어져, 표시 대상을
+> 재설계했다 — 이제 점이 아니라 기존 벌금 미납 요일 버튼용
+> `animate-unpaid-glow`(`app/src/index.css`, box-shadow가 부풀었다
+> 줄었다 하는 애니메이션)를 재사용해 두 곳에 건다: **(1)** 지금
+> 탐색 중인 슬롯 자체에 미처리가 있으면 "현재/과거" 배지부터 날짜
+> 텍스트까지의 그룹 전체에, **(2)** 지금 보고 있지 않은 방향(왼쪽=
+> 더 과거, 오른쪽=더 최근)의 슬롯들 중 하나라도 미처리가 있으면 그
+> 방향 화살표(`<`/`>`) 자체에 글로우를 건다(`hasPendingAt` 헬퍼로
+> 슬롯별 판정, 양방향 대칭 적용). 이렇게 하면 관리자가 사이클
+> 토글을 열자마자(기본값=이번 주) 화살표가 빛나는 것만 보고도 "다른
+> 주차에 확인할 게 있다"를 알아챌 수 있고, 그 화살표를 눌러 실제
+> 문제의 주차로 넘어가면 화살표 글로우는 꺼지고 대신 그 슬롯의
+> 배지~날짜가 빛나 "바로 여기였다"를 확인시켜준다. 서버 응답 구조
+> (`hasUnpaid`/`hasForced`, `includeUnpaid`/`includeForced` 파라미터)
+> 는 전혀 바뀌지 않았다 — `CycleSwitcher.tsx`의 렌더링 로직만 재설계.
 
 ---
 
