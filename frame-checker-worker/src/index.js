@@ -351,7 +351,7 @@ function _bumpKvUsageCounter(op, prefix, path, email, name) {
   if (email && name) _emailNameMap.set(email, name);
   const minuteKey = new Date().toISOString().slice(0, 16); // "YYYY-MM-DDTHH:MM"
 
-  const dailyKey = `${todayKSTDateString()}|${path || "(cron/기타)"}|${email || "(익명)"}|${op}`;
+  const dailyKey = `${todayUTCDateString()}|${path || "(cron/기타)"}|${email || "(익명)"}|${op}`;
   _dailyUsageBuffer.set(dailyKey, (_dailyUsageBuffer.get(dailyKey) || 0) + 1);
 
   const minuteBucketKey = `${minuteKey}|${prefix}|${path || "(cron/기타)"}|${email || "(익명)"}|${op}`;
@@ -1997,6 +1997,17 @@ function todayKSTDateString() {
   return formatISODate(nowKST());
 }
 
+// UTC 기준 "오늘"의 "YYYY-MM-DD" 문자열(Workers 로컬=UTC이므로 그냥
+// formatISODate(new Date())). 🔧 [사용자 지시] "UTC 기준으로 해줘야지.
+// 결국 한도에 따른 사용치를 보고 싶은건데" — 사용량 모니터링의 "일일"
+// 집계(_dailyUsageBuffer/UsageStats DO)가 KST 자정 기준이면, 같은 화면
+// 위쪽의 Cloudflare 실측 게이지(fetchCloudflareUsage, 실제 한도가
+// 리셋되는 UTC 자정 기준)와 하루 경계가 9시간 어긋나 합계가 안 맞아
+// 보였다 — 둘 다 "한도 대비 사용량"이 목적이므로 같은 기준으로 통일한다.
+function todayUTCDateString() {
+  return formatISODate(new Date());
+}
+
 // KST 기준 "오늘 + N일"(N이 음수면 과거) 날짜의 "YYYY-MM-DD" 문자열. 신규
 // 회원 등록 시 "첫 참여일"을 오늘부터 앞으로 일주일 이내로만 허용하는 범위
 // 검증에 쓴다(handleAdminCreateMember) — 날짜 문자열끼리는 사전식 비교가 곧
@@ -3352,7 +3363,7 @@ async function handleAdminUsageStatus(req, env, origin) {
   // 모르는 이메일은 이메일 그대로 표시된다(집계 값 자체는 항상 정확).
   const usageStub = getUsageStatsStub(env);
   const dailyUsage = await usageStub
-    .fetch(`https://do/today?date=${encodeURIComponent(todayKSTDateString())}`)
+    .fetch(`https://do/today?date=${encodeURIComponent(todayUTCDateString())}`)
     .then((r) => r.json())
     .then((d) => d.items || [])
     .then((items) =>
@@ -8696,10 +8707,13 @@ export class ParticipantsRoster {
 // 책임이 달라 별도 클래스로 뒀다 — 이 DO는 SQL API 없이
 // ParticipantsRoster의 updatedAt과 동일한 단순 key-value 패턴만 쓴다
 // (회원 15명·관리자 3명 규모에서 SQL은 과함). 키는
-// "{date}|{path}|{email}|{op}"(date는 todayKSTDateString과 동일한
-// KST YYYY-MM-DD), 값은 누적 카운트 정수. 매 KV 호출마다 이 DO에 실시간
-// fetch하지 않고(오버헤드 + "감시가 감시 대상을 갉아먹는" 역설 방지),
-// index.js의 _dailyUsageBuffer가 5분 cron에서 배치로 /flush를 호출한다.
+// "{date}|{path}|{email}|{op}"(date는 todayUTCDateString과 동일한 UTC
+// YYYY-MM-DD — 🔧 [사용자 지시] "UTC 기준으로 해줘야지. 결국 한도에
+// 따른 사용치를 보고 싶은건데": 같은 화면 위쪽 Cloudflare 실측 게이지가
+// 실제 한도 리셋 시점인 UTC 자정 기준이라 여기도 맞춤), 값은 누적 카운트
+// 정수. 매 KV 호출마다 이 DO에 실시간 fetch하지 않고(오버헤드 + "감시가
+// 감시 대상을 갉아먹는" 역설 방지), index.js의 _dailyUsageBuffer가 5분
+// cron에서 배치로 /flush를 호출한다.
 export class UsageStats {
   constructor(state) {
     this.state = state;
@@ -8727,7 +8741,7 @@ export class UsageStats {
         this.counts.set(key, next);
         puts.push(this.state.storage.put(key, next));
       }
-      // 보관 정책: 오늘(today, 호출부가 todayKSTDateString()로 계산해
+      // 보관 정책: 오늘(today, 호출부가 todayUTCDateString()로 계산해
       // 넘김) 기준 7일보다 오래된 키는 함께 정리한다 — DO 저장 공간이
       // 무한정 쌓이지 않게 하는 목적. 문자열 YYYY-MM-DD는 사전순 비교가
       // 날짜순 비교와 일치해 Date 파싱 없이 바로 비교 가능하다.
@@ -8842,7 +8856,7 @@ async function flushDailyUsageStats(env) {
     const res = await stub.fetch("https://do/flush", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ entries, today: todayKSTDateString() }),
+      body: JSON.stringify({ entries, today: todayUTCDateString() }),
     });
     if (res.ok) _dailyUsageBuffer.clear();
   }
