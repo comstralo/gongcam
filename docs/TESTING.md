@@ -320,25 +320,82 @@ index.js 9,273→9,232줄(약 41줄 감소, 시작 대비 총 15.9% 감소 —
 이는 "테스트 확장" 범위를 넘어서는 별도 결정이 필요해 이번엔
 보류했다.
 
+## 구조 개선 5차 — 웹푸시 암호화 함수 (2026-09-13)
+
+4차에서 "RFC 표준 구현이라 it.each 대신 표준 벡터/왕복 검증이
+필요해 테스트 성격이 다르다"는 이유로 제외했던 웹푸시 암호화 함수
+7개를, 4차 문서에 이미 예정된 옵션 (c)대로 별도 전략으로 착수했다.
+
+**표준 벡터 대신 채택한 전략**: RFC 5869(HKDF) Appendix A의 공개
+SHA-256 벡터는 출력 길이(L)가 전부 32바이트(해시 크기)를 넘어
+다중 블록이 필요한데, 이 코드의 `hkdfExpand`는 카운터를 항상 1로
+고정해 1블록(최대 32바이트)만 생성한다(RFC 8291이 실제로 요구하는
+단순화된 형태) — 표준 벡터를 그대로 쓸 수 없고, 정확한 바이트 값을
+확신 없이 코드에 박아넣는 위험을 피하기 위해 두 가지 대안을
+채택했다:
+1. **정의상 합성 관계 검증**: `hkdfExtract`/`hkdfExpand`/`hkdf`가
+   `hmacSha256Raw`를 정확히 어떻게 조합하는지(설계 문서 그 자체)를
+   고정하는 회귀 테스트로 검증 — 표준 벡터보다 "구현이 정의대로
+   정확히 동작하는가"를 더 정밀하게 잡아낸다.
+2. **암호화→복호화 왕복 검증**: `encryptPushPayload`는 salt/ephemeral
+   key가 매번 랜덤이라 표준 벡터 자체가 무의미하다 — 테스트 코드
+   안에 RFC 8291 aes128gcm 복호화 로직을 직접 구현해, 암호화한
+   결과를 가짜 "클라이언트"(테스트가 미리 만든 P-256 키쌍) 입장에서
+   되돌려 원문이 정확히 복원되는지 확인한다. HKDF·ECDH·AES-GCM
+   전체 체인이 하나라도 틀리면 AEAD 인증 태그 불일치로 즉시 예외가
+   나므로, 이 왕복 검증 자체가 매우 강한 정확성 보장이 된다.
+3. **`createVapidAuthHeader`**: 테스트에서 실제 P-256 ECDSA 키쌍을
+   `crypto.subtle.generateKey`로 생성해 만든 JWT를 그 공개키로 실제
+   `crypto.subtle.verify`까지 호출해 서명이 유효한지 확인하는 왕복
+   검증. 엉뚱한 공개키로는 검증이 실패하는지(서명 위조 방지)도
+   함께 확인했다.
+
+**`src/push-crypto.js`(신설)**: `hmacSha256Raw`, `hkdfExtract`,
+`hkdfExpand`, `hkdf`, `createVapidAuthHeader`, `encryptPushPayload`,
+`sendWebPush` 7개 함수. `base64url`/`base64urlToBytes`(index.js에서
+export만 추가, 순환 import)와 `buildVapidJwk`/`concatBytes`
+(member-utils.js에서 index.js를 거치지 않고 직접 import)에 의존한다.
+`sendWebPush`만 index.js 내 3곳(관리자 발송 핸들러)에서 직접
+호출하므로 그것만 import하고, 나머지 6개는 서로 내부에서만
+호출되고 index.js 다른 곳이 직접 부르지 않아 재export하지 않았다
+— 테스트는 필요에 따라 `../src/push-crypto.js`에서 직접 import.
+
+**테스트 파일 4개**:
+- `test/push-crypto-hkdf.test.js` — 완전 순수, 합성 관계 검증.
+- `test/push-crypto-vapid.test.js` — 실제 키쌍 생성 + JWT 왕복 검증.
+- `test/push-crypto-payload.test.js` — 암호화→복호화 왕복 검증(빈
+  문자열/한글·이모지 페이로드, 헤더 레이아웃, 비결정성, 잘못된
+  authSecret으로 복호화 시 AEAD 무결성 검증 실패까지 확인).
+- `test/push-crypto-send.test.js` — 기존에 검증된
+  `vi.stubGlobal("fetch", ...)` 패턴으로 요청 URL/헤더/body 검증.
+
+`@cloudflare/vitest-plugin`의 실제 workerd 런타임 덕분에
+`crypto.subtle`(HMAC/ECDSA/ECDH/AES-GCM 전부)이 mock 없이 그대로
+동작함을 실증했다 — 지금까지 실제 DO를 mock 없이 써온 것과 같은
+원리가 암호화 API에도 그대로 적용된다.
+
+index.js 9,232→9,093줄(약 139줄 감소, 시작 대비 총 17.2% 감소).
+`npm test` 기준 173개 테스트 전부 통과(기존 151개 + 신규 22개).
+배포 후 curl로 `/push/devices` 정상 401 응답 확인 — 이 도메인은
+암호화 로직이라 유닛 테스트만으로 놓칠 수 있는 실제 푸시 서비스
+(FCM/Mozilla autopush)와의 호환성 문제는 배포 후 실사용(관리자
+화면에서 실제 발송)으로 추가 확인이 필요하다는 점을 남겨둔다.
+
 ## 다음 단계
 
 사이클 판정, 예치금/강제퇴실/정산 판정, 회원 관리/알림·푸시의
-작은 순수 함수까지 총 4차에 걸쳐 분리했다. 남은 대상은 전부 다음
-중 하나에 해당해 계속 index.js에 남는다:
+순수 함수, 웹푸시 암호화까지 총 5차에 걸쳐 분리했다. 남은 대상은
+전부 다음 중 하나에 해당해 계속 index.js에 남는다:
 - fetch/DO 의존이 4단계 이상으로 깊음: `hasUnpaidFineInCycle`/
   `hasForcedCandidateInCycle`, `listUnpaidFines`/`listPaidFines`/
   `listExemptFines`, `listExitCandidates`, `handleAdminPrizeSettle`,
   `handleAdminCreateMember`, `moveMemberSlot`/
   `computeMemberReorderPlan`, `handleAdminMembersRoster`.
-- RFC 표준 구현이라 테스트 성격이 다름: 웹푸시 암호화 함수 전체
-  (`createVapidAuthHeader`, `encryptPushPayload`, `hmacSha256Raw`,
-  `hkdfExtract`/`hkdfExpand`/`hkdf`, `sendWebPush`).
 - 이미 DO 테스트 인프라로 간접 커버됨: 쿨다운/레이트리밋 판정
   (durable-objects.js의 DO 클래스 메서드 내부).
 
 추가로 커버리지를 넓히려면 다음 중 하나가 필요하다: (a) 위 fetch/DO
 깊은 함수들을 통합 테스트(fetch stub + 실제 DO)로 다루는 것으로
 전략을 바꾸거나, (b) `computeMemberReorderPlan` 등에서 순수 로직을
-뽑아내는 리팩터링을 먼저 승인받거나, (c) 웹푸시 암호화 함수를
-표준 벡터/왕복 검증 방식으로 별도 착수하는 것. 테스트 없이 구조
-변경부터 시작하지 않는다는 원칙은 유지한다.
+뽑아내는 리팩터링을 먼저 승인받는 것. 테스트 없이 구조 변경부터
+시작하지 않는다는 원칙은 유지한다.
