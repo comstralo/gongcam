@@ -22,7 +22,7 @@
 // 보다 훨씬 빡빡하므로, _cacheSet은 캐시 미스가 났을 때만(=TTL 동안
 // 최초 1회만) 호출되는 지금 구조를 그대로 유지해 쓰기 폭주를 피한다.
 const _sheetCache = new Map(); // key -> { value, expiresAt } (인메모리, 1차)
-const KV_CACHE_PREFIX = "sheetCache:";
+export const KV_CACHE_PREFIX = "sheetCache:";
 
 function _cacheGet(key) {
   const entry = _sheetCache.get(key);
@@ -346,4 +346,26 @@ export function invalidateMemberSlotCache(env, memberNumber, fileId) {
   const cacheKey = `personalStatusBundle:${targetFileId}:${memberNumber}`;
   _sheetCache.delete(cacheKey);
   return env.REPORTS_KV.delete(`${KV_CACHE_PREFIX}${cacheKey}`).catch(() => {});
+}
+
+// 🔧 [버그 수정, 2026-09-13] 1차 분리(구조 개선) 때 이 함수가 index.js에
+// 남겨졌는데, 정작 참조하는 _sheetCache/_bumpCacheGeneration/KV_CACHE_PREFIX
+// 는 전부 이 파일(cache.js)로 옮겨져 있었다 — index.js에서 호출될 때마다
+// ReferenceError로 실패하는 실제 프로덕션 버그였다(writeSheetValues가 개인
+// 탭에 쓸 때마다 호출하므로 파급 범위가 넓다). 6차(fines.js) 통합 테스트를
+// 작성하며 발견해 그 자리에서 이 파일로 옮겼다. invalidateMemberSlotCache
+// (바로 위)와 로직이 거의 같지만, 이 함수만 _bumpCacheGeneration을 호출한다
+// — 기존 동작을 그대로 보존하기 위해 로직은 손대지 않았다.
+//
+// 여러 셀 범위를 한 번에 기입한다 — valueRanges: [{ range: "1!B2", values: [["텍스트"]] }, ...]
+// 특정 회원의 personalStatusBundle 캐시(개인 탭 원본 행 + outputPenSlots +
+// reportScore, §캐싱 통합 2026-09 참고)를 인메모리+KV 양쪽에서 지운다.
+// 시트에 직접 쓸 때(writeSheetValues)뿐 아니라, 시트를 안 건드리고 KV만
+// 바꾸는 조작(퇴실 신청 등)이 depositRefundBreakdown처럼 이 번들이 감싸는
+// 계산 결과에 영향을 줄 때도 재사용한다.
+export async function invalidatePersonalStatusCache(env, fileId, memberNumber) {
+  const cacheKey = `personalStatusBundle:${fileId}:${memberNumber}`;
+  _sheetCache.delete(cacheKey);
+  _bumpCacheGeneration(cacheKey);
+  await env.REPORTS_KV.delete(`${KV_CACHE_PREFIX}${cacheKey}`).catch(() => {});
 }

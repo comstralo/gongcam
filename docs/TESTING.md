@@ -381,21 +381,87 @@ index.js 9,232→9,093줄(약 139줄 감소, 시작 대비 총 17.2% 감소).
 (FCM/Mozilla autopush)와의 호환성 문제는 배포 후 실사용(관리자
 화면에서 실제 발송)으로 추가 확인이 필요하다는 점을 남겨둔다.
 
+## 구조 개선 6차 — fetch 의존 벌금/납부 처리 도메인 통합 테스트 + 이동 (2026-09-13)
+
+1~5차는 "순수 함수만 골라내는" 전략으로 index.js를 17.2% 줄였지만,
+실제로 옮긴 건 약 40개 함수뿐이고 나머지 260개 이상은 fetch/DO가
+깊게 얽힌 handle* 핸들러라 손대지 못했다. 이번 6차부터는 전략을
+전환했다 — **순수성과 무관하게 fetch mock + 실제 workerd DO로 통합
+테스트를 먼저 깐 뒤, 도메인 단위로 핸들러+로직을 통째로 파일
+이동**한다.
+
+착수 전 "회원 관리"(933줄)와 "벌금/납부 처리"(343줄)를 비교했다.
+회원 관리는 `handleAdminMemberStatus`가 아직 index.js에 남은 exit
+도메인의 `buildExitedMemberSnapshot`을 호출해 진짜 상호 순환
+위험이 있고 `moveMemberSlot`은 fetch mock이 10종 이상 필요해
+테스트 비용이 크다 — 반면 벌금/납부 처리는 fetch 2~3종만 필요하고
+DO가 전혀 없어 순환 위험도 없다. 사용자 확인을 거쳐 벌금/납부
+처리부터 시작해 "통합테스트 먼저 → 이동" 워크플로우 자체를
+검증했다.
+
+**`src/fines.js`(신설)**: `getAllPaymentRows`, `collectFinesByStatus`,
+`listUnpaidFines`, `listPaidFines`, `getWeeklyPaidFineTotal`,
+`listExemptFines`, `FINE_STATUS_VALUES`, `handleAdminFinesUnpaid`,
+`handleAdminFinesPaid`, `handleAdminFinesExempt`,
+`handleAdminFineStatus`. `listAllMembers`/`getSharedMemberRows`/
+`writeSheetValues`/`colIndexToLetter`/`requireAdmin`/
+`getServiceAccountAccessToken`/`json`/`signSession`은 이 도메인
+전용이 아니라 여러 도메인이 공유하는 범용 유틸이라 index.js에
+남기고 export만 추가했다. `hasUnpaidFineInCycle`(사이클 도메인,
+계속 index.js에 남는 제외 대상 함수)이 `listUnpaidFines`를 직접
+호출하므로, index.js는 재export가 아니라 실제 사용 목적으로
+`fines.js`를 import한다 — 3차의 `hasForcedCandidateInCycle` →
+`calcForcedOutDeposit` 패턴과 동일.
+
+**통합 테스트 2개 파일**:
+- `test/fines-fetch.test.js` — 조회 함수 4개 + 순수 필터
+  (`collectFinesByStatus`)를 `vi.stubGlobal("fetch", ...)`로 검증.
+- `test/fines-handlers.test.js` — 핸들러 4개를 `signSession`으로
+  만든 실제 유효 세션 토큰과 fetch mock을 조합해 인증 실패(403)/
+  유효성 검사 실패(400)/정상 응답(200)/쓰기 range 정확성까지
+  통합 검증. `getServiceAccountAccessToken`이
+  `env.GOOGLE_SERVICE_ACCOUNT_JSON`을 실제로 RSA JWT 서명하므로,
+  `test/helpers/service-account.js`에 테스트 전용 더미 RSA 키쌍을
+  마련해 재사용했다(node `crypto.generateKeyPairSync`로 1회 생성,
+  실제 Google 계정과 무관). `listAllMembers` 등이 `_cachedCompute`
+  로 fileId별로 캐싱되므로, 같은 테스트 파일 안의 케이스마다 서로
+  다른 `GOOGLE_SHEET_FILE_ID`를 써서 캐시 오염 없이 격리했다.
+
+**🔧 실제 프로덕션 버그 발견·수정**: `fines-handlers.test.js`의 쓰기
+경로(`handleAdminFineStatus`) 테스트가 500 에러를 내며, 1차 분리
+때 놓친 실제 버그를 드러냈다 — index.js에 남아있던
+`invalidatePersonalStatusCache`와 `_kvKeyPrefix`(KV 사용량 계측용)
+가 `_sheetCache`/`_bumpCacheGeneration`/`KV_CACHE_PREFIX`를 정의
+없이 참조하고 있었다(1차 분리 때 이 심볼들이 `cache.js`로 옮겨진
+걸 놓침). `invalidatePersonalStatusCache`는 try/catch가 없어
+개인 탭에 쓰는 모든 요청(`writeSheetValues` 경유)이 실제로 500으로
+실패하고 있었고, `_kvKeyPrefix`는 호출부(`_cacheGetAsync`/
+`_cacheSetAsync`)가 try/catch로 감싸 조용히 삼켜져 **KV 캐시
+읽기/쓰기가 계속 무효화**되고 있었다(기능은 원본 재조회로 정답을
+냈지만 캐싱 효과·쿼터 절약이 전혀 없었음). `KV_CACHE_PREFIX`를
+`cache.js`에서 export하고, `invalidatePersonalStatusCache` 자체도
+로직 변경 없이 `cache.js`로 옮겨 index.js가 import하도록 수정했다
+— 순수 함수 분리 단계에서는 발견되지 않고, 이번 6차의 통합 테스트
+(실제 쓰기 경로를 끝까지 태우는 테스트)에서 처음 드러난 버그다.
+
+index.js 9,093→8,967줄(약 126줄 감소, 시작 대비 총 18.4% 감소).
+`npm test` 기준 190개 테스트 전부 통과(기존 173개 + 신규 17개).
+배포 후 curl로 `/admin/fines/unpaid` 정상 403 응답 확인,
+`wrangler tail`로 실사용 트래픽(봇 PUT, `/bot/exit-requests`)이
+예외 없이 처리됨을 확인했다.
+
 ## 다음 단계
 
 사이클 판정, 예치금/강제퇴실/정산 판정, 회원 관리/알림·푸시의
-순수 함수, 웹푸시 암호화까지 총 5차에 걸쳐 분리했다. 남은 대상은
-전부 다음 중 하나에 해당해 계속 index.js에 남는다:
-- fetch/DO 의존이 4단계 이상으로 깊음: `hasUnpaidFineInCycle`/
-  `hasForcedCandidateInCycle`, `listUnpaidFines`/`listPaidFines`/
-  `listExemptFines`, `listExitCandidates`, `handleAdminPrizeSettle`,
-  `handleAdminCreateMember`, `moveMemberSlot`/
-  `computeMemberReorderPlan`, `handleAdminMembersRoster`.
-- 이미 DO 테스트 인프라로 간접 커버됨: 쿨다운/레이트리밋 판정
-  (durable-objects.js의 DO 클래스 메서드 내부).
-
-추가로 커버리지를 넓히려면 다음 중 하나가 필요하다: (a) 위 fetch/DO
-깊은 함수들을 통합 테스트(fetch stub + 실제 DO)로 다루는 것으로
-전략을 바꾸거나, (b) `computeMemberReorderPlan` 등에서 순수 로직을
-뽑아내는 리팩터링을 먼저 승인받는 것. 테스트 없이 구조 변경부터
-시작하지 않는다는 원칙은 유지한다.
+순수 함수, 웹푸시 암호화, 벌금/납부 처리(fetch 통합 테스트 첫
+사례)까지 총 6차에 걸쳐 분리했다. 다음 후보는 "회원 관리"(933줄)
+— `handleAdminMemberStatus`가 exit 도메인의
+`buildExitedMemberSnapshot`을 호출해 생기는 상호 순환을 먼저
+해결해야 한다(재export로 우회하거나 exit 도메인과 함께 옮기는
+방식 검토). `moveMemberSlot`은 fetch mock 10종 이상이 필요해 6차
+경험을 바탕으로 mock 헬퍼를 재사용/확장할 필요가 있다. "퇴실
+처리"(1,255줄)는 회원 관리보다 더 깊고 cycle.js/deposit.js 모두와
+얽혀 있어 회원 관리 이후로 순서를 미룬다. 테스트 없이 구조 변경부터
+시작하지 않는다는 원칙은 유지한다 — 이번 6차처럼 통합 테스트
+작성 자체가 실제 버그를 잡아내는 안전망 역할을 하므로, 순서를
+건너뛰지 않는다.

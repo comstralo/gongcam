@@ -39,9 +39,20 @@ export {
 };
 
 // 🔧 [구조 개선, 2026-09-13] 캐시 인프라는 src/cache.js로 옮겼다 — 이
-// 3개 wrapper만 외부에서 호출되므로(docs/TESTING.md 참고) 재export는
+// wrapper들만 외부에서 호출되므로(docs/TESTING.md 참고) 재export는
 // 불필요하다(테스트가 직접 import하지 않음).
-import { _cachedCompute, invalidateMemberCache, invalidateMemberSlotCache } from "./cache.js";
+// 🔧 [버그 수정, 2026-09-13] invalidatePersonalStatusCache/KV_CACHE_PREFIX는
+// 원래 index.js 로컬이었다가 이 함수가 참조하는 _sheetCache 등이 1차
+// 분리 때 cache.js로 옮겨지며 정의되지 않은 심볼을 참조하는 실제
+// 프로덕션 버그가 됐다(6차 fines.js 통합 테스트로 발견) — 이제
+// invalidatePersonalStatusCache 자체도 cache.js로 옮기고 여기서 import한다.
+import {
+  _cachedCompute,
+  invalidateMemberCache,
+  invalidateMemberSlotCache,
+  invalidatePersonalStatusCache,
+  KV_CACHE_PREFIX,
+} from "./cache.js";
 
 // 🔧 [구조 개선, 2026-09-13] 순수 날짜/시간 유틸은 src/date-utils.js로
 // 옮겼다 — 테스트가 직접 import하는 6개(currentWeekMondayKST/formatYYMMDD/
@@ -144,6 +155,24 @@ import {
 // ../src/push-crypto.js에서 직접 import).
 import { sendWebPush } from "./push-crypto.js";
 
+// 🔧 [구조 개선 6차, 2026-09-13] 벌금/납부 처리 도메인(조회 함수 4개 +
+// 핸들러 4개)을 src/fines.js로 옮겼다 — 1~5차의 순수 함수 분리와 달리
+// 이번엔 fetch mock 기반 통합 테스트로 안전망을 먼저 깐 뒤 fetch 의존
+// 함수를 통째로 옮긴 첫 사례다. fines.js가 이 파일의 json/listAllMembers
+// 등 범용 유틸을 import하므로(위 export 선언들 참고) 순환이지만,
+// hasUnpaidFineInCycle(사이클 도메인, 계속 index.js에 남는 함수)이
+// listUnpaidFines를 직접 호출해야 해서 재export가 아니라 실제 사용
+//목적으로 import한다 — 3차의 hasForcedCandidateInCycle이 deposit.js를
+// 참조하는 것과 동일한 패턴이라 새로운 위험은 없다. 4개 핸들러는 라우팅
+// 테이블이 직접 호출하므로 함께 import한다.
+import {
+  listUnpaidFines,
+  handleAdminFinesUnpaid,
+  handleAdminFinesPaid,
+  handleAdminFinesExempt,
+  handleAdminFineStatus,
+} from "./fines.js";
+
 const GOOGLE_CERTS_URL = "https://www.googleapis.com/oauth2/v3/certs";
 const SESSION_TTL_SEC = 30 * 24 * 60 * 60;
 
@@ -156,7 +185,7 @@ function corsHeaders(origin) {
   };
 }
 
-function json(data, status, origin) {
+export function json(data, status, origin) {
   return new Response(JSON.stringify(data), {
     status,
     headers: { "Content-Type": "application/json", ...corsHeaders(origin) },
@@ -187,7 +216,7 @@ async function hmacKey(secret) {
   );
 }
 
-async function signSession(payload, secret) {
+export async function signSession(payload, secret) {
   const key = await hmacKey(secret);
   const body = base64url(new TextEncoder().encode(JSON.stringify(payload)));
   const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body));
@@ -271,7 +300,7 @@ let cachedAccessToken = null;
 let cachedAccessTokenAt = 0;
 const ACCESS_TOKEN_CACHE_MS = 55 * 60 * 1000;
 
-async function getServiceAccountAccessToken(env) {
+export async function getServiceAccountAccessToken(env) {
   if (cachedAccessToken && Date.now() - cachedAccessTokenAt < ACCESS_TOKEN_CACHE_MS) {
     return cachedAccessToken;
   }
@@ -673,7 +702,7 @@ export async function getCurrentPenCycle(env, accessToken, fileId) {
 // "분당 읽기 요청 60회" 한도를 손쉽게 넘긴다 — 회원 목록 같은 반복 조회는
 // 반드시 이 함수로 한 번에 묶어야 한다. 반환값은 요청한 range 순서와 동일한
 // 배열([][][]) — 각 range마다 못 찾으면 빈 배열을 채워 넣는다.
-async function batchGetSheetValues(env, accessToken, fileId, ranges) {
+export async function batchGetSheetValues(env, accessToken, fileId, ranges) {
   if (ranges.length === 0) return [];
   _bumpUsageCounter("sheets_read");
   const query = ranges.map((r) => `ranges=${encodeURIComponent(r)}`).join("&");
@@ -718,20 +747,7 @@ async function getSheetFormulas(env, accessToken, fileId, range) {
   return data.values;
 }
 
-// 여러 셀 범위를 한 번에 기입한다 — valueRanges: [{ range: "1!B2", values: [["텍스트"]] }, ...]
-// 특정 회원의 personalStatusBundle 캐시(개인 탭 원본 행 + outputPenSlots +
-// reportScore, §캐싱 통합 2026-09 참고)를 인메모리+KV 양쪽에서 지운다.
-// 시트에 직접 쓸 때(writeSheetValues)뿐 아니라, 시트를 안 건드리고 KV만
-// 바꾸는 조작(퇴실 신청 등)이 depositRefundBreakdown처럼 이 번들이 감싸는
-// 계산 결과에 영향을 줄 때도 재사용한다.
-async function invalidatePersonalStatusCache(env, fileId, memberNumber) {
-  const cacheKey = `personalStatusBundle:${fileId}:${memberNumber}`;
-  _sheetCache.delete(cacheKey);
-  _bumpCacheGeneration(cacheKey);
-  await env.REPORTS_KV.delete(`${KV_CACHE_PREFIX}${cacheKey}`).catch(() => {});
-}
-
-async function writeSheetValues(env, accessToken, fileId, valueRanges) {
+export async function writeSheetValues(env, accessToken, fileId, valueRanges) {
   _bumpUsageCounter("sheets_write");
   const res = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${fileId}/values:batchUpdate`,
@@ -1392,7 +1408,7 @@ async function getDataSheetRows(env, accessToken, fileId) {
   });
 }
 
-async function listAllMembers(env, accessToken, fileId) {
+export async function listAllMembers(env, accessToken, fileId) {
   return _cachedCompute(env, `members:${fileId}`, 2 * 60 * 60_000, async () => {
     const rows = await getDataSheetRows(env, accessToken, fileId);
     const members = [];
@@ -2050,7 +2066,7 @@ async function buildDepositAgainSplit(env, accessToken, fileId, memberName, curr
 
 // STATUS_DAY_COLS(0-indexed)를 실제 시트 열 문자(A1 표기)로 변환한다. 26 이하만
 // 다루므로 A~Z 단일 문자면 충분하다.
-function colIndexToLetter(col) {
+export function colIndexToLetter(col) {
   return String.fromCharCode(65 + col);
 }
 
@@ -2064,68 +2080,11 @@ function colIndexToLetter(col) {
 // 무효화를 못 받는 gap도 주 1회뿐이라 영향이 작다고 판단해 60초→10분으로
 // 올린다. KV 쓰기는 파일당 1개 키만 남으므로(회원 수와 무관) 하루 최악치도
 // 여전히 안전하다.
-async function getSharedMemberRows(env, accessToken, fileId, members) {
+export async function getSharedMemberRows(env, accessToken, fileId, members) {
   return _cachedCompute(env, `memberRows:${fileId}`, 10 * 60_000, () => {
     const ranges = members.map((m) => `${m.number}!A1:U${ROW_REASON_LEAVE_LEFT + 1}`);
     return batchGetSheetValues(env, accessToken, fileId, ranges);
   });
-}
-
-// 15개 개인 탭을 병렬로 훑어 "✅ 납부확인" 행에 "미납"이 찍힌 요일만 모은다.
-// listUnpaidFines/listPaidFines/listExemptFines가 이 공통 조회를 재사용해
-// 상태값(미납/납부/면제)별로 걸러내기만 한다.
-async function getAllPaymentRows(env, accessToken, fileId, members) {
-  const allRows = await getSharedMemberRows(env, accessToken, fileId, members);
-  return members.map((member, i) => {
-    const rows = allRows[i];
-    return { member, paymentRow: (rows && rows[ROW_PAYMENT_CHECK]) || [] };
-  });
-}
-
-function collectFinesByStatus(paymentRows, status) {
-  return paymentRows.flatMap(({ member, paymentRow }) => {
-    const days = STATUS_DAYS.filter((day, i) => paymentRow[STATUS_DAY_COLS[i]] === status);
-    return days.map((day) => ({ number: member.number, name: member.name, day }));
-  });
-}
-
-// 15개 개인 탭을 병렬로 훑어 "✅ 납부확인" 행에 "미납"이 찍힌 요일만 모은다.
-async function listUnpaidFines(env, accessToken, fileId) {
-  const members = await listAllMembers(env, accessToken, fileId);
-  const paymentRows = await getAllPaymentRows(env, accessToken, fileId, members);
-  return collectFinesByStatus(paymentRows, "미납");
-}
-
-// 15개 개인 탭을 병렬로 훑어 "✅ 납부확인" 행에 "납부"가 찍힌 요일만 모은다.
-async function listPaidFines(env, accessToken, fileId) {
-  const members = await listAllMembers(env, accessToken, fileId);
-  const paymentRows = await getAllPaymentRows(env, accessToken, fileId, members);
-  return collectFinesByStatus(paymentRows, "납부");
-}
-
-// 집계 탭 D22(주간 벌금 = 15명의 "납부" 처리된 일간 벌금 합산)를 읽는다.
-// "Money" 탭의 "납부" 목록을 열 때마다 다시 읽을 필요가 없는 값이라
-// 캐싱한다 — 벌금 상태 변경(handleAdminFineStatus)이 이미
-// invalidateMemberCache를 호출하므로 그 무효화 대상에 포함시킨다. TTL은
-// 무효화가 놓친 경우의 안전망일 뿐이라 5분으로 늘려 KV 읽기 빈도를 줄인다
-// (docs/CACHING_POLICY.md §5, 2026-09).
-// 🔧 [사용자 지시, 2026-09-11] 5분→10분 재상향 — 이 값은 "납부된 총
-// 벌금액" 표시 전용이고(강제퇴실 판정 등 다른 계산엔 안 쓰임), 유일한
-// 쓰기 경로(handleAdminFineStatus)가 항상 확실히 무효화하며 이를 우회하는
-// 쓰기 경로(앱스크립트 등)도 없다 — TTL은 순수 안전망이라 10분으로
-// 늘려도 위험이 없다고 재검증했다(§33).
-async function getWeeklyPaidFineTotal(env, accessToken, fileId) {
-  return _cachedCompute(env, `weeklyPaidFine:${fileId}`, 10 * 60_000, async () => {
-    const rows = await getSheetValues(env, accessToken, fileId, "집계!D22");
-    return safeNumber((rows && rows[0] && rows[0][0]) || 0);
-  });
-}
-
-// 15개 개인 탭을 병렬로 훑어 "✅ 납부확인" 행에 "면제"가 찍힌 요일만 모은다.
-async function listExemptFines(env, accessToken, fileId) {
-  const members = await listAllMembers(env, accessToken, fileId);
-  const paymentRows = await getAllPaymentRows(env, accessToken, fileId, members);
-  return collectFinesByStatus(paymentRows, "면제");
 }
 
 // --- 핸들러 ---
@@ -5860,91 +5819,6 @@ async function handleAdminMemberStatus(req, env, origin, memberNumber, url) {
   }
 }
 
-const FINE_STATUS_VALUES = ["미납", "납부", "면제"];
-
-async function handleAdminFinesUnpaid(req, env, origin, url) {
-  const admin = await requireAdmin(req, env);
-  if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
-
-  try {
-    const accessToken = await getServiceAccountAccessToken(env);
-    const cycleFileId = url ? url.searchParams.get("cycle") : null;
-    const { fileId } = await resolveTargetFileId(env, accessToken, cycleFileId);
-    const unpaid = await listUnpaidFines(env, accessToken, fileId);
-    return json({ unpaid }, 200, origin);
-  } catch (err) {
-    return json({ error: "벌금 미납 목록 조회 실패: " + err.message }, 500, origin);
-  }
-}
-
-async function handleAdminFinesPaid(req, env, origin, url) {
-  const admin = await requireAdmin(req, env);
-  if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
-
-  try {
-    const accessToken = await getServiceAccountAccessToken(env);
-    const cycleFileId = url ? url.searchParams.get("cycle") : null;
-    const { fileId } = await resolveTargetFileId(env, accessToken, cycleFileId);
-    const [paid, totalAmount] = await Promise.all([
-      listPaidFines(env, accessToken, fileId),
-      getWeeklyPaidFineTotal(env, accessToken, fileId),
-    ]);
-    return json({ paid, totalAmount }, 200, origin);
-  } catch (err) {
-    return json({ error: "벌금 납부 목록 조회 실패: " + err.message }, 500, origin);
-  }
-}
-
-async function handleAdminFinesExempt(req, env, origin, url) {
-  const admin = await requireAdmin(req, env);
-  if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
-
-  try {
-    const accessToken = await getServiceAccountAccessToken(env);
-    const cycleFileId = url ? url.searchParams.get("cycle") : null;
-    const { fileId } = await resolveTargetFileId(env, accessToken, cycleFileId);
-    const exempt = await listExemptFines(env, accessToken, fileId);
-    return json({ exempt }, 200, origin);
-  } catch (err) {
-    return json({ error: "벌금 면제 목록 조회 실패: " + err.message }, 500, origin);
-  }
-}
-
-// 🔧 [사용자 지시, 2026-09-10] "예치금 재납이나 벌금 납부는 당일에 처리될
-// 수도 있지만 보통은 익일이거나 하루 이틀 늦게 처리될 수도 있는데, 그럼
-// 쓰기가 지난 주 시트에서도 가능해야 하지 않나?" — 납부확인은 "그 주차의
-// 납부 기록 자체"라 실제로 그 주차 시트(현재 진행 중인 사이클 내 백업
-// 포함)에 남아야 정확하다. resolveTargetFileId가 이미 "현재 사이클
-// (1~3주차) 밖의 임의 fileId"는 거부하므로, 사이클을 벗어난 과거 기록을
-// 건드릴 위험은 없다.
-async function handleAdminFineStatus(req, env, origin) {
-  const admin = await requireAdmin(req, env);
-  if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
-
-  const { number, day, status, cycle } = await req.json();
-  const sheetNum = parseInt(number, 10);
-  const dayIndex = STATUS_DAYS.indexOf(day);
-  if (!sheetNum || sheetNum < 1 || sheetNum > 15 || dayIndex === -1) {
-    return json({ error: "회원번호 또는 요일이 올바르지 않습니다." }, 400, origin);
-  }
-  if (!FINE_STATUS_VALUES.includes(status)) {
-    return json({ error: "상태값은 미납/납부/면제 중 하나여야 합니다." }, 400, origin);
-  }
-
-  try {
-    const accessToken = await getServiceAccountAccessToken(env);
-    const { fileId } = await resolveTargetFileId(env, accessToken, cycle);
-    const col = colIndexToLetter(STATUS_DAY_COLS[dayIndex]);
-    await writeSheetValues(env, accessToken, fileId, [
-      { range: `${sheetNum}!${col}${ROW_PAYMENT_CHECK + 1}`, values: [[status]] },
-    ]);
-    await invalidateMemberCache(env, ["fine"], fileId); // 납부확인 값이 바뀌었으므로 관련 캐시만, 그 fileId에 한해 무효화.
-    return json({ ok: true, number: String(sheetNum), day, status }, 200, origin);
-  } catch (err) {
-    return json({ error: "납부 상태 변경 실패: " + err.message }, 500, origin);
-  }
-}
-
 // Money 탭 "상금 수령 대상자 처리"의 "상금 정산 집행" 버튼 — 관리자가 이번 주
 // 1~5등 분배를 실제로 지급했다는 걸 시트에 기록하는 단순 마킹. 다른 상태
 // 마킹처럼 셀 하나(집계!P6)에 "완료" 문자열을 쓰기만 한다.
@@ -8084,7 +7958,7 @@ async function handleGetParticipants(req, env, origin) {
 // 관리자 전용: 구독 등록은 로그인 세션만 있으면 누구나 가능하지만(자기 브라우저를 구독),
 // 발송(send)은 ADMIN_EMAIL 계정만 트리거할 수 있다.
 
-async function requireAdmin(req, env) {
+export async function requireAdmin(req, env) {
   const authHeader = req.headers.get("Authorization") || "";
   const token = authHeader.replace(/^Bearer\s+/i, "");
   const session = await verifySession(token, env.SESSION_SECRET);
