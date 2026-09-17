@@ -1,8 +1,12 @@
-// 로컬 개발(vite dev)에서는 로컬 워커(wrangler dev, localhost:8787)를,
-// 빌드(vite build, GitHub Pages 배포본)에서는 프로덕션 워커를 호출한다.
-export const WORKER_BASE = import.meta.env.DEV
-  ? "http://localhost:8787"
-  : "https://frame-checker-worker.comstralo.workers.dev";
+// 🔧 [로컬 워커 연동 시도 후 원복, 2026-09-17] 한때 로컬 개발(vite dev)에서
+// 로컬 워커(wrangler dev, localhost:8787)를 쓰도록 분기했으나, 로컬
+// wrangler dev에는 SESSION_SECRET 등 프로덕션 시크릿 14개가 전혀 없어
+// 인증이 필요한 모든 요청이 500(HMAC 키 오류)으로 죽고 브라우저에는
+// "Failed to fetch"/CORS 에러로 보이는 문제가 있었다(예외가 CORS 헤더를
+// 붙이기 전에 터짐). 시크릿을 로컬에 복제하는 것보다 프로덕션 워커를
+// 그대로 쓰는 쪽이 안전하고 간단하다는 판단(사용자 결정) — 로컬 개발도
+// 항상 프로덕션 워커를 호출한다.
+export const WORKER_BASE = "https://frame-checker-worker.comstralo.workers.dev";
 
 export class ApiError extends Error {
   status: number;
