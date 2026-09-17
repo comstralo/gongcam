@@ -1065,35 +1065,124 @@ index.js 3,624→3,399줄(약 225줄 감소, 시작(10,984줄) 대비 총
 호출은 로그 윈도우에 잡히지 않았지만, curl 응답 자체가 이미 4xx
 정상 에러(500 아님)임을 직접 확인했으므로 문제 없다고 판단했다.
 
+## 구조 개선 15차 — 개인 대시보드/랭킹 클러스터 통합 테스트 + 이동 (2026-09-17)
+
+14차에서 "순환 위험이 가장 크다"고 지목했던 `buildPersonalStatus`/
+`buildRosterStatus` 클러스터를 `src/personal-status.js`로 옮겼다.
+`buildPersonalStatus`는 exit.js가 이미 `from "./index.js"`로
+import하고 있어, 3차(deposit.js) 이래 반복해온 "새 파일이 index.js를
+import하고 index.js도 그 파일을 다시 import해 재export"하는 패턴을
+그대로 적용했다 — 순수 객체 리터럴(`GOAL_TYPE_MULTIPLIER` 등)만
+재export하고 함수는 전부 함수 선언(호이스팅)이라 11차의 TDZ 위험이
+없음을 재확인했다.
+
+**이동 대상(33개 함수 + 4개 상수)**: 개인 탭 순수 계산 함수(`isConfirmed`,
+`formatMinutes`, `parseHHMMToMinutes`, `dailyGoalMinutes`,
+`isDayComplete`, `isWeekdayComplete`, `meritMultiplier`, `isDayEmpty`,
+`weeklyReasonLeaveTotal`, `meritZeroConditions`, `buildPeriodGrid`,
+`periodAttendanceBreakdown`, `weeklyGoalMinutes`, `weeklyGoalTime`,
+`explainDay`, `GOAL_TYPE_MULTIPLIER`), 개인 상태 핵심(`getMeritRank`,
+`_computeReportScore`, `_computeOutputPenSlots`, `MORNING_GOAL_MINUTES`,
+`dayDateAt`, `parseWeekOfToMonday`, `currentWeekRangeYYMMDD`,
+`buildStatusDays`, `buildDepositAgainSnapshot`, `getPersonalStatusBundle`,
+`buildPersonalStatus`, `buildExitedMemberSnapshot`, `buildDepositAgainSplit`),
+라우트 핸들러(`handleStatus`, `handleAdminMemberStatus`), 랭킹/정산
+클러스터(`ROSTER_ROW_START`, `ROSTER_ROW_END`, `buildRosterStatus`,
+`_computeRosterStatus`, `handleRosterStatus`, `handleAdminPrizeSettle`).
+`parseWon`/`safeNumber`/`parseLeaveCount`/`colIndexToLetter`/
+`findMemberNumberByEmail`/`listAllMembers`/`resolveTargetFileId`/
+`depositRefundBreakdown`/`totalPenaltyBreakdown`와 이 클러스터가 읽는
+시트 레이아웃 상수(`STATUS_DAYS`, `ROW_*`/`COL_*` 20여 개)는
+deposit.js/leave.js/exit.js/fines.js/cycle.js/members.js/report.js도
+공유하는 범용 유틸이라 index.js에 남기고 export만 추가했다(15차
+착수 조사에서 grep으로 전수 확인 — 이번엔 12개 상수가 새로 export로
+전환됨).
+
+**🔧 발췌 이동 중 발견·수정한 실제 누락 3건**: 44개 항목을 여러
+구간으로 나눠 옮기는 과정에서, 이동 후 `npm test`가 즉시 잡아낸
+누락이 세 번 있었다 — (1) `getSheetUnformattedValue`(index.js 잔류
+함수인데 애초에 `export`가 안 되어 있었던 기존 버그, `_computeRosterStatus`
+가 사용), (2) `countCurrentCyclePen`/`resolveMemberNumber`/
+`proxyToBotDashboard`(모두 index.js에 이미 export되어 있었지만
+personal-status.js의 import 목록에서 빠짐), (3) `depositAgainOccurredDay`
+(index.js에 정의만 있고 `buildExitedMemberSnapshot` 하나만 쓰는데
+export가 안 되어 있었음 — export 추가로 해결), (4) `formatYYMMDD`
+(date-utils.js, `handleRosterStatus`가 씀). 매번 "정적 export/import
+목록 대조 스크립트로 못 잡는 실제 함수 호출 누락"은 `npm test`가
+호출 시점에 `ReferenceError`/`TypeError`로 드러냈다 — **13차 교훈
+("옮기지 않아야 할 걸 실수로 지웠는지 확인")의 반대 방향인 "옮겨야
+할 걸 실수로 안 옮겼는지"도 정적 검토만으로는 못 잡고, 반드시
+`npm test` 전체 통과로 최종 확인해야 한다**는 것을 재확인했다.
+
+**세션 중 작업 파일이 두 차례 사라지는 사고**: 이번 차수 작업
+도중 `src/personal-status.js`(git에 아직 추가되지 않은 새 파일)가
+디스크에서 원인 불명으로 두 차례 사라졌다(git이 추적하는 `index.js`는
+매번 무사했음 — untracked 파일만 영향받음). 원인은 특정되지 않았으나
+(에디터/동기화 도구 등 외부 요인으로 추정), 이후로는 새 파일을 만들
+때마다 **`git add`로 즉시 스테이징**(스테이징된 내용은 git 오브젝트
+DB에 안전하게 보관되어 파일시스템 변동과 무관)하고, 별도로 `/tmp`에도
+체크포인트 사본을 남기는 절차를 추가해 두 번째 사고부터는 즉시 복구할
+수 있었다. **다음 차수부터는 새 파일을 작성한 직후, 그리고 통합
+테스트가 통과할 때마다 `git add`로 즉시 스테이징하는 것을 필수
+절차로 삼는다** — 커밋 전이라도 스테이징만으로 안전망이 된다.
+
+**44개 항목 전체 diff 검증**: 정규식 기반 함수/상수 추출 스크립트로
+`git show HEAD`의 14차 종료 시점 원본과 personal-status.js를 비교해
+33개 함수 + 4개 상수 전부 완전 일치를 확인했다(4개 라우트 핸들러는
+`export` 키워드 추가만 차이 — 로직 자체는 동일). 이동 후 index.js의
+선언 목록을 원본과 diff해 "정확히 이 37개만" 사라졌음을 확인했고
+(13차 긴급 수정 이후 정착한 절차), 라우팅 테이블 전체를 grep해 모든
+핸들러 호출이 import 또는 로컬 선언으로 해소되는지도 스크립트로
+교차 검증했다.
+
+**통합 테스트(`test/personal-status.test.js`, 11개)**: `test/exit-confirm.test.js`
+(8차/`buildPersonalStatus`를 이미 무겁게 태우는 기존 테스트)의
+`stubForcedExitFetch` mock 패턴을 그대로 재사용해 mock 설계 시간을
+아꼈다. `handleStatus`(로그인 필요 401, 명단 미매칭 403, 정상 200),
+`handleAdminMemberStatus`(관리자 아니면 403, 존재하지 않는 회원
+404, 정상 200, 퇴실자 접두사 `exited:` 분기), `handleRosterStatus`
+(로그인 필요 401, 정상 200), `handleAdminPrizeSettle`(관리자 아니면
+403, cycle 파라미터 없으면 400)을 검증했다. `listQueuedReasonLeaveDays`/
+LeaveQueue DO의 `/exit/get`은 실제 workerd DO를 그대로 써서(둘 다
+기본값이 빈 배열/null) 추가 mock 없이 자연스럽게 커버했다.
+
+index.js 3,399→2,189줄(약 1,210줄 감소, 시작(10,984줄) 대비 총
+**80.1% 감소** — 80%대 최초 돌파). `npm test` 기준 432개 테스트
+전부 통과(14차 종료 시점 421개 + 신규 11개), 연속 3회 실행으로
+안정성 확인.
+
 ## 다음 단계
 
 사이클 판정, 예치금/강제퇴실/정산 판정, 회원 관리/알림·푸시의
 순수 함수, 웹푸시 암호화, 벌금/납부 처리, 회원 관리(CRUD/번호
 재배치), 퇴실 처리, 사이클 판정 정리, 알림/푸시 도메인, 사유반휴/
 일반반휴 도메인, 제보/캡처 도메인, 봇 상태/사용량 도메인, 로그인/
-OAuth 도메인까지 총 14차에 걸쳐 분리했다. `resolveMemberNumber`/
-`findMemberNumberByEmail`(15곳 이상 공유 인증 유틸), `getAdminAccessToken`
-과 그 하위 의존(`exchangeAdminOAuthCode` 등)은 계속 index.js 잔류
-대상으로 남아있다. `buildPersonalStatus`/`buildRosterStatus`(여러
-도메인이 공유하는 대형 집계 함수)도 index.js 잔류 + export 확대가
-안전해 보이며, 별도 도메인으로 뺄지는 이후 재검토한다. 지금까지
-이동한 도메인들(exit.js, cycle.js, notify.js, leave.js, report.js,
-bot.js, auth.js, members.js, fines.js 등)을 다 걷어내고 나면
-index.js에는 세션 프리미티브(`signSession`/`verifySession`,
-`base64url`류 — member-utils.js/push-crypto.js와도 공유),
-관리자 위임 OAuth 저수준 유틸(`getAdminAccessToken`류), 시트 API
-저수준 유틸(get/write/batch 등), 사용량 계측 클러스터, 개인
-대시보드/명단 집계(`buildPersonalStatus`, `buildRosterStatus`,
-`listAllMembers` 경유 함수들), DO stub 헬퍼, cron(`scheduled`)만
-남는다 — 이들은 대부분 "여러 도메인이 공유하는 진짜 범용 유틸"이라
-더 쪼갤수록 이동 대상보다 남는 것(exports)이 많아지는 지점에
-가까워지고 있다. 다음 차수를 잡는다면 `buildPersonalStatus`/
-`buildRosterStatus`를 `personal-status.js` 같은 별도 파일로 빼는
-것이 후보이나, 이 두 함수는 거의 모든 이미 이동한 도메인 파일
-(exit.js, leave.js, report.js 등)이 참조하는 최종 소비자라 순환
-import 방향을 신중히 설계해야 한다(11차 TDZ 교훈 재적용 필요).
-테스트 없이 구조 변경부터 시작하지 않는다는 원칙, 이동 직후
-원본과 diff 대조하는 절차(8차부터), DO 키 기준 테스트 격리(10차
-부터), 최상위 `const` 객체 리터럴의 TDZ 위험 점검(11차부터), 이동
-후 라우팅 테이블 전체를 grep해 실수로 삭제된 함수가 없는지 교차
-검증(13차 긴급 수정에서 얻은 교훈)까지 모두 유지한다.
+OAuth 도메인, 개인 대시보드/랭킹 클러스터까지 총 15차에 걸쳐
+분리했다. `resolveMemberNumber`/`findMemberNumberByEmail`(15곳
+이상 공유 인증 유틸), `getAdminAccessToken`과 그 하위 의존
+(`exchangeAdminOAuthCode` 등), `parseWon`/`safeNumber`/
+`parseLeaveCount`/`colIndexToLetter`/시트 API 저수준 유틸(get/write/
+batch 등)/사용량 계측 클러스터/DO stub 헬퍼는 계속 index.js 잔류
+대상으로 남아있다 — 이들은 사실상 전부 "여러 도메인이 공유하는 진짜
+범용 유틸"이라 더 쪼개면 이동 대상보다 남는 export가 많아지는
+지점에 도달했다. index.js는 이제 로그인/세션 프리미티브, 관리자
+위임 OAuth, 시트 API 저수준 유틸, 사용량 계측, DO stub, 목표시간
+예약(`handleGetGoalSchedule`/`handleSetGoalSchedule`), 참여자
+명단(`handlePutParticipants`/`handleGetParticipants`), 몇몇 잡다한
+관리자 핸들러(`handleAdminFinesAdminForcedCount`,
+`handleBotInvalidateCache`, `handleAdminMembersRoster`,
+`handleMigrateFixCollectMoneyFormula`), 라우팅 테이블(`export default
+{ fetch, scheduled }`)만 남아 있다. 다음 차수를 잡는다면 이 중
+`handleAdminMembersRoster`(7차에서 "너무 무겁다"고 제외했던 회원
+관리 확장 기능)를 재검토하거나, 혹은 여기서 리팩터링을 종료하고
+현재 구조(index.js 2,189줄 + 13개 도메인 파일)를 안정 상태로 굳히는
+것도 합리적인 선택이다 — 남은 코드 대부분이 진짜 공유 유틸이라
+추가 분리의 한계 효용이 크게 줄었다. 테스트 없이 구조 변경부터
+시작하지 않는다는 원칙, 이동 직후 원본과 diff 대조하는 절차(8차
+부터), DO 키 기준 테스트 격리(10차부터), 최상위 `const` 객체
+리터럴의 TDZ 위험 점검(11차부터), 이동 후 라우팅 테이블 전체를
+grep해 실수로 삭제된 함수가 없는지 교차 검증(13차부터), 그리고
+15차에서 새로 추가된 두 절차 — **이동한 코드가 실제로 호출하는
+모든 함수가 import됐는지 `npm test`로 최종 확인**(정적 대조만으로는
+불충분)과 **새 파일은 작성 직후 `git add`로 즉시 스테이징**(파일
+유실 방지) — 모두 다음 차수부터 필수로 유지한다.
