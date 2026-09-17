@@ -210,18 +210,26 @@ export { listAllMembers };
 // 🔧 [구조 개선 16차] listActiveMembersWithExitInfo를 실사용하던
 // handleAdminMembersRoster가 members.js로 옮겨가면서, index.js는
 // 더 이상 이 함수를 직접 쓰지 않는다(members.js가 exit.js에서 직접 import).
+// 🔧 [구조 개선 21차, 2026-09-17] exit.js를 다시 신청(exit-request.js)/
+// 후보 판정(exit-candidates.js)/확정 실행(exit-confirm.js) 세 파일로
+// 나눴다(docs/TESTING.md 참고) — 라우팅 테이블에서 각 파일 함수를 그대로
+// 호출하므로 import 출처만 바뀌었다.
 import {
   handleSetExitRequest,
   handleAgreeExitRequest,
   handleCancelExitRequest,
   handleBotExitRequests,
+} from "./exit-request.js";
+import {
   handleAdminExitedMembers,
   handleAdminExitCandidates,
-  handleAdminExitPreview,
-  handleAdminExitConfirm,
   handleAdminExitBlacklist,
   handleAdminBlacklist,
-} from "./exit.js";
+} from "./exit-candidates.js";
+import {
+  handleAdminExitPreview,
+  handleAdminExitConfirm,
+} from "./exit-confirm.js";
 
 // 🔧 [구조 개선 10차, 2026-09-13] 알림/푸시 도메인을 src/notify.js로
 // 옮겼다(docs/TESTING.md 참고). 다른 도메인 파일을 실사용하지 않는
@@ -1775,7 +1783,7 @@ export default {
         return await handleBotRegisterUrl(req, env, origin);
       }
       if (url.pathname === "/bot/exit-requests" && req.method === "GET") {
-        // exit.js — 봇이 퇴실 신청 목록을 폴링하는 경로.
+        // exit-request.js — 봇이 퇴실 신청 목록을 폴링하는 경로.
         return await handleBotExitRequests(req, env, origin);
       }
       if (url.pathname === "/bot/invalidate-cache" && req.method === "POST") {
@@ -1901,14 +1909,14 @@ export default {
         return await handleAdminMembersRoster(req, env, origin);
       }
       if (url.pathname === "/admin/members/exited" && req.method === "GET") {
-        // exit.js
+        // exit-candidates.js
         return await handleAdminExitedMembers(req, env, origin);
       }
       if (url.pathname === "/admin/members/parti-status" && req.method === "POST") {
         return await handleAdminSetPartiStatus(req, env, origin);
       }
 
-      // --- 퇴실/재납 신청 (exit.js) ---
+      // --- 퇴실/재납 신청 (exit-request.js) ---
       if (url.pathname === "/exit-request" && req.method === "POST") {
         return await handleSetExitRequest(req, env, origin);
       }
@@ -1963,16 +1971,20 @@ export default {
         return await handleAdminPrizeSettle(req, env, origin);
       }
 
-      // --- 퇴실/재납 확정 (exit.js, 계속) ---
+      // --- 퇴실/재납 후보 판정 (exit-candidates.js, 계속) ---
       if (url.pathname === "/admin/exit/candidates" && req.method === "GET") {
         return await handleAdminExitCandidates(req, env, origin, url);
       }
+
+      // --- 퇴실/재납 확정 실행 (exit-confirm.js) ---
       if (url.pathname === "/admin/exit/preview" && req.method === "POST") {
         return await handleAdminExitPreview(req, env, origin);
       }
       if (url.pathname === "/admin/exit/confirm" && req.method === "POST") {
         return await handleAdminExitConfirm(req, env, origin);
       }
+
+      // --- 퇴실/재납 후보 판정 (exit-candidates.js, 계속: 블랙리스트) ---
       if (url.pathname === "/admin/exit/blacklist" && req.method === "POST") {
         return await handleAdminExitBlacklist(req, env, origin);
       }

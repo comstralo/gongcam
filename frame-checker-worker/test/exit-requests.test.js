@@ -9,7 +9,7 @@ import {
   handleAgreeExitRequest,
   handleCancelExitRequest,
   handleBotExitRequests,
-} from "../src/exit.js";
+} from "../src/exit-request.js";
 import { TEST_SERVICE_ACCOUNT_JSON, oauthTokenResponse } from "./helpers/service-account.js";
 
 afterEach(() => {

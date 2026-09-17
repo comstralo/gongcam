@@ -47,9 +47,9 @@ npm run test:watch  # watch 모드
 쓰이는 것과 정확히 같은 모듈 인스턴스를 받는다(공식 문서 명시) —
 별도 번들링/변환 없이 `export`만 붙이면 바로 유닛 테스트할 수 있다.
 
-## 현재 유효한 잔류 근거 요약 (20차 기준)
+## 현재 유효한 잔류 근거 요약 (21차 기준)
 
-> 아래는 1~20차 각 섹션에 흩어져 있는 "이 함수는 index.js에 남긴다"
+> 아래는 1~21차 각 섹션에 흩어져 있는 "이 함수는 index.js에 남긴다"
 > 는 선언들의 **최신 스냅샷**이다. 각 차수 섹션 본문은 그 시점의
 > 역사적 기록으로 그대로 보존하고(예: 10차의 "notify.js는 leaf
 > 도메인" 서술은 16차 이후 더 이상 사실이 아니지만 본문은 갱신 노트만
@@ -57,27 +57,29 @@ npm run test:watch  # watch 모드
 > 표만 보면 된다. 17차 구조 감사가 "차수 섹션을 순서대로 읽으면 낡은
 > 근거를 최신으로 오인하기 쉽다"고 지적해 추가했다.
 
-**최종 파일 구조**(20차 기준, `frame-checker-worker/src/`):
+**최종 파일 구조**(21차 기준, `frame-checker-worker/src/`):
 
 | 파일 | 줄 수 | 도메인 |
 |---|---:|---|
-| `index.js` | 2,067 | 엔트리포인트 — 세션/인증 프리미티브, 시트 API 저수준 유틸, 사용량 계측, DO stub, 관리자 위임 OAuth 저수준 유틸, 목표시간 예약, 참여자 명단, 라우팅 테이블(`export default { fetch, scheduled }`) |
+| `index.js` | 2,079 | 엔트리포인트 — 세션/인증 프리미티브, 시트 API 저수준 유틸, 사용량 계측, DO stub, 관리자 위임 OAuth 저수준 유틸, 목표시간 예약, 참여자 명단, 라우팅 테이블(`export default { fetch, scheduled }`) |
 | `personal-status.js` | 1,043 | 개인 대시보드(`handleStatus`/`handleAdminMemberStatus`) |
+| `exit-confirm.js` | 743 | 퇴실/재납 — 미리보기/확정 실행 |
 | `report-penalty.js` | 845 | 제보/캡처 — 벌점/제보상점 반영(승인/취소/삭제/반려취소) |
-| `exit.js` | 1,160 | 퇴실/재납 신청·확정, 강제퇴실 판정(21차 분할 예정) |
 | `report-review.js` | 663 | 제보/캡처 — 캡처 검토/목록/투표 |
+| `members.js` | 654 | 회원 관리(CRUD/번호 재배치), 회원 상세 로스터 |
 | `report-intake.js` | 389 | 제보/캡처 — 접수/쿨다운 |
 | `roster-status.js` | 310 | 랭킹/로스터/정산(19차에서 personal-status.js에서 분리) |
 | `durable-objects.js` | 913 | DO 클래스 8개 |
 | `leave.js` | 863 | 사유반휴/일반반휴 |
 | `notify.js` | 663 | 알림/푸시 |
-| `members.js` | 653 | 회원 관리(CRUD/번호 재배치), 회원 상세 로스터 |
+| `exit-candidates.js` | 252 | 퇴실/재납 — 후보 판정/공유 조회, 블랙리스트 |
 | `bot.js` | 398 | 봇 원격 상태/사용량 |
 | `cache.js` | 371 | 캐시 인프라 |
-| `cycle.js` | 357 | 사이클(3주 백업) 판정 |
+| `cycle.js` | 358 | 사이클(3주 백업) 판정 |
 | `auth.js` | 259 | 로그인/OAuth |
 | `deposit.js` | 248 | 예치금 반환/강제퇴실/정산 판정 핵심 계산 |
 | `fines.js` | 216 | 벌금/납부 처리 |
+| `exit-request.js` | 154 | 퇴실/재납 — 신청/동의/취소, 도움봇 조회 |
 | `push-crypto.js` | 153 | 웹푸시 암호화(RFC 8291/8292) |
 | `date-utils.js` | 132 | KST 날짜 계산 |
 | `pure-utils.js` | 79 | 회원 계정 파싱 + 웹푸시 보조 + 알림 기본값(세 영역이 섞인 의도된 잡동사니 유틸, 18차에서 member-utils.js → pure-utils.js로 리네임) |
@@ -1514,6 +1516,70 @@ resolve됨을 확인. `npm test` 기준 448개 테스트 전부 통과, 연속
 노이즈 패턴과 일치 — 즉시 재실행 시 448/448 통과, 총 6/7회(85%)
 성공률로 코드 결함이 아님을 확인).
 
+## 구조 개선 21차 — exit.js를 exit-request/candidates/confirm 3파일로 분할 (2026-09-17)
+
+19차·20차와 동일한 기준(내부 무호출 구조)으로 `exit.js`(8차 신설,
+1,160줄)를 재조사한 결과 세 개의 서로 무호출인 클러스터로 나뉨을
+확인했다: 신청/동의/취소, 후보 판정/공유 조회, 미리보기/확정 실행.
+함수 그룹별 텍스트 추출 + 상호 참조 카운트 스크립트로 실측 검증.
+
+- `src/exit-request.js`(154줄) — 신청/동의/취소/도움봇 조회:
+  `handleSetExitRequest`, `handleAgreeExitRequest`,
+  `handleCancelExitRequest`, `listExitRequests`,
+  `handleBotExitRequests`.
+- `src/exit-candidates.js`(252줄) — 후보 판정/공유 조회:
+  `getAllExitRelevantStatus`, `listExitCandidates`,
+  `handleAdminExitedMembers`, `listActiveMembersWithExitInfo`,
+  `handleAdminExitCandidates`, `handleAdminExitBlacklist`,
+  `handleAdminBlacklist`, `getPenaltySlotNotesGrid`.
+- `src/exit-confirm.js`(743줄) — 미리보기/확정 실행:
+  `computeExitResult`, `handleAdminExitPreview`,
+  `appendDataAuditSnapshot`, `rewriteBackupAuditFormulas`,
+  `performExitReset`, `performDepositAgainReset`,
+  `handleAdminExitConfirm`, `writeExitResultBox`,
+  `revokeSheetAccess`, `getSheetFormulas`, `EXIT_KIND_VALUES`.
+
+**사전 조사 보고서의 경계 오판 발견**: 19차·20차에서 두 차례 경계
+오판이 있었던 전례에 따라, 착수 전 이전 조사(서브에이전트) 보고서가
+`handleAdminExitBlacklist`/`handleAdminBlacklist`를 "확정 실행" 그룹
+(exit-confirm.js)으로 분류했던 가정을 직접 코드와 테스트 파일
+(`test/exit-fetch.test.js`가 이 둘을 `handleAdminExitedMembers`/
+`handleAdminExitCandidates`와 함께 테스트하고 있었음)로 재확인한
+결과, 실제로는 확정 실행 그룹의 어떤 함수도 호출하지 않는
+`MemberSettingsDO` 순수 읽기/쓰기 핸들러라 "후보 판정/공유 조회"
+그룹(exit-candidates.js) 소속임을 발견, 처음 계획을 수정해 처리했다.
+
+**실사용 import 패턴**: `getAllExitRelevantStatus`/
+`listActiveMembersWithExitInfo`(candidates)가 `listExitRequests`
+(request)를 호출하므로, `listExitRequests`에 export를 추가하고
+`exit-candidates.js`가 이를 다시 import하는 9~11차와 동일한 실사용
+import 패턴을 적용했다. `exit-confirm.js`의 4개 헬퍼(`writeExitResultBox`/
+`revokeSheetAccess`/`getSheetFormulas`)와 `exit-candidates.js`의
+`getPenaltySlotNotesGrid`는 외부에서 전혀 참조되지 않는 각 그룹 전용
+내부 헬퍼임을 grep으로 확인, export 없이 그대로 이동했다.
+
+`exit.js`는 git이 자동으로 `exit-confirm.js`로의 리네임으로 인식할
+만큼 내용이 겹쳤다(실제로는 `git rm` 후 세 파일 신설). `cycle.js`/
+`members.js`가 이미 이 파일의 함수를 실사용 import하고 있어 import
+경로만 `./exit-candidates.js`로 갱신했다. `index.js`의 import 블록을
+3개로 재편하고, 라우팅 테이블 주석 헤더를
+`// --- 퇴실/재납 신청 (exit-request.js) ---` /
+`// --- 퇴실/재납 후보 판정 (exit-candidates.js) ---` /
+`// --- 퇴실/재납 확정 실행 (exit-confirm.js) ---`로 갱신, 기존에
+한 헤더 아래 뭉쳐 있던 후보 판정/확정 실행 라우트를 실제 소속에 맞게
+분리했다.
+
+테스트: `test/exit-requests.test.js`(→exit-request.js),
+`test/exit-fetch.test.js`(→exit-candidates.js),
+`test/exit-confirm.test.js`(→exit-confirm.js)로 import 경로 갱신 —
+세 테스트 파일의 기존 경계가 실제 함수 그룹 경계와 정확히 일치했다.
+
+diff 검증 스크립트로 이동한 23개 함수 + `EXIT_KIND_VALUES` 상수
+전부 원본과 완전 일치 확인. 라우팅 cross-check 스크립트로 모든
+라우트가 정상 resolve됨을 확인(url.pathname 관련 줄의 추가/삭제
+0건도 함께 확인). `npm test` 기준 448개 테스트 전부 통과, 연속
+2회 재실행으로 안정성 재확인.
+
 ## 다음 단계
 
 사이클 판정, 예치금/강제퇴실/정산 판정, 회원 관리/알림·푸시의
@@ -1525,14 +1591,13 @@ OAuth 도메인, 개인 대시보드/랭킹 클러스터, `handleAdminMembersRos
 18차에서 그 감사의 낮은 우선순위 항목까지 전부 마무리했다.
 
 18차 시점엔 "구조적으로 더 손댈 곳은 없다"고 판단했으나, 사용자
-요청으로 "이미 분리된 대형 파일 내부"까지 재조사한 결과 19차·20차
-에서 추가로 두 건의 유효한 분할(personal-status.js→roster-status.js,
-report.js→report-intake/review/penalty)을 발견해 처리했다. 다음은
-동일한 기준(파일 크기가 아니라 "내부 무호출 구조")으로 확인된
-**21차 — exit.js 3분할**(exit-request.js/exit-candidates.js/
-exit-confirm.js)이다.
+요청으로 "이미 분리된 대형 파일 내부"까지 재조사한 결과 19~21차에서
+추가로 세 건의 유효한 분할(personal-status.js→roster-status.js,
+report.js→report-intake/review/penalty, exit.js→exit-request/
+candidates/confirm)을 발견해 전부 처리했다. 세 차수 모두 코드 작업·
+테스트·diff 검증·배포·문서화·커밋까지 완료된 상태다.
 
-이번 리팩터링 전체(1~20차)에서 반복적으로 확인된 원칙들을 다시
+이번 리팩터링 전체(1~21차)에서 반복적으로 확인된 원칙들을 다시
 정리한다: 테스트 없이 구조 변경부터 시작하지 않는다(전 차수),
 이동 직후 원본과 diff 대조하는 절차(8차부터), DO 키 기준 테스트
 격리(10차부터), 최상위 `const` 객체 리터럴의 TDZ 위험 점검(11차
@@ -1549,6 +1614,8 @@ exit-confirm.js)이다.
 "이 함수를 실행하는 테스트가 있는지"를 먼저 확인하는 습관이 구조
 개선 자체보다 더 근본적인 예방책이다. 또한 서브에이전트의 초기
 조사(발췌 경계, 그룹 소속)는 사람이 직접 코드를 재확인하기 전까지
-신뢰하지 않는다(19차·20차에서 실제로 두 차례 경계 오판을 발견).
-향후 이 코드베이스에 새 도메인이나 기능이 추가될 때도 이 원칙들을
-계속 적용한다.
+신뢰하지 않는다(19차·20차·21차 세 번 모두 실제로 경계 오판을
+발견 — 마지막 21차는 handleAdminExitBlacklist/handleAdminBlacklist가
+보고서상 "확정 실행" 그룹으로 분류됐으나 실제로는 "후보 판정" 그룹
+소속이었음). 향후 이 코드베이스에 새 도메인이나 기능이 추가될 때도
+이 원칙들을 계속 적용한다.

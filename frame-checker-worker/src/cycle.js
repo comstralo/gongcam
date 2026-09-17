@@ -33,7 +33,8 @@ import {
 } from "./index.js";
 import { listAllMembers } from "./members.js";
 import { listUnpaidFines } from "./fines.js";
-import { getAllExitRelevantStatus, listExitCandidates } from "./exit.js";
+// 🔧 [구조 개선 21차] exit.js가 exit-candidates.js로 나뉘면서 import 경로만 갱신.
+import { getAllExitRelevantStatus, listExitCandidates } from "./exit-candidates.js";
 import { calcForcedOutDeposit } from "./deposit.js";
 import { getLeaveQueueStub } from "./durable-objects.js";
 import { weekOfForDate, kstDateKey, formatYYMMDD, currentWeekMondayKST, exitWeekResetPassed } from "./date-utils.js";

@@ -5,7 +5,7 @@
 import { env } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { signSession } from "../src/index.js";
-import { handleAdminExitedMembers, handleAdminExitCandidates, handleAdminBlacklist, handleAdminExitBlacklist } from "../src/exit.js";
+import { handleAdminExitedMembers, handleAdminExitCandidates, handleAdminBlacklist, handleAdminExitBlacklist } from "../src/exit-candidates.js";
 import { TEST_SERVICE_ACCOUNT_JSON, oauthTokenResponse } from "./helpers/service-account.js";
 
 afterEach(() => {

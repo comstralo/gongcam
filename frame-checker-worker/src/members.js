@@ -43,7 +43,8 @@ import {
 import { parseGoogleEmail, parseGooroomeeAccount } from "./pure-utils.js";
 import { todayKSTDateString, kstDateOffsetString } from "./date-utils.js";
 import { _cachedCompute, invalidateMemberCache, invalidateMemberSlotCache } from "./cache.js";
-import { listActiveMembersWithExitInfo } from "./exit.js";
+// 🔧 [구조 개선 21차] exit.js가 exit-candidates.js로 나뉘면서 import 경로만 갱신.
+import { listActiveMembersWithExitInfo } from "./exit-candidates.js";
 import { loadNotifyPrefs, getPushDeviceIndex } from "./notify.js";
 
 // 🔧 [구조 개선 16차, 2026-09-17] handleAdminMembersRoster(회원 상세
