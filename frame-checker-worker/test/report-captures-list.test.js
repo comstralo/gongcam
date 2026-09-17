@@ -15,8 +15,8 @@ import {
   handleCaptureTargetRespond,
   handleAdminCaptureVote,
   handleAdminCaptureFile,
-  handleReportStatus,
-} from "../src/report.js";
+} from "../src/report-review.js";
+import { handleReportStatus } from "../src/report-penalty.js";
 import { TEST_SERVICE_ACCOUNT_JSON, oauthTokenResponse } from "./helpers/service-account.js";
 
 afterEach(() => {

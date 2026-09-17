@@ -47,9 +47,9 @@ npm run test:watch  # watch 모드
 쓰이는 것과 정확히 같은 모듈 인스턴스를 받는다(공식 문서 명시) —
 별도 번들링/변환 없이 `export`만 붙이면 바로 유닛 테스트할 수 있다.
 
-## 현재 유효한 잔류 근거 요약 (18차 기준)
+## 현재 유효한 잔류 근거 요약 (20차 기준)
 
-> 아래는 1~18차 각 섹션에 흩어져 있는 "이 함수는 index.js에 남긴다"
+> 아래는 1~20차 각 섹션에 흩어져 있는 "이 함수는 index.js에 남긴다"
 > 는 선언들의 **최신 스냅샷**이다. 각 차수 섹션 본문은 그 시점의
 > 역사적 기록으로 그대로 보존하고(예: 10차의 "notify.js는 leaf
 > 도메인" 서술은 16차 이후 더 이상 사실이 아니지만 본문은 갱신 노트만
@@ -57,14 +57,17 @@ npm run test:watch  # watch 모드
 > 표만 보면 된다. 17차 구조 감사가 "차수 섹션을 순서대로 읽으면 낡은
 > 근거를 최신으로 오인하기 쉽다"고 지적해 추가했다.
 
-**최종 파일 구조**(18차 기준, `frame-checker-worker/src/`):
+**최종 파일 구조**(20차 기준, `frame-checker-worker/src/`):
 
 | 파일 | 줄 수 | 도메인 |
 |---|---:|---|
-| `index.js` | 2,054 | 엔트리포인트 — 세션/인증 프리미티브, 시트 API 저수준 유틸, 사용량 계측, DO stub, 관리자 위임 OAuth 저수준 유틸, 목표시간 예약, 참여자 명단, 라우팅 테이블(`export default { fetch, scheduled }`) |
-| `report.js` | 1,871 | 제보/캡처(접수·쿨다운·검토·투표·벌점/상점 반영) |
-| `personal-status.js` | 1,313 | 개인 대시보드 + 랭킹/정산 |
-| `exit.js` | 1,160 | 퇴실/재납 신청·확정, 강제퇴실 판정 |
+| `index.js` | 2,067 | 엔트리포인트 — 세션/인증 프리미티브, 시트 API 저수준 유틸, 사용량 계측, DO stub, 관리자 위임 OAuth 저수준 유틸, 목표시간 예약, 참여자 명단, 라우팅 테이블(`export default { fetch, scheduled }`) |
+| `personal-status.js` | 1,043 | 개인 대시보드(`handleStatus`/`handleAdminMemberStatus`) |
+| `report-penalty.js` | 845 | 제보/캡처 — 벌점/제보상점 반영(승인/취소/삭제/반려취소) |
+| `exit.js` | 1,160 | 퇴실/재납 신청·확정, 강제퇴실 판정(21차 분할 예정) |
+| `report-review.js` | 663 | 제보/캡처 — 캡처 검토/목록/투표 |
+| `report-intake.js` | 389 | 제보/캡처 — 접수/쿨다운 |
+| `roster-status.js` | 310 | 랭킹/로스터/정산(19차에서 personal-status.js에서 분리) |
 | `durable-objects.js` | 913 | DO 클래스 8개 |
 | `leave.js` | 863 | 사유반휴/일반반휴 |
 | `notify.js` | 663 | 알림/푸시 |
@@ -103,11 +106,18 @@ export + 최소 스모크 테스트 확보): `handleMyRole`,
 `handleBotInvalidateCache`, `handlePutParticipants`/
 `handleGetParticipants`.
 
-**유일한 비-허브 순환**: `members.js ↔ notify.js`(16차에서
-`handleAdminMembersRoster` 이동 때 생김) — `members.js`가
-`notify.js`의 `loadNotifyPrefs`/`getPushDeviceIndex`를,
-`notify.js`가 `members.js`의 `listAllMembers`를 실사용 import한다.
-둘 다 함수 선언(호이스팅)이라 TDZ 위험 없음.
+**비-허브 순환**(index.js를 거치지 않는 파일 간 직접 순환):
+- `members.js ↔ notify.js`(16차에서 `handleAdminMembersRoster` 이동
+  때 생김) — `members.js`가 `notify.js`의 `loadNotifyPrefs`/
+  `getPushDeviceIndex`를, `notify.js`가 `members.js`의
+  `listAllMembers`를 실사용 import한다.
+- `personal-status.js ↔ roster-status.js`(19차에서 분리 때 생김) —
+  `roster-status.js`가 `personal-status.js`의
+  `parseWeekOfToMonday`/`currentWeekRangeYYMMDD`를, `personal-status.js`
+  (의 `getMeritRank`)가 `roster-status.js`의 `buildRosterStatus`를
+  실사용 import한다.
+
+둘 다 전부 함수 선언(호이스팅)이라 TDZ 위험 없음.
 
 ## 진행 상황
 
@@ -1400,6 +1410,110 @@ handleAdminFinesAdminForcedCount 이동으로 줄어든 만큼 주석 추가로
 테스트를 제외한 순수 이전이라 개수 변화 없음), 연속 실행으로
 안정성 확인.
 
+## 구조 개선 19차 — 개인 대시보드/랭킹 클러스터에서 roster-status.js 분리 (2026-09-17)
+
+18차에서 "구조적으로 더 손댈 곳은 없다"고 판단했으나, 사용자 요청으로
+"이미 분리된 대형 파일 내부"를 다시 조사한 결과 `personal-status.js`
+(15차 신설, 1,313줄)가 실제로는 두 개의 서로 무호출인 클러스터를
+품고 있음을 발견했다 — 개인 대시보드(`handleStatus`,
+`handleAdminMemberStatus`, `buildPersonalStatus`)와 랭킹/로스터/
+정산(`buildRosterStatus`, `handleRosterStatus`,
+`handleAdminPrizeSettle`)이 서로를 전혀 호출하지 않는다는 사실을
+함수 그룹별 텍스트 추출 + 정규식 상호 참조 카운트 스크립트로 실측
+확인했다. 크기가 아니라 "내부 무호출 구조"가 분리 근거라는 원칙을
+이번에 처음 명시적으로 세웠다(20차·21차에도 동일하게 적용).
+
+**발췌 이동 시 경계 오판 발견**: 최초 조사(서브에이전트) 보고서는
+로스터 클러스터를 "1004-1313행" 단일 블록으로 보고했으나, 실제로는
+`handleAdminMemberStatus`(1197-1228행, 개인 대시보드 도메인)가
+로스터 클러스터 중간에 끼어 있었다. 직접 코드를 재확인해 발견하고
+정밀 발췌로 처리했다.
+
+`src/roster-status.js`(310줄) 신설: `ROSTER_ROW_START`,
+`ROSTER_ROW_END`, `buildRosterStatus`(export), `_computeRosterStatus`,
+`handleRosterStatus`(export), `handleAdminPrizeSettle`(export).
+`personal-status.js`는 1,313→1,043줄로 축소, `handleAdminMemberStatus`
+는 그대로 유지(개인 대시보드 도메인으로 확인됐으므로).
+
+**실사용 import 버그**: `roster-status.js`가 `handleRosterStatus`
+내부에서 `personal-status.js`의 `currentWeekRangeYYMMDD`를 쓰는데
+처음엔 export를 빠뜨려 테스트 실행 시 "전체 대시보드 조회 실패:
+currentWeekRangeYYMMDD is not defined" 에러로 즉시 발견, export
+추가 및 import 목록에 추가해 해결. `parseWeekOfToMonday`도 함께
+export 추가. `buildRosterStatus`는 `personal-status.js`에 남은
+`getMeritRank`가 실사용하므로 export 추가 후 `roster-status.js`가
+이를 다시 import하는 9~11차와 동일한 실사용 import 패턴 적용.
+
+미사용이 된 import 3개(`resolveMemberNumber`,
+`getSheetUnformattedValue`, `batchGetSheetValues`)를
+`personal-status.js`에서 제거.
+
+테스트: `test/personal-status.test.js`에서 `handleRosterStatus`/
+`handleAdminPrizeSettle` 관련 describe 블록 2개(4개 테스트)를
+`test/roster-status.test.js`(신설)로 이전, `stubRosterStatusFetch`
+헬퍼로 mock 구성.
+
+diff 검증으로 이동한 모든 함수가 원본과 완전 일치함을 확인.
+`npm test` 기준 448개 테스트 전부 통과.
+
+## 구조 개선 20차 — report.js를 report-intake/review/penalty 3파일로 분할 (2026-09-17)
+
+12차에서 신설한 `report.js`(1,871줄)도 19차와 동일한 방식으로
+재조사한 결과 세 개의 서로 무호출인 클러스터로 나뉨을 확인했다:
+접수/쿨다운, 캡처 검토/목록/투표, 벌점/제보상점 반영. 함수 그룹별
+텍스트 추출 + 상호 참조 카운트 스크립트로 실측 검증.
+
+- `src/report-intake.js`(389줄) — 접수/쿨다운:
+  `getReportQueueStub`, `checkReportCooldown`, `recordReportCooldown`,
+  `markReportCaptureDone`, `listReportCooldowns`, `handleReport`,
+  `handleListActiveCooldowns`, `handleReportCaptureDone`,
+  `handleListReports`, `handleRequeueReport` 등.
+- `src/report-review.js`(663줄) — 캡처 검토/목록/투표:
+  `getReportVoteStub`, `requireAdminOrCoReviewer`,
+  `attachNextOccurrence`, `attachDeferralInfo`, `filterItemsByCycle`,
+  `applyAutoRecognitionForExpired`, `handleAdminCapturesList`,
+  `handleMyCaptures`, `handleMyCaptureDelete`, `handleMyOutputPen`,
+  `handleCaptureTargetRespond`, `handleAdminCaptureVote`,
+  `handleAdminCaptureFile` 등.
+- `src/report-penalty.js`(845줄) — 벌점/제보상점 반영:
+  `applyTimeDeduction`, `applyOutputPenalty`, `applyReportMerit`,
+  `cancelTimeDeduction`, `cancelOutputPenalty`, `cancelReportMerit`,
+  `handleAdminCaptureCancel`, `handleAdminCaptureCancelMerit`,
+  `handleAdminCaptureDecide`, `handleAdminCaptureDelete`,
+  `handleAdminCaptureRevert`, `handleReportStatus` 등.
+
+**발췌 경계 재확인**: `requireAdminOrCoReviewer`는 초기 가정("접수
+그룹")과 달리 실제로는 "검토 그룹"에서만 쓰임을 직접 코드 확인으로
+발견, review 파일로 배치했다.
+
+**실사용 import 패턴**: `applyAutoRecognitionForExpired`는
+`index.js`의 `scheduled`(cron 핸들러)가 실사용하므로 재export가
+아니라 `index.js`가 `report-review.js`에서 다시 import하는 방식을
+적용(9~11차와 동일 패턴).
+
+`report.js`는 `git rm`으로 완전히 삭제. `index.js`의 import 블록을
+3개로 재편하고, 라우팅 테이블 주석 헤더를
+`// --- Report/Capture 접수·쿨다운 (report-intake.js) ---` /
+`// --- Report/Capture 캡처 검토/투표 (report-review.js) ---` /
+`// --- Report/Capture 벌점/상점 반영 (report-penalty.js) ---`로
+갱신(19차의 roster-status.js 관련 주석도 함께 정정). 순수
+if-chain이라 순서 무관하므로 `handleAdminCaptureVote`를 검토
+그룹 끝으로 재배치해 도메인 그룹핑 정확도를 높였다.
+
+테스트: `test/report-submit.test.js`(→report-intake.js),
+`test/report-decide.test.js`(→report-penalty.js),
+`test/report-captures-list.test.js`(→7개는 report-review.js,
+`handleReportStatus` 1개만 report-penalty.js)로 import 경로 갱신.
+
+diff 검증 스크립트로 이동한 45개 함수(처음 파악한 44개 +
+`weekOfToMondayEpochKST` 신규 발견) + 13개 상수 전부 원본과 완전
+일치 확인. 라우팅 cross-check 스크립트로 모든 라우트가 정상
+resolve됨을 확인. `npm test` 기준 448개 테스트 전부 통과, 연속
+2회 재실행으로 안정성 재확인(직전 1회 workerd 풀 teardown 경합으로
+추정되는 flaky 실패가 있었으나 — 15차·20차에서 반복 확인된 코스메틱
+노이즈 패턴과 일치 — 즉시 재실행 시 448/448 통과, 총 6/7회(85%)
+성공률로 코드 결함이 아님을 확인).
+
 ## 다음 단계
 
 사이클 판정, 예치금/강제퇴실/정산 판정, 회원 관리/알림·푸시의
@@ -1408,25 +1522,33 @@ handleAdminFinesAdminForcedCount 이동으로 줄어든 만큼 주석 추가로
 일반반휴 도메인, 제보/캡처 도메인, 봇 상태/사용량 도메인, 로그인/
 OAuth 도메인, 개인 대시보드/랭킹 클러스터, `handleAdminMembersRoster`
 까지 총 16차에 걸쳐 분리하고, 17차에서 전체 구조 감사와 사후 정리를,
-18차에서 그 감사의 낮은 우선순위 항목까지 전부 마무리했다. 남은
-것은 "현재 유효한 잔류 근거 요약"(위 표 참고)이 정리한 대로 전부
-여러 도메인이 공유하는 진짜 범용 유틸이거나, export되고 최소
-테스트도 갖춘 작은 독립 핸들러들뿐이다. 이 시점에서 구조적으로
-더 손댈 곳은 없다고 판단한다 — 추가 분할의 한계효용보다 "사소한
-것까지 옮기는 관성"의 위험이 더 크다.
+18차에서 그 감사의 낮은 우선순위 항목까지 전부 마무리했다.
 
-이번 리팩터링 전체(1~18차)에서 반복적으로 확인된 원칙들을 다시
+18차 시점엔 "구조적으로 더 손댈 곳은 없다"고 판단했으나, 사용자
+요청으로 "이미 분리된 대형 파일 내부"까지 재조사한 결과 19차·20차
+에서 추가로 두 건의 유효한 분할(personal-status.js→roster-status.js,
+report.js→report-intake/review/penalty)을 발견해 처리했다. 다음은
+동일한 기준(파일 크기가 아니라 "내부 무호출 구조")으로 확인된
+**21차 — exit.js 3분할**(exit-request.js/exit-candidates.js/
+exit-confirm.js)이다.
+
+이번 리팩터링 전체(1~20차)에서 반복적으로 확인된 원칙들을 다시
 정리한다: 테스트 없이 구조 변경부터 시작하지 않는다(전 차수),
 이동 직후 원본과 diff 대조하는 절차(8차부터), DO 키 기준 테스트
 격리(10차부터), 최상위 `const` 객체 리터럴의 TDZ 위험 점검(11차
 부터), 이동 후 라우팅 테이블 전체를 grep해 실수로 삭제된 함수가
 없는지 교차 검증(13차부터), 이동한 코드가 실제로 호출하는 모든
 함수가 import됐는지 `npm test`로 최종 확인(15차부터), 새 파일은
-작성 직후 `git add`로 즉시 스테이징(15차부터). **가장 중요한
-교훈**(9차·16차·17차 세 번에 걸쳐 반복 확인): "이동 대상인가
-잔류 대상인가"와 무관하게, 어떤 함수든 그 경로를 실제로 실행하는
-테스트가 없으면 import 누락 같은 사소한 실수가 무기한 방치될 수
-있다 — "이 함수를 옮길지 말지"보다 "이 함수를 실행하는 테스트가
-있는지"를 먼저 확인하는 습관이 구조 개선 자체보다 더 근본적인
-예방책이다. 향후 이 코드베이스에 새 도메인이나 기능이 추가될
-때도 이 원칙들을 계속 적용한다.
+작성 직후 `git add`로 즉시 스테이징(15차부터), 파일 크기가 아니라
+"내부 무호출 구조"가 분리 가능성의 유일한 신뢰할 수 있는 기준
+(19차부터, 함수 그룹별 텍스트 추출 + 상호 참조 카운트 스크립트로
+실측). **가장 중요한 교훈**(9차·16차·17차·19차·20차 다섯 번에
+걸쳐 반복 확인): "이동 대상인가 잔류 대상인가"와 무관하게, 어떤
+함수든 그 경로를 실제로 실행하는 테스트가 없으면 import 누락 같은
+사소한 실수가 무기한 방치될 수 있다 — "이 함수를 옮길지 말지"보다
+"이 함수를 실행하는 테스트가 있는지"를 먼저 확인하는 습관이 구조
+개선 자체보다 더 근본적인 예방책이다. 또한 서브에이전트의 초기
+조사(발췌 경계, 그룹 소속)는 사람이 직접 코드를 재확인하기 전까지
+신뢰하지 않는다(19차·20차에서 실제로 두 차례 경계 오판을 발견).
+향후 이 코드베이스에 새 도메인이나 기능이 추가될 때도 이 원칙들을
+계속 적용한다.

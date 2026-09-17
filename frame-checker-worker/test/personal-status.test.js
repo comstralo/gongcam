@@ -1,18 +1,15 @@
-// 개인 대시보드/랭킹 클러스터(handleStatus, handleAdminMemberStatus,
-// handleRosterStatus, handleAdminPrizeSettle) 통합 테스트. buildPersonalStatus/
-// buildRosterStatus 전체를 실제로 태우는 무거운 mock 시나리오라
-// test/exit-confirm.test.js의 stubForcedExitFetch 패턴을 그대로 재사용한다.
-// LeaveQueue DO(listQueuedReasonLeaveDays/exit/get)는 실제 workerd DO를
-// 그대로 쓴다(mock 불필요, 기본값이 빈 배열/null이라 안전).
+// 개인 대시보드 클러스터(handleStatus, handleAdminMemberStatus) 통합
+// 테스트. buildPersonalStatus 전체를 실제로 태우는 무거운 mock
+// 시나리오라 test/exit-confirm.test.js의 stubForcedExitFetch 패턴을
+// 그대로 재사용한다. LeaveQueue DO(listQueuedReasonLeaveDays/exit/get)
+// 는 실제 workerd DO를 그대로 쓴다(mock 불필요, 기본값이 빈 배열/null
+// 이라 안전). 🔧 [구조 개선 19차, 2026-09-17] handleRosterStatus/
+// handleAdminPrizeSettle은 src/roster-status.js로 옮겨가면서
+// test/roster-status.test.js로 함께 분리했다(docs/TESTING.md 참고).
 import { env } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { signSession } from "../src/index.js";
-import {
-  handleStatus,
-  handleAdminMemberStatus,
-  handleRosterStatus,
-  handleAdminPrizeSettle,
-} from "../src/personal-status.js";
+import { handleStatus, handleAdminMemberStatus } from "../src/personal-status.js";
 import { TEST_SERVICE_ACCOUNT_JSON, oauthTokenResponse } from "./helpers/service-account.js";
 
 afterEach(() => {
@@ -203,47 +200,5 @@ describe("handleAdminMemberStatus", () => {
       new URL("https://worker/x")
     );
     expect(res.status).toBe(404);
-  });
-});
-
-describe("handleRosterStatus", () => {
-  it("로그인하지 않으면 401을 반환한다", async () => {
-    const testEnv = makeTestEnv();
-    const req = makeRequest("https://worker/roster-status");
-
-    const res = await handleRosterStatus(req, testEnv, "https://example.com", new URL("https://worker/roster-status"));
-    expect(res.status).toBe(401);
-  });
-
-  it("로그인한 회원이면 200과 랭킹 정보를 반환한다", async () => {
-    const testEnv = makeTestEnv({ GOOGLE_SHEET_FILE_ID: "personal-status-roster-200" });
-    const token = await makeMemberToken();
-    stubPersonalStatusFetch({ members: [{ number: 1, name: "가", email: "member@test.com" }] });
-    const req = makeRequest("https://worker/roster-status", { token });
-
-    const res = await handleRosterStatus(req, testEnv, "https://example.com", new URL("https://worker/roster-status"));
-    const body = await res.json();
-    expect(res.status, JSON.stringify(body)).toBe(200);
-    expect(Array.isArray(body.members)).toBe(true);
-  });
-});
-
-describe("handleAdminPrizeSettle", () => {
-  it("관리자가 아니면 403을 반환한다", async () => {
-    const testEnv = makeTestEnv();
-    const token = await makeMemberToken();
-    const req = makeRequest("https://worker/admin/prize-settle", { token, method: "POST", body: { cycle: "x" } });
-
-    const res = await handleAdminPrizeSettle(req, testEnv, "https://example.com");
-    expect(res.status).toBe(403);
-  });
-
-  it("cycle 파라미터가 없으면 400을 반환한다", async () => {
-    const testEnv = makeTestEnv();
-    const token = await makeAdminToken();
-    const req = makeRequest("https://worker/admin/prize-settle", { token, method: "POST", body: {} });
-
-    const res = await handleAdminPrizeSettle(req, testEnv, "https://example.com");
-    expect(res.status).toBe(400);
   });
 });

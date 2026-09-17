@@ -14,7 +14,7 @@ import {
   handleAdminCaptureCancelMerit,
   handleAdminCaptureDelete,
   handleAdminCaptureRevert,
-} from "../src/report.js";
+} from "../src/report-penalty.js";
 import { TEST_SERVICE_ACCOUNT_JSON, oauthTokenResponse } from "./helpers/service-account.js";
 
 afterEach(() => {

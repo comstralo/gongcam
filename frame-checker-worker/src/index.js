@@ -265,30 +265,38 @@ import {
 } from "./leave.js";
 
 // 🔧 [구조 개선 12차, 2026-09-13] 제보/캡처 도메인을 src/report.js로
-// 옮겼다(docs/TESTING.md 참고). applyAutoRecognitionForExpired는
+// 옮겼다(docs/TESTING.md 참고).
+// 🔧 [구조 개선 20차, 2026-09-17] report.js를 다시 접수/검토/벌점반영
+// 세 파일로 나눴다(17차 구조 감사가 놓친 "이미 분리된 대형 파일 내부"를
+// 재조사한 결과) — 라우팅 테이블에서 각 파일 함수를 그대로 호출하므로
+// import 출처만 바뀌었다. applyAutoRecognitionForExpired는
 // scheduled(cron 핸들러, 이 파일 잔류)가 실사용하므로 재export가 아니라
-// 9~11차와 동일한 실사용 import 패턴으로 가져온다.
+// 9~11차와 동일한 실사용 import 패턴으로 report-review.js에서 가져온다.
 import {
   handleReport,
   handleListActiveCooldowns,
   handleReportCaptureDone,
   handleListReports,
   handleRequeueReport,
-  handleReportStatus,
+} from "./report-intake.js";
+import {
   handleAdminCapturesList,
   handleMyCaptures,
   handleMyCaptureDelete,
   handleMyOutputPen,
   handleCaptureTargetRespond,
   handleAdminCaptureFile,
+  handleAdminCaptureVote,
+  applyAutoRecognitionForExpired,
+} from "./report-review.js";
+import {
+  handleReportStatus,
   handleAdminCaptureDecide,
   handleAdminCaptureCancel,
   handleAdminCaptureCancelMerit,
   handleAdminCaptureDelete,
   handleAdminCaptureRevert,
-  handleAdminCaptureVote,
-  applyAutoRecognitionForExpired,
-} from "./report.js";
+} from "./report-penalty.js";
 
 // 🔧 [구조 개선 13차, 2026-09-13] 봇 상태/사용량 도메인을 src/bot.js로
 // 옮겼다(docs/TESTING.md 참고). 이 6개 함수는 모두 라우팅 테이블에서만
@@ -326,12 +334,15 @@ import {
 import {
   handleStatus,
   handleAdminMemberStatus,
-  handleRosterStatus,
-  handleAdminPrizeSettle,
   buildPersonalStatus,
   GOAL_TYPE_MULTIPLIER,
 } from "./personal-status.js";
 export { buildPersonalStatus };
+
+// 🔧 [구조 개선 19차, 2026-09-17] 랭킹/로스터/정산 클러스터를
+// src/roster-status.js로 옮겼다(docs/TESTING.md 참고) — 라우팅
+// 테이블에서만 호출되는 단순 연결이라 재export는 불필요하다.
+import { handleRosterStatus, handleAdminPrizeSettle } from "./roster-status.js";
 
 export function corsHeaders(origin) {
   return {
@@ -1732,7 +1743,7 @@ export default {
         return await handleDevLogin(req, env, origin);
       }
 
-      // --- Report/Capture (report.js) ---
+      // --- Report/Capture 접수·쿨다운 (report-intake.js) ---
       if (url.pathname === "/report" && req.method === "POST") {
         return await handleReport(req, env, origin);
       }
@@ -1757,7 +1768,7 @@ export default {
         return await handleInternalCycleBoundary(req, env, origin);
       }
       if (url.pathname === "/report-status" && req.method === "GET") {
-        // report.js — 봇 등록 흐름 근처에 있지만 제보 도메인.
+        // report-penalty.js — 봇 등록 흐름 근처에 있지만 제보 도메인.
         return await handleReportStatus(req, env, origin, url);
       }
       if (url.pathname === "/bot/register-url" && req.method === "POST") {
@@ -1780,7 +1791,7 @@ export default {
         return await handleAdminBotCommand(req, env, origin);
       }
 
-      // --- Report/Capture 관리자 처리 (report.js) ---
+      // --- Report/Capture 캡처 검토/투표 (report-review.js) ---
       if (url.pathname === "/admin/captures" && req.method === "GET") {
         return await handleAdminCapturesList(req, env, origin, url);
       }
@@ -1799,6 +1810,11 @@ export default {
       if (url.pathname === "/admin/captures/file" && req.method === "GET") {
         return await handleAdminCaptureFile(req, env, origin, url);
       }
+      if (url.pathname === "/admin/captures/vote" && req.method === "POST") {
+        return await handleAdminCaptureVote(req, env, origin);
+      }
+
+      // --- Report/Capture 벌점/상점 반영 (report-penalty.js) ---
       if (url.pathname === "/admin/captures/decide" && req.method === "POST") {
         return await handleAdminCaptureDecide(req, env, origin);
       }
@@ -1813,9 +1829,6 @@ export default {
       }
       if (url.pathname === "/admin/captures/revert" && req.method === "POST") {
         return await handleAdminCaptureRevert(req, env, origin);
-      }
-      if (url.pathname === "/admin/captures/vote" && req.method === "POST") {
-        return await handleAdminCaptureVote(req, env, origin);
       }
 
       // --- 참여자 명단(index.js, ParticipantsRoster DO) ---
@@ -1875,7 +1888,7 @@ export default {
         return await handleAdminLeaveProofDecide(req, env, origin);
       }
 
-      // --- 개인 대시보드/랭킹 (personal-status.js, 계속) ---
+      // --- 랭킹/로스터 (roster-status.js) ---
       if (url.pathname === "/roster-status" && req.method === "GET") {
         return await handleRosterStatus(req, env, origin, url);
       }
@@ -1945,7 +1958,7 @@ export default {
         return await handleAdminFinesAdminForcedCount(req, env, origin);
       }
 
-      // --- 개인 대시보드/랭킹 (personal-status.js, 계속: 상금 정산) ---
+      // --- 랭킹/로스터 (roster-status.js, 계속: 상금 정산) ---
       if (url.pathname === "/admin/prize/settle" && req.method === "POST") {
         return await handleAdminPrizeSettle(req, env, origin);
       }

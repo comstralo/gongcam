@@ -7,7 +7,7 @@
 import { env } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { signSession } from "../src/index.js";
-import { handleReport, handleListActiveCooldowns, handleReportCaptureDone, handleListReports, handleRequeueReport } from "../src/report.js";
+import { handleReport, handleListActiveCooldowns, handleReportCaptureDone, handleListReports, handleRequeueReport } from "../src/report-intake.js";
 import { TEST_SERVICE_ACCOUNT_JSON, oauthTokenResponse } from "./helpers/service-account.js";
 
 afterEach(() => {
