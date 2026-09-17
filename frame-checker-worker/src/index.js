@@ -46,12 +46,17 @@ export {
 // 분리 때 cache.js로 옮겨지며 정의되지 않은 심볼을 참조하는 실제
 // 프로덕션 버그가 됐다(6차 fines.js 통합 테스트로 발견) — 이제
 // invalidatePersonalStatusCache 자체도 cache.js로 옮기고 여기서 import한다.
+// 🔧 [버그 수정, 17차] MEMBER_CACHE_GROUPS도 마찬가지로 cache.js에
+// export 없이 정의만 되어 있었는데 handleBotInvalidateCache가 참조하고
+// 있어, 이 엔드포인트를 실제로 호출하면 ReferenceError로 500이 나는
+// 프로덕션 버그였다 — export 추가 + import로 해결.
 import {
   _cachedCompute,
   invalidateMemberCache,
   invalidateMemberSlotCache,
   invalidatePersonalStatusCache,
   KV_CACHE_PREFIX,
+  MEMBER_CACHE_GROUPS,
 } from "./cache.js";
 
 // 🔧 [구조 개선, 2026-09-13] 순수 날짜/시간 유틸은 src/date-utils.js로
@@ -309,10 +314,10 @@ import {
 // 필요하다(3차 deposit.js와 동일한 패턴) — personal-status.js가 이 파일의
 // parseWon/safeNumber/ROW_*류 상수를 가져가므로 순환이지만, 재export
 // 목적뿐이거나(buildPersonalStatus) 함수 선언(호이스팅되어 안전)이라
-// TDZ 위험이 없다. GOAL_TYPE_MULTIPLIER는 handleGetGoalSchedule/
-// handleSetGoalSchedule(이 파일 잔류)의 GOAL_TIME_VALID_VALUES가 실사용해
-// 재export한다 — 순수 객체 리터럴이라 TDZ 위험 없음(11차 교훈: 다른
-// 모듈의 값을 즉시 참조하는 경우에만 위험한데, 이건 그런 참조가 없다).
+// TDZ 위험이 없다. GOAL_TYPE_MULTIPLIER는 이 파일의 GOAL_TIME_VALID_VALUES가
+// 실사용 import한다(재export는 아무도 안 써서 17차에서 제거 — 순수
+// 객체 리터럴이라 TDZ 위험 없음, 11차 교훈: 다른 모듈의 값을 즉시
+// 참조하는 경우에만 위험한데 이건 그런 참조가 없다).
 import {
   handleStatus,
   handleAdminMemberStatus,
@@ -321,7 +326,7 @@ import {
   buildPersonalStatus,
   GOAL_TYPE_MULTIPLIER,
 } from "./personal-status.js";
-export { buildPersonalStatus, GOAL_TYPE_MULTIPLIER };
+export { buildPersonalStatus };
 
 export function corsHeaders(origin) {
   return {
@@ -1284,7 +1289,7 @@ export function buildSlotHistory(slotValues, slotNotes, labelPrefix) {
 // 확인한다 — 관리자 여부와 무관하게 아무 로그인 세션이나 호출 가능(부스터디장
 // 여부만 판정하는 가벼운 자기 조회). 프론트가 앱 진입 시 한 번 호출해
 // "관리자" 탭·제한된 검토 화면을 보여줄지 판단하는 데 쓴다.
-async function handleMyRole(req, env, origin) {
+export async function handleMyRole(req, env, origin) {
   const authHeader = req.headers.get("Authorization") || "";
   const token = authHeader.replace(/^Bearer\s+/i, "");
   const session = await verifySession(token, env.SESSION_SECRET);
@@ -1308,7 +1313,15 @@ async function handleMyRole(req, env, origin) {
 // 편집 가능하도록 이미 보호되어 있어(회원 본인은 월요일 아침에만 열림),
 // 워커는 서비스 계정 권한으로 그 시간 제약과 무관하게 언제든 예약을 넣을 수 있다.
 // 현재 주간 값(O3)은 이 트리거가 실행되기 전까지 바뀌지 않으므로 규정대로 불변이다.
-const GOAL_TIME_VALID_VALUES = Object.keys(GOAL_TYPE_MULTIPLIER);
+// 🔧 [17차, TDZ 방어] Object.keys(GOAL_TYPE_MULTIPLIER)를 모듈 최상위에서
+// 즉시 평가하지 않고 함수로 감싼다 — 지금은 import 순서상 우연히
+// 안전하지만(personal-status.js가 이 시점 이전에 완전히 평가됨), 11차에서
+// 실제로 겪은 TDZ 버그(LEAVE_TYPE_CONFIG)와 동일한 모양이라 import 순서가
+// 바뀌면 재발할 수 있다. 함수 안에서 호출 시점에만 평가하면 순서와 무관하게
+// 항상 안전하다.
+function getGoalTimeValidValues() {
+  return Object.keys(GOAL_TYPE_MULTIPLIER);
+}
 
 export async function resolveMemberNumber(env, accessToken, session) {
   if (session.memberNumber) return session.memberNumber;
@@ -1317,7 +1330,7 @@ export async function resolveMemberNumber(env, accessToken, session) {
   return member.number;
 }
 
-async function handleGetGoalSchedule(req, env, origin) {
+export async function handleGetGoalSchedule(req, env, origin) {
   const authHeader = req.headers.get("Authorization") || "";
   const token = authHeader.replace(/^Bearer\s+/i, "");
   const session = await verifySession(token, env.SESSION_SECRET);
@@ -1342,22 +1355,23 @@ async function handleGetGoalSchedule(req, env, origin) {
     } catch {
       raw = "";
     }
-    const scheduled = GOAL_TIME_VALID_VALUES.includes(raw) ? raw : null;
+    const validValues = getGoalTimeValidValues();
+    const scheduled = validValues.includes(raw) ? raw : null;
 
-    return json({ scheduled, validValues: GOAL_TIME_VALID_VALUES }, 200, origin);
+    return json({ scheduled, validValues }, 200, origin);
   } catch (err) {
     return json({ error: "예약 조회 실패: " + err.message }, 500, origin);
   }
 }
 
-async function handleSetGoalSchedule(req, env, origin) {
+export async function handleSetGoalSchedule(req, env, origin) {
   const authHeader = req.headers.get("Authorization") || "";
   const token = authHeader.replace(/^Bearer\s+/i, "");
   const session = await verifySession(token, env.SESSION_SECRET);
   if (!session) return json({ error: "로그인이 만료되었습니다. 다시 로그인해주세요." }, 401, origin);
 
   const { goalType } = await req.json();
-  if (!GOAL_TIME_VALID_VALUES.includes(goalType)) {
+  if (!getGoalTimeValidValues().includes(goalType)) {
     return json({ error: "올바른 목표시간 값이 아닙니다." }, 400, origin);
   }
 
@@ -1436,7 +1450,7 @@ const FINE_UNPAID_ADMIN_FORCED_REASON_LABEL = `직권 사유: ${FINE_UNPAID_ADMI
 // 이었으면 각 요일 그룹에 1건씩 더해진다(각 요일 그룹의 "미납" 목록에
 // 실제로 그 사람이 있었으므로).
 // 🔧 [KV → DO 이전, 2026-09-12] §49 — /exit/list 1회 호출로 대체.
-async function handleAdminFinesAdminForcedCount(req, env, origin) {
+export async function handleAdminFinesAdminForcedCount(req, env, origin) {
   const admin = await requireAdmin(req, env);
   if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
 
@@ -1482,7 +1496,7 @@ async function handleAdminFinesAdminForcedCount(req, env, origin) {
 // 그대로 전달하고(생략 시 전체 무효화), memberNumbers가 있으면 그 각각의
 // personalStatus: 캐시도 함께 지운다(개인 탭 값 — 목표시간/반휴 등은 이
 // 그룹 밖이라 별도 처리 필요).
-async function handleBotInvalidateCache(req, env, origin) {
+export async function handleBotInvalidateCache(req, env, origin) {
   const botSecret = req.headers.get("X-Bot-Secret");
   if (!botSecret || botSecret !== env.BOT_SECRET) {
     return json({ error: "unauthorized" }, 401, origin);
@@ -1651,7 +1665,7 @@ export function getRosterStub(env) {
   return env.PARTICIPANTS_DO.get(id);
 }
 
-async function handlePutParticipants(req, env, origin) {
+export async function handlePutParticipants(req, env, origin) {
   const botSecret = req.headers.get("X-Bot-Secret");
   if (!botSecret || botSecret !== env.BOT_SECRET) {
     return json({ error: "unauthorized" }, 401, origin);
@@ -1666,7 +1680,7 @@ async function handlePutParticipants(req, env, origin) {
   return json(data, 200, origin);
 }
 
-async function handleGetParticipants(req, env, origin) {
+export async function handleGetParticipants(req, env, origin) {
   const authHeader = req.headers.get("Authorization") || "";
   const token = authHeader.replace(/^Bearer\s+/i, "");
   const session = await verifySession(token, env.SESSION_SECRET);
@@ -1689,34 +1703,6 @@ export async function requireAdmin(req, env) {
   if (!session) return null;
   if (session.email !== (env.ADMIN_EMAIL || "").toLowerCase()) return null;
   return session;
-}
-
-// 🔧 [일회성 마이그레이션] 집계!D20(총 모금액) 수식을 고친다. 기존 수식
-// `=D21+D22+D23+IF(G4+H4>=1,D24,0)`은 "스터디장(1번 회원)이 이번 주간
-// 페널티를 1회 이상 받았으면 D24(퇴실/재납 예치금)를 벌금에 귀속시킨다"는
-// 의도였는데, G4/H4가 더 이상 "이번 주간"이 아니라 전체 누적치로 바뀌어
-// 조건이 항상 참이 되어버렸다. "이번 주간에 발생했는지"는 이제 '데이터'
-// 시트의 슬롯 값(F4:M4, 발생 시점의 페널티 사이클 번호)이 현재 사이클
-// (집계!D25)과 같은지로 판단해야 한다 — 사유반휴/총상점 수식이 이미 같은
-// 패턴(INDIRECT + COUNTIF vs '집계'!D25)을 쓰고 있어 그대로 맞춘다.
-// 실행 한 번으로 끝나는 작업이라 사용 후 이 핸들러와 라우트는 제거할 것.
-async function handleMigrateFixCollectMoneyFormula(req, env, origin) {
-  const admin = await requireAdmin(req, env);
-  if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
-
-  try {
-    const accessToken = await getServiceAccountAccessToken(env);
-    const fileId = env.GOOGLE_SHEET_FILE_ID;
-    const newFormula =
-      "=D21+D22+D23+IF(COUNTIF(INDIRECT(\"'데이터'!F4:M4\"),'집계'!D25)>=1,D24,0)";
-    await writeSheetValues(env, accessToken, fileId, [
-      { range: "집계!D20", values: [[newFormula]] },
-    ]);
-    const check = await getSheetValues(env, accessToken, fileId, "집계!D20");
-    return json({ ok: true, newFormula, currentValue: check[0] && check[0][0] }, 200, origin);
-  } catch (err) {
-    return json({ error: "수식 마이그레이션 실패: " + err.message }, 500, origin);
-  }
 }
 
 // 회원이 종류별로 켜고 끌 수 있는 푸시 알림 카테고리. 아직 각 카테고리를
@@ -2034,9 +2020,6 @@ export default {
       }
       if (url.pathname === "/push/recent-notices" && req.method === "GET") {
         return await handleListRecentNotices(req, env, origin);
-      }
-      if (url.pathname === "/admin/migrate/fix-collect-money-formula" && req.method === "POST") {
-        return await handleMigrateFixCollectMoneyFormula(req, env, origin);
       }
       return json({ error: "not found" }, 404, origin);
     } catch (err) {

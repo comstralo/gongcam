@@ -199,7 +199,7 @@ const MEMBER_CACHE_UNCONDITIONAL_KEYS = ["members", "meta", "exitStatus", "membe
 // — 특히 가장 빈번한 제보 처리(penalty)가 회원 명단/시트 메타/상점 순위/
 // 개인 탭 배치처럼 무관한 4종까지 매번 함께 지우고 있었다
 // (docs/CACHING_POLICY.md §11 실측 근거).
-const MEMBER_CACHE_GROUPS = {
+export const MEMBER_CACHE_GROUPS = {
   // 회원 명단/시트 구조 자체가 바뀌는 저빈도 조작(신규등록/퇴실/번호이동)
   // 전용 — 9종 전부와 관련 있으므로 groups를 생략(=전체)했을 때와 동일하다.
   // 🔧 [캐싱 통합, 2026-09] reportScore/outputPenSlots는 personalStatusBundle

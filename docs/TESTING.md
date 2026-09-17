@@ -1203,6 +1203,80 @@ index.js 2,189→2,071줄(약 118줄 감소, 시작(10,984줄) 대비 총
 **81.2% 감소**). `npm test` 기준 434개 테스트 전부 통과(15차 종료
 시점 432개 + 신규 2개), 연속 3회 실행으로 안정성 확인.
 
+## 구조 개선 17차 — 전체 구조 감사 + 사후 정리 (2026-09-17)
+
+16차까지 파일 분할 자체는 끝냈지만, 사용자 요청으로 "분할이
+체계적으로 잘 되었는지" 전체를 재점검하는 감사(audit)를 진행했다
+(Explore 서브에이전트에 위임). 감사 항목: (1) 순환 import 전수
+조사, (2) index.js에 남은 것들의 타당성, (3) 파일명-내용 일치성,
+(4) 테스트 커버리지 사각지대, (5) 1~16차가 스스로 남긴 "제외 근거"
+들이 지금도 유효한지. 감사 결과를 바탕으로 우선순위가 높은 항목만
+17차에서 바로 정리했다(리네임/문서 정비/라우팅 재배치 같은 낮은
+우선순위 항목은 보류).
+
+**감사에서 확인된 구조적 건전성**: 13개 도메인 파일이 index.js와
+맺는 순환은 전부 의도된 "허브 패턴"(재export 또는 함수 선언 실사용
+import)이라 TDZ 위험이 없다. `members.js ↔ notify.js`는 index.js를
+거치지 않는 유일한 직접 순환(16차에서 `handleAdminMembersRoster`
+이동 때 생김)이지만 두 심볼(`loadNotifyPrefs`/`getPushDeviceIndex`,
+`listAllMembers`) 모두 함수 선언이라 안전하다. 파일명과 내용도
+대부분 일치했다(`personal-status.js`가 랭킹/로스터까지 포함하는 건
+"개인 대시보드"의 자연스러운 확장으로 판단, `member-utils.js`는
+회원+푸시+알림 세 영역이 섞인 의도된 잡동사니 유틸 파일).
+
+**🔧 이번에도 발견한 실제 프로덕션 버그**: `handleBotInvalidateCache`
+(index.js)가 참조하는 `MEMBER_CACHE_GROUPS`(cache.js)가 export도
+안 되고 import도 안 된 채로 방치돼 있었다 — 9차(`CYCLE_MAX_LEN`)와
+16차(`loadNotifyPrefs`/`getPushDeviceIndex`)와 **정확히 같은
+패턴**이다. `POST /bot/invalidate-cache`를 `groups` 파라미터와
+함께 호출하면 `ReferenceError`로 500이 났을 것이다. cache.js에
+export를 추가하고 index.js가 import하도록 고쳤다. 감사 보고서가
+정확히 예측한 대로 — "index.js에 남기기로 한 소수 핸들러들은
+6차 이후의 '테스트를 먼저 깐 뒤 이동' 원칙 적용 대상에서 애초에
+빠졌기 때문에 사각지대가 생긴다"는 패턴이 이번에도 그대로
+재현됐다.
+
+**정리한 항목**:
+1. `handleMigrateFixCollectMoneyFormula`와 그 라우트
+   (`/admin/migrate/fix-collect-money-formula`)를 삭제했다 — 코드
+   자신이 "실행 한 번으로 끝나는 작업이라 사용 후 제거할 것"이라고
+   명시했고, 실제로 이미 실행 완료된 것을 사용자에게 확인 후 제거했다.
+2. index.js가 재export하던 `GOAL_TYPE_MULTIPLIER`를 제거했다 —
+   personal-status.js에서 import는 하지만(내부 `GOAL_TIME_VALID_VALUES`
+   계산에 필요) 이 재export 자체를 가져다 쓰는 곳이 없는 죽은
+   export였다.
+3. `GOAL_TIME_VALID_VALUES = Object.keys(GOAL_TYPE_MULTIPLIER)`
+   (index.js 최상위 즉시 평가)를 `getGoalTimeValidValues()` 함수로
+   감쌌다 — 11차 TDZ 버그(`LEAVE_TYPE_CONFIG`)와 정확히 같은 모양의
+   패턴인데, 지금은 import 순서상 우연히 안전할 뿐이라 감사 보고서가
+   "재발 가능한 취약 지점"으로 지목했다. 지연 평가로 감싸면 향후
+   import 순서가 바뀌어도 항상 안전하다.
+4. `MEMBER_CACHE_GROUPS` export 누락(위 프로덕션 버그) 수정.
+5. index.js에 로컬로만 남아있던 마지막 7개 핸들러
+   (`handleMyRole`, `handleGetGoalSchedule`, `handleSetGoalSchedule`,
+   `handleAdminFinesAdminForcedCount`, `handleBotInvalidateCache`,
+   `handlePutParticipants`, `handleGetParticipants`)에 `export`를
+   추가하고 `test/index-remaining-handlers.test.js`(14개)로 최소
+   인증/검증 스모크 테스트를 깔았다 — `handlePutParticipants`/
+   `handleGetParticipants`는 실제 `ParticipantsRoster` DO에 쓰고
+   다시 읽어 값이 일치하는지까지 검증했다(mock 불필요). 이 14개
+   테스트가 방금 고친 `MEMBER_CACHE_GROUPS` 버그의 회귀 방지선이자,
+   앞으로 이 7개 핸들러에 같은 패턴의 import 누락이 생기면 즉시
+   잡아낸다.
+
+index.js 2,071→2,054줄(마이그레이션 핸들러 삭제로 소폭 감소, 시작
+(10,984줄) 대비 총 **81.3% 감소**). `npm test` 기준 448개 테스트
+전부 통과(16차 종료 시점 434개 + 신규 14개), 연속 3회 실행으로
+안정성 확인.
+
+**감사에서 나왔지만 이번엔 보류한 항목**(낮은 우선순위, 로직
+변경 없는 순수 정리라 리스크는 낮지만 지금 급하지 않음):
+`handleAdminFinesAdminForcedCount`를 fines.js로 이동(exit.js 8차
+주석이 이미 "벌금 도메인"이라고 인지), `member-utils.js` 리네임,
+notify.js 상단의 낡은 "leaf 도메인" 주석 갱신, 라우팅 테이블에
+도메인별 주석 헤더 추가, `docs/TESTING.md`에 "현재 유효한 잔류
+근거 요약" 표 추가.
+
 ## 다음 단계
 
 사이클 판정, 예치금/강제퇴실/정산 판정, 회원 관리/알림·푸시의
@@ -1210,37 +1284,36 @@ index.js 2,189→2,071줄(약 118줄 감소, 시작(10,984줄) 대비 총
 재배치), 퇴실 처리, 사이클 판정 정리, 알림/푸시 도메인, 사유반휴/
 일반반휴 도메인, 제보/캡처 도메인, 봇 상태/사용량 도메인, 로그인/
 OAuth 도메인, 개인 대시보드/랭킹 클러스터, `handleAdminMembersRoster`
-까지 총 16차에 걸쳐 분리했다. `resolveMemberNumber`/
-`findMemberNumberByEmail`(15곳 이상 공유 인증 유틸),
-`getAdminAccessToken`과 그 하위 의존(`exchangeAdminOAuthCode` 등),
-`parseWon`/`safeNumber`/`parseLeaveCount`/`colIndexToLetter`/시트
-API 저수준 유틸(get/write/batch 등)/사용량 계측 클러스터/DO stub
-헬퍼는 계속 index.js 잔류 대상으로 남아있다 — 이들은 사실상 전부
-"여러 도메인이 공유하는 진짜 범용 유틸"이라 더 쪼개면 이동 대상보다
-남는 export가 많아지는 지점에 도달했다. index.js는 이제 로그인/
-세션 프리미티브, 관리자 위임 OAuth, 시트 API 저수준 유틸, 사용량
-계측, DO stub, 목표시간 예약(`handleGetGoalSchedule`/
-`handleSetGoalSchedule`), 참여자 명단(`handlePutParticipants`/
-`handleGetParticipants`), 몇몇 잡다한 관리자 핸들러
-(`handleAdminFinesAdminForcedCount`, `handleBotInvalidateCache`,
-`handleMigrateFixCollectMoneyFormula`), 라우팅 테이블(`export
-default { fetch, scheduled }`)만 남아 있다. 이 시점에서는 리팩터링을
-종료하고 현재 구조(index.js 2,071줄 + 13개 도메인 파일)를 안정
-상태로 굳히는 것이 합리적으로 보인다 — 남은 핸들러 3개는 각자
-독립적이고 작아 별도 파일로 뺄 실익이 적고, 나머지는 전부 여러
-도메인이 공유하는 진짜 범용 유틸이다. 혹시 다음 차수를 진행한다면
-남은 3개 핸들러를 `admin-misc.js` 같은 잡동사니 파일로 묶는 정도가
-유일한 후보이나, 분리 자체의 가치보다 "이런 사소한 것까지 옮기는
-관성"이 위험 대비 이득을 넘어서는 지점이다. 테스트 없이 구조
-변경부터 시작하지 않는다는 원칙, 이동 직후 원본과 diff 대조하는
-절차(8차부터), DO 키 기준 테스트 격리(10차부터), 최상위 `const`
-객체 리터럴의 TDZ 위험 점검(11차부터), 이동 후 라우팅 테이블
-전체를 grep해 실수로 삭제된 함수가 없는지 교차 검증(13차부터),
-이동한 코드가 실제로 호출하는 모든 함수가 import됐는지 `npm test`
-로 최종 확인(15차부터), 새 파일은 작성 직후 `git add`로 즉시
-스테이징(15차부터)까지 모두 유지한다. **16차에서 다시 확인한 것**:
-"이 함수는 무겁다"는 이유로 이전 차수에 이동을 보류한 함수들은,
-그 무게 자체가 테스트 사각지대를 만들어 이번처럼 실제 버그를
-숨기고 있을 수 있다 — 재검토할 때는 로직 단순화 여부와 무관하게
-"이 경로를 실제로 실행하는 테스트가 있었는가"부터 확인하는 것이
-유용하다.
+까지 총 16차에 걸쳐 분리하고, 17차에서 전체 구조 감사와 사후 정리를
+진행했다. `resolveMemberNumber`/`findMemberNumberByEmail`(15곳
+이상 공유 인증 유틸), `getAdminAccessToken`과 그 하위 의존
+(`exchangeAdminOAuthCode` 등), `parseWon`/`safeNumber`/
+`parseLeaveCount`/`colIndexToLetter`/시트 API 저수준 유틸(get/write/
+batch 등)/사용량 계측 클러스터/DO stub 헬퍼는 계속 index.js 잔류
+대상으로 남아있다 — 이들은 사실상 전부 "여러 도메인이 공유하는
+진짜 범용 유틸"이라 더 쪼개면 이동 대상보다 남는 export가 많아지는
+지점에 도달했다. index.js는 이제 로그인/세션 프리미티브, 관리자
+위임 OAuth, 시트 API 저수준 유틸, 사용량 계측, DO stub, 목표시간
+예약, 참여자 명단, 소수의 관리자 조회 핸들러(전부 export되어 있고
+최소 테스트도 갖춤), 라우팅 테이블(`export default { fetch,
+scheduled }`)만 남아 있다. 17차 감사가 확인한 대로 이 시점에서는
+리팩터링을 종료하고 현재 구조(index.js 2,054줄 + 17개 지원 파일)를
+안정 상태로 굳히는 것이 합리적이다 — 남은 게 전부 여러 도메인이
+공유하는 진짜 범용 유틸이거나 테스트가 갖춰진 작은 핸들러들이라,
+추가 분할의 한계효용보다 "사소한 것까지 옮기는 관성"의 위험이 더
+크다. 테스트 없이 구조 변경부터 시작하지 않는다는 원칙, 이동 직후
+원본과 diff 대조하는 절차(8차부터), DO 키 기준 테스트 격리(10차
+부터), 최상위 `const` 객체 리터럴의 TDZ 위험 점검(11차부터), 이동
+후 라우팅 테이블 전체를 grep해 실수로 삭제된 함수가 없는지 교차
+검증(13차부터), 이동한 코드가 실제로 호출하는 모든 함수가
+import됐는지 `npm test`로 최종 확인(15차부터), 새 파일은 작성 직후
+`git add`로 즉시 스테이징(15차부터)까지 모두 유지한다. **17차에서
+다시 확인한 것**: "무겁다"는 이유로 이동을 보류한 함수뿐 아니라
+"index.js에 원래부터 남기기로 정한 유틸 함수"도 똑같이 테스트
+사각지대가 될 수 있다(`MEMBER_CACHE_GROUPS`가 세 번째 사례) —
+"이동 대상인가 잔류 대상인가"와 무관하게, **어떤 함수든 그 경로를
+실제로 실행하는 테스트가 없으면 import 누락 같은 사소한 실수가
+무기한 방치될 수 있다**는 게 9차·16차·17차 세 번에 걸쳐 확인된
+근본 원인이다. 향후 유사한 리팩터링에서는 "이 함수를 옮길지
+말지"보다 "이 함수를 실행하는 테스트가 있는지"를 먼저 확인하는
+습관이 더 근본적인 예방책이다.
