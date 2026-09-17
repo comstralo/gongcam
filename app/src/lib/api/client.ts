@@ -1,4 +1,8 @@
-export const WORKER_BASE = "https://frame-checker-worker.comstralo.workers.dev";
+// 로컬 개발(vite dev)에서는 로컬 워커(wrangler dev, localhost:8787)를,
+// 빌드(vite build, GitHub Pages 배포본)에서는 프로덕션 워커를 호출한다.
+export const WORKER_BASE = import.meta.env.DEV
+  ? "http://localhost:8787"
+  : "https://frame-checker-worker.comstralo.workers.dev";
 
 export class ApiError extends Error {
   status: number;
