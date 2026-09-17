@@ -1011,28 +1011,89 @@ index.js 3,987(긴급 수정 후)→3,624줄(약 363줄 감소, 시작(10,984줄
 `/admin/bot/command` 전부 정상 401/403 응답 확인, `wrangler tail`로
 실제 요청이 예외 없이("Ok") 처리됨을 확인했다.
 
+## 구조 개선 14차 — 로그인/OAuth 도메인 통합 테스트 + 이동 (2026-09-13)
+
+13차에서 다음 후보로 지목한 로그인/세션/OAuth 도메인 중, `getAdminAccessToken`
+과 얽힌 부분을 제외한 순수 로그인·OAuth 플로우를 `src/auth.js`로
+옮겼다. 착수 조사에서 이 도메인이 겉보기와 달리 두 갈래로 갈라져
+있다는 것을 확인했다:
+
+1. **옮긴 것(9개 함수 — 라우팅에서만 호출, index.js의 다른 함수가
+   실사용하지 않음)**: `getGoogleCerts`/`verifyGoogleIdToken`(RS256
+   JWKS 검증), `getSheetViewerEmails`(참여자 명단 확인),
+   `completeLogin`/`handleVerify`/`handleDevLogin`(로그인 완료
+   절차), `requireAdminFromQuery`/`handleAdminOAuthAuthorize`/
+   `handleAdminOAuthCallback`(관리자 Drive 위임 OAuth 플로우).
+   `GOOGLE_CERTS_URL`/`SESSION_TTL_SEC`도 이 파일에서만 쓰여
+   그대로 옮겼다(index.js에는 남길 이유가 없어 export 대신 이관).
+2. **남긴 것(`getAdminAccessToken`과 그 하위 의존)**: `signSession`/
+   `verifySession`(전 도메인 공유), `base64url`/`base64urlToBytes`
+   (member-utils.js/push-crypto.js와도 공유), `getServiceAccountAccessToken`
+   (전 도메인 공유), `adminOAuthRedirectUri`/`exchangeAdminOAuthCode`/
+   `ADMIN_OAUTH_CONFIG_KEY`/`ADMIN_OAUTH_SCOPE` — 얼핏 OAuth 플로우
+   전용처럼 보이지만 실제로는 `getAdminAccessToken`(exit.js의
+   `performExitReset`, members.js의 `grantSheetAccess` 등 7차에서
+   이미 공유 확정)이 refresh_token 갱신에 재사용해 index.js에
+   남기고 `export`만 추가했다. `getBotAdminConfigStub`(13차에서
+   이미 export)도 로그인 도메인과 봇 도메인 양쪽에서 refresh_token/
+   봇 URL을 같은 DO에 저장하는 데 함께 쓰인다.
+
+**9개 함수 전체 diff 검증**: 정규식 기반 함수 추출로 이동 전
+원본(직전 커밋의 index.js)과 auth.js를 비교해 9개 전부 완전
+일치를 확인했다.
+
+**통합 테스트(`test/auth-login.test.js`, 18개)**: `handleVerify`는
+실제 Google 서명 ID 토큰을 테스트에서 위조할 수 없어 크리덴셜
+누락/형식 오류 경로만 검증했고, 로그인 완료 로직(`completeLogin`)
+자체는 Google 검증을 우회하는 `handleDevLogin`으로 충분히
+검증했다(참여자 명단 확인, 회원번호 매칭 성공/실패 양쪽, 세션
+토큰 발급 내용 확인). `handleAdminOAuthAuthorize`는 실제
+`signSession`으로 관리자/비관리자 토큰을 만들어 302 리다이렉트
+URL의 `client_id`/`login_hint`/`state` 파라미터까지 검증했고,
+`handleAdminOAuthCallback`은 CSRF 방어용 state의 purpose 불일치·
+만료·토큰 교환 실패(500)·성공(200, BotAdminConfigDO에 refresh_token
+저장) 경로를 fetch mock으로 검증했다. `MemberSettingsDO`(last-login
+기록)는 실제 workerd DO를 그대로 사용했다.
+
+index.js 3,624→3,399줄(약 225줄 감소, 시작(10,984줄) 대비 총
+**69.1% 감소**). `npm test` 기준 421개 테스트 전부 통과(13차 종료
+시점 403개 + 신규 18개). 배포 후 curl로 `/verify`(크리덴셜 누락/
+형식 오류), `/dev/login`(시크릿 오류 401), `/oauth/authorize`(토큰
+없음 403), `/oauth/callback`(code 없음 400) 전부 정상 응답 확인 —
+로그인은 전체 서비스의 진입점이라 다른 차수보다 스모크 테스트를
+더 꼼꼼히 확인했다. `wrangler tail`은 요청이 너무 빨리 끝나 일부
+호출은 로그 윈도우에 잡히지 않았지만, curl 응답 자체가 이미 4xx
+정상 에러(500 아님)임을 직접 확인했으므로 문제 없다고 판단했다.
+
 ## 다음 단계
 
 사이클 판정, 예치금/강제퇴실/정산 판정, 회원 관리/알림·푸시의
 순수 함수, 웹푸시 암호화, 벌금/납부 처리, 회원 관리(CRUD/번호
 재배치), 퇴실 처리, 사이클 판정 정리, 알림/푸시 도메인, 사유반휴/
-일반반휴 도메인, 제보/캡처 도메인, 봇 상태/사용량 도메인까지 총
-13차에 걸쳐 분리했다. `resolveMemberNumber`/`findMemberNumberByEmail`
-(15곳 이상 공유 인증 유틸)은 계속 제외 대상으로 남아있다.
-`buildPersonalStatus`/`buildRosterStatus`(여러 도메인이 공유하는
-대형 집계 함수)도 index.js 잔류 + export 확대가 안전해 보이며,
-별도 도메인으로 뺄지는 이후 재검토한다. 지금까지 이동한 도메인들
-(exit.js, cycle.js, notify.js, leave.js, report.js, bot.js, members.js,
-fines.js 등)을 다 걷어내고 나면 index.js에는 로그인/세션/OAuth,
-시트 API 저수준 유틸(get/write/batch 등), 캐시(`_cachedCompute`류는
-cache.js에 이미 있음), 사용량 계측 클러스터, 개인 대시보드/명단
-집계(`buildPersonalStatus`, `buildRosterStatus`, `listAllMembers`
-경유 함수들), cron(`scheduled`)만 남는다 — 다음 차수를 잡는다면
-이 중 "로그인/세션/OAuth"가 비교적 독립적인 다음 후보로 보이나,
-`getBotAdminConfigStub`(OAuth refresh token 저장에도 재사용)처럼
-봇 도메인과 얽힌 지점이 있어 착수 전 재조사가 필요하다. 테스트
-없이 구조 변경부터 시작하지 않는다는 원칙, 이동 직후 원본과 diff
-대조하는 절차(8차부터), DO 키 기준 테스트 격리(10차부터), 최상위
-`const` 객체 리터럴의 TDZ 위험 점검(11차부터), 이동 후 라우팅
-테이블 전체를 grep해 실수로 삭제된 함수가 없는지 교차 검증(13차
-긴급 수정에서 얻은 교훈, 이제부터 필수)까지 모두 유지한다.
+일반반휴 도메인, 제보/캡처 도메인, 봇 상태/사용량 도메인, 로그인/
+OAuth 도메인까지 총 14차에 걸쳐 분리했다. `resolveMemberNumber`/
+`findMemberNumberByEmail`(15곳 이상 공유 인증 유틸), `getAdminAccessToken`
+과 그 하위 의존(`exchangeAdminOAuthCode` 등)은 계속 index.js 잔류
+대상으로 남아있다. `buildPersonalStatus`/`buildRosterStatus`(여러
+도메인이 공유하는 대형 집계 함수)도 index.js 잔류 + export 확대가
+안전해 보이며, 별도 도메인으로 뺄지는 이후 재검토한다. 지금까지
+이동한 도메인들(exit.js, cycle.js, notify.js, leave.js, report.js,
+bot.js, auth.js, members.js, fines.js 등)을 다 걷어내고 나면
+index.js에는 세션 프리미티브(`signSession`/`verifySession`,
+`base64url`류 — member-utils.js/push-crypto.js와도 공유),
+관리자 위임 OAuth 저수준 유틸(`getAdminAccessToken`류), 시트 API
+저수준 유틸(get/write/batch 등), 사용량 계측 클러스터, 개인
+대시보드/명단 집계(`buildPersonalStatus`, `buildRosterStatus`,
+`listAllMembers` 경유 함수들), DO stub 헬퍼, cron(`scheduled`)만
+남는다 — 이들은 대부분 "여러 도메인이 공유하는 진짜 범용 유틸"이라
+더 쪼갤수록 이동 대상보다 남는 것(exports)이 많아지는 지점에
+가까워지고 있다. 다음 차수를 잡는다면 `buildPersonalStatus`/
+`buildRosterStatus`를 `personal-status.js` 같은 별도 파일로 빼는
+것이 후보이나, 이 두 함수는 거의 모든 이미 이동한 도메인 파일
+(exit.js, leave.js, report.js 등)이 참조하는 최종 소비자라 순환
+import 방향을 신중히 설계해야 한다(11차 TDZ 교훈 재적용 필요).
+테스트 없이 구조 변경부터 시작하지 않는다는 원칙, 이동 직후
+원본과 diff 대조하는 절차(8차부터), DO 키 기준 테스트 격리(10차
+부터), 최상위 `const` 객체 리터럴의 TDZ 위험 점검(11차부터), 이동
+후 라우팅 테이블 전체를 grep해 실수로 삭제된 함수가 없는지 교차
+검증(13차 긴급 수정에서 얻은 교훈)까지 모두 유지한다.
