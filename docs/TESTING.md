@@ -1151,38 +1151,96 @@ index.js 3,399→2,189줄(약 1,210줄 감소, 시작(10,984줄) 대비 총
 전부 통과(14차 종료 시점 421개 + 신규 11개), 연속 3회 실행으로
 안정성 확인.
 
+## 구조 개선 16차 — handleAdminMembersRoster 재검토 이동 + 실제 프로덕션 버그 수정 (2026-09-17)
+
+15차에서 다음 후보로 남겨둔 `handleAdminMembersRoster`("스터디원
+목록" 상세 패널, 7차에서 "무겁다"고 제외했던 함수)를 재검토해
+`src/members.js`로 옮겼다. 이동 전 코드 검토 중 **실제 프로덕션
+버그를 발견**했다 — 이 함수가 쓰는 `loadNotifyPrefs`/
+`getPushDeviceIndex`(notify.js)가 애초에 index.js에 **import조차
+되어 있지 않았다**(10차에서 알림/푸시 도메인을 notify.js로 분리할
+때 누락된 것으로 추정). 즉 관리자가 "스터디원 목록" 화면을 열
+때마다(`GET /admin/members/roster`) `ReferenceError: loadNotifyPrefs
+is not defined`로 500이 났을 것이다 — 이 경로를 다루는 테스트가
+지금까지 하나도 없어 오랫동안 발견되지 않은 것으로 보인다. notify.js
+에 두 함수의 `export`를 추가하고 members.js가 직접 import하도록
+고쳐 해결했다.
+
+**이동 대상은 함수 1개**지만, exit.js(`listActiveMembersWithExitInfo`)/
+members.js(자기 자신, `listAllMembers`/`getDataSheetRows`)/index.js
+(`getSpreadsheetMeta`/`getMemberSettingsStub`/`batchGetSheetValues`/
+`NOTIFY_CATEGORIES`)/notify.js(`loadNotifyPrefs`/`getPushDeviceIndex`)/
+member-utils.js(`parseGoogleEmail`/`parseGooroomeeAccount`) **다섯
+도메인에 걸친 의존성**을 정리해야 했다. `listActiveMembersWithExitInfo`
+는 index.js가 더 이상 직접 쓰지 않게 되어(유일한 소비자가
+`handleAdminMembersRoster`였음) index.js의 exit.js import 목록에서
+제거하고, members.js가 exit.js에서 직접 import하도록 정리했다
+(index.js를 거치지 않는 직접 import — report.js/leave.js가 이미
+쓰는 패턴과 동일). `getDataSheetRows`도 같은 이유로 index.js의
+members.js import 목록에서 제거했다(members.js 자기 내부에 이미
+정의돼 있어 재import 불필요).
+
+**diff 검증**: `handleAdminMembersRoster`를 정규식 추출로
+`git show HEAD`의 15차 종료 시점 원본과 비교해 완전 일치를 확인했다
+(로직은 전혀 바꾸지 않고 위치만 옮겼으며, 버그 수정은 notify.js의
+`export` 키워드 추가와 members.js의 import 목록 추가로만 이뤄져
+`handleAdminMembersRoster` 자체 텍스트는 원본 그대로다).
+
+**통합 테스트(`test/members-roster.test.js`, 2개)**: 관리자 아니면
+403, 정상 조회 시 200과 `notifyPrefs`/`pushSubscribed`가 포함된
+회원 상세를 반환하는지 검증했다 — 후자가 바로 이번에 고친
+`ReferenceError` 버그의 회귀 방지 테스트다. mock 설계 중
+`listActiveMembersWithExitInfo`가 내부적으로 쓰는
+`getSharedMemberRows`(회원별 `{번호}!A1:U41`을 `values:batchGet`
+하나로 묶어 조회)의 응답 배열을 처음에 `{values: [...]}`로 감싸지
+않고 원본 rows 배열을 그대로 넣어 `batchGetSheetValues`가 빈
+배열로 폴백해버리는 실수를 했다 — `members.length`가 0으로 나오는
+증상으로 나타나 디버그 로그로 원인을 찾아 수정했다(15차의
+"정적 대조만으로는 부족, `npm test`로 최종 확인" 원칙이 이번엔
+mock 자체의 버그를 잡는 데도 유효했다).
+
+index.js 2,189→2,071줄(약 118줄 감소, 시작(10,984줄) 대비 총
+**81.2% 감소**). `npm test` 기준 434개 테스트 전부 통과(15차 종료
+시점 432개 + 신규 2개), 연속 3회 실행으로 안정성 확인.
+
 ## 다음 단계
 
 사이클 판정, 예치금/강제퇴실/정산 판정, 회원 관리/알림·푸시의
 순수 함수, 웹푸시 암호화, 벌금/납부 처리, 회원 관리(CRUD/번호
 재배치), 퇴실 처리, 사이클 판정 정리, 알림/푸시 도메인, 사유반휴/
 일반반휴 도메인, 제보/캡처 도메인, 봇 상태/사용량 도메인, 로그인/
-OAuth 도메인, 개인 대시보드/랭킹 클러스터까지 총 15차에 걸쳐
-분리했다. `resolveMemberNumber`/`findMemberNumberByEmail`(15곳
-이상 공유 인증 유틸), `getAdminAccessToken`과 그 하위 의존
-(`exchangeAdminOAuthCode` 등), `parseWon`/`safeNumber`/
-`parseLeaveCount`/`colIndexToLetter`/시트 API 저수준 유틸(get/write/
-batch 등)/사용량 계측 클러스터/DO stub 헬퍼는 계속 index.js 잔류
-대상으로 남아있다 — 이들은 사실상 전부 "여러 도메인이 공유하는 진짜
-범용 유틸"이라 더 쪼개면 이동 대상보다 남는 export가 많아지는
-지점에 도달했다. index.js는 이제 로그인/세션 프리미티브, 관리자
-위임 OAuth, 시트 API 저수준 유틸, 사용량 계측, DO stub, 목표시간
-예약(`handleGetGoalSchedule`/`handleSetGoalSchedule`), 참여자
-명단(`handlePutParticipants`/`handleGetParticipants`), 몇몇 잡다한
-관리자 핸들러(`handleAdminFinesAdminForcedCount`,
-`handleBotInvalidateCache`, `handleAdminMembersRoster`,
-`handleMigrateFixCollectMoneyFormula`), 라우팅 테이블(`export default
-{ fetch, scheduled }`)만 남아 있다. 다음 차수를 잡는다면 이 중
-`handleAdminMembersRoster`(7차에서 "너무 무겁다"고 제외했던 회원
-관리 확장 기능)를 재검토하거나, 혹은 여기서 리팩터링을 종료하고
-현재 구조(index.js 2,189줄 + 13개 도메인 파일)를 안정 상태로 굳히는
-것도 합리적인 선택이다 — 남은 코드 대부분이 진짜 공유 유틸이라
-추가 분리의 한계 효용이 크게 줄었다. 테스트 없이 구조 변경부터
-시작하지 않는다는 원칙, 이동 직후 원본과 diff 대조하는 절차(8차
-부터), DO 키 기준 테스트 격리(10차부터), 최상위 `const` 객체
-리터럴의 TDZ 위험 점검(11차부터), 이동 후 라우팅 테이블 전체를
-grep해 실수로 삭제된 함수가 없는지 교차 검증(13차부터), 그리고
-15차에서 새로 추가된 두 절차 — **이동한 코드가 실제로 호출하는
-모든 함수가 import됐는지 `npm test`로 최종 확인**(정적 대조만으로는
-불충분)과 **새 파일은 작성 직후 `git add`로 즉시 스테이징**(파일
-유실 방지) — 모두 다음 차수부터 필수로 유지한다.
+OAuth 도메인, 개인 대시보드/랭킹 클러스터, `handleAdminMembersRoster`
+까지 총 16차에 걸쳐 분리했다. `resolveMemberNumber`/
+`findMemberNumberByEmail`(15곳 이상 공유 인증 유틸),
+`getAdminAccessToken`과 그 하위 의존(`exchangeAdminOAuthCode` 등),
+`parseWon`/`safeNumber`/`parseLeaveCount`/`colIndexToLetter`/시트
+API 저수준 유틸(get/write/batch 등)/사용량 계측 클러스터/DO stub
+헬퍼는 계속 index.js 잔류 대상으로 남아있다 — 이들은 사실상 전부
+"여러 도메인이 공유하는 진짜 범용 유틸"이라 더 쪼개면 이동 대상보다
+남는 export가 많아지는 지점에 도달했다. index.js는 이제 로그인/
+세션 프리미티브, 관리자 위임 OAuth, 시트 API 저수준 유틸, 사용량
+계측, DO stub, 목표시간 예약(`handleGetGoalSchedule`/
+`handleSetGoalSchedule`), 참여자 명단(`handlePutParticipants`/
+`handleGetParticipants`), 몇몇 잡다한 관리자 핸들러
+(`handleAdminFinesAdminForcedCount`, `handleBotInvalidateCache`,
+`handleMigrateFixCollectMoneyFormula`), 라우팅 테이블(`export
+default { fetch, scheduled }`)만 남아 있다. 이 시점에서는 리팩터링을
+종료하고 현재 구조(index.js 2,071줄 + 13개 도메인 파일)를 안정
+상태로 굳히는 것이 합리적으로 보인다 — 남은 핸들러 3개는 각자
+독립적이고 작아 별도 파일로 뺄 실익이 적고, 나머지는 전부 여러
+도메인이 공유하는 진짜 범용 유틸이다. 혹시 다음 차수를 진행한다면
+남은 3개 핸들러를 `admin-misc.js` 같은 잡동사니 파일로 묶는 정도가
+유일한 후보이나, 분리 자체의 가치보다 "이런 사소한 것까지 옮기는
+관성"이 위험 대비 이득을 넘어서는 지점이다. 테스트 없이 구조
+변경부터 시작하지 않는다는 원칙, 이동 직후 원본과 diff 대조하는
+절차(8차부터), DO 키 기준 테스트 격리(10차부터), 최상위 `const`
+객체 리터럴의 TDZ 위험 점검(11차부터), 이동 후 라우팅 테이블
+전체를 grep해 실수로 삭제된 함수가 없는지 교차 검증(13차부터),
+이동한 코드가 실제로 호출하는 모든 함수가 import됐는지 `npm test`
+로 최종 확인(15차부터), 새 파일은 작성 직후 `git add`로 즉시
+스테이징(15차부터)까지 모두 유지한다. **16차에서 다시 확인한 것**:
+"이 함수는 무겁다"는 이유로 이전 차수에 이동을 보류한 함수들은,
+그 무게 자체가 테스트 사각지대를 만들어 이번처럼 실제 버그를
+숨기고 있을 수 있다 — 재검토할 때는 로직 단순화 여부와 무관하게
+"이 경로를 실제로 실행하는 테스트가 있었는가"부터 확인하는 것이
+유용하다.

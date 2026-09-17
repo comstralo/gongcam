@@ -175,10 +175,13 @@ import {
 // src/members.js로 옮겼다(docs/TESTING.md 참고). listAllMembers는
 // fines.js가 여전히 이 파일에서 import하므로 재export가 필요하다
 // (아래 export 선언 참고) — 6차의 listUnpaidFines와 동일한 패턴.
+// 🔧 [구조 개선 16차, 2026-09-17] handleAdminMembersRoster도 이 파일로
+// 옮겼다 — 라우팅 테이블에서만 호출되는 단순 연결이라 재export는
+// 불필요하다.
 import {
   listAllMembers,
-  getDataSheetRows,
   handleAdminMembers,
+  handleAdminMembersRoster,
   handleAdminSetPartiStatus,
   handleAdminOpenSlots,
   handleAdminMemberReorderPreview,
@@ -189,20 +192,20 @@ import {
 export { listAllMembers };
 
 // 🔧 [구조 개선 8차, 2026-09-13] 퇴실 처리 도메인을 src/exit.js로
-// 옮겼다(docs/TESTING.md 참고). listActiveMembersWithExitInfo는
-// handleAdminMembersRoster(회원 관리 도메인, 7차에서 index.js 잔류
-// 확정)가 그대로 쓰므로 여기서 가져온다. handleAdminFinesAdminForcedCount
+// 옮겼다(docs/TESTING.md 참고). handleAdminFinesAdminForcedCount
 // (벌금 도메인, index.js 잔류)는 listExitedMemberEntries/
 // getMemberSettingsStub만 참조하며 둘 다 이미 index.js에 있어 영향 없다.
 // 🔧 [구조 개선 9차] listExitCandidates를 실사용하던 hasForcedCandidateInCycle이
 // cycle.js로 옮겨가면서, index.js는 더 이상 이 함수를 직접 쓰지 않는다.
+// 🔧 [구조 개선 16차] listActiveMembersWithExitInfo를 실사용하던
+// handleAdminMembersRoster가 members.js로 옮겨가면서, index.js는
+// 더 이상 이 함수를 직접 쓰지 않는다(members.js가 exit.js에서 직접 import).
 import {
   handleSetExitRequest,
   handleAgreeExitRequest,
   handleCancelExitRequest,
   handleBotExitRequests,
   handleAdminExitedMembers,
-  listActiveMembersWithExitInfo,
   handleAdminExitCandidates,
   handleAdminExitPreview,
   handleAdminExitConfirm,
@@ -1529,127 +1532,6 @@ export async function getCurrentCoReviewers(env, accessToken, fileId) {
       .filter((_, i) => ((partiStatusValues[i] && partiStatusValues[i][0] && partiStatusValues[i][0][0]) || "") === "부스터디장")
       .map((m) => ({ number: m.number, name: m.name }));
   });
-}
-
-async function handleAdminMembersRoster(req, env, origin) {
-  const admin = await requireAdmin(req, env);
-  if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
-
-  try {
-    const accessToken = await getServiceAccountAccessToken(env);
-    const [members, allMembers, dataRows, sheetMeta] = await Promise.all([
-      listActiveMembersWithExitInfo(env, accessToken, env.GOOGLE_SHEET_FILE_ID),
-      listAllMembers(env, accessToken, env.GOOGLE_SHEET_FILE_ID),
-      // 🔧 [상태 정보 확장] "스터디원 목록" 상세 패널에 구글/구루미 계정과
-      // 준비 중인 시험(D~E열)을 보여주기 위해 별도로 조회한다 —
-      // listAllMembers는 이메일(D열 앞부분)만 뽑아 쓰고 원본 셀 값 자체를
-      // 반환하지 않으므로, 여기서 D~E열을 직접 읽어 회원번호(B열)로 매칭한다.
-      // 🔧 [캐싱 통합, 2026-09] listAllMembers와 같은 원본(데이터!A1:V50)을
-      // 매번 직접 다시 읽고 있었다 — getDataSheetRows(members:와 동일한
-      // 10분 TTL·roster 무효화 그룹의 dataSheetRows: 캐시)로 교체해 이
-      // 화면을 열 때마다 같은 범위를 두 번 읽던 걸 하나로 합친다.
-      getDataSheetRows(env, accessToken, env.GOOGLE_SHEET_FILE_ID),
-      // 🔧 [시트번호 바로가기] 회원번호 탭의 실제 sheetId(gid)를 알아야
-      // "https://docs.google.com/.../edit#gid={sheetId}" 링크를 만들 수
-      // 있다 — getSpreadsheetMeta는 5분 캐시라 이 요청 때문에 API 호출이
-      // 추가로 늘지 않는다.
-      getSpreadsheetMeta(env, accessToken, env.GOOGLE_SHEET_FILE_ID),
-    ]);
-    const sheetIdByTitle = new Map(sheetMeta.map((s) => [s.title, s.sheetId]));
-    const emailByNumber = new Map(allMembers.map((m) => [m.number, m.email]));
-
-    const detailByNumber = new Map();
-    for (const row of dataRows) {
-      const num = (row[1] || "").trim();
-      if (!num || !/^\d+$/.test(num)) continue;
-      detailByNumber.set(num, {
-        googleAccount: parseGoogleEmail(row[3]),
-        gooroomeeAccount: parseGooroomeeAccount(row[3]),
-        examKind: (row[4] || "").trim(),
-      });
-    }
-
-    // 🔧 [KV → DO 이전, 2026-09-12] §49 — 회원마다 개별 병렬 get 하던 것을
-    // MemberSettingsDO의 /last-login/list 1회 호출로 대체(왕복 N회→1회).
-    const lastLoginRes = await getMemberSettingsStub(env).fetch("https://do/last-login/list");
-    const { items: lastLoginItems } = await lastLoginRes.json();
-    const lastLoginByNumber = new Map(
-      members.map((m) => {
-        const entry = lastLoginItems[m.number];
-        return [m.number, entry ? { ts: entry.ts || null, ip: entry.ip || "" } : { ts: null, ip: "" }];
-      })
-    );
-
-    // 🔧 [참여유형 = 목표시간 유형] "참여유형"은 스터디장/부스터디장 구분이
-    // 아니라 "8H 교시제" 같은 목표시간 유형(goalType)을 말한다(사용자 지적).
-    // 이 값은 회원별 개인 탭 O3에만 있고 전체 회원을 한 번에 보여주는 공용
-    // 셀이 없어, batchGet으로 15개 range를 한 번의 API 호출로 묶어 읽는다.
-    // 🔧 [가입일자에 실제 날짜 병기] "상태 정보" 카드의 "가입일자"는
-    // s.joinDate(=I3, "D+n" 상대 표시 — 개인 대시보드 요약 타일과 동일한
-    // 값으로 의도된 표시)를 그대로 쓴다. 다만 관리자가 실제 등록 시점도
-    // 함께 확인할 수 있도록 I2(원본 "YYYY-MM-DD")를 O3와 같은 batchGet
-    // 호출에 묶어 조회해 "D+n (YYMMDD)" 형식으로 병기한다 — I3 표시 자체를
-    // 대체하지 않는다(사용자 확인: D+n 표시는 의도된 것).
-    const goalTypeAndJoinDateRanges = members.flatMap((m) => [`${m.number}!O3`, `${m.number}!I2`]);
-    const goalTypeAndJoinDateValues = await batchGetSheetValues(
-      env,
-      accessToken,
-      env.GOOGLE_SHEET_FILE_ID,
-      goalTypeAndJoinDateRanges
-    ).catch(() => []);
-    const goalTypeByNumber = new Map();
-    const joinDateYYMMDDByNumber = new Map();
-    members.forEach((m, i) => {
-      const goalTypeCell = goalTypeAndJoinDateValues[i * 2];
-      const joinDateCell = goalTypeAndJoinDateValues[i * 2 + 1];
-      goalTypeByNumber.set(m.number, ((goalTypeCell && goalTypeCell[0] && goalTypeCell[0][0]) || "").toString());
-      const joinDateRaw = ((joinDateCell && joinDateCell[0] && joinDateCell[0][0]) || "").toString();
-      // "YYYY-MM-DD" -> "YYMMDD". 형식이 어긋나면(빈 값 등) 병기하지 않는다.
-      const m2 = /^\d{4}-(\d{2})-(\d{2})$/.exec(joinDateRaw);
-      joinDateYYMMDDByNumber.set(m.number, m2 ? joinDateRaw.slice(2, 4) + m2[1] + m2[2] : "");
-    });
-
-    // 🔧 [관리자용 알림 설정 열람] "스터디원 목록"에서 회원별로 PUSH 구독
-    // 여부(PUSH_SUBS_KV, 이메일 기준)와 카테고리별 on/off(REPORTS_KV의
-    // notifyPref:{번호}, 회원번호 기준)를 함께 보여준다 — 조회 전용이며,
-    // 관리자가 여기서 값을 바꾸지는 못한다(변경은 회원 본인만 /notify-prefs로).
-    // 🔧 [KV list() 제거, 2026-09-11] 예전엔 list({prefix:"sub:"})로 전
-    // 회원 구독을 한 번에 훑었는데, 이제 회원별 subIndex:{이메일}을 각자
-    // 조회한다(§getPushDeviceIndex, handlePushSubscriptionStatus와 동일 패턴).
-    const membersWithNotify = await Promise.all(
-      members.map(async (m) => {
-        const email = emailByNumber.get(m.number) || null;
-        const [prefs, pushSubscribed] = await Promise.all([
-          loadNotifyPrefs(env, m.number),
-          email ? getPushDeviceIndex(env, email).then((d) => d.length > 0) : Promise.resolve(false),
-        ]);
-        const detail = detailByNumber.get(m.number) || { googleAccount: "", gooroomeeAccount: "", examKind: "" };
-        const lastLogin = lastLoginByNumber.get(m.number) || { ts: null, ip: "" };
-        const joinDateYYMMDD = joinDateYYMMDDByNumber.get(m.number) || "";
-        return {
-          ...m,
-          joinDate: joinDateYYMMDD && m.joinDate ? `${m.joinDate} (${joinDateYYMMDD})` : m.joinDate,
-          pushSubscribed,
-          notifyPrefs: prefs,
-          googleAccount: detail.googleAccount,
-          gooroomeeAccount: detail.gooroomeeAccount,
-          examKind: detail.examKind,
-          goalType: goalTypeByNumber.get(m.number) || "",
-          lastLoginAt: lastLogin.ts,
-          lastLoginIp: lastLogin.ip,
-          sheetGid: sheetIdByTitle.has(m.number) ? sheetIdByTitle.get(m.number) : null,
-        };
-      })
-    );
-
-    return json(
-      { members: membersWithNotify, notifyCategories: NOTIFY_CATEGORIES, spreadsheetId: env.GOOGLE_SHEET_FILE_ID },
-      200,
-      origin
-    );
-  } catch (err) {
-    return json({ error: "스터디원 목록 조회 실패: " + err.message }, 500, origin);
-  }
 }
 
 // 🔧 [구조 개선, 2026-09-13] Durable Object 클래스 8개는 src/durable-objects.js로

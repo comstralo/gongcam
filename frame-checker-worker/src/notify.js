@@ -63,7 +63,7 @@ async function listRecentNotices(env) {
 }
 
 // 🔧 [KV → DO 이전, 2026-09-12] §49 — MemberSettingsDO로 이전.
-async function loadNotifyPrefs(env, memberNumber) {
+export async function loadNotifyPrefs(env, memberNumber) {
   const res = await getMemberSettingsStub(env).fetch(`https://do/pref?memberNumber=${encodeURIComponent(memberNumber)}`);
   const { prefs } = await res.json();
   return prefs ? { ...defaultNotifyPrefs(), ...prefs } : defaultNotifyPrefs();
@@ -304,7 +304,7 @@ export async function handleAdminPushSendCategory(req, env, origin) {
 // 확정) 그 폴백 자체가 통째로 불필요해져 삭제했다. "읽기→배열 수정→
 // 쓰기" 레이스를 막던 withMemberLock(env, `push:${email}`, ...)도 DO가
 // 요청을 직렬 처리해 구조적으로 불필요해져 제거했다.
-async function getPushDeviceIndex(env, email) {
+export async function getPushDeviceIndex(env, email) {
   const res = await getPushSubscriptionsStub(env).fetch(`https://do/index?email=${encodeURIComponent(email)}`);
   const { devices } = await res.json();
   return devices || [];

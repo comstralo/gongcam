@@ -36,10 +36,18 @@ import {
   withMemberLock,
   listExitedMemberEntries,
   getCurrentCoReviewers,
+  batchGetSheetValues,
+  getMemberSettingsStub,
+  NOTIFY_CATEGORIES,
 } from "./index.js";
 import { parseGoogleEmail, parseGooroomeeAccount } from "./member-utils.js";
 import { todayKSTDateString, kstDateOffsetString } from "./date-utils.js";
 import { _cachedCompute, invalidateMemberCache, invalidateMemberSlotCache } from "./cache.js";
+import { listActiveMembersWithExitInfo } from "./exit.js";
+import { loadNotifyPrefs, getPushDeviceIndex } from "./notify.js";
+
+// 🔧 [구조 개선 16차, 2026-09-17] handleAdminMembersRoster(회원 상세
+// 목록 조회)를 이 파일로 옮겼다(docs/TESTING.md 참고) — 아래 참고.
 
 // 신규 스터디원의 구글 계정을 시트 편집자(writer)로 추가한다.
 // 이 시트는 파일 자체의 편집자 목록으로 로그인 게이트(getSheetViewerEmails)를 겸하므로,
@@ -508,5 +516,138 @@ export async function handleGrantMemberAccess(req, env, origin) {
     return json({ ok: true }, 200, origin);
   } catch (err) {
     return json({ error: "권한 부여 실패: " + err.message }, 500, origin);
+  }
+}
+
+// 🔧 [구조 개선 16차, 2026-09-17] 7차에서 "listActiveMembersWithExitInfo
+// (exit 도메인 판정 로직 포함)를 호출해 통합 테스트 비용과 순환 복잡도가
+// 지나치게 크다"는 이유로 index.js 잔류로 남겨뒀던 함수를 재검토해 옮긴다.
+// 실제로는 listActiveMembersWithExitInfo(exit.js)/listAllMembers·
+// getDataSheetRows(이 파일)/getSpreadsheetMeta(index.js)/loadNotifyPrefs·
+// getPushDeviceIndex(notify.js)/parseGoogleEmail·parseGooroomeeAccount
+// (member-utils.js) 다섯 도메인에 걸친 "회원 상세 목록 조회" 핸들러로,
+// 이동 전 코드 검토 중 loadNotifyPrefs/getPushDeviceIndex가 애초에
+// import조차 되어 있지 않아(10차에서 notify.js 분리 당시 누락된 것으로
+// 추정) 실제로 이 엔드포인트(GET /admin/members/roster)를 열면
+// ReferenceError로 500이 나는 실제 프로덕션 버그를 발견했다 — notify.js에
+// export를 추가해 함께 수정한다.
+export async function handleAdminMembersRoster(req, env, origin) {
+  const admin = await requireAdmin(req, env);
+  if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
+
+  try {
+    const accessToken = await getServiceAccountAccessToken(env);
+    const [members, allMembers, dataRows, sheetMeta] = await Promise.all([
+      listActiveMembersWithExitInfo(env, accessToken, env.GOOGLE_SHEET_FILE_ID),
+      listAllMembers(env, accessToken, env.GOOGLE_SHEET_FILE_ID),
+      // 🔧 [상태 정보 확장] "스터디원 목록" 상세 패널에 구글/구루미 계정과
+      // 준비 중인 시험(D~E열)을 보여주기 위해 별도로 조회한다 —
+      // listAllMembers는 이메일(D열 앞부분)만 뽑아 쓰고 원본 셀 값 자체를
+      // 반환하지 않으므로, 여기서 D~E열을 직접 읽어 회원번호(B열)로 매칭한다.
+      // 🔧 [캐싱 통합, 2026-09] listAllMembers와 같은 원본(데이터!A1:V50)을
+      // 매번 직접 다시 읽고 있었다 — getDataSheetRows(members:와 동일한
+      // 10분 TTL·roster 무효화 그룹의 dataSheetRows: 캐시)로 교체해 이
+      // 화면을 열 때마다 같은 범위를 두 번 읽던 걸 하나로 합친다.
+      getDataSheetRows(env, accessToken, env.GOOGLE_SHEET_FILE_ID),
+      // 🔧 [시트번호 바로가기] 회원번호 탭의 실제 sheetId(gid)를 알아야
+      // "https://docs.google.com/.../edit#gid={sheetId}" 링크를 만들 수
+      // 있다 — getSpreadsheetMeta는 5분 캐시라 이 요청 때문에 API 호출이
+      // 추가로 늘지 않는다.
+      getSpreadsheetMeta(env, accessToken, env.GOOGLE_SHEET_FILE_ID),
+    ]);
+    const sheetIdByTitle = new Map(sheetMeta.map((s) => [s.title, s.sheetId]));
+    const emailByNumber = new Map(allMembers.map((m) => [m.number, m.email]));
+
+    const detailByNumber = new Map();
+    for (const row of dataRows) {
+      const num = (row[1] || "").trim();
+      if (!num || !/^\d+$/.test(num)) continue;
+      detailByNumber.set(num, {
+        googleAccount: parseGoogleEmail(row[3]),
+        gooroomeeAccount: parseGooroomeeAccount(row[3]),
+        examKind: (row[4] || "").trim(),
+      });
+    }
+
+    // 🔧 [KV → DO 이전, 2026-09-12] §49 — 회원마다 개별 병렬 get 하던 것을
+    // MemberSettingsDO의 /last-login/list 1회 호출로 대체(왕복 N회→1회).
+    const lastLoginRes = await getMemberSettingsStub(env).fetch("https://do/last-login/list");
+    const { items: lastLoginItems } = await lastLoginRes.json();
+    const lastLoginByNumber = new Map(
+      members.map((m) => {
+        const entry = lastLoginItems[m.number];
+        return [m.number, entry ? { ts: entry.ts || null, ip: entry.ip || "" } : { ts: null, ip: "" }];
+      })
+    );
+
+    // 🔧 [참여유형 = 목표시간 유형] "참여유형"은 스터디장/부스터디장 구분이
+    // 아니라 "8H 교시제" 같은 목표시간 유형(goalType)을 말한다(사용자 지적).
+    // 이 값은 회원별 개인 탭 O3에만 있고 전체 회원을 한 번에 보여주는 공용
+    // 셀이 없어, batchGet으로 15개 range를 한 번의 API 호출로 묶어 읽는다.
+    // 🔧 [가입일자에 실제 날짜 병기] "상태 정보" 카드의 "가입일자"는
+    // s.joinDate(=I3, "D+n" 상대 표시 — 개인 대시보드 요약 타일과 동일한
+    // 값으로 의도된 표시)를 그대로 쓴다. 다만 관리자가 실제 등록 시점도
+    // 함께 확인할 수 있도록 I2(원본 "YYYY-MM-DD")를 O3와 같은 batchGet
+    // 호출에 묶어 조회해 "D+n (YYMMDD)" 형식으로 병기한다 — I3 표시 자체를
+    // 대체하지 않는다(사용자 확인: D+n 표시는 의도된 것).
+    const goalTypeAndJoinDateRanges = members.flatMap((m) => [`${m.number}!O3`, `${m.number}!I2`]);
+    const goalTypeAndJoinDateValues = await batchGetSheetValues(
+      env,
+      accessToken,
+      env.GOOGLE_SHEET_FILE_ID,
+      goalTypeAndJoinDateRanges
+    ).catch(() => []);
+    const goalTypeByNumber = new Map();
+    const joinDateYYMMDDByNumber = new Map();
+    members.forEach((m, i) => {
+      const goalTypeCell = goalTypeAndJoinDateValues[i * 2];
+      const joinDateCell = goalTypeAndJoinDateValues[i * 2 + 1];
+      goalTypeByNumber.set(m.number, ((goalTypeCell && goalTypeCell[0] && goalTypeCell[0][0]) || "").toString());
+      const joinDateRaw = ((joinDateCell && joinDateCell[0] && joinDateCell[0][0]) || "").toString();
+      // "YYYY-MM-DD" -> "YYMMDD". 형식이 어긋나면(빈 값 등) 병기하지 않는다.
+      const m2 = /^\d{4}-(\d{2})-(\d{2})$/.exec(joinDateRaw);
+      joinDateYYMMDDByNumber.set(m.number, m2 ? joinDateRaw.slice(2, 4) + m2[1] + m2[2] : "");
+    });
+
+    // 🔧 [관리자용 알림 설정 열람] "스터디원 목록"에서 회원별로 PUSH 구독
+    // 여부(PUSH_SUBS_KV, 이메일 기준)와 카테고리별 on/off(REPORTS_KV의
+    // notifyPref:{번호}, 회원번호 기준)를 함께 보여준다 — 조회 전용이며,
+    // 관리자가 여기서 값을 바꾸지는 못한다(변경은 회원 본인만 /notify-prefs로).
+    // 🔧 [KV list() 제거, 2026-09-11] 예전엔 list({prefix:"sub:"})로 전
+    // 회원 구독을 한 번에 훑었는데, 이제 회원별 subIndex:{이메일}을 각자
+    // 조회한다(§getPushDeviceIndex, handlePushSubscriptionStatus와 동일 패턴).
+    const membersWithNotify = await Promise.all(
+      members.map(async (m) => {
+        const email = emailByNumber.get(m.number) || null;
+        const [prefs, pushSubscribed] = await Promise.all([
+          loadNotifyPrefs(env, m.number),
+          email ? getPushDeviceIndex(env, email).then((d) => d.length > 0) : Promise.resolve(false),
+        ]);
+        const detail = detailByNumber.get(m.number) || { googleAccount: "", gooroomeeAccount: "", examKind: "" };
+        const lastLogin = lastLoginByNumber.get(m.number) || { ts: null, ip: "" };
+        const joinDateYYMMDD = joinDateYYMMDDByNumber.get(m.number) || "";
+        return {
+          ...m,
+          joinDate: joinDateYYMMDD && m.joinDate ? `${m.joinDate} (${joinDateYYMMDD})` : m.joinDate,
+          pushSubscribed,
+          notifyPrefs: prefs,
+          googleAccount: detail.googleAccount,
+          gooroomeeAccount: detail.gooroomeeAccount,
+          examKind: detail.examKind,
+          goalType: goalTypeByNumber.get(m.number) || "",
+          lastLoginAt: lastLogin.ts,
+          lastLoginIp: lastLogin.ip,
+          sheetGid: sheetIdByTitle.has(m.number) ? sheetIdByTitle.get(m.number) : null,
+        };
+      })
+    );
+
+    return json(
+      { members: membersWithNotify, notifyCategories: NOTIFY_CATEGORIES, spreadsheetId: env.GOOGLE_SHEET_FILE_ID },
+      200,
+      origin
+    );
+  } catch (err) {
+    return json({ error: "스터디원 목록 조회 실패: " + err.message }, 500, origin);
   }
 }
