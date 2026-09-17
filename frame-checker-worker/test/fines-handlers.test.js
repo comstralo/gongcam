@@ -9,6 +9,7 @@ import {
   handleAdminFinesExempt,
   handleAdminFinesPaid,
   handleAdminFinesUnpaid,
+  handleAdminFinesAdminForcedCount,
 } from "../src/fines.js";
 import { TEST_SERVICE_ACCOUNT_JSON, oauthTokenResponse } from "./helpers/service-account.js";
 
@@ -247,5 +248,42 @@ describe("handleAdminFineStatus", () => {
       valueInputOption: "USER_ENTERED",
       data: [{ range: "3!I32", values: [["납부"]] }],
     });
+  });
+});
+
+// 🔧 [구조 개선 18차] handleAdminFinesAdminForcedCount를 index.js에서
+// 이 파일로 옮기면서 함께 이전한 테스트(원래 17차
+// test/index-remaining-handlers.test.js에 있었음).
+describe("handleAdminFinesAdminForcedCount", () => {
+  it("관리자가 아니면 403을 반환한다", async () => {
+    const testEnv = makeTestEnv();
+    const token = await makeNonAdminToken();
+    const req = makeRequest("https://worker/admin/fines/admin-forced-count", { token });
+
+    const res = await handleAdminFinesAdminForcedCount(req, testEnv, "https://example.com");
+    expect(res.status).toBe(403);
+  });
+
+  it("관리자면 200과 요일별 카운트를 반환한다(퇴실자 없으면 전부 0)", async () => {
+    const testEnv = makeTestEnv({ GOOGLE_SHEET_FILE_ID: "admin-forced-count-200" });
+    const token = await makeAdminToken();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url) => {
+        const u = String(url);
+        if (u.includes("oauth2.googleapis.com")) return Promise.resolve(oauthTokenResponse());
+        if (u.includes("fields=sheets.properties")) {
+          return Promise.resolve(new Response(JSON.stringify({ sheets: [{ properties: { title: "1", sheetId: 0 } }] })));
+        }
+        throw new Error("unexpected fetch: " + u);
+      })
+    );
+    const req = makeRequest("https://worker/admin/fines/admin-forced-count", { token });
+
+    const res = await handleAdminFinesAdminForcedCount(req, testEnv, "https://example.com");
+    const body = await res.json();
+    expect(res.status, JSON.stringify(body)).toBe(200);
+    expect(body.counts).toBeTruthy();
+    expect(Object.values(body.counts).every((v) => v === 0)).toBe(true);
   });
 });

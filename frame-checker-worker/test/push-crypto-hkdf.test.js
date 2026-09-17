@@ -5,7 +5,7 @@
 // 대신 정의 그대로의 합성 관계를 고정하는 회귀 테스트로 검증한다.
 import { describe, expect, it } from "vitest";
 import { hkdf, hkdfExpand, hkdfExtract, hmacSha256Raw } from "../src/push-crypto.js";
-import { concatBytes } from "../src/member-utils.js";
+import { concatBytes } from "../src/pure-utils.js";
 
 describe("hmacSha256Raw", () => {
   it("같은 입력이면 항상 같은 출력을 낸다(결정성)", async () => {

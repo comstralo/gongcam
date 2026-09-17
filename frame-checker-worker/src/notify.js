@@ -2,14 +2,20 @@
 // 상태 메시지, 웹 푸시 구독/기기 관리/발송, 참여자 간 알림)을
 // index.js에서 분리했다(docs/TESTING.md 참고). 6~9차와 동일하게 fetch
 // mock + 실제 workerd DO 통합 테스트를 먼저 깐 뒤 도메인을 통째로
-// 옮겼다. 이 도메인은 조사 결과 다른 도메인(fines.js/exit.js/deposit.js
-// 등)을 전혀 실사용하지 않는 순환 없는 잎(leaf) 도메인이었다 —
-// members.js의 listAllMembers만 소비하고, 그 외에는 push-crypto.js/
-// member-utils.js의 이미 export된 순수 함수와 index.js의 범용 뼈대
-// 유틸만 가져다 쓴다.
+// 옮겼다. **10차 당시**엔 다른 도메인(fines.js/exit.js/deposit.js 등)을
+// 전혀 실사용하지 않는 순환 없는 잎(leaf) 도메인이었다 — members.js의
+// listAllMembers만 소비하고, 그 외에는 push-crypto.js/pure-utils.js의
+// 이미 export된 순수 함수와 index.js의 범용 뼈대 유틸만 가져다 썼다.
+// 🔧 [17차 구조 감사, 18차 갱신] 16차에서 handleAdminMembersRoster가
+// members.js로 옮겨가며 members.js가 이 파일의 loadNotifyPrefs/
+// getPushDeviceIndex를 실사용 import하게 됐고, 이 파일도 members.js의
+// listAllMembers를 실사용 import한다 — 즉 **지금은 더 이상 leaf 도메인이
+// 아니고 members.js와 index.js를 거치지 않는 직접 순환이 있다**(17차
+// 감사에서 확인, docs/TESTING.md 참고). 두 심볼 모두 함수 선언(호이스팅)
+// 이라 TDZ 위험은 없다.
 //
-// NOTIFY_CATEGORIES는 member-utils.js(defaultNotifyPrefs)와
-// handleAdminMembersRoster(회원 관리 도메인, index.js 잔류)도 함께
+// NOTIFY_CATEGORIES는 pure-utils.js(defaultNotifyPrefs)와
+// handleAdminMembersRoster(회원 관리 도메인, members.js)도 함께
 // 참조하는 범용 상수라 index.js에 남기고 export만 유지한다 — 여기서는
 // 재export가 아니라 실제 사용 목적으로 import한다(9차까지 반복된
 // 패턴). getRosterStub도 withMemberLock 등 여러 도메인이 공유하는
@@ -25,7 +31,7 @@ import {
   NOTIFY_CATEGORIES,
 } from "./index.js";
 import { listAllMembers } from "./members.js";
-import { defaultNotifyPrefs, guessDeviceLabel } from "./member-utils.js";
+import { defaultNotifyPrefs, guessDeviceLabel } from "./pure-utils.js";
 import { sendWebPush } from "./push-crypto.js";
 
 function getPushSubscriptionsStub(env) {

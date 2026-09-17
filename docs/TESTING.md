@@ -47,6 +47,68 @@ npm run test:watch  # watch 모드
 쓰이는 것과 정확히 같은 모듈 인스턴스를 받는다(공식 문서 명시) —
 별도 번들링/변환 없이 `export`만 붙이면 바로 유닛 테스트할 수 있다.
 
+## 현재 유효한 잔류 근거 요약 (18차 기준)
+
+> 아래는 1~18차 각 섹션에 흩어져 있는 "이 함수는 index.js에 남긴다"
+> 는 선언들의 **최신 스냅샷**이다. 각 차수 섹션 본문은 그 시점의
+> 역사적 기록으로 그대로 보존하고(예: 10차의 "notify.js는 leaf
+> 도메인" 서술은 16차 이후 더 이상 사실이 아니지만 본문은 갱신 노트만
+> 덧붙이고 남겨뒀다), **지금 코드베이스의 진실**을 알고 싶으면 이
+> 표만 보면 된다. 17차 구조 감사가 "차수 섹션을 순서대로 읽으면 낡은
+> 근거를 최신으로 오인하기 쉽다"고 지적해 추가했다.
+
+**최종 파일 구조**(18차 기준, `frame-checker-worker/src/`):
+
+| 파일 | 줄 수 | 도메인 |
+|---|---:|---|
+| `index.js` | 2,054 | 엔트리포인트 — 세션/인증 프리미티브, 시트 API 저수준 유틸, 사용량 계측, DO stub, 관리자 위임 OAuth 저수준 유틸, 목표시간 예약, 참여자 명단, 라우팅 테이블(`export default { fetch, scheduled }`) |
+| `report.js` | 1,871 | 제보/캡처(접수·쿨다운·검토·투표·벌점/상점 반영) |
+| `personal-status.js` | 1,313 | 개인 대시보드 + 랭킹/정산 |
+| `exit.js` | 1,160 | 퇴실/재납 신청·확정, 강제퇴실 판정 |
+| `durable-objects.js` | 913 | DO 클래스 8개 |
+| `leave.js` | 863 | 사유반휴/일반반휴 |
+| `notify.js` | 663 | 알림/푸시 |
+| `members.js` | 653 | 회원 관리(CRUD/번호 재배치), 회원 상세 로스터 |
+| `bot.js` | 398 | 봇 원격 상태/사용량 |
+| `cache.js` | 371 | 캐시 인프라 |
+| `cycle.js` | 357 | 사이클(3주 백업) 판정 |
+| `auth.js` | 259 | 로그인/OAuth |
+| `deposit.js` | 248 | 예치금 반환/강제퇴실/정산 판정 핵심 계산 |
+| `fines.js` | 216 | 벌금/납부 처리 |
+| `push-crypto.js` | 153 | 웹푸시 암호화(RFC 8291/8292) |
+| `date-utils.js` | 132 | KST 날짜 계산 |
+| `pure-utils.js` | 79 | 회원 계정 파싱 + 웹푸시 보조 + 알림 기본값(세 영역이 섞인 의도된 잡동사니 유틸, 18차에서 member-utils.js → pure-utils.js로 리네임) |
+| `exit-timing.js` | 28 | 정산 공개 시점 판정(순수 함수) |
+
+**index.js에 여러 도메인이 공유해서 남아있는 것들**(대표 예시 —
+전체 목록은 각 차수 섹션 참고):
+
+| 심볼 | 공유하는 파일 | 비고 |
+|---|---|---|
+| `signSession`/`verifySession` | 전 도메인 | 세션 토큰 서명/검증 |
+| `getServiceAccountAccessToken` | 전 도메인 | 서비스 계정 OAuth 토큰 |
+| `json`/`corsHeaders` | 전 도메인 | 표준 응답 헬퍼 |
+| `requireAdmin`/`resolveMemberNumber`/`findMemberNumberByEmail` | 8곳 이상 | 인증/회원 식별 |
+| `getSheetValues`/`writeSheetValues`/`batchGetSheetValues`/`getSpreadsheetMeta` | 7곳 이상 | 시트 API 저수준 유틸 |
+| `resolveTargetFileId` | 7곳 이상 | 사이클 판정(원본 실제로는 cycle.js, index.js가 재export) |
+| `parseWon`/`safeNumber`/`parseLeaveCount`/`colIndexToLetter` | deposit.js/leave.js/exit.js/fines.js 등 | 순수 계산 헬퍼 |
+| `STATUS_DAYS`/`STATUS_DAY_COLS`/`ROW_PAYMENT_CHECK` 등 시트 레이아웃 상수 | 여러 도메인 | 15차에서 "범용"이라 뭉뚱그렸으나 실측 결과 다수는 personal-status.js 전용 — 그래도 시트 물리 레이아웃을 한곳에 모아두는 실용적 설계로 유지 |
+| `getMemberSettingsStub`/`getRosterStub`/`getBotAdminConfigStub`/`getUsageStatsStub` | 여러 도메인 | DO stub 헬퍼 |
+| `MEMBER_CACHE_GROUPS`(cache.js) | bot.js 경유 handleBotInvalidateCache | 17차에서 export 누락 버그 발견·수정 |
+| `getAdminAccessToken`/`exchangeAdminOAuthCode`/`ADMIN_OAUTH_SCOPE` | exit.js/members.js | 관리자 위임 OAuth(Drive 편집자 초대용) |
+
+**index.js에 남아있는 소수 핸들러**(각자 작고 독립적, 17차에서 전부
+export + 최소 스모크 테스트 확보): `handleMyRole`,
+`handleGetGoalSchedule`/`handleSetGoalSchedule`,
+`handleBotInvalidateCache`, `handlePutParticipants`/
+`handleGetParticipants`.
+
+**유일한 비-허브 순환**: `members.js ↔ notify.js`(16차에서
+`handleAdminMembersRoster` 이동 때 생김) — `members.js`가
+`notify.js`의 `loadNotifyPrefs`/`getPushDeviceIndex`를,
+`notify.js`가 `members.js`의 `listAllMembers`를 실사용 import한다.
+둘 다 함수 선언(호이스팅)이라 TDZ 위험 없음.
+
 ## 진행 상황
 
 ### 1~2단계 완료 (2026-09-12)
@@ -680,6 +742,17 @@ index.js 7,338→7,202줄(약 136줄 감소, 시작(10,984줄) 대비 총 34.4%
 
 ## 구조 개선 10차 — 알림/푸시 도메인 통합 테스트 + 이동 (2026-09-13)
 
+> **🔧 [18차 갱신 노트]** 아래 "순환 없는 잎(leaf) 도메인"이라는
+> 서술은 **10차 당시에는 사실**이었으나, 16차에서
+> `handleAdminMembersRoster`가 members.js로 옮겨가며 members.js가
+> notify.js의 `loadNotifyPrefs`/`getPushDeviceIndex`를 실사용
+> import하게 됐고 notify.js도 members.js의 `listAllMembers`를
+> 실사용 import해, **지금은 index.js를 거치지 않는 직접 순환이
+> members.js↔notify.js 사이에 있다**(17차 구조 감사에서 발견, 두
+> 심볼 모두 함수 선언이라 TDZ 위험은 없음). member-utils.js는
+> 18차에서 pure-utils.js로 리네임됐다. 아래 본문은 10차 시점
+> 기록을 그대로 보존한다.
+
 9차 조사에서 예고한 대로 알림/푸시 도메인(카테고리별 알림 설정,
 상태 메시지, 웹 푸시 구독/기기 관리/발송, 참여자 간 알림)을
 `src/notify.js`로 옮겼다. 조사 결과 이 도메인은 다른 도메인 파일
@@ -1269,13 +1342,63 @@ index.js 2,071→2,054줄(마이그레이션 핸들러 삭제로 소폭 감소, 
 전부 통과(16차 종료 시점 434개 + 신규 14개), 연속 3회 실행으로
 안정성 확인.
 
-**감사에서 나왔지만 이번엔 보류한 항목**(낮은 우선순위, 로직
-변경 없는 순수 정리라 리스크는 낮지만 지금 급하지 않음):
-`handleAdminFinesAdminForcedCount`를 fines.js로 이동(exit.js 8차
-주석이 이미 "벌금 도메인"이라고 인지), `member-utils.js` 리네임,
-notify.js 상단의 낡은 "leaf 도메인" 주석 갱신, 라우팅 테이블에
-도메인별 주석 헤더 추가, `docs/TESTING.md`에 "현재 유효한 잔류
-근거 요약" 표 추가.
+**감사에서 나왔지만 17차 시점엔 보류했던 항목**(18차에서 전부
+처리 — 아래 18차 섹션 참고): `handleAdminFinesAdminForcedCount`를
+fines.js로 이동, `member-utils.js` 리네임, notify.js 낡은 주석
+갱신, 라우팅 테이블 도메인별 주석 헤더, "현재 유효한 잔류 근거
+요약" 표.
+
+## 구조 개선 18차 — 17차 감사의 낮은 우선순위 항목 전체 정리 (2026-09-17)
+
+17차 구조 감사가 지목했지만 그때는 보류했던 5개 항목을 전부
+처리했다 — 전부 로직 변경이 없거나(리네임/주석/문서) 이미 검증된
+패턴을 그대로 적용하는(함수 이동) 순수 정리 작업이라 리스크가
+낮았다.
+
+1. **`handleAdminFinesAdminForcedCount`를 fines.js로 이동** — exit.js
+   8차 주석이 이미 "벌금 도메인"이라고 인지하고 있던 함수. 파생
+   상수 `FINE_UNPAID_ADMIN_FORCED_REASON_LABEL`도 함께 옮기고,
+   원본 `FINE_UNPAID_ADMIN_FORCED_REASON`(exit.js와 공유)은
+   index.js에 남겨 export만 유지했다. 이동 직후 diff 대조로 로직
+   완전 일치를 확인했고, 17차에서 이 함수용으로 작성했던 테스트
+   2개를 `test/fines-handlers.test.js`로 함께 옮겼다.
+2. **`member-utils.js` → `pure-utils.js` 리네임** — 회원 계정
+   파싱(`parseGoogleEmail`/`parseGooroomeeAccount`)/웹푸시 암호화
+   보조(`buildVapidJwk`/`concatBytes`)/알림 기본값
+   (`defaultNotifyPrefs`/`guessDeviceLabel`) 세 영역이 섞인 의도된
+   잡동사니 유틸 파일이라 "member"라는 이름이 실제 내용을 대표하지
+   못한다는 지적을 반영했다. `git mv`로 이력을 보존하고, 참조하는
+   8개 파일(exit.js/members.js/push-crypto.js/index.js/notify.js와
+   테스트 3개)의 import 경로와 주석을 전부 갱신했다.
+3. **notify.js 상단 주석 갱신** — 10차의 "순환 없는 leaf 도메인"
+   서술이 16차(`handleAdminMembersRoster` 이동)로 무효화됐는데
+   반영되지 않았던 문제. "10차 당시엔"이라는 시점 한정 표현으로
+   바꾸고, 지금은 members.js와 직접 순환(loadNotifyPrefs/
+   getPushDeviceIndex ↔ listAllMembers)이 있다는 사실을 명시했다.
+   `docs/TESTING.md`의 10차 섹션에도 같은 취지의 갱신 노트를
+   인용구로 덧붙였다(본문은 역사적 기록으로 그대로 보존).
+4. **라우팅 테이블에 도메인별 주석 헤더 추가** — 85개 라우트의
+   순서 자체(`url.pathname` 문자열, 호출하는 핸들러, if 체인 순서)
+   는 전혀 건드리지 않고 `// --- 도메인명 (파일명) ---` 헤더만
+   삽입했다. 도메인이 섞여 있는 구간(예: 봇 라우트 사이에 낀
+   `/report-status`, 회원 관리 라우트 사이에 낀 퇴실 신청 3개)은
+   인라인 주석으로 표시했다. diff에서 `url.pathname` 관련 줄의
+   추가/삭제가 0건임을 스크립트로 확인해 순수 주석 삽입만
+   이뤄졌음을 검증했다.
+5. **`docs/TESTING.md`에 "현재 유효한 잔류 근거 요약" 표 추가** —
+   "파일 구조" 섹션 바로 다음에 최종 파일 목록(줄 수·도메인),
+   index.js가 여러 도메인과 공유하는 대표 심볼 표, 남은 소수
+   핸들러 목록, 유일한 비-허브 순환(members.js↔notify.js)을
+   한눈에 볼 수 있는 스냅샷을 추가했다. 각 차수 섹션 본문은
+   역사적 기록으로 그대로 두고, 이 표만 항상 최신 상태를
+   반영하도록 앞으로 리팩터링이 있을 때마다 갱신한다.
+
+index.js 줄 수는 이번 차수에서 변하지 않았다(2,054줄 그대로 —
+handleAdminFinesAdminForcedCount 이동으로 줄어든 만큼 주석 추가로
+다시 늘어 상쇄됨). 시작(10,984줄) 대비 총 **81.3% 감소** 유지.
+`npm test` 기준 448개 테스트 전부 통과(17차와 동일 — 이동한 2개
+테스트를 제외한 순수 이전이라 개수 변화 없음), 연속 실행으로
+안정성 확인.
 
 ## 다음 단계
 
@@ -1284,36 +1407,26 @@ notify.js 상단의 낡은 "leaf 도메인" 주석 갱신, 라우팅 테이블�
 재배치), 퇴실 처리, 사이클 판정 정리, 알림/푸시 도메인, 사유반휴/
 일반반휴 도메인, 제보/캡처 도메인, 봇 상태/사용량 도메인, 로그인/
 OAuth 도메인, 개인 대시보드/랭킹 클러스터, `handleAdminMembersRoster`
-까지 총 16차에 걸쳐 분리하고, 17차에서 전체 구조 감사와 사후 정리를
-진행했다. `resolveMemberNumber`/`findMemberNumberByEmail`(15곳
-이상 공유 인증 유틸), `getAdminAccessToken`과 그 하위 의존
-(`exchangeAdminOAuthCode` 등), `parseWon`/`safeNumber`/
-`parseLeaveCount`/`colIndexToLetter`/시트 API 저수준 유틸(get/write/
-batch 등)/사용량 계측 클러스터/DO stub 헬퍼는 계속 index.js 잔류
-대상으로 남아있다 — 이들은 사실상 전부 "여러 도메인이 공유하는
-진짜 범용 유틸"이라 더 쪼개면 이동 대상보다 남는 export가 많아지는
-지점에 도달했다. index.js는 이제 로그인/세션 프리미티브, 관리자
-위임 OAuth, 시트 API 저수준 유틸, 사용량 계측, DO stub, 목표시간
-예약, 참여자 명단, 소수의 관리자 조회 핸들러(전부 export되어 있고
-최소 테스트도 갖춤), 라우팅 테이블(`export default { fetch,
-scheduled }`)만 남아 있다. 17차 감사가 확인한 대로 이 시점에서는
-리팩터링을 종료하고 현재 구조(index.js 2,054줄 + 17개 지원 파일)를
-안정 상태로 굳히는 것이 합리적이다 — 남은 게 전부 여러 도메인이
-공유하는 진짜 범용 유틸이거나 테스트가 갖춰진 작은 핸들러들이라,
-추가 분할의 한계효용보다 "사소한 것까지 옮기는 관성"의 위험이 더
-크다. 테스트 없이 구조 변경부터 시작하지 않는다는 원칙, 이동 직후
-원본과 diff 대조하는 절차(8차부터), DO 키 기준 테스트 격리(10차
-부터), 최상위 `const` 객체 리터럴의 TDZ 위험 점검(11차부터), 이동
-후 라우팅 테이블 전체를 grep해 실수로 삭제된 함수가 없는지 교차
-검증(13차부터), 이동한 코드가 실제로 호출하는 모든 함수가
-import됐는지 `npm test`로 최종 확인(15차부터), 새 파일은 작성 직후
-`git add`로 즉시 스테이징(15차부터)까지 모두 유지한다. **17차에서
-다시 확인한 것**: "무겁다"는 이유로 이동을 보류한 함수뿐 아니라
-"index.js에 원래부터 남기기로 정한 유틸 함수"도 똑같이 테스트
-사각지대가 될 수 있다(`MEMBER_CACHE_GROUPS`가 세 번째 사례) —
-"이동 대상인가 잔류 대상인가"와 무관하게, **어떤 함수든 그 경로를
-실제로 실행하는 테스트가 없으면 import 누락 같은 사소한 실수가
-무기한 방치될 수 있다**는 게 9차·16차·17차 세 번에 걸쳐 확인된
-근본 원인이다. 향후 유사한 리팩터링에서는 "이 함수를 옮길지
-말지"보다 "이 함수를 실행하는 테스트가 있는지"를 먼저 확인하는
-습관이 더 근본적인 예방책이다.
+까지 총 16차에 걸쳐 분리하고, 17차에서 전체 구조 감사와 사후 정리를,
+18차에서 그 감사의 낮은 우선순위 항목까지 전부 마무리했다. 남은
+것은 "현재 유효한 잔류 근거 요약"(위 표 참고)이 정리한 대로 전부
+여러 도메인이 공유하는 진짜 범용 유틸이거나, export되고 최소
+테스트도 갖춘 작은 독립 핸들러들뿐이다. 이 시점에서 구조적으로
+더 손댈 곳은 없다고 판단한다 — 추가 분할의 한계효용보다 "사소한
+것까지 옮기는 관성"의 위험이 더 크다.
+
+이번 리팩터링 전체(1~18차)에서 반복적으로 확인된 원칙들을 다시
+정리한다: 테스트 없이 구조 변경부터 시작하지 않는다(전 차수),
+이동 직후 원본과 diff 대조하는 절차(8차부터), DO 키 기준 테스트
+격리(10차부터), 최상위 `const` 객체 리터럴의 TDZ 위험 점검(11차
+부터), 이동 후 라우팅 테이블 전체를 grep해 실수로 삭제된 함수가
+없는지 교차 검증(13차부터), 이동한 코드가 실제로 호출하는 모든
+함수가 import됐는지 `npm test`로 최종 확인(15차부터), 새 파일은
+작성 직후 `git add`로 즉시 스테이징(15차부터). **가장 중요한
+교훈**(9차·16차·17차 세 번에 걸쳐 반복 확인): "이동 대상인가
+잔류 대상인가"와 무관하게, 어떤 함수든 그 경로를 실제로 실행하는
+테스트가 없으면 import 누락 같은 사소한 실수가 무기한 방치될 수
+있다 — "이 함수를 옮길지 말지"보다 "이 함수를 실행하는 테스트가
+있는지"를 먼저 확인하는 습관이 구조 개선 자체보다 더 근본적인
+예방책이다. 향후 이 코드베이스에 새 도메인이나 기능이 추가될
+때도 이 원칙들을 계속 적용한다.

@@ -9,7 +9,7 @@ import {
   guessDeviceLabel,
   parseGoogleEmail,
   parseGooroomeeAccount,
-} from "../src/member-utils.js";
+} from "../src/pure-utils.js";
 import { base64url, NOTIFY_CATEGORIES } from "../src/index.js";
 
 describe("parseGoogleEmail", () => {

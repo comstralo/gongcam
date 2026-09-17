@@ -140,22 +140,25 @@ import { isSettlementVisibleToMembers, exitDateSettled } from "./exit-timing.js"
 export { isSettlementVisibleToMembers, exitDateSettled };
 
 // 🔧 [구조 개선, 2026-09-13] 회원 관리/알림·푸시 도메인의 완전 순수 함수
-// 4개는 src/member-utils.js로 옮겼다 — member-utils.js가 이 파일의
+// 4개는 src/pure-utils.js로 옮겼다(18차에서 member-utils.js → pure-utils.js
+// 로 리네임 — 회원 계정 파싱/웹푸시 암호화 보조/알림 기본값 세 영역이
+// 섞인 잡동사니 유틸 파일이라 "member"라는 이름이 실제 내용을 대표하지
+// 못한다는 17차 구조 감사 지적을 반영). pure-utils.js가 이 파일의
 // base64url/base64urlToBytes/NOTIFY_CATEGORIES를 import하므로(아래 export
 // 선언 참고) 순환이지만 재export 목적뿐이라 TDZ 위험이 없다.
 // index.js 다른 함수(handleAdminCreateMember 등)가 그대로 참조하므로
-// 재export는 불필요하다 — 테스트가 필요하면 ../src/member-utils.js에서
+// 재export는 불필요하다 — 테스트가 필요하면 ../src/pure-utils.js에서
 // 직접 import.
 import {
   parseGoogleEmail,
   parseGooroomeeAccount,
   guessDeviceLabel,
   defaultNotifyPrefs,
-} from "./member-utils.js";
+} from "./pure-utils.js";
 
 // 🔧 [구조 개선, 2026-09-13] 웹푸시 암호화/발송 함수 7개는
 // src/push-crypto.js로 옮겼다(buildVapidJwk/concatBytes를 import해
-// 씀 — member-utils.js에서 직접 가져오므로 index.js 경유 불필요).
+// 씀 — pure-utils.js에서 직접 가져오므로 index.js 경유 불필요).
 // sendWebPush만 index.js 내 3곳(관리자 발송 핸들러)에서 직접 호출하므로
 // 그것만 import한다 — 재export는 불필요(테스트가 필요하면
 // ../src/push-crypto.js에서 직접 import).
@@ -169,11 +172,15 @@ import { sendWebPush } from "./push-crypto.js";
 // 4개 핸들러는 라우팅 테이블이 직접 호출하므로 함께 import한다.
 // 🔧 [구조 개선 9차] listUnpaidFines를 실사용하던 hasUnpaidFineInCycle이
 // cycle.js로 옮겨가면서, index.js는 더 이상 이 함수를 직접 쓰지 않는다.
+// 🔧 [구조 개선 18차] handleAdminFinesAdminForcedCount도 이 파일로
+// 옮겼다 — exit.js 8차 주석이 이미 "벌금 도메인"이라고 인지했던
+// 함수를 17차 구조 감사에서 재확인해 이동했다.
 import {
   handleAdminFinesUnpaid,
   handleAdminFinesPaid,
   handleAdminFinesExempt,
   handleAdminFineStatus,
+  handleAdminFinesAdminForcedCount,
 } from "./fines.js";
 
 // 🔧 [구조 개선 7차, 2026-09-13] 회원 관리(CRUD/번호 재배치) 도메인을
@@ -197,9 +204,7 @@ import {
 export { listAllMembers };
 
 // 🔧 [구조 개선 8차, 2026-09-13] 퇴실 처리 도메인을 src/exit.js로
-// 옮겼다(docs/TESTING.md 참고). handleAdminFinesAdminForcedCount
-// (벌금 도메인, index.js 잔류)는 listExitedMemberEntries/
-// getMemberSettingsStub만 참조하며 둘 다 이미 index.js에 있어 영향 없다.
+// 옮겼다(docs/TESTING.md 참고).
 // 🔧 [구조 개선 9차] listExitCandidates를 실사용하던 hasForcedCandidateInCycle이
 // cycle.js로 옮겨가면서, index.js는 더 이상 이 함수를 직접 쓰지 않는다.
 // 🔧 [구조 개선 16차] listActiveMembersWithExitInfo를 실사용하던
@@ -1427,60 +1432,12 @@ export async function listExitedMemberEntries(env, accessToken, fileId) {
     .map((m) => ({ number: `${EXITED_MEMBER_PREFIX}${m[0]}`, name: m[0], email: "" }));
 }
 
-// "벌금 납부 대상 처리"(PaidFineList)의 "직권 P" 버튼은 항상 이 사유로
-// 고정해서 admin_forced 확정을 요청한다(§AdminMoneyTab.tsx, lockForcedReason)
-// — 이 문자열을 바꾸면 여기도 함께 바꿔야 아래 카운트가 계속 맞게 걸린다.
 // 🔧 [사용자 지시] "직권 P 사이클 오인 방지" — handleAdminExitPreview/
 // handleAdminExitConfirm이 body로 받는 forcedReason "원본"(prefix 없는
-// 값, 프론트 lockForcedReason과 동일)과 비교하려면 이 상수가 필요하다.
-// FINE_UNPAID_ADMIN_FORCED_REASON_LABEL은 calcAdminForcedExit가 "직권
-// 사유: " prefix를 붙인 뒤의 label 형태라 원본과 직접 비교할 수 없어,
-// 아래 label 상수를 이 원본으로부터 파생시켜 두 상수가 항상 일치하게
-// 유지한다(§46 근처의 "관련 문서" 앞에 §CACHING_POLICY.md 기록 참고).
+// 값, 프론트 lockForcedReason과 동일)과 비교하는 데 쓰인다. 이 원본에서
+// "직권 사유: " prefix를 붙인 label 형태를 파생시켜 쓰는 쪽은
+// fines.js의 handleAdminFinesAdminForcedCount(18차에서 이동)다.
 export const FINE_UNPAID_ADMIN_FORCED_REASON = "벌금 시한 내 미납자";
-const FINE_UNPAID_ADMIN_FORCED_REASON_LABEL = `직권 사유: ${FINE_UNPAID_ADMIN_FORCED_REASON}`;
-
-// 🔧 2026-09: "직권 P : N건" 배지(§PaidFineList 요일 헤더) 실제 구현 —
-// "벌금을 납부하지 않아서 '퇴실 처리 (직권 P)'가 눌려서 퇴실 처리된
-// 사용자"(사용자 정의)를 요일별로 센다. 판정 기준은 kind==="admin_forced"
-// 이면서 사유가 정확히 위 고정 문구인 것 — 같은 admin_forced라도
-// MemberRosterList처럼 관리자가 자유 입력한 사유로 처리된 경우는 세지
-// 않는다. 그 사람이 실제로 미납이었던 요일들(breakdown.fineUnpaidDays,
-// 확정 시점 스냅샷)을 그대로 credit한다 — 한 사람이 여러 요일에 미납
-// 이었으면 각 요일 그룹에 1건씩 더해진다(각 요일 그룹의 "미납" 목록에
-// 실제로 그 사람이 있었으므로).
-// 🔧 [KV → DO 이전, 2026-09-12] §49 — /exit/list 1회 호출로 대체.
-export async function handleAdminFinesAdminForcedCount(req, env, origin) {
-  const admin = await requireAdmin(req, env);
-  if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
-
-  try {
-    const accessToken = await getServiceAccountAccessToken(env);
-    const fileId = env.GOOGLE_SHEET_FILE_ID;
-    const exitedMembers = await listExitedMemberEntries(env, accessToken, fileId);
-
-    const resultsRes = await getMemberSettingsStub(env).fetch("https://do/exit/list");
-    const { items: allResults } = await resultsRes.json();
-
-    const counts = Object.fromEntries(STATUS_DAYS.map((d) => [d, 0]));
-    for (const m of exitedMembers) {
-      const result = allResults[m.name];
-      if (!result) continue; // 이 기능 도입 이전 처리된 퇴실자는 저장된 결과가 없다.
-      if (result.kind !== "admin_forced") continue;
-      const isFineReason = (result.reasons || []).some(
-        (r) => r.code === "admin_reason" && r.label === FINE_UNPAID_ADMIN_FORCED_REASON_LABEL
-      );
-      if (!isFineReason) continue;
-      for (const day of result.breakdown?.fineUnpaidDays || []) {
-        if (day in counts) counts[day] += 1;
-      }
-    }
-
-    return json({ counts }, 200, origin);
-  } catch (err) {
-    return json({ error: "직권 P 인원 집계 실패: " + err.message }, 500, origin);
-  }
-}
 
 // 🔧 [앱스크립트 직접 쓰기 캐시 정합성, 2026-09] 앱스크립트(daily_calc/
 // revoke_editor_column_n/o)는 Worker API를 거치지 않고 gspread와 마찬가지로
@@ -1762,12 +1719,20 @@ export default {
     }
 
     try {
+      // 🔧 [18차, 순수 재배열 없는 주석 정리] 라우팅 테이블 자체는 원본
+      // 모놀리식 코드의 추가 순서(역사적 순서)를 그대로 유지한다 — 로직
+      // 순서 변경 없이, 17차 구조 감사가 지적한 "도메인 인지도가 전혀
+      // 반영되지 않은" 문제만 주석 헤더로 완화한다.
+
+      // --- Auth (auth.js) ---
       if (url.pathname === "/verify" && req.method === "POST") {
         return await handleVerify(req, env, origin);
       }
       if (url.pathname === "/dev/login" && req.method === "POST") {
         return await handleDevLogin(req, env, origin);
       }
+
+      // --- Report/Capture (report.js) ---
       if (url.pathname === "/report" && req.method === "POST") {
         return await handleReport(req, env, origin);
       }
@@ -1783,6 +1748,8 @@ export default {
       if (url.pathname === "/reports/requeue" && req.method === "POST") {
         return await handleRequeueReport(req, env, origin);
       }
+
+      // --- Bot 상태/사용량 (bot.js) ---
       if (url.pathname === "/admin/bot-sheets-usage" && req.method === "POST") {
         return await handleBotSheetsUsageReport(req, env, origin);
       }
@@ -1790,12 +1757,14 @@ export default {
         return await handleInternalCycleBoundary(req, env, origin);
       }
       if (url.pathname === "/report-status" && req.method === "GET") {
+        // report.js — 봇 등록 흐름 근처에 있지만 제보 도메인.
         return await handleReportStatus(req, env, origin, url);
       }
       if (url.pathname === "/bot/register-url" && req.method === "POST") {
         return await handleBotRegisterUrl(req, env, origin);
       }
       if (url.pathname === "/bot/exit-requests" && req.method === "GET") {
+        // exit.js — 봇이 퇴실 신청 목록을 폴링하는 경로.
         return await handleBotExitRequests(req, env, origin);
       }
       if (url.pathname === "/bot/invalidate-cache" && req.method === "POST") {
@@ -1810,6 +1779,8 @@ export default {
       if (url.pathname === "/admin/bot/command" && req.method === "POST") {
         return await handleAdminBotCommand(req, env, origin);
       }
+
+      // --- Report/Capture 관리자 처리 (report.js) ---
       if (url.pathname === "/admin/captures" && req.method === "GET") {
         return await handleAdminCapturesList(req, env, origin, url);
       }
@@ -1846,27 +1817,36 @@ export default {
       if (url.pathname === "/admin/captures/vote" && req.method === "POST") {
         return await handleAdminCaptureVote(req, env, origin);
       }
+
+      // --- 참여자 명단(index.js, ParticipantsRoster DO) ---
       if (url.pathname === "/participants" && req.method === "PUT") {
         return await handlePutParticipants(req, env, origin);
       }
       if (url.pathname === "/participants" && req.method === "GET") {
         return await handleGetParticipants(req, env, origin);
       }
+
+      // --- 개인 대시보드/랭킹 (personal-status.js) ---
       if (url.pathname === "/status" && req.method === "GET") {
         return await handleStatus(req, env, origin, url);
       }
       if (url.pathname === "/me/role" && req.method === "GET") {
+        // index.js — 관리자 여부와 무관한 공동 검토자 자기 조회.
         return await handleMyRole(req, env, origin);
       }
       if (url.pathname === "/cycles" && req.method === "GET") {
+        // cycle.js
         return await handleCycleList(req, env, origin, url);
       }
       if (url.pathname === "/goal-schedule" && req.method === "GET") {
+        // index.js — 목표시간 다음 주 예약.
         return await handleGetGoalSchedule(req, env, origin);
       }
       if (url.pathname === "/goal-schedule" && req.method === "POST") {
         return await handleSetGoalSchedule(req, env, origin);
       }
+
+      // --- 사유반휴/일반반휴 (leave.js) ---
       if (url.pathname === "/leave-apply" && req.method === "GET") {
         return await handleGetLeaveApply(req, env, origin, url);
       }
@@ -1894,9 +1874,13 @@ export default {
       if (url.pathname === "/admin/leave-proof/decide" && req.method === "POST") {
         return await handleAdminLeaveProofDecide(req, env, origin);
       }
+
+      // --- 개인 대시보드/랭킹 (personal-status.js, 계속) ---
       if (url.pathname === "/roster-status" && req.method === "GET") {
         return await handleRosterStatus(req, env, origin, url);
       }
+
+      // --- 회원 관리(CRUD/번호 재배치) (members.js) ---
       if (url.pathname === "/admin/members" && req.method === "GET") {
         return await handleAdminMembers(req, env, origin, url);
       }
@@ -1904,11 +1888,14 @@ export default {
         return await handleAdminMembersRoster(req, env, origin);
       }
       if (url.pathname === "/admin/members/exited" && req.method === "GET") {
+        // exit.js
         return await handleAdminExitedMembers(req, env, origin);
       }
       if (url.pathname === "/admin/members/parti-status" && req.method === "POST") {
         return await handleAdminSetPartiStatus(req, env, origin);
       }
+
+      // --- 퇴실/재납 신청 (exit.js) ---
       if (url.pathname === "/exit-request" && req.method === "POST") {
         return await handleSetExitRequest(req, env, origin);
       }
@@ -1918,6 +1905,8 @@ export default {
       if (url.pathname === "/exit-request/cancel" && req.method === "POST") {
         return await handleCancelExitRequest(req, env, origin);
       }
+
+      // --- 회원 관리(CRUD/번호 재배치) (members.js, 계속) ---
       if (url.pathname === "/admin/members/reorder-preview" && req.method === "GET") {
         return await handleAdminMemberReorderPreview(req, env, origin);
       }
@@ -1925,6 +1914,7 @@ export default {
         return await handleAdminMemberReorder(req, env, origin);
       }
       if (url.pathname.startsWith("/admin/members/") && req.method === "GET") {
+        // personal-status.js — 회원번호별 상세 조회(퇴실자 접두사 분기 포함).
         const memberNumber = decodeURIComponent(url.pathname.slice("/admin/members/".length));
         return await handleAdminMemberStatus(req, env, origin, memberNumber, url);
       }
@@ -1937,6 +1927,8 @@ export default {
       if (url.pathname === "/admin/open-slots" && req.method === "GET") {
         return await handleAdminOpenSlots(req, env, origin);
       }
+
+      // --- 벌금/납부 처리 (fines.js) ---
       if (url.pathname === "/admin/fines/unpaid" && req.method === "GET") {
         return await handleAdminFinesUnpaid(req, env, origin, url);
       }
@@ -1952,9 +1944,13 @@ export default {
       if (url.pathname === "/admin/fines/admin-forced-count" && req.method === "GET") {
         return await handleAdminFinesAdminForcedCount(req, env, origin);
       }
+
+      // --- 개인 대시보드/랭킹 (personal-status.js, 계속: 상금 정산) ---
       if (url.pathname === "/admin/prize/settle" && req.method === "POST") {
         return await handleAdminPrizeSettle(req, env, origin);
       }
+
+      // --- 퇴실/재납 확정 (exit.js, 계속) ---
       if (url.pathname === "/admin/exit/candidates" && req.method === "GET") {
         return await handleAdminExitCandidates(req, env, origin, url);
       }
@@ -1970,12 +1966,16 @@ export default {
       if (url.pathname === "/admin/blacklist" && req.method === "GET") {
         return await handleAdminBlacklist(req, env, origin);
       }
+
+      // --- 관리자 위임 OAuth (auth.js) ---
       if (url.pathname === "/oauth/authorize" && req.method === "GET") {
         return await handleAdminOAuthAuthorize(req, env, origin, url);
       }
       if (url.pathname === "/oauth/callback" && req.method === "GET") {
         return await handleAdminOAuthCallback(req, env, origin, url);
       }
+
+      // --- 알림/푸시 (notify.js) ---
       if (url.pathname === "/push/subscribe" && req.method === "POST") {
         return await handlePushSubscribe(req, env, origin);
       }

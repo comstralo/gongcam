@@ -40,7 +40,7 @@ import {
   getMemberSettingsStub,
   NOTIFY_CATEGORIES,
 } from "./index.js";
-import { parseGoogleEmail, parseGooroomeeAccount } from "./member-utils.js";
+import { parseGoogleEmail, parseGooroomeeAccount } from "./pure-utils.js";
 import { todayKSTDateString, kstDateOffsetString } from "./date-utils.js";
 import { _cachedCompute, invalidateMemberCache, invalidateMemberSlotCache } from "./cache.js";
 import { listActiveMembersWithExitInfo } from "./exit.js";
@@ -525,7 +525,7 @@ export async function handleGrantMemberAccess(req, env, origin) {
 // 실제로는 listActiveMembersWithExitInfo(exit.js)/listAllMembers·
 // getDataSheetRows(이 파일)/getSpreadsheetMeta(index.js)/loadNotifyPrefs·
 // getPushDeviceIndex(notify.js)/parseGoogleEmail·parseGooroomeeAccount
-// (member-utils.js) 다섯 도메인에 걸친 "회원 상세 목록 조회" 핸들러로,
+// (pure-utils.js) 다섯 도메인에 걸친 "회원 상세 목록 조회" 핸들러로,
 // 이동 전 코드 검토 중 loadNotifyPrefs/getPushDeviceIndex가 애초에
 // import조차 되어 있지 않아(10차에서 notify.js 분리 당시 누락된 것으로
 // 추정) 실제로 이 엔드포인트(GET /admin/members/roster)를 열면

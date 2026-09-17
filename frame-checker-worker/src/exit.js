@@ -62,7 +62,7 @@ import {
   EXIT_DEPOSIT_VALUE,
   parseWon,
 } from "./index.js";
-import { parseGoogleEmail, parseGooroomeeAccount } from "./member-utils.js";
+import { parseGoogleEmail, parseGooroomeeAccount } from "./pure-utils.js";
 import { todayKSTDateString } from "./date-utils.js";
 import {
   _cachedCompute,

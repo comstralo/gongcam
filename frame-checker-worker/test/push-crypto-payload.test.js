@@ -6,7 +6,7 @@
 // 예외가 나므로, 이 왕복 검증 자체가 강한 정확성 보장이 된다.
 import { describe, expect, it } from "vitest";
 import { base64url } from "../src/index.js";
-import { concatBytes } from "../src/member-utils.js";
+import { concatBytes } from "../src/pure-utils.js";
 import { encryptPushPayload, hkdf, hkdfExpand, hkdfExtract } from "../src/push-crypto.js";
 
 async function makeFakeSubscription() {

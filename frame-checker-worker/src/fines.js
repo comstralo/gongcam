@@ -19,6 +19,9 @@ import {
   ROW_PAYMENT_CHECK,
   STATUS_DAYS,
   STATUS_DAY_COLS,
+  listExitedMemberEntries,
+  getMemberSettingsStub,
+  FINE_UNPAID_ADMIN_FORCED_REASON,
 } from "./index.js";
 import { _cachedCompute, invalidateMemberCache } from "./cache.js";
 
@@ -161,5 +164,53 @@ export async function handleAdminFineStatus(req, env, origin) {
     return json({ ok: true, number: String(sheetNum), day, status }, 200, origin);
   } catch (err) {
     return json({ error: "납부 상태 변경 실패: " + err.message }, 500, origin);
+  }
+}
+
+// 🔧 [구조 개선 18차, 2026-09-17] "벌금 도메인"이라고 exit.js 8차 주석이
+// 이미 인지하고 있었지만(index.js 잔류로만 남겨뒀던 함수) 17차 구조
+// 감사에서 이동 후보로 지목되어 옮겼다. FINE_UNPAID_ADMIN_FORCED_REASON_LABEL
+// 은 calcAdminForcedExit가 "직권 사유: " prefix를 붙인 뒤의 label 형태라
+// FINE_UNPAID_ADMIN_FORCED_REASON(index.js, exit.js와 공유) 원본과 직접
+// 비교할 수 없어, 이 파생 상수를 이 파일 로컬로 둔다(index.js 원본에서
+// 파생시켜 항상 일치하게 유지).
+const FINE_UNPAID_ADMIN_FORCED_REASON_LABEL = `직권 사유: ${FINE_UNPAID_ADMIN_FORCED_REASON}`;
+
+// "벌금 납부 대상 처리"(PaidFineList)의 "직권 P" 버튼은 항상 이 사유로
+// 고정해서 admin_forced 확정을 요청한다(§AdminMoneyTab.tsx, lockForcedReason)
+// — 이 문자열을 바꾸면 여기도 함께 바꿔야 아래 카운트가 계속 맞게 걸린다.
+// 요일별로 "직권 P(벌금 미납 사유)"로 확정된 인원 수를 센다 — 퇴실자
+// 백업 탭(listExitedMemberEntries)을 순회하며 MemberSettingsDO에 저장된
+// 확정 결과(admin_forced, 사유가 벌금 미납인 것)만 집계한다.
+// 🔧 [KV → DO 이전, 2026-09-12] §49 — /exit/list 1회 호출로 대체.
+export async function handleAdminFinesAdminForcedCount(req, env, origin) {
+  const admin = await requireAdmin(req, env);
+  if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
+
+  try {
+    const accessToken = await getServiceAccountAccessToken(env);
+    const fileId = env.GOOGLE_SHEET_FILE_ID;
+    const exitedMembers = await listExitedMemberEntries(env, accessToken, fileId);
+
+    const resultsRes = await getMemberSettingsStub(env).fetch("https://do/exit/list");
+    const { items: allResults } = await resultsRes.json();
+
+    const counts = Object.fromEntries(STATUS_DAYS.map((d) => [d, 0]));
+    for (const m of exitedMembers) {
+      const result = allResults[m.name];
+      if (!result) continue; // 이 기능 도입 이전 처리된 퇴실자는 저장된 결과가 없다.
+      if (result.kind !== "admin_forced") continue;
+      const isFineReason = (result.reasons || []).some(
+        (r) => r.code === "admin_reason" && r.label === FINE_UNPAID_ADMIN_FORCED_REASON_LABEL
+      );
+      if (!isFineReason) continue;
+      for (const day of result.breakdown?.fineUnpaidDays || []) {
+        if (day in counts) counts[day] += 1;
+      }
+    }
+
+    return json({ counts }, 200, origin);
+  } catch (err) {
+    return json({ error: "직권 P 인원 집계 실패: " + err.message }, 500, origin);
   }
 }

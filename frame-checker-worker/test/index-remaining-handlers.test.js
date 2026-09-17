@@ -1,6 +1,5 @@
 // index.js에 남은 잡다한 관리자/조회 핸들러(handleMyRole,
-// handleGetGoalSchedule, handleSetGoalSchedule,
-// handleAdminFinesAdminForcedCount, handleBotInvalidateCache,
+// handleGetGoalSchedule, handleSetGoalSchedule, handleBotInvalidateCache,
 // handlePutParticipants, handleGetParticipants) 최소 스모크 테스트.
 // 17차 구조 감사에서 이 핸들러들이 "이동 대상이 아니라는 이유로 통합
 // 테스트 대상에서도 빠져, 9차(CYCLE_MAX_LEN)·16차(loadNotifyPrefs/
@@ -8,7 +7,8 @@
 // 위험"으로 지목됐다 — 실제로 handleBotInvalidateCache의
 // MEMBER_CACHE_GROUPS 미import 버그를 이 작업 중 발견해 함께 고쳤다.
 // 인증/검증 분기 중심으로 최소 커버리지만 확보한다(완벽한 커버리지가
-// 목표가 아니라 회귀 방지가 목표).
+// 목표가 아니라 회귀 방지가 목표). handleAdminFinesAdminForcedCount는
+// 18차에서 fines.js로 옮겨져 test/fines-handlers.test.js로 이전했다.
 import { env } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -16,7 +16,6 @@ import {
   handleMyRole,
   handleGetGoalSchedule,
   handleSetGoalSchedule,
-  handleAdminFinesAdminForcedCount,
   handleBotInvalidateCache,
   handlePutParticipants,
   handleGetParticipants,
@@ -139,39 +138,6 @@ describe("handleSetGoalSchedule", () => {
   });
 });
 
-describe("handleAdminFinesAdminForcedCount", () => {
-  it("관리자가 아니면 403을 반환한다", async () => {
-    const testEnv = makeTestEnv();
-    const token = await makeMemberToken();
-    const req = makeRequest("https://worker/admin/fines/admin-forced-count", { token });
-
-    const res = await handleAdminFinesAdminForcedCount(req, testEnv, "https://example.com");
-    expect(res.status).toBe(403);
-  });
-
-  it("관리자면 200과 요일별 카운트를 반환한다(퇴실자 없으면 전부 0)", async () => {
-    const testEnv = makeTestEnv({ GOOGLE_SHEET_FILE_ID: "admin-forced-count-200" });
-    const token = await makeAdminToken();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((url) => {
-        const u = String(url);
-        if (u.includes("oauth2.googleapis.com")) return Promise.resolve(oauthTokenResponse());
-        if (u.includes("fields=sheets.properties")) {
-          return Promise.resolve(new Response(JSON.stringify({ sheets: [{ properties: { title: "1", sheetId: 0 } }] })));
-        }
-        throw new Error("unexpected fetch: " + u);
-      })
-    );
-    const req = makeRequest("https://worker/admin/fines/admin-forced-count", { token });
-
-    const res = await handleAdminFinesAdminForcedCount(req, testEnv, "https://example.com");
-    const body = await res.json();
-    expect(res.status, JSON.stringify(body)).toBe(200);
-    expect(body.counts).toBeTruthy();
-    expect(Object.values(body.counts).every((v) => v === 0)).toBe(true);
-  });
-});
 
 describe("handleBotInvalidateCache", () => {
   it("X-Bot-Secret이 없으면 401을 반환한다", async () => {

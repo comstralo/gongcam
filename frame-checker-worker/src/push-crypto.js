@@ -5,7 +5,7 @@
 // 암호화→복호화 왕복 검증)으로 착수한다. @cloudflare/vitest-plugin은 실제
 // workerd 런타임이라 crypto.subtle이 mock 없이 그대로 동작한다.
 import { base64url, base64urlToBytes } from "./index.js";
-import { buildVapidJwk, concatBytes } from "./member-utils.js";
+import { buildVapidJwk, concatBytes } from "./pure-utils.js";
 
 export async function hmacSha256Raw(keyBytes, dataBytes) {
   const key = await crypto.subtle.importKey(
