@@ -59,8 +59,8 @@ function nextDummyStage(current: DummyExitStage): DummyExitStage {
 
 // 🔧 [사용자 지시] "지금처럼 작은 초록색 글씨로 하지 말고, '퇴실신청'
 // 같은 제목을 '퇴실신청 (더미)'로 하고 ·으로 '신청 전' 같이 화면
-// 구분을 해줘" — 별도 안내 줄 대신 DialogTitle 자체에 "(더미) · <단계>"
-// 를 이어 붙인다.
+// 구분을 해줘" → "'퇴실신청 (더미)' 같이 출력되는데 (더미)는 빼자" —
+// 별도 안내 줄 대신 DialogTitle 자체에 "· <단계>"를 이어 붙인다.
 const DUMMY_STAGE_LABEL: Record<DummyExitStage, string> = {
   before: "신청 전",
   requested: "신청 후(미도래)",
@@ -320,12 +320,11 @@ export function DepositRefundDialog({
           <DialogTitle className="flex items-center justify-between gap-2 pr-6">
             <span className="flex min-w-0 items-center gap-1.5 truncate">
               <Search className="size-4 shrink-0 text-primary sm:size-5" />
-              {/* 🔧 [사용자 지시] "지금처럼 작은 초록색 글씨로 하지 말고,
-                  '퇴실신청' 같은 제목을 '퇴실신청 (더미)'로 하고 ·으로
-                  '신청 전' 같이 화면 구분을 해줘" — 별도 안내 줄 대신
-                  제목 자체에 "(더미) · <단계>"를 이어 붙인다. */}
+              {/* 🔧 [사용자 지시] "지금처럼 작은 초록색 글씨로 하지 말고
+                  ·으로 '신청 전' 같이 화면 구분을 해줘" — 별도 안내 줄
+                  대신 제목 자체에 "· <단계>"를 이어 붙인다. */}
               <span className="truncate">
-                퇴실신청{showingDummy && ` (더미) · ${DUMMY_STAGE_LABEL[dummyStage]}`}
+                퇴실신청{showingDummy && ` · ${DUMMY_STAGE_LABEL[dummyStage]}`}
               </span>
             </span>
             {/* 🧪 [사용자 지시] "'퇴실신청' 다이얼로그 제목 옆에 목업 토글
@@ -435,7 +434,7 @@ export function DepositRefundDialog({
               <DepositCauseCard items={causeItems} maskValues={!!refundOverlayMessage} />
             </div>
             {refundOverlayMessage && (
-              <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-muted/95 p-3 text-center backdrop-blur-[1px]">
+              <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-background/85 p-3 text-center backdrop-blur-[1px]">
                 <p className="text-xs font-medium text-muted-foreground sm:text-sm">{refundOverlayMessage}</p>
               </div>
             )}
