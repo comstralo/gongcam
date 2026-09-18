@@ -281,7 +281,7 @@ export function PenaltyCandidateList({
                                   className="size-7 shrink-0"
                                   render={
                                     <Button
-                                      variant="outline"
+                                      variant="ghost"
                                       size="icon-sm"
                                       aria-label={isMemberExpanded ? "상세 접기" : "상세 펼치기"}
                                     />
