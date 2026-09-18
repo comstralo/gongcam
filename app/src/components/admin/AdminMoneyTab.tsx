@@ -435,7 +435,7 @@ function PaidFineList({
           유지되게 한다. */}
       {!effectiveRecords && <AdminListSkeleton />}
 
-      {effectiveRecords && groups.length === 0 && <AdminEmptyState>처리 대상이 없습니다.</AdminEmptyState>}
+      {effectiveRecords && groups.length === 0 && <AdminEmptyState>처리 대기 중인 데이터가 없습니다.</AdminEmptyState>}
 
       {groups.length > 0 && (
         <div className="flex flex-col gap-2 sm:gap-2.5">
@@ -820,7 +820,7 @@ function PrizeRecipientList({
             재조회 중엔 이전 화면이 그대로 유지되게 한다. */}
         {!effectiveSettlement && <AdminListSkeleton />}
 
-        {effectiveSettlement && effectiveSettlement.length === 0 && <AdminEmptyState>이번 주 정산 대상이 없습니다.</AdminEmptyState>}
+        {effectiveSettlement && effectiveSettlement.length === 0 && <AdminEmptyState>처리 대기 중인 데이터가 없습니다.</AdminEmptyState>}
 
         {effectiveSettlement && effectiveSettlement.length > 0 && (
           // §"랭킹"(RosterView)의 카드 출력 형태를 그대로 재활용한다 —

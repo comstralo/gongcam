@@ -213,7 +213,7 @@ export function PenaltyCandidateList({
             유지되게 한다. */}
         {!effectiveCandidates && <AdminListSkeleton />}
 
-        {effectiveCandidates && effectiveCandidates.length === 0 && <AdminEmptyState>처리 대상이 없습니다.</AdminEmptyState>}
+        {effectiveCandidates && effectiveCandidates.length === 0 && <AdminEmptyState>처리 대기 중인 데이터가 없습니다.</AdminEmptyState>}
 
         {effectiveCandidates && effectiveCandidates.length > 0 && (
           <div className="flex flex-col gap-2 sm:gap-2.5">

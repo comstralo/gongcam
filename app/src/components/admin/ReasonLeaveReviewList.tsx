@@ -267,7 +267,7 @@ export function ReasonLeaveReviewList({
             prop(새로고침 아이콘 회전)만으로 충분하다. */}
         {!effectiveItems && <AdminListSkeleton />}
 
-        {effectiveItems && effectiveItems.length === 0 && <AdminEmptyState>검토 대기 중인 신청이 없습니다.</AdminEmptyState>}
+        {effectiveItems && effectiveItems.length === 0 && <AdminEmptyState>처리 대기 중인 데이터가 없습니다.</AdminEmptyState>}
 
         {effectiveItems && effectiveItems.length > 0 && (
           <div className="flex flex-col gap-2 sm:gap-2.5">

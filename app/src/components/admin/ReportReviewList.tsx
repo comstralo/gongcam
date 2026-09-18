@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Flag, ChevronDown, CalendarDays, FileText, Clock, Gavel, Image as ImageIcon, User, Users, Trash2 } from "lucide-react";
+import { Flag, ChevronDown, CalendarDays, FileText, FlaskConical, Clock, Gavel, Image as ImageIcon, User, Users, Trash2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -21,6 +21,7 @@ import type {
   CaptureDeleteResponse,
   CaptureRevertResponse,
   CaptureVoteResponse,
+  CaptureVote,
   OutputPenaltyResult,
   ReportMeritResult,
   TimeDeductionResult,
@@ -379,6 +380,109 @@ function SeverityPicker({
   );
 }
 
+// 🧪 [목업 미리보기, 사용자 지시] "'PEN MONEY' 탭의 각 요소도 새로고침
+// 좌측에 목업 버튼을 만들고 적절한 목업을 생성" — 실 운영에서 나올 수
+// 있는 분기(대상자 응답 대기, 이의제기 + 합의 투표 진행 중, 확정 적용,
+// 반려)를 한 화면에서 모두 볼 수 있는 고정 스냅샷.
+const DUMMY_CO_REVIEWERS: CoReviewer[] = [{ number: "9401", name: "재희1" }];
+
+const DUMMY_CAPTURE_ITEMS: CaptureReviewItem[] = [
+  {
+    id: "dummy-report-1",
+    nickname: "노트북(태블릿)",
+    reason: "화면 미확인",
+    mode: "screenshot",
+    reporterEmail: "dummy-reporter1@example.com",
+    ts: Date.now() - 20 * 60 * 1000,
+    reviewStatus: "pending",
+    nextOccurrence: 1,
+    weeklyMinorPenaltyCount: 0,
+    shouldDefer: false,
+    deferOccurrence: null,
+    deferredOccurrence: null,
+    reporterName: "재희2",
+    targetResponse: null,
+    targetRespondedAt: null,
+    targetResponseAuto: false,
+    votes: {},
+    penalty: null,
+    merit: null,
+    timeDeduction: null,
+    sourceFileId: null,
+  },
+  {
+    id: "dummy-report-2",
+    nickname: "스마트폰",
+    reason: "화면 미확인",
+    mode: "video",
+    reporterEmail: "dummy-reporter2@example.com",
+    ts: Date.now() - 3 * 60 * 60 * 1000,
+    reviewStatus: "pending",
+    nextOccurrence: 2,
+    weeklyMinorPenaltyCount: 1,
+    shouldDefer: false,
+    deferOccurrence: null,
+    deferredOccurrence: null,
+    reporterName: null,
+    targetResponse: "disputed",
+    targetRespondedAt: Date.now() - 2.5 * 60 * 60 * 1000,
+    targetResponseAuto: false,
+    // 부스터디장(9401)은 이미 "위반 O"를 제출했고, 스터디장 본인은 아직
+    // 미제출 — computeConsensus의 "전원 제출 대기 중" 분기를 보여준다.
+    votes: { "9401": { name: "재희1", severity: "yes" as CaptureVote["severity"], votedAt: Date.now() - 60 * 60 * 1000 } },
+    penalty: null,
+    merit: null,
+    timeDeduction: null,
+    sourceFileId: null,
+  },
+  {
+    id: "dummy-report-3",
+    nickname: "태블릿",
+    reason: "화면 미확인",
+    mode: "screenshot",
+    reporterEmail: "dummy-reporter3@example.com",
+    ts: Date.now() - 26 * 60 * 60 * 1000,
+    reviewStatus: "approved",
+    nextOccurrence: null,
+    weeklyMinorPenaltyCount: 2,
+    shouldDefer: false,
+    deferOccurrence: null,
+    deferredOccurrence: null,
+    reporterName: "재희2",
+    targetResponse: "recognized",
+    targetRespondedAt: Date.now() - 25.5 * 60 * 60 * 1000,
+    targetResponseAuto: false,
+    votes: {},
+    penalty: { number: "9402", name: "정하람", occurrence: 3, isPCount: false, col: "H", deductedMinutes: 15, dayCol: "H", weeklyMinorPenaltyCount: 2 },
+    merit: { number: "9403", name: "재희2", occurrence: 1, col: "C" },
+    timeDeduction: null,
+    sourceFileId: null,
+  },
+  {
+    id: "dummy-report-4",
+    nickname: "노트북",
+    reason: "화면 미확인",
+    mode: "screenshot",
+    reporterEmail: "dummy-reporter4@example.com",
+    ts: Date.now() - 30 * 60 * 60 * 1000,
+    reviewStatus: "rejected",
+    nextOccurrence: 4,
+    weeklyMinorPenaltyCount: 2,
+    shouldDefer: false,
+    deferOccurrence: null,
+    deferredOccurrence: null,
+    reporterName: null,
+    targetResponse: "disputed",
+    targetRespondedAt: Date.now() - 29.8 * 60 * 60 * 1000,
+    targetResponseAuto: true,
+    votes: {},
+    penalty: null,
+    merit: null,
+    timeDeduction: null,
+    sourceFileId: null,
+  },
+];
+
 export function ReportReviewList({
   visible,
   cycleFileId: cycleFileIdProp,
@@ -395,6 +499,9 @@ export function ReportReviewList({
   const { call } = useApi();
   const { session, isAdmin } = useAuth();
 
+  // 🧪 [목업 미리보기, 사용자 지시] 켜져 있는 동안 API 호출 없이 고정
+  // 스냅샷(대기·이의제기 합의 투표 중·확정·반려 혼재)을 보여준다.
+  const [showingDummy, setShowingDummy] = useState(false);
   const [items, setItems] = useState<CaptureReviewItem[] | null>(null);
   // 🔧 2026-09: 실제 부스터디장(공동 검토자) 명단과, 이 세션이 그중 누구인지
   // (isAdmin이 아닐 때만 값이 옴) — GET /admin/captures 응답에 함께 실려온다.
@@ -460,7 +567,8 @@ export function ReportReviewList({
   // 중복으로 나갈 수 있었다. loadingRef로 "이미 진행 중이면 무시"하는
   // 가드를 추가한다 — loading state는 비동기 setState라 재진입 시점에
   // 아직 반영 안 됐을 수 있어 ref로 즉시 체크한다.
-  function load() {
+  function load(force = false) {
+    if (showingDummy && !force) return;
     if (loadingRef.current) return;
     loadingRef.current = true;
     setLoading(true);
@@ -512,10 +620,15 @@ export function ReportReviewList({
   // 서버에 실제 저장된 값을 다시 불러와 반영한다(다른 회원 임명 변경과
   // 같은 write-then-reload 패턴, MemberRosterList의 toggleViceLeader 참고).
   function submitVote(item: CaptureReviewItem, severity: string) {
+    // 🧪 목업 중엔 실제 API를 호출하지 않고 items 배열의 votes만 로컬로
+    // 갱신한다 — 이 화면은 스터디장(주 관리자) 본인이므로 실제로는
+    // coReviewerDraft에 담기고 SeverityPicker가 그 값을 보여주지만,
+    // 여기서는 재현을 위해 votes에도 반영해둔다.
+    if (showingDummy) return;
     setVotingId(item.id);
     setError(null);
     call<CaptureVoteResponse>("/admin/captures/vote", { method: "POST", body: { id: item.id, severity } })
-      .then(load)
+      .then(() => load())
       .catch((err) => setError(err instanceof Error ? err.message : "의견 제출에 실패했습니다."))
       .finally(() => setVotingId(null));
   }
@@ -524,6 +637,40 @@ export function ReportReviewList({
     item: CaptureReviewItem,
     decision: "approved" | "rejected" | "rejected_recognized" | "deferred"
   ) {
+    // 🧪 목업 중엔 실제 API를 호출하지 않고 로컬 state만 바꿔 확정/유예/
+    // 반려 전환만 보여준다 — 운영 시트에 어떤 쓰기도 발생하지 않는다.
+    if (showingDummy) {
+      if (decision === "rejected") {
+        setRejected((prev) => ({ ...prev, [item.id]: true }));
+      } else {
+        setApplied((prev) => ({
+          ...prev,
+          [item.id]: {
+            decision,
+            penalty:
+              decision === "rejected_recognized"
+                ? null
+                : {
+                    number: "9999",
+                    name: item.nickname,
+                    occurrence: item.nextOccurrence ?? 1,
+                    isPCount: false,
+                    col: "H",
+                    deductedMinutes: expectedDeductedMinutes(item) ?? 0,
+                    dayCol: "H",
+                    weeklyMinorPenaltyCount: item.weeklyMinorPenaltyCount + 1,
+                  },
+            merit: { number: "9998", name: item.reporterName || "제보자", occurrence: 1, col: "C" },
+            timeDeduction:
+              decision === "deferred"
+                ? { number: "9999", deductedMinutes: expectedDeductedMinutes(item) ?? 0, dayCol: "H" }
+                : null,
+            sourceFileId: null,
+          },
+        }));
+      }
+      return;
+    }
     setDecidingId(item.id);
     setError(null);
     call<CaptureDecideResponse>("/admin/captures/decide", {
@@ -576,6 +723,25 @@ export function ReportReviewList({
   // item.reviewStatus 기준으로도 눌릴 수 있어야 함) 로컬 상태만으로는 부족해
   // 서버에 /admin/captures/revert를 호출한다.
   function revertReject(item: CaptureReviewItem) {
+    // 🧪 목업 중엔 실제 API를 호출하지 않고 로컬 state만 되돌린다. 더미
+    // 항목은 item.reviewStatus 자체가 고정 데이터이므로, applied/rejected
+    // 로컬 오버라이드만 지우면 isItemRejected가 다시 item.reviewStatus를
+    // 보고 반려로 되돌아간다 — items 배열의 그 항목도 "pending"으로
+    // 함께 패치해야 실제 응답과 동일하게 동작한다.
+    if (showingDummy) {
+      setRejected((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      setApplied((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      setItems((prev) => (prev ? prev.map((i) => (i.id === item.id ? { ...i, reviewStatus: "pending" } : i)) : prev));
+      return;
+    }
     const result = applied[item.id];
     const meritToCancel = result?.merit && !("error" in result.merit) ? result.merit : null;
     // 🔧 [사용자 지시] "벌점·상점을 제보 발생 사이클에 기록" — meritToCancel
@@ -647,12 +813,12 @@ export function ReportReviewList({
   // 않으면 UI는 체크박스를 꺼서 보여주는데 로직은 여전히 "합의 모드"로
   // 착각해 새로고침 외에는 풀 수 없는 영구 잠김이 생긴다.
   function isConsensusActive(item: CaptureReviewItem): boolean {
-    return !!consensusEnabled[item.id] && coReviewers.length > 0;
+    return !!consensusEnabled[item.id] && effectiveCoReviewers.length > 0;
   }
   function canReject(item: CaptureReviewItem): boolean {
     if (!canProcess(item)) return false;
     if (!isConsensusActive(item)) return true;
-    return computeConsensus(severityLevel[item.id], coReviewers, item.votes || {}).allSubmitted;
+    return computeConsensus(severityLevel[item.id], effectiveCoReviewers, item.votes || {}).allSubmitted;
   }
   // "적용"은 합의 모드가 켜져 있으면 "전원 제출 + 위반 O가
   // CONSENSUS_THRESHOLD명 이상"(검토 결과 위반으로 인정)일 때만 연다(사용자
@@ -661,7 +827,7 @@ export function ReportReviewList({
   function canApply(item: CaptureReviewItem): boolean {
     if (!canProcess(item)) return false;
     if (!isConsensusActive(item)) return true;
-    return computeConsensus(severityLevel[item.id], coReviewers, item.votes || {}).willApprove;
+    return computeConsensus(severityLevel[item.id], effectiveCoReviewers, item.votes || {}).willApprove;
   }
 
   // "적용"/"페널티 적용 (불가)"를 되돌린다. 대상자 페널티(penalty)가 있으면
@@ -685,6 +851,17 @@ export function ReportReviewList({
   // 스냅샷)을 폴백으로 사용해, 새로고침 여부와 무관하게 항상 취소할 수
   // 있게 한다.
   function cancel(item: CaptureReviewItem) {
+    // 🧪 목업 중엔 실제 시트 취소 API(cancel-penalty/cancel-merit/revert)를
+    // 호출하지 않고 로컬 state만 되돌린다.
+    if (showingDummy) {
+      setApplied((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      setItems((prev) => (prev ? prev.map((i) => (i.id === item.id ? { ...i, reviewStatus: "pending" } : i)) : prev));
+      return;
+    }
     const penalty = applied[item.id]?.penalty ?? item.penalty;
     const merit = applied[item.id]?.merit ?? item.merit;
     if (!penalty && !merit) return;
@@ -774,6 +951,11 @@ export function ReportReviewList({
   // 함께 취소되도록 정보를 같이 보낸다.
   function deleteCapture(item: CaptureReviewItem) {
     if (!window.confirm("이 제보 기록을 완전히 삭제할까요? 되돌릴 수 없습니다.")) return;
+    // 🧪 목업 중엔 실제 삭제 API를 호출하지 않고 목록에서만 로컬로 제거한다.
+    if (showingDummy) {
+      setItems((prev) => (prev ? prev.filter((i) => i.id !== item.id) : prev));
+      return;
+    }
     setDeletingId(item.id);
     setError(null);
     const result = applied[item.id];
@@ -826,9 +1008,48 @@ export function ReportReviewList({
       .finally(() => setDeletingId(null));
   }
 
+  const effectiveItems = showingDummy ? items ?? DUMMY_CAPTURE_ITEMS : items;
+  const effectiveCoReviewers = showingDummy ? DUMMY_CO_REVIEWERS : coReviewers;
+
   return (
     <Collapsible defaultOpen className="flex flex-col">
-      <SectionHeader icon={Flag} title="화각 불량 제보 처리" loading={loading} onRefresh={load} refreshProgress={refreshProgress} />
+      <SectionHeader
+        icon={Flag}
+        title="화각 불량 제보 처리"
+        loading={loading}
+        onRefresh={load}
+        refreshProgress={refreshProgress}
+        trailing={
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            className={cn("shrink-0", showingDummy && "border-ok/30 bg-ok/15 text-ok hover:bg-ok/25 dark:hover:bg-ok/25")}
+            onClick={() => {
+              const next = !showingDummy;
+              setShowingDummy(next);
+              // 목업을 켤 땐 items에 고정 스냅샷을 넣고, 끌 땐 null로
+              // 비워 useEffect가 실제 데이터를 다시 받아오게 한다 —
+              // items를 그대로 두면 CapturePreview 등이 더미 id로 실제
+              // 파일을 fetch하려다 실패한다(사용자 리포트: 502 에러).
+              setItems(next ? DUMMY_CAPTURE_ITEMS : null);
+              setExpandedDay(null);
+              setExpandedId(null);
+              setApplied({});
+              setRejected({});
+              setConsensusEnabled({});
+              setSeverityLevel({});
+              setCoReviewerDraft({});
+              if (!next) load(true);
+            }}
+            aria-pressed={showingDummy}
+            aria-label={showingDummy ? "목업 미리보기 끄기" : "목업 데이터로 미리보기"}
+            title={showingDummy ? "목업 미리보기 끄기" : "목업 데이터로 미리보기"}
+          >
+            <FlaskConical className="size-3.5" strokeWidth={ICON_STROKE.default} />
+          </Button>
+        }
+      />
       <CollapsiblePanel className="flex flex-col gap-4">
         {cycleFileIdProp === undefined && (
           <>
@@ -855,13 +1076,13 @@ export function ReportReviewList({
         {/* 🔧 [버그 수정, 2026-09] ReasonLeaveReviewList와 동일한 근본
             수정 — loading을 빼고 items의 실제 값만으로 렌더링해 재조회
             중엔 이전 화면이 그대로 유지되게 한다. */}
-        {!items && <AdminListSkeleton />}
+        {!effectiveItems && <AdminListSkeleton />}
 
-        {items && items.length === 0 && <AdminEmptyState>검토 대기 중인 제보가 없습니다.</AdminEmptyState>}
+        {effectiveItems && effectiveItems.length === 0 && <AdminEmptyState>처리 대기 중인 데이터가 없습니다.</AdminEmptyState>}
 
-        {items && items.length > 0 && (
+        {effectiveItems && effectiveItems.length > 0 && (
           <div className="flex flex-col gap-2 sm:gap-2.5">
-            {groupByDay(items).map((group) => {
+            {groupByDay(effectiveItems).map((group) => {
               const isDayExpanded = expandedDay === group.dateKey;
               const appliedCount = group.items.filter((item) => isItemApplied(item, applied)).length;
               const deferredCount = group.items.filter((item) => isItemDeferred(item, applied)).length;
@@ -1102,7 +1323,11 @@ export function ReportReviewList({
                                       <ImageIcon className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                       스크린샷 · 영상
                                     </span>
-                                    {session?.token ? (
+                                    {showingDummy ? (
+                                      <div className="flex aspect-video w-full items-center justify-center rounded-lg border border-dashed bg-muted">
+                                        <p className="text-xs text-muted-foreground sm:text-sm">목업 이미지 (실제 파일 없음)</p>
+                                      </div>
+                                    ) : session?.token ? (
                                       <CapturePreview id={item.id} token={session.token} />
                                     ) : (
                                       <div className="flex aspect-video w-full items-center justify-center rounded-lg border border-dashed bg-muted">
@@ -1201,7 +1426,13 @@ export function ReportReviewList({
                                       <ImageIcon className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                       스크린샷 · 영상
                                     </span>
-                                    {session?.token ? (
+                                    {showingDummy ? (
+                                      // 🧪 목업 항목은 실제 파일이 없어 CapturePreview의
+                                      // fetch가 항상 실패한다 — 정적 플레이스홀더로 대체.
+                                      <div className="flex aspect-video w-full items-center justify-center rounded-lg border border-dashed bg-muted">
+                                        <p className="text-xs text-muted-foreground sm:text-sm">목업 이미지 (실제 파일 없음)</p>
+                                      </div>
+                                    ) : session?.token ? (
                                       <CapturePreview id={item.id} token={session.token} />
                                     ) : (
                                       <div className="flex aspect-video w-full items-center justify-center rounded-lg border border-dashed bg-muted">
@@ -1417,7 +1648,7 @@ export function ReportReviewList({
                                           return next;
                                         })
                                       }
-                                      coReviewers={coReviewers}
+                                      coReviewers={effectiveCoReviewers}
                                       votes={item.votes || {}}
                                       targetResponse={item.targetResponse}
                                     />
