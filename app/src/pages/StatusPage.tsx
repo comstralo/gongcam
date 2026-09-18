@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Loader2, User } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -6,6 +7,7 @@ import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { SectionHeader, SectionCard } from "@/components/admin/shared";
 import { StatusView } from "@/components/dashboard/StatusView";
 import { CycleSwitcher } from "@/components/dashboard/CycleSwitcher";
+import { AdminCycleRangeSelect } from "@/components/dashboard/AdminCycleRangeSelect";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { usePollingRefresh } from "@/hooks/usePollingRefresh";
@@ -19,26 +21,42 @@ const SELF_VALUE = "__self__";
 export function StatusPage({
   cycleFileId,
   onSelectCycle,
+  cycleAnyFileId,
+  onSelectCycleAny,
   visible = true,
 }: {
   cycleFileId?: string | null;
   onSelectCycle?: (fileId: string | null) => void;
+  // 🔧 [사용자 지시] "주차 토글 옆에 관리자만 확인할 수 있는 사이클 범위를
+  // 지정할 수 있는 기능" — 관리자가 다른 회원의 대시보드를 볼 때만
+  // 의미가 있다(본인 조회 /status는 이 파라미터를 지원하지 않음 — 이
+  // 기능은 관리자가 다른 회원/전체를 볼 때만 쓰인다). 기존 cycleFileId
+  // (CycleSwitcher, 현재 사이클로만 제한)와 상호 배타적으로 관리된다
+  // (DashboardPage 참고).
+  cycleAnyFileId?: string | null;
+  onSelectCycleAny?: (fileId: string | null) => void;
   visible?: boolean;
 }) {
   const { call } = useApi();
   const { isAdmin } = useAuth();
   const myStatus = useMyStatus();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [members, setMembers] = useState<AdminMember[] | null>(null);
   const [membersError, setMembersError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string>(SELF_VALUE);
+  // 🔧 [사용자 지시] "'참여 스터디원 목록'에서 특정 회원의 대시보드로
+  // 바로 이동할 수 있는 링크" — MemberRosterList가 `?member=<번호>`를
+  // 붙인 링크로 이동시키면, 여기서 그 값을 초기 선택값으로 읽어
+  // 드롭다운을 그 회원으로 맞춰둔다(관리자만 유효 — isAdmin이 아니면
+  // 회원 목록 자체가 없어 조용히 "내 대시보드"로 남는다).
+  const [selected, setSelected] = useState<string>(() => searchParams.get("member") || SELF_VALUE);
 
   const [otherStatus, setOtherStatus] = useState<StatusResponse | null>(null);
   const [otherError, setOtherError] = useState<string | null>(null);
   const [otherLoading, setOtherLoading] = useState(false);
   const [otherLoadedAt, setOtherLoadedAt] = useState<number | null>(null);
 
-  const isViewingCycle = !!cycleFileId;
+  const isViewingCycle = !!cycleFileId || !!cycleAnyFileId;
   // "내 대시보드 · 현재 사이클" 조회는 앱 전역 캐시(MyStatusContext)를 그대로
   // 쓴다. 그 외(다른 회원 선택, 과거 사이클 조회)는 파라미터가 붙는 별도
   // 조회라 이 페이지 로컬에서 따로 불러온다.
@@ -55,7 +73,11 @@ export function StatusPage({
   // 회원도 과거 기록 조회 대상에 포함되도록).
   function loadMembers() {
     if (!isAdmin) return;
-    const cycleParam = isViewingCycle ? `?cycle=${encodeURIComponent(String(cycleFileId))}` : "";
+    const cycleParam = cycleAnyFileId
+      ? `?cycleAny=${encodeURIComponent(String(cycleAnyFileId))}`
+      : cycleFileId
+        ? `?cycle=${encodeURIComponent(String(cycleFileId))}`
+        : "";
     call<AdminMembersResponse>(`/admin/members${cycleParam}`)
       .then((data) => {
         const list = data.members || [];
@@ -73,7 +95,7 @@ export function StatusPage({
   // 조회) 대시보드를 오래 띄워두면 신규 회원이 안 보일 수 있었다.
   // ReportPage의 참여자 선택 드롭다운과 동일하게, 드롭다운을 열 때마다
   // (onOpenChange) 다시 불러오게 한다.
-  useEffect(loadMembers, [isAdmin, isViewingCycle, cycleFileId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(loadMembers, [isAdmin, isViewingCycle, cycleFileId, cycleAnyFileId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function reload() {
     if (usingMyStatus) {
@@ -83,7 +105,17 @@ export function StatusPage({
     let cancelled = false;
     setOtherLoading(true);
     setOtherError(null);
-    const cycleParam = isViewingCycle ? `?cycle=${encodeURIComponent(String(cycleFileId))}` : "";
+    // 🔧 [사용자 지시] "1주차 → 2주차 → 3주차로 딱 3주 단위로 끊어서
+    // 확인" — cycleAny는 관리자가 다른 회원을 볼 때(/admin/members/:number)
+    // 만 지원한다. 본인 조회(/status)는 selected===SELF_VALUE일 때만
+    // 타므로 이 파라미터를 지원하지 않지만, AdminCycleRangeSelect 자체를
+    // "다른 회원을 볼 때"만 노출하므로 selected===SELF_VALUE와
+    // cycleAnyFileId가 함께 오는 경우는 실무상 없다.
+    const cycleParam = cycleAnyFileId
+      ? `?cycleAny=${encodeURIComponent(String(cycleAnyFileId))}`
+      : cycleFileId
+        ? `?cycle=${encodeURIComponent(String(cycleFileId))}`
+        : "";
     const path = selected === SELF_VALUE ? `/status${cycleParam}` : `/admin/members/${encodeURIComponent(selected)}${cycleParam}`;
     call<StatusResponse>(path)
       .then((data) => {
@@ -103,7 +135,7 @@ export function StatusPage({
     };
   }
 
-  useEffect(reload, [selected, cycleFileId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(reload, [selected, cycleFileId, cycleAnyFileId]); // eslint-disable-line react-hooks/exhaustive-deps
   // 관리자가 다른 곳에서 처리한 벌금/반휴/페널티 결과가 이 화면을 벗어난
   // 사이에도 바뀔 수 있어, 돌아올 때마다 새로 불러온다.
   useRefreshOnVisible(visible, reload);
@@ -163,7 +195,17 @@ export function StatusPage({
               // (NewMemberForm, SimpleNoticeSection 등)과 동일한 컨벤션.
               <Select
                 value={selected}
-                onValueChange={(v) => setSelected(v ?? SELF_VALUE)}
+                onValueChange={(v) => {
+                  setSelected(v ?? SELF_VALUE);
+                  // 링크로 들어온 member 쿼리를 드롭다운으로 직접 바꾸고 나면
+                  // 더는 그 초기값과 무관해지므로 URL에서 지워 새로고침해도
+                  // 방금 고른 값이 조용히 되돌아가지 않게 한다.
+                  if (searchParams.has("member")) {
+                    const next = new URLSearchParams(searchParams);
+                    next.delete("member");
+                    setSearchParams(next, { replace: true });
+                  }
+                }}
                 disabled={!members}
                 onOpenChange={(open) => {
                   if (open) loadMembers();
@@ -202,6 +244,13 @@ export function StatusPage({
           includeUnpaid
           includeForced
         />
+      )}
+      {/* 🔧 [사용자 지시] "주차 토글 옆에 관리자만 확인할 수 있는 사이클
+          범위를 지정할 수 있는 기능" — 본인 조회(/status)는 cycleAny를
+          지원하지 않으므로, 관리자가 실제로 다른 회원을 보고 있을 때만
+          노출한다. */}
+      {isAdmin && selected !== SELF_VALUE && onSelectCycleAny && (
+        <AdminCycleRangeSelect value={cycleAnyFileId ?? null} onSelect={onSelectCycleAny} />
       )}
       {membersError && (
         <Alert variant="destructive">

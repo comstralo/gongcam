@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Users, User, ChevronDown, Hash, Bell, ExternalLink, FlaskConical, Search } from "lucide-react";
+import { Users, User, ChevronDown, Hash, Bell, ExternalLink, FlaskConical, Search, LayoutDashboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -22,13 +22,6 @@ import type {
   NotifyCategory,
   SetPartiStatusResponse,
 } from "@/lib/api/types";
-
-// StatusView.tsx의 동일 함수와 같은 표시 규칙 — "8H (교시제)" 같은 시트
-// 원본 값에서 괄호만 제거해 "8H 교시제"로 보여준다.
-function formatGoalType(raw: string): string {
-  if (!raw) return "-";
-  return raw.replace(/[()]/g, "").replace(/\s+/g, " ").trim();
-}
 
 // 🧪 [목업 미리보기] "새로고침" 버튼 옆의 실험용 버튼 — 실제 API 호출 없이
 // 이 화면이 다룰 수 있는 상태(스터디장/부스터디장/스터디원, 퇴실 예약
@@ -596,11 +589,36 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
                             지정된 곳(퇴실 예약일자 등)과도 충돌 없이
                             합쳐진다. */}
                         <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
-                          <SubRow label="참여유형" value={formatGoalType(m.goalType)} />
-                          <SubRow label="가입일자" value={m.joinDate || "-"} />
                           <SubRow label="준비 중인 시험" value={m.examKind || "-"} />
                           <SubRow label="구글 계정" value={m.googleAccount || "-"} />
                           <SubRow label="구루미 계정" value={m.gooroomeeAccount || "-"} />
+                          {/* 🔧 [사용자 지시] "'시트번호' 위에 '대시보드'를
+                              만들고 해당 유저의 대시보드를 확인할 수 있는
+                              링크" — StatusPage의 관리자용 회원 선택
+                              드롭다운을 `?member=<번호>` 쿼리로 초기 선택되게
+                              해뒀다(StatusPage.tsx 참고). 로그인 세션이
+                              "한 번만"(sessionStorage) 모드면 새 탭에는
+                              세션이 없어 로그인 화면으로 튕기므로, 새 탭이
+                              아니라 같은 탭에서 대시보드 홈("/")으로
+                              이동한다 — 목업 미리보기 중인 더미 회원은 실제
+                              회원번호가 아니므로(showingDummy) 링크를 걸지
+                              않는다. */}
+                          <SubRow
+                            label="대시보드"
+                            value={
+                              showingDummy ? (
+                                `${m.name}`
+                              ) : (
+                                <a
+                                  href={`#/?member=${encodeURIComponent(m.number)}`}
+                                  className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
+                                >
+                                  {m.name}
+                                  <LayoutDashboard className="size-3 shrink-0" strokeWidth={ICON_STROKE.default} />
+                                </a>
+                              )
+                            }
+                          />
                           <SubRow
                             label="시트번호"
                             value={

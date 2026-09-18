@@ -14,6 +14,7 @@ import {
   requiresFineUnpaidRecheck,
   weekOfForDate,
 } from "../src/index.js";
+import { groupBackupsIntoCycles } from "../src/cycle.js";
 
 describe("requiresFineUnpaidRecheck", () => {
   // 직권 P(admin_forced)의 "벌금 시한 내 미납자" 고정 사유일 때만
@@ -154,5 +155,57 @@ describe("currentCycleBackups", () => {
   it("currentCycle이 CYCLE_MAX_LEN(3)을 넘거나 비정상 값이어도 최대 2개로 고정된다", () => {
     expect(currentCycleBackups(backups, 4)).toEqual([{ weekOf: "260824" }, { weekOf: "260817" }]);
     expect(currentCycleBackups(backups, 0)).toEqual([]);
+  });
+});
+
+describe("groupBackupsIntoCycles", () => {
+  // sheet_reset()이 D25 갱신 전에 백업을 뜨므로(위 currentCycleBackups
+  // 주석 참고), 각 백업의 penCycle은 그 백업이 찍히던 시점의 실제 사이클
+  // 값을 그대로 담고 있다 — penCycle===1을 만난 백업까지 포함해 한
+  // 사이클을 닫는다(개수로 3개씩 기계적으로 자르지 않음).
+  function backup(weekOf, weekTo, penCycle) {
+    return { fileId: `file-${weekOf}`, weekOf, weekTo, penCycle };
+  }
+
+  it("정확히 3주씩 완결된 사이클 2개로 나눈다", () => {
+    // 최신순: 3주차, 2주차, 1주차, 3주차, 2주차, 1주차
+    const backups = [
+      backup("260921", "260927", 3),
+      backup("260914", "260920", 2),
+      backup("260907", "260913", 1),
+      backup("260831", "260906", 3),
+      backup("260824", "260830", 2),
+      backup("260817", "260823", 1),
+    ];
+    const groups = groupBackupsIntoCycles(backups);
+    expect(groups).toHaveLength(2);
+    expect(groups[0].weeks.map((w) => w.weekOf)).toEqual(["260921", "260914", "260907"]);
+    expect(groups[0].startWeekOf).toBe("260907");
+    expect(groups[0].endWeekOf).toBe("260927");
+    expect(groups[0].cycleKey).toBe("file-260921");
+    expect(groups[1].weeks.map((w) => w.weekOf)).toEqual(["260831", "260824", "260817"]);
+  });
+
+  it("가장 오래된 그룹이 1주차를 못 만난 채 끝나도(서비스 초기 이력) 그대로 그룹으로 인정한다", () => {
+    const backups = [
+      backup("260921", "260927", 2),
+      backup("260914", "260920", 1),
+      // 여기서부터는 1을 못 만나고 이력이 끊긴다.
+      backup("260907", "260913", 3),
+      backup("260831", "260906", 2),
+    ];
+    const groups = groupBackupsIntoCycles(backups);
+    expect(groups).toHaveLength(2);
+    expect(groups[0].weeks.map((w) => w.weekOf)).toEqual(["260921", "260914"]);
+    expect(groups[1].weeks.map((w) => w.weekOf)).toEqual(["260907", "260831"]);
+  });
+
+  it("빈 배열이면 빈 그룹 목록을 반환한다", () => {
+    expect(groupBackupsIntoCycles([])).toEqual([]);
+  });
+
+  it("각 그룹의 weeks 항목은 hasData:true를 포함한 CycleWeek 형태다", () => {
+    const groups = groupBackupsIntoCycles([backup("260907", "260913", 1)]);
+    expect(groups[0].weeks).toEqual([{ fileId: "file-260907", weekOf: "260907", weekTo: "260913", hasData: true }]);
   });
 });

@@ -32,6 +32,7 @@ import {
   requireAdmin,
   getServiceAccountAccessToken,
   resolveTargetFileId,
+  resolveTargetFileIdForAnyBackup,
   json,
   withMemberLock,
   listExitedMemberEntries,
@@ -121,8 +122,16 @@ export async function handleAdminMembers(req, env, origin, url) {
 
   try {
     const accessToken = await getServiceAccountAccessToken(env);
+    // 🔧 [사용자 지시] "1주차 → 2주차 → 3주차로 딱 3주 단위로 끊어서
+    // 확인" — 관리자 전용 "사이클 범위 선택" 드롭다운으로 현재 사이클
+    // 밖의 과거 사이클을 골랐을 때도, "다른 회원 보기" 드롭다운이 그
+    // 사이클 시점의 회원 명단을 보여줘야 한다. 이 핸들러는 위에서 이미
+    // requireAdmin으로 보호되어 있으므로 별도 권한 재확인이 필요 없다.
+    const cycleAnyFileId = url ? url.searchParams.get("cycleAny") : null;
     const cycleFileId = url ? url.searchParams.get("cycle") : null;
-    const { fileId: targetFileId } = await resolveTargetFileId(env, accessToken, cycleFileId);
+    const { fileId: targetFileId } = cycleAnyFileId
+      ? await resolveTargetFileIdForAnyBackup(env, accessToken, cycleAnyFileId)
+      : await resolveTargetFileId(env, accessToken, cycleFileId);
     // 현재/과거 fileId 구분 없이 2시간 — 드롭다운은 실시간성이 필요 없고,
     // 신규등록·퇴실 발생 시 즉시 무효화되므로(아래 주석) 굳이 나눌 이유가 없다.
     const responseMembers = await _cachedCompute(env, `adminMemberList:${targetFileId}`, 2 * 60 * 60_000, async () => {
@@ -131,8 +140,10 @@ export async function handleAdminMembers(req, env, origin, url) {
         // 🔧 2026-09: "다른 회원 보기"에 퇴실자도 "{이름} (퇴실)"로 포함시켜
         // 관리자가 마지막 참여 시점 기록을 웹에서 조회할 수 있게 한다 —
         // 이전엔 이 탭이 구글 시트를 직접 열어야만 확인 가능했다. 원본
-        // 조회일 때만(과거 사이클 백업 파일엔 이 탭이 없음).
-        cycleFileId ? Promise.resolve([]) : listExitedMemberEntries(env, accessToken, targetFileId),
+        // 조회일 때만(과거 사이클 백업 파일엔 이 탭이 없음). targetFileId가
+        // 실시간 원본과 같은지로 판정한다 — cycleAny(전체 이력)도 과거
+        // 백업을 가리키므로 cycleFileId 존재 여부만으로는 판정할 수 없다.
+        targetFileId !== env.GOOGLE_SHEET_FILE_ID ? Promise.resolve([]) : listExitedMemberEntries(env, accessToken, targetFileId),
       ]);
       return [...members.map((m) => ({ number: m.number, name: m.name, email: m.email })), ...exitedMembers];
     });

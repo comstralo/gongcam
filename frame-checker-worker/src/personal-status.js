@@ -24,6 +24,7 @@ import {
   getServiceAccountAccessToken,
   findMemberNumberByEmail,
   resolveTargetFileId,
+  resolveTargetFileIdForAnyBackup,
   requireAdmin,
   getSheetValues,
   getCurrentPenCycle,
@@ -1028,8 +1029,18 @@ export async function handleAdminMemberStatus(req, env, origin, memberNumber, ur
       return json(status, 200, origin);
     }
 
+    // 🔧 [사용자 지시] "1주차 → 2주차 → 3주차로 딱 3주 단위로 끊어서
+    // 확인" — 관리자 전용 "사이클 범위 선택" 드롭다운(AdminCycleRangeSelect)
+    // 이 넘기는 cycleAny는 현재 사이클(최대 3주) 제약이 없는 전체 이력
+    // 열람용이다. 이 핸들러는 위에서 이미 requireAdmin으로 보호되어
+    // 있으므로 별도 권한 재확인이 필요 없다. cycle(기존 CycleSwitcher)과
+    // 동시에 오면 cycleAny를 우선한다 — 프론트가 두 쿼리를 상호 배타적으로
+    // 관리하므로 실무상 동시에 오지 않는다.
+    const cycleAnyFileId = url ? url.searchParams.get("cycleAny") : null;
     const cycleFileId = url ? url.searchParams.get("cycle") : null;
-    const { fileId: targetFileId, weekOf } = await resolveTargetFileId(env, accessToken, cycleFileId);
+    const { fileId: targetFileId, weekOf } = cycleAnyFileId
+      ? await resolveTargetFileIdForAnyBackup(env, accessToken, cycleAnyFileId)
+      : await resolveTargetFileId(env, accessToken, cycleFileId);
     const members = await listAllMembers(env, accessToken, targetFileId);
     const member = members.find((m) => m.number === memberNumber);
     if (!member) return json({ error: "존재하지 않는 회원번호입니다." }, 404, origin);

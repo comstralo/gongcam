@@ -20,6 +20,7 @@ import {
   getServiceAccountAccessToken,
   resolveMemberNumber,
   resolveTargetFileId,
+  resolveTargetFileIdForAnyBackup,
   requireAdmin,
   getSheetValues,
   getSheetUnformattedValue,
@@ -167,8 +168,19 @@ export async function handleRosterStatus(req, env, origin, url) {
 
   try {
     const accessToken = await getServiceAccountAccessToken(env);
+    // 🔧 [사용자 지시] "1주차 → 2주차 → 3주차로 딱 3주 단위로 끊어서
+    // 확인" — 관리자 전용 "사이클 범위 선택" 드롭다운(AdminCycleRangeSelect)
+    // 이 넘기는 cycleAny는 현재 사이클(최대 3주) 제약이 없는 전체 이력
+    // 열람용이다. 이 화면은 관리자든 아니든 누구나 볼 수 있는 공용
+    // 엔드포인트라, isAdmin 판정을 여기(cycleAny 파싱 시점)로 끌어올려
+    // 관리자가 아니면 cycleAny를 조용히 무시하고 기존 cycle 처리로
+    // 폴백한다 — 아래 depositOuter 노출 판정도 이 isAdmin을 재사용한다.
+    const isAdmin = (session.email || "").toLowerCase() === (env.ADMIN_EMAIL || "").toLowerCase();
+    const cycleAnyFileId = isAdmin && url ? url.searchParams.get("cycleAny") : null;
     const cycleFileId = url ? url.searchParams.get("cycle") : null;
-    const { fileId: targetFileId, weekOf } = await resolveTargetFileId(env, accessToken, cycleFileId);
+    const { fileId: targetFileId, weekOf } = cycleAnyFileId
+      ? await resolveTargetFileIdForAnyBackup(env, accessToken, cycleAnyFileId)
+      : await resolveTargetFileId(env, accessToken, cycleFileId);
     // 🔧 [캐시 오염 방지, 2026-09-10] buildRosterStatus가 이제 30분 캐시를
     // 쓰면서 반환 객체가 여러 요청·isolate에 걸쳐 재사용될 수 있게 됐다 —
     // 아래에서 weekRange 병합·depositOuter/settlement 삭제로 이 객체를
@@ -188,10 +200,8 @@ export async function handleRosterStatus(req, env, origin, url) {
     // 퇴실 예치(D24)가 총 모금액에 포함되지 않는 주간에는, 관리자가 아닌
     // 일반 참여자에게는 이 항목 자체를 숨긴다(스터디장 개인 페널티 여부를
     // 노출하지 않기 위함) — 값을 응답에서 아예 빼서 프론트가 있는지
-    // 여부로 노출 판단을 하게 한다.
-    // 🔧 [사용자 지시] "관리자 판정 비교 일관성" — 위 5185행과 동일한
-    // 이유로 양쪽 다 소문자화.
-    const isAdmin = (session.email || "").toLowerCase() === (env.ADMIN_EMAIL || "").toLowerCase();
+    // 여부로 노출 판단을 하게 한다. isAdmin은 위 cycleAny 분기에서 이미
+    // 계산해뒀다(양쪽 다 소문자화 — "관리자 판정 비교 일관성", 사용자 지시).
     if (!roster.depositOuterIncluded && !isAdmin) {
       delete roster.depositOuter;
     }

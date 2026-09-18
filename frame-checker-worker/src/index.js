@@ -97,9 +97,11 @@ import {
   listBackupFiles,
   listCurrentCycleBackups,
   resolveTargetFileId,
+  resolveTargetFileIdForAnyBackup,
   resolveExitSourceFileId,
   resolveCaptureSourceFileId,
   handleCycleList,
+  handleAdminCycleGroups,
 } from "./cycle.js";
 export {
   requiresFineUnpaidRecheck,
@@ -109,6 +111,7 @@ export {
   listBackupFiles,
   listCurrentCycleBackups,
   resolveTargetFileId,
+  resolveTargetFileIdForAnyBackup,
   resolveExitSourceFileId,
   resolveCaptureSourceFileId,
 };
@@ -1858,6 +1861,11 @@ export default {
       if (url.pathname === "/cycles" && req.method === "GET") {
         // cycle.js
         return await handleCycleList(req, env, origin, url);
+      }
+      if (url.pathname === "/admin/cycles" && req.method === "GET") {
+        // cycle.js — 관리자 전용 "사이클 범위 선택" 드롭다운: 현재 사이클
+        // 제약 없이 백업이 남아있는 전체 이력을 3주 단위로 그룹핑해 반환.
+        return await handleAdminCycleGroups(req, env, origin);
       }
       if (url.pathname === "/goal-schedule" && req.method === "GET") {
         // index.js — 목표시간 다음 주 예약.

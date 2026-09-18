@@ -21,16 +21,28 @@ export function DashboardPage({ visible = true }: { visible?: boolean }) {
   // 시 한 번만 URL에서 초기값을 읽고, 그 뒤로는 로컬 state로만 관리한다.
   const [view, setView] = useState<DashboardView>(() => normalizeView(params.get("view")));
   const cycleFileId = params.get("cycle");
+  const cycleAnyFileId = params.get("cycleAny");
 
   // AdminPage와 동일한 이유 — 탭을 오갈 때마다 언마운트/재마운트되며 각
   // 탭의 조회가 다시 실행되지 않도록, 한 번 연 탭은 hidden으로만 감춘다.
   const everOpened = useRef({ me: false, all: false });
   everOpened.current[view] = true;
 
+  // 🔧 [사용자 지시] "주차 토글 옆에 관리자만 확인할 수 있는 사이클 범위를
+  // 지정할 수 있는 기능" — cycle(기존 CycleSwitcher, 현재 사이클로만
+  // 제한)과 cycleAny(AdminCycleRangeSelect, 전체 이력)는 상호 배타적으로
+  // 관리한다. 한쪽을 고르면 다른 쪽 쿼리는 지운다.
   function selectCycle(fileId: string | null) {
     const next: Record<string, string> = {};
     if (view === "all") next.view = "all";
     if (fileId) next.cycle = fileId;
+    setParams(next, { replace: true });
+  }
+
+  function selectCycleAny(fileId: string | null) {
+    const next: Record<string, string> = {};
+    if (view === "all") next.view = "all";
+    if (fileId) next.cycleAny = fileId;
     setParams(next, { replace: true });
   }
 
@@ -40,6 +52,7 @@ export function DashboardPage({ visible = true }: { visible?: boolean }) {
     const nextParams: Record<string, string> = {};
     if (next === "all") nextParams.view = "all";
     if (cycleFileId) nextParams.cycle = cycleFileId;
+    if (cycleAnyFileId) nextParams.cycleAny = cycleAnyFileId;
     setParams(nextParams, { replace: true });
   }
 
@@ -67,12 +80,24 @@ export function DashboardPage({ visible = true }: { visible?: boolean }) {
 
       <div className="w-full" hidden={view !== "me"}>
         {everOpened.current.me && (
-          <StatusPage cycleFileId={cycleFileId} onSelectCycle={selectCycle} visible={visible && view === "me"} />
+          <StatusPage
+            cycleFileId={cycleFileId}
+            onSelectCycle={selectCycle}
+            cycleAnyFileId={cycleAnyFileId}
+            onSelectCycleAny={selectCycleAny}
+            visible={visible && view === "me"}
+          />
         )}
       </div>
       <div className="w-full" hidden={view !== "all"}>
         {everOpened.current.all && (
-          <RosterPage cycleFileId={cycleFileId} onSelectCycle={selectCycle} visible={visible && view === "all"} />
+          <RosterPage
+            cycleFileId={cycleFileId}
+            onSelectCycle={selectCycle}
+            cycleAnyFileId={cycleAnyFileId}
+            onSelectCycleAny={selectCycleAny}
+            visible={visible && view === "all"}
+          />
         )}
       </div>
     </div>

@@ -6,9 +6,11 @@ import { SectionHeader, SectionCard } from "@/components/admin/shared";
 import { SubRow, ItemTitle, won } from "@/components/dashboard/shared";
 import { RosterView, RosterViewSkeleton, RANK_EMOJI } from "@/components/dashboard/RosterView";
 import { CycleSwitcher } from "@/components/dashboard/CycleSwitcher";
+import { AdminCycleRangeSelect } from "@/components/dashboard/AdminCycleRangeSelect";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { usePollingRefresh } from "@/hooks/usePollingRefresh";
+import { useAuth } from "@/lib/auth/useAuth";
 import { ICON_STROKE, cn } from "@/lib/utils";
 import type { RosterMember, RosterStatusResponse, SettlementItem } from "@/lib/api/types";
 
@@ -23,13 +25,22 @@ type RosterMoney = {
 export function RosterPage({
   cycleFileId,
   onSelectCycle,
+  cycleAnyFileId,
+  onSelectCycleAny,
   visible = true,
 }: {
   cycleFileId?: string | null;
   onSelectCycle?: (fileId: string | null) => void;
+  // 🔧 [사용자 지시] "주차 토글 옆에 관리자만 확인할 수 있는 사이클 범위를
+  // 지정할 수 있는 기능" — 관리자 전용 "사이클 범위 선택" 드롭다운
+  // (AdminCycleRangeSelect)에서 고른 fileId. 기존 cycleFileId(CycleSwitcher,
+  // 현재 사이클로만 제한)와 상호 배타적으로 관리된다(DashboardPage 참고).
+  cycleAnyFileId?: string | null;
+  onSelectCycleAny?: (fileId: string | null) => void;
   visible?: boolean;
 }) {
   const { call } = useApi();
+  const { isAdmin } = useAuth();
   const [members, setMembers] = useState<RosterMember[] | null>(null);
   const [money, setMoney] = useState<RosterMoney | null>(null);
   // undefined: 아직 못 받아옴(로딩 중). null: 백엔드가 필드를 안 보냄(비공개 —
@@ -44,9 +55,11 @@ export function RosterPage({
   function load() {
     setLoading(true);
     setError(null);
-    const path = cycleFileId
-      ? `/roster-status?cycle=${encodeURIComponent(String(cycleFileId))}`
-      : "/roster-status";
+    const path = cycleAnyFileId
+      ? `/roster-status?cycleAny=${encodeURIComponent(String(cycleAnyFileId))}`
+      : cycleFileId
+        ? `/roster-status?cycle=${encodeURIComponent(String(cycleFileId))}`
+        : "/roster-status";
     call<RosterStatusResponse>(path)
       .then((data) => {
         setMembers(data.members || []);
@@ -66,7 +79,7 @@ export function RosterPage({
       .finally(() => setLoading(false));
   }
 
-  useEffect(load, [cycleFileId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(load, [cycleFileId, cycleAnyFileId]); // eslint-disable-line react-hooks/exhaustive-deps
   // 다른 회원들의 타이머·순위·정산은 이 화면을 벗어난 사이에도 계속
   // 바뀐다 — "실시간 랭킹"을 표방하는 화면이라 돌아올 때마다 새로 불러온다.
   useRefreshOnVisible(visible, load);
@@ -84,6 +97,9 @@ export function RosterPage({
     // 이중 테두리·이중 배경만 만들 뿐 시각적으로 불필요했다.
     <div className="flex w-full flex-col gap-4">
       {onSelectCycle && <CycleSwitcher selectedFileId={cycleFileId ?? null} onSelect={onSelectCycle} />}
+      {isAdmin && onSelectCycleAny && (
+        <AdminCycleRangeSelect value={cycleAnyFileId ?? null} onSelect={onSelectCycleAny} />
+      )}
 
       <SectionCard>
         <Collapsible defaultOpen className="flex flex-col">

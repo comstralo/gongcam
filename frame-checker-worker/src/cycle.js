@@ -27,6 +27,7 @@ import {
   STATUS_DAY_COLS,
   ROW_PAYMENT_CHECK,
   verifySession,
+  requireAdmin,
   getServiceAccountAccessToken,
   json,
   findMemberNumberByEmail,
@@ -153,6 +154,22 @@ export async function resolveTargetFileId(env, accessToken, cycleFileId) {
   const { backups } = await listCurrentCycleBackups(env, accessToken);
   const backup = backups.find((b) => b.fileId === cycleFileId);
   if (!backup) throw new Error("현재 사이클에 속하지 않는 기록입니다.");
+  return { fileId: backup.fileId, weekOf: backup.weekOf };
+}
+
+// 🔧 [사용자 지시] "1~3주차 단위로 딱 끊어서 확인" — 관리자 전용 "사이클
+// 범위 선택" 드롭다운(AdminCycleRangeSelect)에서만 쓰는 검증 헬퍼.
+// resolveTargetFileId와 달리 "현재 진행 중인 사이클" 제약이 없다 —
+// BACKUP_HISTORY_START_WEEK_OF 이후 남아있는 백업이라면 몇 사이클 전이든
+// 허용한다. 퇴실/벌금/상금 정산 등 쓰기 경로는 이 함수를 전혀 참조하지
+// 않는다(읽기 전용 핸들러(handleAdminMemberStatus/handleRosterStatus)의
+// cycleAny 분기에서만 호출) — resolveTargetFileId 자체는 그대로 둬
+// 기존 쓰기 경로의 "현재 사이클만 허용" 제약에 영향을 주지 않는다.
+export async function resolveTargetFileIdForAnyBackup(env, accessToken, cycleFileId) {
+  if (!cycleFileId) return { fileId: env.GOOGLE_SHEET_FILE_ID, weekOf: null };
+  const backups = await listBackupFiles(env, accessToken);
+  const backup = backups.find((b) => b.fileId === cycleFileId);
+  if (!backup) throw new Error("백업 기록에 없는 사이클입니다.");
   return { fileId: backup.fileId, weekOf: backup.weekOf };
 }
 
@@ -354,5 +371,100 @@ export async function handleCycleList(req, env, origin, url) {
     return json(result, 200, origin);
   } catch (err) {
     return json({ error: "사이클 목록 조회 실패: " + err.message }, 500, origin);
+  }
+}
+
+// 🔧 [사용자 지시] "1주차 → 2주차 → 3주차로 딱 3주 단위로 끊어서 확인" —
+// 관리자 전용 "사이클 범위 선택" 드롭다운(AdminCycleRangeSelect)의 기반
+// 데이터를 만드는 순수 함수. 완결된 사이클은 항상 정확히 3주라는 보장이
+// 없으므로(서비스 초기 이력 등) 개수로 3개씩 기계적으로 자르지 않고,
+// 각 백업이 실제로 찍히던 시점의 사이클 값(penCycle, 집계!D25 — sheet_reset()
+// 이 D25를 갱신하기 *전에* 백업을 뜨므로 그 백업이 몇 주차였는지 정확히
+// 담고 있다)을 보고 penCycle===1을 만난 백업까지 포함해 한 사이클을
+// 닫는다. 입력은 weekOf 최신순 — 그대로 최신순 그룹 배열을 반환한다.
+export function groupBackupsIntoCycles(backupsWithCycle) {
+  const groups = [];
+  let current = [];
+  for (const b of backupsWithCycle) {
+    current.push(b);
+    if (b.penCycle === 1) {
+      groups.push(current);
+      current = [];
+    }
+  }
+  // 가장 오래된 쪽에 1주차를 못 만난 채 남은 백업들 — 사이클이 완결되지
+  // 않은 채 이력이 끊긴 경우(서비스 도입 초기 등)도 그대로 그룹 하나로
+  // 인정한다.
+  if (current.length > 0) groups.push(current);
+
+  return groups.map((weeks) => ({
+    cycleKey: weeks[0].fileId,
+    weeks: weeks.map((w) => ({ fileId: w.fileId, weekOf: w.weekOf, weekTo: w.weekTo, hasData: true })),
+    startWeekOf: weeks[weeks.length - 1].weekOf,
+    endWeekOf: weeks[0].weekTo,
+    isCurrent: false,
+  }));
+}
+
+// listAllCycleGroups가 쓰는 fetch 계층 — 전체 백업 이력에 진행 중인 사이클을
+// 합성해 "지금까지의 모든 사이클"을 최신순으로 반환한다.
+export async function listAllCycleGroups(env, accessToken) {
+  const [allBackups, { backups: currentBackups, currentCycle }] = await Promise.all([
+    listBackupFiles(env, accessToken),
+    listCurrentCycleBackups(env, accessToken),
+  ]);
+
+  // 진행 중인 사이클(현재 라이브 시트)은 백업 목록에 없으므로, 이미 계산된
+  // listCurrentCycleBackups 결과를 그대로 재사용해 첫 그룹으로 합성한다
+  // (currentCycleBackups 로직 중복 방지) — 마지막 슬롯은 기존
+  // CycleSwitcher와 동일하게 "이번 주"(fileId 없음)로 표시한다.
+  const currentGroupWeeks = currentBackups.map((b) => ({
+    fileId: b.fileId,
+    weekOf: b.weekOf,
+    weekTo: b.weekTo,
+    hasData: true,
+  }));
+  const currentGroup = {
+    cycleKey: "current",
+    weeks: currentGroupWeeks,
+    startWeekOf: currentGroupWeeks.length > 0 ? currentGroupWeeks[currentGroupWeeks.length - 1].weekOf : null,
+    endWeekOf: null,
+    isCurrent: true,
+    currentWeekNumber: currentCycle,
+  };
+
+  // 진행 중인 사이클에 속한 백업은 완결된 과거 그룹 계산에서 제외한다.
+  const currentFileIds = new Set(currentBackups.map((b) => b.fileId));
+  const pastBackups = allBackups.filter((b) => !currentFileIds.has(b.fileId));
+
+  // 각 과거 백업이 실제로 몇 주차였는지(penCycle)는 getCurrentPenCycle을
+  // 그대로 재사용한다 — fileId별로 이미 2시간 캐시가 걸려 있어(penCycle:
+  // {fileId}), 완결된 사이클은 재호출해도 대부분 캐시 히트다(과거 백업은
+  // 절대 안 바뀌므로 이 캐시가 안전하다, docs/CACHING_POLICY.md §17).
+  const withCycle = await Promise.all(
+    pastBackups.map(async (b) => ({
+      ...b,
+      penCycle: await getCurrentPenCycle(env, accessToken, b.fileId),
+    }))
+  );
+
+  const pastGroups = groupBackupsIntoCycles(withCycle);
+  return [currentGroup, ...pastGroups];
+}
+
+// 🔧 [사용자 지시] "관리자만 확인할 수 있는 사이클 범위를 지정" — /admin/cycles.
+// hasUnpaid/hasForced/hasData(회원별 존재 여부) 같은 부가 계산은 하지 않는다
+// — 이 드롭다운의 목적은 사이클 단위 열람이지 미납 확인이 아니다(그 역할은
+// 기존 CycleSwitcher가 계속 담당).
+export async function handleAdminCycleGroups(req, env, origin) {
+  const admin = await requireAdmin(req, env);
+  if (!admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403, origin);
+
+  try {
+    const accessToken = await getServiceAccountAccessToken(env);
+    const groups = await listAllCycleGroups(env, accessToken);
+    return json({ groups }, 200, origin);
+  } catch (err) {
+    return json({ error: "사이클 범위 목록 조회 실패: " + err.message }, 500, origin);
   }
 }

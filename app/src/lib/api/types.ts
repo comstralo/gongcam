@@ -319,6 +319,31 @@ export type CycleListResponse = {
   currentHasForced?: boolean;
 };
 
+// 🔧 [사용자 지시] "1주차 → 2주차 → 3주차로 딱 3주 단위로 끊어서 확인" —
+// 관리자 전용 "사이클 범위 선택" 드롭다운(AdminCycleRangeSelect)이 쓰는
+// 타입. CycleListResponse(현재 사이클 하나만 표현)와 달리, 백업이 남아있는
+// 전체 이력을 3주 단위 사이클로 묶은 목록을 표현한다.
+export type CycleGroup = {
+  // 그 사이클을 식별하는 안정적인 키 — 그룹 내 가장 최신 주차의 fileId를
+  // 그대로 쓴다(진행 중 사이클은 "current" 고정값).
+  cycleKey: string;
+  // 최신순, 그룹 내 1~3개. 진행 중 사이클의 마지막 항목은 fileId가 있는
+  // 완결된 주차까지만 담기고, "이번 주" 자체는 이 배열에 없다(CycleWeek와
+  // 동일하게 실시간 슬롯은 fileId 없음으로 표현 — CycleSwitcher의 관용구
+  // 그대로 따른다: fileId===null을 "이번 주"로 취급).
+  weeks: CycleWeek[];
+  startWeekOf: string | null;
+  endWeekOf: string | null;
+  // 진행 중인 사이클(마지막 슬롯이 "이번 주" 실시간)인지.
+  isCurrent: boolean;
+  // isCurrent일 때만 내려오는, 지금이 그 사이클의 몇 주차인지(1~3).
+  currentWeekNumber?: number;
+};
+
+export type CycleGroupListResponse = {
+  groups: CycleGroup[]; // 최신순
+};
+
 export type AdminMember = {
   number: string;
   name: string;
