@@ -1,29 +1,23 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { User, ChevronDown, PiggyBank, TrendingDown, Eye, Search } from "lucide-react";
+import { User, ChevronDown, Search } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { InfoCard, SubRow, TintedPill, buildDepositCauseItems } from "@/components/dashboard/shared";
-import type { DepositCauseItem } from "@/components/dashboard/shared";
+import { InfoCard, TintedPill } from "@/components/dashboard/shared";
 import {
   displayExitedName as displayName,
   AdminListSkeleton,
   AdminEmptyState,
   MemberStatusInfoCard,
+  ExitResultCards,
 } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { usePullRefreshListener } from "@/hooks/usePullToRefresh";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { ApiError } from "@/lib/api/client";
 import { ICON_STROKE, cn } from "@/lib/utils";
-import type {
-  AdminExitedMembersResponse,
-  DepositRefundBreakdown,
-  ExitedMemberEntry,
-  ExitKind,
-  SetExitBlacklistResponse,
-} from "@/lib/api/types";
+import type { AdminExitedMembersResponse, ExitedMemberEntry, SetExitBlacklistResponse } from "@/lib/api/types";
 
 // 셸(MemberRosterList)이 "새로고침" 버튼을 눌렀을 때 지금 보이는 뷰의
 // load()를 호출하기 위한 명령형 핸들 — 상태(loading/refreshProgress)는
@@ -40,71 +34,12 @@ export type RosterViewState = {
   refreshProgress?: number;
 };
 
-function won(n: number) {
-  return `₩${(n || 0).toLocaleString()}`;
-}
-
 // 🔧 [사용자 지시] "퇴실 예약일자, 집행일자도 2026. 8. 23. 처럼
 // 출력해줘" — 퇴실 예약/집행일자("YYYY-MM-DD" 문자열)를 한국어 로케일
 // 날짜 표기("2026. 8. 20.")로 통일한다. 최근 접속 일자 포맷은
 // MemberStatusInfoCard(admin/shared.tsx)로 옮겨졌다.
 function formatKoreanDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("ko-KR");
-}
-
-// 🔧 [사용자 지시] "퇴실유형은 '강제 퇴실자', '정산 퇴실자'로만 출력해줘.
-// () 내용은 지우자" — 예전엔 사유(reasons)를 괄호로 붙였으나, 이제
-// kindStr 자체를 그대로 반환한다(사유 목록은 더 이상 표시하지 않음).
-function exitTypeLabel(kindStr: string): string {
-  return kindStr;
-}
-
-// 🔧 2026-09: "차감 원인" 카드(buildDepositCauseItems)는 회원 대시보드/
-// ExitProcessDialog와 공유하는 함수라, 그 회원의 실제 시트 상태(벌금
-// 미납, 가입일수, 송출P/주간P 페널티)만 보여준다 — kind=admin_forced
-// (직권 P)로 처리됐다는 사실 자체는 여기에 전혀 반영되지 않는다(계산에도
-// 관여하지 않음, ExitProcessDialog의 admin_forced 미리보기와 동일하게
-// discountRatio가 사유와 무관하게 항상 1로 고정이기 때문). 관리자가 "이
-// 회원이 직권 P로 처리됐는지"를 차감 원인 목록에서도 명시적으로 확인할
-// 수 있도록, "퇴실 스터디원 목록"에서만(사용자 지시 — 다른 화면은
-// 그대로 둠) 직권 P 횟수를 함께 보여준다.
-// 🔧 [사용자 지시] "직권 P를 별개의 항목으로 빼지 말고, 두 항목을 합쳐줘.
-// 페널티 쪽을 '송출 P : 1회' 같은 형식으로" — 원래는 "페널티 (직권 P
-// N회)"를 별도 항목으로 끼워 넣었으나, 기존 "페널티(송출 P+주간 P)"
-// 항목 하나에 직권 P까지 한 줄로 합치고 각 값 앞에 콜론을 붙인다.
-// buildDepositCauseItems가 만든 penalty 항목(key: "penalty")을 찾아
-// 라벨만 다시 조립한다(breakdown 원본값을 직접 받아 문자열 재파싱 없이
-// 안전하게 조립) — rate는 그 항목이 이미 계산해둔 값(송출/주간 페널티
-// 합산 기준)과 admin_forced 여부 중 더 큰 차감률을 쓴다(직권 P는 항상
-// 100%=전액 차감이므로 admin_forced면 무조건 100%).
-// 🔧 [사용자 지시] "페널티에 0회인건 출력에서 제외해달라고 했는데
-// 여전히 출력되고 있어" — 이전엔 rate===0(전부 0회)일 때만 항목 자체를
-// 숨겼는데, 실제 요구는 "송출/주간/직권 P 중 0회인 개별 값은 라벨
-// 문자열에서 빼라"는 것이었다(예: 직권 P만 0이면 "송출 P : 1회 + 주간
-// P : 1회"만 남고 "직권 P : 0회"는 아예 안 보여야 함). 0회가 아닌
-// 항목만 걸러 "+"로 이어붙인다.
-function mergePenaltyLabel(
-  items: DepositCauseItem[],
-  breakdown: DepositRefundBreakdown,
-  kind: ExitKind
-): DepositCauseItem[] {
-  const isAdminForced = kind === "admin_forced";
-  return items.map((item) => {
-    if (item.key !== "penalty") return item;
-    const parts = [
-      { label: "송출 P", count: breakdown.outputPen ?? 0 },
-      { label: "주간 P", count: breakdown.timePen ?? 0 },
-      { label: "직권 P", count: isAdminForced ? 1 : 0 },
-    ].filter((p) => p.count > 0);
-    return {
-      ...item,
-      label:
-        parts.length > 0
-          ? `페널티 (${parts.map((p) => `${p.label} : ${p.count}회`).join(" + ")})`
-          : "페널티 (0회)",
-      rate: isAdminForced ? 100 : item.rate,
-    };
-  });
 }
 
 // 🧪 [목업 미리보기] "새로고침" 버튼 옆의 실험용 버튼(셸이 소유) — 실제
@@ -694,105 +629,20 @@ export const ExitedMemberRosterView = forwardRef<
                           exitProcessedDateValue={result.processedDate ? formatKoreanDate(result.processedDate) : "-"}
                         />
 
-                        {/* 🔧 [사용자 지시] "현재 페이지(관리자)의 위계도
-                            맞춰줘" — 이 소제목만 다른 소제목(차감 원인 등,
-                            text-sm sm:text-base)보다 한 단계 작았다.
-                            🔧 [사용자 지시] "우측의 텍스트 위계를 좌측
-                            제목과 일치시켜줘. 대신 볼드 처리는 하지마" —
-                            값(₩0 등)의 크기를 제목과 같은 text-sm
-                            sm:text-base로 맞추되 font-semibold는 주지 않아
-                            제목과 시각적으로 구분되게 한다. */}
-                        <InfoCard className="flex items-center justify-between gap-2 bg-card">
-                          <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
-                            <PiggyBank className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-                            반환 예치금
-                          </span>
-                          <span
-                            className={cn(
-                              "text-sm sm:text-base",
-                              result.refundAmount >= 5000 && "text-ok",
-                              result.refundAmount === 0 && "text-destructive"
-                            )}
-                          >
-                            {won(result.refundAmount)}
-                          </span>
-                        </InfoCard>
-
-                        {/* 🔧 [사용자 지시] "현재 페이지(관리자)의 위계도
-                            맞춰줘" — 소제목(차감 원인/처리 결과/퇴실유형)이
-                            다른 관리자 화면 소제목(text-sm sm:text-base)
-                            보다 한 단계 작았고, SubRow도 기본 크기
-                            (text-micro-lg sm:text-xs)라 제보 화면 기준
-                            (text-xs sm:text-sm)보다 작았다 — 함께 맞춘다. */}
-                        <InfoCard className="flex flex-col gap-1.5 bg-card">
-                          <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
-                            <TrendingDown className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-                            차감 원인
-                          </span>
-                          <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
-                            {/* 🔧 [사용자 지시] "차감 원인에서 '페널티'
-                                항목 0회인건 표시하지마" — 송출/주간/직권 P
-                                가 전부 0회면 rate도 항상 0%이므로, penalty
-                                항목만 rate===0일 때 걸러낸다(다른 항목의
-                                0%는 그대로 유지 — "해당 없음"을 보여주는
-                                것도 의미가 있으므로). */}
-                            {mergePenaltyLabel(
-                              buildDepositCauseItems(result.breakdown, result.breakdown.lateNotice ? 50 : 0),
-                              result.breakdown,
-                              result.kind
-                            )
-                              .filter((item) => !(item.key === "penalty" && item.rate === 0))
-                              .map((item) => (
-                              <SubRow
-                                key={item.key}
-                                label={item.label}
-                                value={`${item.rate}%`}
-                                valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
-                              />
-                            ))}
-                          </div>
-                        </InfoCard>
-
-                        {/* 🔧 [사용자 지시] "'퇴실유형'을 '처리 결과'에
-                            귀속시켜" — 별도 카드였던 퇴실유형/블랙리스트를
-                            하나의 카드로 합쳤다. "유형" 라벨은 "퇴실유형"으로
-                            이름을 바꾼다. "처리일자"는 "상태 정보" 카드의
-                            "퇴실 집행일자"(같은 값 processedDate)와 중복이라
-                            제거했다(사용자 지시). "반환 예치금"도 위쪽
-                            "반환 예치금" 카드(₩0 강조 표시)와 중복이라
-                            제거했다(사용자 지시). */}
-                        <InfoCard className="flex flex-col gap-1.5 bg-card">
-                          <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
-                            <Eye className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-                            처리 결과
-                          </span>
-                          <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
-                            <SubRow label="귀속 예치금" value={won(result.heldAmount)} />
-                            <SubRow label="납부된 벌금" value={won(result.fineAlreadyPayment)} />
-                            {/* 🔧 [사용자 지시] "'퇴실유형'의 '강제 퇴실자'가
-                                여전히 무채색으로 표시돼. 빨간색으로 해줘" —
-                                kindStr은 "강제 퇴실자"/"정산 퇴실자" 둘뿐이라
-                                (백엔드가 discountRatio===1인 모든 경우를
-                                "강제 퇴실자"로 통일), 강제 퇴실자일 때만
-                                강조한다. */}
-                            <SubRow
-                              label="퇴실 유형"
-                              value={exitTypeLabel(result.kindStr)}
-                              valueClassName={result.kindStr === "강제 퇴실자" ? "text-destructive" : undefined}
-                            />
-                            {/* 🔧 2026-09: 처음엔 admin_forced(직권 P)에서만
-                                조건부로 보였으나, 사용자 지시로 모든 퇴실
-                                유형에 항상 표시하도록 변경 — forced/settle은
-                                블랙리스트 체크박스 자체가 없어(§ExitProcessDialog)
-                                항상 N으로 저장된 값이 그대로 뜬다. 표기도
-                                "예/아니오"에서 "Y/N"으로 변경. */}
-                            <SubRow
-                              label="블랙리스트"
-                              value={result.blacklist ? "Y" : "N"}
-                              valueClassName={result.blacklist ? "text-destructive" : undefined}
-                            />
-                          </div>
-                        </InfoCard>
+                        {/* 🔧 2026-09: "반환 예치금"/"차감 원인"/"처리
+                            결과" 세 카드를 ExitProcessDialog(직권 P/정산
+                            퇴실 모달)와 각자 복붙해 구현하고 있었다(사용자
+                            지적: "UI 재활용이 가능하면 리팩토링해줘") —
+                            ExitResultCards(admin/shared.tsx)로 공통화했다. */}
+                        <ExitResultCards
+                          kindStr={result.kindStr}
+                          kind={result.kind}
+                          refundAmount={result.refundAmount}
+                          heldAmount={result.heldAmount}
+                          fineAlreadyPayment={result.fineAlreadyPayment}
+                          breakdown={result.breakdown}
+                          blacklist={result.blacklist}
+                        />
 
                         <Button
                           variant={result.blacklist ? "outline" : "destructive"}

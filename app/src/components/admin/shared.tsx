@@ -1,12 +1,24 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { RotateCw, FileText, Image as ImageIcon, Loader2, Search, Hash, ExternalLink, type LucideIcon } from "lucide-react";
+import {
+  RotateCw,
+  FileText,
+  Image as ImageIcon,
+  Loader2,
+  Search,
+  Hash,
+  ExternalLink,
+  PiggyBank,
+  TrendingDown,
+  Eye,
+  type LucideIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { InfoCard, SubRow } from "@/components/dashboard/shared";
+import { InfoCard, SubRow, buildDepositCauseItems, won, type DepositCauseItem } from "@/components/dashboard/shared";
 import { WORKER_BASE } from "@/lib/api/client";
 import { cn, ICON_STROKE } from "@/lib/utils";
-import type { PenaltySlotHistoryEntry } from "@/lib/api/types";
+import type { PenaltySlotHistoryEntry, DepositRefundBreakdown, ExitKind } from "@/lib/api/types";
 
 // 관리자 탭 전반의 텍스트 위계를 명시적으로 나눈 프리미티브들.
 // 1. SectionHeader 제목  — text-sm/base, font-bold   (섹션의 최상위 텍스트)
@@ -114,6 +126,139 @@ export function MemberStatusInfoCard({
         {exitProcessedDateValue !== undefined && <SubRow label="퇴실 집행 일자" value={exitProcessedDateValue} />}
       </div>
     </InfoCard>
+  );
+}
+
+// 🔧 [사용자 지시] "'퇴실유형'은 '강제 퇴실자', '정산 퇴실자'로만 출력해줘.
+// () 내용은 지우자" — 예전엔 사유(reasons)를 괄호로 붙였으나, 이제
+// kindStr 자체를 그대로 반환한다(사유 목록은 더 이상 표시하지 않음).
+export function exitTypeLabel(kindStr: string): string {
+  return kindStr;
+}
+
+// 🔧 2026-09: "차감 원인" 카드(buildDepositCauseItems)는 회원 대시보드/
+// ExitProcessDialog와 공유하는 함수라, 그 회원의 실제 시트 상태(벌금
+// 미납, 가입일수, 송출P/주간P 페널티)만 보여준다 — kind=admin_forced
+// (직권 P)로 처리됐다는 사실 자체는 여기에 전혀 반영되지 않는다(계산에도
+// 관여하지 않음, discountRatio가 사유와 무관하게 항상 1로 고정이기
+// 때문). 관리자가 "이 회원이 직권 P로 처리됐는지"를 차감 원인 목록에서도
+// 명시적으로 확인할 수 있도록 직권 P 횟수를 함께 보여준다.
+// 🔧 [사용자 지시] "직권 P를 별개의 항목으로 빼지 말고, 두 항목을 합쳐줘.
+// 페널티 쪽을 '송출 P : 1회' 같은 형식으로" — 원래는 "페널티 (직권 P
+// N회)"를 별도 항목으로 끼워 넣었으나, 기존 "페널티(송출 P+주간 P)"
+// 항목 하나에 직권 P까지 한 줄로 합치고 각 값 앞에 콜론을 붙인다.
+// buildDepositCauseItems가 만든 penalty 항목(key: "penalty")을 찾아
+// 라벨만 다시 조립한다(breakdown 원본값을 직접 받아 문자열 재파싱 없이
+// 안전하게 조립) — rate는 그 항목이 이미 계산해둔 값(송출/주간 페널티
+// 합산 기준)과 admin_forced 여부 중 더 큰 차감률을 쓴다(직권 P는 항상
+// 100%=전액 차감이므로 admin_forced면 무조건 100%).
+// 🔧 [사용자 지시] "페널티에 0회인건 출력에서 제외해달라고 했는데
+// 여전히 출력되고 있어" — 이전엔 rate===0(전부 0회)일 때만 항목 자체를
+// 숨겼는데, 실제 요구는 "송출/주간/직권 P 중 0회인 개별 값은 라벨
+// 문자열에서 빼라"는 것이었다(예: 직권 P만 0이면 "송출 P : 1회 + 주간
+// P : 1회"만 남고 "직권 P : 0회"는 아예 안 보여야 함). 0회가 아닌
+// 항목만 걸러 "+"로 이어붙인다.
+export function mergePenaltyLabel(
+  items: DepositCauseItem[],
+  breakdown: DepositRefundBreakdown,
+  kind: ExitKind
+): DepositCauseItem[] {
+  const isAdminForced = kind === "admin_forced";
+  return items.map((item) => {
+    if (item.key !== "penalty") return item;
+    const parts = [
+      { label: "송출 P", count: breakdown.outputPen ?? 0 },
+      { label: "주간 P", count: breakdown.timePen ?? 0 },
+      { label: "직권 P", count: isAdminForced ? 1 : 0 },
+    ].filter((p) => p.count > 0);
+    return {
+      ...item,
+      label: parts.length > 0 ? `페널티 (${parts.map((p) => `${p.label} : ${p.count}회`).join(" + ")})` : "페널티 (0회)",
+      rate: isAdminForced ? 100 : item.rate,
+    };
+  });
+}
+
+// "정산 퇴실"/"직권 P 퇴실" 모달(ExitProcessDialog)의 미리보기와 "퇴실
+// 스터디원 목록"(ExitedMemberRosterView)의 확정된 처리 결과가 "반환
+// 예치금"/"차감 원인"/"처리 결과" 세 카드를 각자 복붙해 구현하고
+// 있었다(사용자 지적: "UI 재활용이 가능하면 리팩토링해줘") — 두 화면이
+// 참조하는 값(ExitPreviewResponse/ExitedMemberResult)이 kindStr·
+// refundAmount·heldAmount·fineAlreadyPayment·breakdown·kind 등 필드
+// 이름까지 동일해 그대로 공용 컴포넌트로 묶었다. 모달의 "반환 예치금"
+// 카드가 목록과 값 크기가 달랐던 것(text-xs/sm vs text-sm/base)과, 모달의
+// "처리 결과"에 있던 "반환 예치금"/"처리 일자"(다른 카드와 중복)를
+// 목록 쪽 구성(귀속 예치금/납부된 벌금/퇴실 유형/블랙리스트)으로
+// 맞췄다. 블랙리스트는 모달에서는 아직 확정 전이라 체크박스 상태를,
+// 목록에서는 이미 저장된 값을 그대로 넘긴다 — 둘 다 없으면(undefined)
+// "처리 결과" 카드에서 그 행을 생략한다(예: settle은 블랙리스트 개념이
+// 없음).
+export function ExitResultCards({
+  kindStr,
+  kind,
+  refundAmount,
+  heldAmount,
+  fineAlreadyPayment,
+  breakdown,
+  blacklist,
+}: {
+  kindStr: string;
+  kind: ExitKind;
+  refundAmount: number;
+  heldAmount: number;
+  fineAlreadyPayment: number;
+  breakdown: DepositRefundBreakdown;
+  /** undefined면 "처리 결과" 카드에 블랙리스트 행을 표시하지 않는다. */
+  blacklist?: boolean;
+}) {
+  return (
+    <>
+      <InfoCard className="flex items-center justify-between gap-2 bg-card">
+        <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
+          <PiggyBank className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
+          반환 예치금
+        </span>
+        <span
+          className={cn("text-sm sm:text-base", refundAmount >= 5000 && "text-ok", refundAmount === 0 && "text-destructive")}
+        >
+          {won(refundAmount)}
+        </span>
+      </InfoCard>
+
+      <InfoCard className="flex flex-col gap-1.5 bg-card">
+        <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
+          <TrendingDown className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
+          차감 원인
+        </span>
+        <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
+          {mergePenaltyLabel(buildDepositCauseItems(breakdown, breakdown.lateNotice ? 50 : 0), breakdown, kind)
+            .filter((item) => !(item.key === "penalty" && item.rate === 0))
+            .map((item) => (
+              <SubRow
+                key={item.key}
+                label={item.label}
+                value={`${item.rate}%`}
+                valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
+              />
+            ))}
+        </div>
+      </InfoCard>
+
+      <InfoCard className="flex flex-col gap-1.5 bg-card">
+        <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
+          <Eye className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
+          처리 결과
+        </span>
+        <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
+          <SubRow label="귀속 예치금" value={won(heldAmount)} />
+          <SubRow label="납부된 벌금" value={won(fineAlreadyPayment)} />
+          <SubRow label="퇴실 유형" value={exitTypeLabel(kindStr)} valueClassName={kindStr === "강제 퇴실자" ? "text-destructive" : undefined} />
+          {blacklist !== undefined && (
+            <SubRow label="블랙리스트" value={blacklist ? "Y" : "N"} valueClassName={blacklist ? "text-destructive" : undefined} />
+          )}
+        </div>
+      </InfoCard>
+    </>
   );
 }
 

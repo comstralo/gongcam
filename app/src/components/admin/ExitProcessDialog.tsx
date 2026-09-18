@@ -1,13 +1,13 @@
 import { useEffect, useState, type ReactElement } from "react";
-import { DoorOpen, TriangleAlert, CircleCheck, Circle, MessageSquareWarning, Eye, PiggyBank, TrendingDown, ArrowRightLeft, ClipboardList } from "lucide-react";
+import { DoorOpen, TriangleAlert, CircleCheck, Circle, MessageSquareWarning, ArrowRightLeft, ClipboardList } from "lucide-react";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { InfoCard, SubRow, buildDepositCauseItems } from "@/components/dashboard/shared";
-import { FieldValue } from "@/components/admin/shared";
+import { InfoCard, SubRow } from "@/components/dashboard/shared";
+import { FieldValue, ExitResultCards } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
@@ -329,61 +329,21 @@ export function ExitProcessDialog({
                   정산 모달과 같은 내용을 보여달라"). 단, 직권 P는 동의를
                   기다릴 필요가 없는 즉시 처리라 "확정 처리" 버튼은
                   agreedAt과 무관하게 forcedReason만 있으면 바로 활성화된다
-                  (아래 버튼 참고). */}
+                  (아래 버튼 참고). 🔧 2026-09: "퇴실 스터디원 목록"(확정된
+                  처리 결과)과 이 미리보기 세 카드를 각자 복붙해 구현하고
+                  있었다(사용자 지적) — ExitResultCards(admin/shared.tsx)로
+                  공통화했다. blacklist는 아직 확정 전이라 체크박스 상태를
+                  그대로 넘긴다. */}
               {preview && (
-                <InfoCard className="flex items-center justify-between gap-2 bg-card">
-                  <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
-                    <PiggyBank className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
-                    반환 예치금
-                  </span>
-                  <span
-                    className={cn(
-                      "text-xs sm:text-sm",
-                      preview.refundAmount >= 5000 && "text-ok",
-                      preview.refundAmount === 0 && "text-destructive"
-                    )}
-                  >
-                    {won(preview.refundAmount)}
-                  </span>
-                </InfoCard>
-              )}
-
-              {/* 🔧 [사용자 지시] "현재 페이지(관리자)의 위계도 맞춰줘" —
-                  SubRow 기본 크기(text-micro-lg sm:text-xs)가 제보 화면
-                  기준(text-xs sm:text-sm)보다 한 단계 작았다. SubRow만
-                  감싸는 컨테이너에 자손 선택자로 한 번에 적용한다. */}
-              {preview && preview.breakdown && (
-                <InfoCard className="flex flex-col gap-1.5 bg-card">
-                  <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
-                    <TrendingDown className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
-                    차감 원인
-                  </span>
-                  <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
-                    {buildDepositCauseItems(preview.breakdown, preview.breakdown.lateNotice ? 50 : 0).map((item) => (
-                      <SubRow
-                        key={item.key}
-                        label={item.label}
-                        value={`${item.rate}%`}
-                        valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
-                      />
-                    ))}
-                  </div>
-                </InfoCard>
-              )}
-
-              {preview && (
-                <InfoCard className="flex flex-col gap-1.5 bg-card">
-                  <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
-                    <Eye className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
-                    처리 결과
-                  </span>
-                  <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
-                    <SubRow label="반환 예치금" value={won(preview.refundAmount)} />
-                    <SubRow label="귀속 예치금" value={won(preview.heldAmount)} />
-                    <SubRow label="납부된 벌금" value={won(preview.fineAlreadyPayment)} />
-                    <SubRow label="처리 일자" value={preview.processedDate} />
-                  </div>
-                </InfoCard>
+                <ExitResultCards
+                  kindStr={preview.kindStr}
+                  kind={lockKind}
+                  refundAmount={preview.refundAmount}
+                  heldAmount={preview.heldAmount}
+                  fineAlreadyPayment={preview.fineAlreadyPayment}
+                  breakdown={preview.breakdown}
+                  blacklist={blacklist}
+                />
               )}
 
               {preview && (
@@ -423,60 +383,24 @@ export function ExitProcessDialog({
             <>
               {previewing && !preview && <ExitPreviewSkeleton rows={3} />}
 
+              {/* 🔧 2026-09: "퇴실 스터디원 목록"(확정된 처리 결과)과
+                  이 미리보기 세 카드를 각자 복붙해 구현하고 있었다(사용자
+                  지적: "UI 재활용이 가능하면 리팩토링해줘") —
+                  ExitResultCards(admin/shared.tsx)로 공통화했다. settle은
+                  블랙리스트 개념이 없어 blacklist를 넘기지 않는다(카드가
+                  그 행을 생략). 차감 원인은 이미 확정된 퇴실 신청 건이라,
+                  고지지연 여부는 선택 중인 날짜가 아니라 서버가 이미
+                  판정한 breakdown.lateNotice를 그대로 신뢰한다(내부적으로
+                  ExitResultCards가 동일하게 처리). */}
               {preview && (
-                <InfoCard className="flex items-center justify-between gap-2 bg-card">
-                  <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
-                    <PiggyBank className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
-                    반환 예치금
-                  </span>
-                  <span
-                    className={cn(
-                      "text-xs sm:text-sm",
-                      preview.refundAmount >= 5000 && "text-ok",
-                      preview.refundAmount === 0 && "text-destructive"
-                    )}
-                  >
-                    {won(preview.refundAmount)}
-                  </span>
-                </InfoCard>
-              )}
-
-              {/* 🔧 [DepositRefundDialog와 동일한 차감 원인 카드] 정산
-                  퇴실은 이미 확정된 퇴실 신청 건이라, 고지지연 여부는
-                  선택 중인 날짜가 아니라 서버가 이미 판정한 breakdown.
-                  lateNotice를 그대로 신뢰한다. */}
-              {preview && preview.breakdown && (
-                <InfoCard className="flex flex-col gap-1.5 bg-card">
-                  <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
-                    <TrendingDown className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
-                    차감 원인
-                  </span>
-                  <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
-                    {buildDepositCauseItems(preview.breakdown, preview.breakdown.lateNotice ? 50 : 0).map((item) => (
-                      <SubRow
-                        key={item.key}
-                        label={item.label}
-                        value={`${item.rate}%`}
-                        valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
-                      />
-                    ))}
-                  </div>
-                </InfoCard>
-              )}
-
-              {preview && (
-                <InfoCard className="flex flex-col gap-1.5 bg-card">
-                  <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
-                    <Eye className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
-                    처리 결과
-                  </span>
-                  <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
-                    <SubRow label="반환 예치금" value={won(preview.refundAmount)} />
-                    <SubRow label="귀속 예치금" value={won(preview.heldAmount)} />
-                    <SubRow label="납부된 벌금" value={won(preview.fineAlreadyPayment)} />
-                    <SubRow label="처리 일자" value={preview.processedDate} />
-                  </div>
-                </InfoCard>
+                <ExitResultCards
+                  kindStr={preview.kindStr}
+                  kind={lockKind}
+                  refundAmount={preview.refundAmount}
+                  heldAmount={preview.heldAmount}
+                  fineAlreadyPayment={preview.fineAlreadyPayment}
+                  breakdown={preview.breakdown}
+                />
               )}
 
               {preview && (
