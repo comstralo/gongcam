@@ -416,7 +416,13 @@ describe("handleAdminExitConfirm", () => {
     await getMemberSettingsStub(testEnv).fetch("https://do/last-login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ memberNumber: "1", ts: 1755900000000, ip: "203.0.113.5" }),
+      body: JSON.stringify({
+        memberNumber: "1",
+        ts: 1755900000000,
+        ip: "203.0.113.5",
+        userAgent:
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+      }),
     });
 
     vi.stubGlobal(
@@ -493,7 +499,10 @@ describe("handleAdminExitConfirm", () => {
     expect(saved).toBeTruthy();
     expect(saved.exitRequestDate).toBe("2026-08-20");
     expect(saved.lastLoginAt).toBe(1755900000000);
-    expect(saved.lastLoginIp).toBe("203.0.113.5");
+    // 🔧 [사용자 지시] "'최근 접속 IP' 출력 값에 () 로 브라우저 유형도
+    // 붙여줘" — userAgent가 있으면 guessDeviceLabel로 "IP (OS · 브라우저)"
+    // 형태로 조합돼 저장돼야 한다.
+    expect(saved.lastLoginIp).toBe("203.0.113.5 (Windows · Chrome)");
 
     // 확정 처리가 끝나면 신청 기록은 삭제돼야 한다(기존 동작 회귀 확인).
     const exitGetRes = await getLeaveQueueStub(testEnv).fetch(

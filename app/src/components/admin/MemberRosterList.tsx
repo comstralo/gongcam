@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { Users, User, ChevronDown, Hash, Bell, ExternalLink, FlaskConical, Search, LayoutDashboard } from "lucide-react";
+import { Users, User, ChevronDown, Hash, Bell, ExternalLink, FlaskConical, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -617,18 +617,23 @@ const ActiveMemberRosterView = forwardRef<
                             이동한다 — 목업 미리보기 중인 더미 회원은 실제
                             회원번호가 아니므로(showingDummy) 링크를 걸지
                             않는다. */}
+                        {/* 🔧 [사용자 지시] "퇴실자 쪽 출력 형태로 일치시켜줘"
+                            — 값 텍스트를 "바로가기"로, 아이콘을 시트번호와
+                            동일한 ExternalLink로 통일한다(ExitedMemberRosterView
+                            참고). showingDummy 분기(더미 회원은 링크를 걸지
+                            않음)는 참여자 뷰 고유의 안전장치라 그대로 둔다. */}
                         <SubRow
                           label="대시보드"
                           value={
                             showingDummy ? (
-                              `${m.name}`
+                              "-"
                             ) : (
                               <a
                                 href={`#/?member=${encodeURIComponent(m.number)}`}
                                 className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
                               >
-                                {m.name}
-                                <LayoutDashboard className="size-3 shrink-0" strokeWidth={ICON_STROKE.default} />
+                                바로가기
+                                <ExternalLink className="size-3 shrink-0" strokeWidth={ICON_STROKE.default} />
                               </a>
                             )
                           }
@@ -643,11 +648,11 @@ const ActiveMemberRosterView = forwardRef<
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
                               >
-                                {m.number}번
+                                바로가기
                                 <ExternalLink className="size-3 shrink-0" strokeWidth={ICON_STROKE.default} />
                               </a>
                             ) : (
-                              `${m.number}번`
+                              "-"
                             )
                           }
                         />
@@ -657,7 +662,7 @@ const ActiveMemberRosterView = forwardRef<
                         />
                         <SubRow
                           label="최근 접속일자"
-                          value={m.lastLoginAt ? new Date(m.lastLoginAt).toLocaleString("ko-KR") : "-"}
+                          value={m.lastLoginAt ? new Date(m.lastLoginAt).toLocaleString("ko-KR", { hour12: false }) : "-"}
                         />
                         <SubRow label="최근 접속 IP" value={m.lastLoginIp || "-"} />
                       </div>

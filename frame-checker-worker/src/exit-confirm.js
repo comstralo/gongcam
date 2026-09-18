@@ -29,7 +29,7 @@ import {
   EXIT_DEPOSIT_VALUE,
   parseWon,
 } from "./index.js";
-import { parseGoogleEmail, parseGooroomeeAccount } from "./pure-utils.js";
+import { parseGoogleEmail, parseGooroomeeAccount, guessDeviceLabel } from "./pure-utils.js";
 import { todayKSTDateString } from "./date-utils.js";
 import { invalidateMemberCache, invalidateMemberSlotCache } from "./cache.js";
 import { depositRefundBreakdown, forcedExitChecks, calcExitProcess } from "./deposit.js";
@@ -769,7 +769,14 @@ export async function handleAdminExitConfirm(req, env, origin) {
               // 별도 필드 없이 위 processedDate를 프론트가 그대로 재사용한다.
               exitRequestDate: exitRequestEntry?.exitDate || null,
               lastLoginAt: lastLogin?.ts || null,
-              lastLoginIp: lastLogin?.ip || "",
+              // 🔧 [사용자 지시] "'최근 접속 IP' 출력 값에 () 로 브라우저
+              // 유형도" — members.js와 동일하게 "IP (OS · 브라우저)" 형태로
+              // 조합해 저장한다(userAgent 없는 과거 로그인 기록은 IP만).
+              lastLoginIp: lastLogin?.ip
+                ? lastLogin.userAgent
+                  ? `${lastLogin.ip} (${guessDeviceLabel(lastLogin.userAgent)})`
+                  : lastLogin.ip
+                : "",
             },
           }),
         })

@@ -129,11 +129,17 @@ async function completeLogin(req, env, origin, googleUser, { recordLastLogin = t
   // MemberSettingsDO로 이전.
   if (member && recordLastLogin) {
     const ip = req.headers.get("CF-Connecting-IP") || "";
+    // 🔧 [사용자 지시] "'최근 접속 IP' 출력 값에 () 로 브라우저 유형도
+    // 붙여줘" — User-Agent 원본을 저장해두고, 표시 시점(guessDeviceLabel,
+    // pure-utils.js)에 "OS · 브라우저" 형태로 가공한다. 원본을 저장하는
+    // 이유는 라벨링 규칙이 나중에 바뀌어도 과거 기록에 소급 적용할 수
+    // 있게 하기 위함. 이 필드 추가 이전에 로그인한 기록은 값이 없다.
+    const userAgent = req.headers.get("User-Agent") || "";
     await getMemberSettingsStub(env)
       .fetch("https://do/last-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ memberNumber: member.number, ts: Date.now(), ip }),
+        body: JSON.stringify({ memberNumber: member.number, ts: Date.now(), ip, userAgent }),
       })
       .catch(() => {});
   }

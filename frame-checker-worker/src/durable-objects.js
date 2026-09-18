@@ -663,7 +663,7 @@ export class MemberSettingsDO {
     this.prefs = new Map(); // memberNumber -> {category: boolean}
     this.statusMsgs = new Map(); // memberNumber -> string
     this.exitResults = new Map(); // "{이름} (퇴실)" -> object
-    this.lastLogins = new Map(); // memberNumber -> {ts, ip}
+    this.lastLogins = new Map(); // memberNumber -> {ts, ip, userAgent?}
     this.state.blockConcurrencyWhile(async () => {
       const stored = await this.state.storage.list();
       for (const [key, value] of stored) {
@@ -744,8 +744,10 @@ export class MemberSettingsDO {
     // "최근 접속일자·IP" 기록(로그인마다 1회 put)과 조회(관리자 "참여
     // 스터디원 목록"이 회원 전원을 병렬 get 하던 것)를 함께 옮긴다.
     if (req.method === "POST" && url.pathname === "/last-login") {
-      const { memberNumber, ts, ip } = await req.json();
-      const value = { ts, ip };
+      // 🔧 [사용자 지시] "최근 접속 IP에 브라우저 유형도" — userAgent 원본을
+      // 함께 저장한다(옵셔널: 이 필드 추가 이전 호출부·과거 기록은 없음).
+      const { memberNumber, ts, ip, userAgent } = await req.json();
+      const value = { ts, ip, userAgent: userAgent || "" };
       this.lastLogins.set(memberNumber, value);
       await this.state.storage.put(`login:${memberNumber}`, value);
       return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });

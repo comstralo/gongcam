@@ -654,8 +654,8 @@ export const ExitedMemberRosterView = forwardRef<
                         "정산 퇴실자")을 그대로 판정 기준으로 쓴다. result가
                         없는 과거 데이터(조회 불가)는 유형 자체를 알 수
                         없어 뱃지를 표시하지 않는다. */}
-                    {result?.kindStr === "강제 퇴실자" && <TintedPill tone="warn">강제 퇴실</TintedPill>}
-                    {result?.kindStr === "정산 퇴실자" && <TintedPill tone="ok">정산 퇴실</TintedPill>}
+                    {result?.kindStr === "강제 퇴실자" && <TintedPill tone="warn">강제퇴실</TintedPill>}
+                    {result?.kindStr === "정산 퇴실자" && <TintedPill tone="ok">정산퇴실</TintedPill>}
                     {result?.blacklist && <TintedPill tone="warn">블랙리스트</TintedPill>}
                     <ChevronDown
                       className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", isExpanded && "rotate-180")}

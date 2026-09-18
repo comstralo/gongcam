@@ -41,7 +41,7 @@ import {
   getMemberSettingsStub,
   NOTIFY_CATEGORIES,
 } from "./index.js";
-import { parseGoogleEmail, parseGooroomeeAccount } from "./pure-utils.js";
+import { parseGoogleEmail, parseGooroomeeAccount, guessDeviceLabel } from "./pure-utils.js";
 import { todayKSTDateString, kstDateOffsetString } from "./date-utils.js";
 import { _cachedCompute, invalidateMemberCache, invalidateMemberSlotCache } from "./cache.js";
 // 🔧 [구조 개선 21차] exit.js가 exit-candidates.js로 나뉘면서 import 경로만 갱신.
@@ -588,7 +588,12 @@ export async function handleAdminMembersRoster(req, env, origin) {
     const lastLoginByNumber = new Map(
       members.map((m) => {
         const entry = lastLoginItems[m.number];
-        return [m.number, entry ? { ts: entry.ts || null, ip: entry.ip || "" } : { ts: null, ip: "" }];
+        return [
+          m.number,
+          entry
+            ? { ts: entry.ts || null, ip: entry.ip || "", userAgent: entry.userAgent || "" }
+            : { ts: null, ip: "", userAgent: "" },
+        ];
       })
     );
 
@@ -636,8 +641,16 @@ export async function handleAdminMembersRoster(req, env, origin) {
           email ? getPushDeviceIndex(env, email).then((d) => d.length > 0) : Promise.resolve(false),
         ]);
         const detail = detailByNumber.get(m.number) || { googleAccount: "", gooroomeeAccount: "", examKind: "" };
-        const lastLogin = lastLoginByNumber.get(m.number) || { ts: null, ip: "" };
+        const lastLogin = lastLoginByNumber.get(m.number) || { ts: null, ip: "", userAgent: "" };
         const joinDateYYMMDD = joinDateYYMMDDByNumber.get(m.number) || "";
+        // 🔧 [사용자 지시] "'최근 접속 IP' 출력 값에 () 로 브라우저 유형도
+        // 붙여줘" — userAgent가 있으면 "IP (OS · 브라우저)" 형태로 조합한다.
+        // 이 필드 추가 이전 로그인 기록은 userAgent가 없어 IP만 그대로.
+        const lastLoginIp = lastLogin.ip
+          ? lastLogin.userAgent
+            ? `${lastLogin.ip} (${guessDeviceLabel(lastLogin.userAgent)})`
+            : lastLogin.ip
+          : "";
         return {
           ...m,
           joinDate: joinDateYYMMDD && m.joinDate ? `${m.joinDate} (${joinDateYYMMDD})` : m.joinDate,
@@ -648,7 +661,7 @@ export async function handleAdminMembersRoster(req, env, origin) {
           examKind: detail.examKind,
           goalType: goalTypeByNumber.get(m.number) || "",
           lastLoginAt: lastLogin.ts,
-          lastLoginIp: lastLogin.ip,
+          lastLoginIp,
           sheetGid: sheetIdByTitle.has(m.number) ? sheetIdByTitle.get(m.number) : null,
         };
       })
