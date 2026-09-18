@@ -89,8 +89,8 @@ export function AdminCycleRangeSelect({
   const groupIndex = overriding ? (matchedIndex === -1 ? currentGroupIndex : matchedIndex) : -1;
   const value = groupIndex === -1 ? UNSET_VALUE : String(groupIndex);
 
-  function handleChange(v: string) {
-    if (v === UNSET_VALUE) {
+  function handleChange(v: string | null) {
+    if (!v || v === UNSET_VALUE) {
       onSelectGroup(null);
       return;
     }
