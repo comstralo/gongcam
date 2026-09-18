@@ -320,12 +320,20 @@ export function ReasonLeaveReviewList({
                         return (
                           <Collapsible key={item.id} open={isMemberExpanded} onOpenChange={(open) => setExpandedId(open ? item.id : null)}>
                           <div className="flex flex-col gap-2.5 rounded-lg border bg-card p-3">
-                            <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+                            {/* 🔧 [사용자 지시] "토글 헤더 중간부 눌러도 토글 되도록" —
+                                이전엔 우측 끝 chevron 버튼만 클릭 가능했다. 요일 그룹
+                                헤더(1차 토글)와 동일하게 헤더 행 전체를
+                                CollapsibleTrigger로 감싸 어디를 눌러도 펼쳐지게 한다. */}
+                            <CollapsibleTrigger
+                              className="flex flex-col gap-2.5 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded sm:flex-row sm:items-center sm:justify-between"
+                              aria-label={isMemberExpanded ? "상세 접기" : "상세 펼치기"}
+                              hideChevron
+                            >
                               <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                                 <User className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                 {item.memberName}
                               </span>
-                              <div className="flex items-center gap-1.5">
+                              <span className="flex items-center gap-1.5">
                                 {!isApproved && !isRejected && item.queued && (
                                   <TintedPill tone="amber">봇 대기중</TintedPill>
                                 )}
@@ -336,28 +344,19 @@ export function ReasonLeaveReviewList({
                                 ) : (
                                   <TintedPill tone="warn">대기</TintedPill>
                                 )}
-                                {/* 🔧 [사용자 지시] "1차 토글(요일 그룹 헤더)처럼 버튼
-                                    모양이 안 보이게" — render={<Button variant=.../>}로
-                                    아이콘 버튼을 합성하면 outline/ghost 어느 variant든
-                                    hover 시 배경이 생겼다. 1차 토글과 동일하게 render 없이
-                                    CollapsibleTrigger 자체를 클릭 영역으로 쓰고(기본
-                                    렌더 요소가 이미 <button>), 순수 아이콘만 넣어
-                                    hover에도 배경이 전혀 생기지 않게 한다. */}
-                                <CollapsibleTrigger
-                                  className="flex size-7 shrink-0 items-center justify-center rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-                                  aria-label={isMemberExpanded ? "상세 접기" : "상세 펼치기"}
-                                  hideChevron
-                                >
-                                  <ChevronDown
-                                    className={cn(
-                                      "size-3.5 text-muted-foreground transition-transform",
-                                      isMemberExpanded && "rotate-180"
-                                    )}
-                                    strokeWidth={ICON_STROKE.default}
-                                  />
-                                </CollapsibleTrigger>
-                              </div>
-                            </div>
+                                {/* 🔧 [사용자 지시] "1차 토글처럼 버튼 모양이 안 보이게" +
+                                    "토글 헤더 중간부 눌러도 토글 되도록" — 헤더 행 전체가
+                                    이제 CollapsibleTrigger이므로(위) 이 chevron은 더 이상
+                                    별도 트리거가 아니라 상태만 보여주는 순수 아이콘이다. */}
+                                <ChevronDown
+                                  className={cn(
+                                    "size-3.5 shrink-0 text-muted-foreground transition-transform",
+                                    isMemberExpanded && "rotate-180"
+                                  )}
+                                  strokeWidth={ICON_STROKE.default}
+                                />
+                              </span>
+                            </CollapsibleTrigger>
 
                             <CollapsiblePanel className="flex flex-col">
                               <div className="flex flex-col gap-2.5 pt-2.5">
