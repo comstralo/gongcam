@@ -780,11 +780,14 @@ const ActiveMemberRosterView = forwardRef<
 // 동일) — 전환해도 검색어/펼침 상태/목업 여부가 각자 그대로 유지된다.
 export function MemberRosterList({ visible = true }: { visible?: boolean }) {
   const [view, setView] = useState<"active" | "exited">("active");
-  // 🧪 [목업 미리보기] 뷰마다 독립된 토글 — 참여자에서 켜둔 채 퇴실자로
-  // 넘어가도 퇴실자 뷰는 실제 데이터 그대로 보인다(각 뷰의 실제 데이터
-  // 상태와 버튼 표시가 항상 일치해야 예측 가능하므로).
-  const [activeDummy, setActiveDummy] = useState(false);
-  const [exitedDummy, setExitedDummy] = useState(false);
+  // 🧪 [목업 미리보기] 🔧 [사용자 지시] "목업 토글 버튼을 누르면 퇴실자,
+  // 참여자 모두 목업 상태로 들어가도록" — 이전엔 뷰마다 독립된 토글이라
+  // 참여자에서 켜도 퇴실자는 실제 데이터 그대로 보였다(개별 작동). 이제
+  // 하나의 state를 두 뷰가 공유해, 버튼 하나로 두 뷰 모두 동시에
+  // 목업/실데이터 상태가 맞춰진다 — 아직 마운트 안 된 뷰(퇴실자를 한 번도
+  // 안 본 경우)도 이 state를 prop으로 그대로 받으므로, 나중에 처음
+  // 마운트될 때부터 바로 목업 상태로 시작한다.
+  const [dummy, setDummy] = useState(false);
   // 각 뷰가 onStateChange 콜백으로 알려주는 loading/refreshProgress를
   // 셸의 state로 들고 있는다 — ref로 직접 읽으면 자식이 바뀌어도 부모가
   // 리렌더되지 않아 헤더가 낡은 값을 계속 보여줄 수 있다.
@@ -799,11 +802,9 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
   const activeRef = useRef<RosterViewHandle>(null);
   const exitedRef = useRef<RosterViewHandle>(null);
   const currentState = view === "active" ? activeState : exitedState;
-  const currentDummy = view === "active" ? activeDummy : exitedDummy;
 
-  function toggleCurrentDummy() {
-    if (view === "active") setActiveDummy((v) => !v);
-    else setExitedDummy((v) => !v);
+  function toggleDummy() {
+    setDummy((v) => !v);
   }
 
   return (
@@ -833,15 +834,22 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
                 </SelectItem>
               </SelectContent>
             </Select>
+            {/* 🔧 [사용자 지시] "토글 눌림 상태를 좀 더 확실하게 — 눌렸을
+                땐 버튼을 초록색으로" — outline 기반에 ok 톤(bg-ok/text-ok,
+                다른 관리자 화면의 "완료" 뱃지 등과 동일한 색 관례)을
+                덧씌운다. */}
             <Button
               type="button"
-              variant={currentDummy ? "secondary" : "outline"}
+              variant="outline"
               size="icon-sm"
-              className="shrink-0"
-              onClick={toggleCurrentDummy}
-              aria-pressed={currentDummy}
-              aria-label={currentDummy ? "목업 미리보기 끄기" : "목업 데이터로 미리보기"}
-              title={currentDummy ? "목업 미리보기 끄기" : "목업 데이터로 미리보기"}
+              className={cn(
+                "shrink-0",
+                dummy && "border-ok/30 bg-ok/15 text-ok hover:bg-ok/25 dark:hover:bg-ok/25"
+              )}
+              onClick={toggleDummy}
+              aria-pressed={dummy}
+              aria-label={dummy ? "목업 미리보기 끄기" : "목업 데이터로 미리보기"}
+              title={dummy ? "목업 미리보기 끄기" : "목업 데이터로 미리보기"}
             >
               <FlaskConical className="size-3.5" strokeWidth={ICON_STROKE.default} />
             </Button>
@@ -854,7 +862,7 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
             <ActiveMemberRosterView
               ref={activeRef}
               visible={visible && view === "active"}
-              showingDummy={activeDummy}
+              showingDummy={dummy}
               onStateChange={setActiveState}
             />
           )}
@@ -864,7 +872,7 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
             <ExitedMemberRosterView
               ref={exitedRef}
               visible={visible && view === "exited"}
-              showingDummy={exitedDummy}
+              showingDummy={dummy}
               onStateChange={setExitedState}
             />
           )}
