@@ -82,6 +82,7 @@ export {
   exitDateMidnightUtcMs,
   weekOfForDate,
   exitWeekResetPassed,
+  todayKSTDateString,
 };
 
 // 🔧 [구조 개선, 2026-09-13] 완전 순수한 사이클 판정 함수는 src/cycle.js로

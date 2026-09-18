@@ -26,6 +26,16 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// 🔧 [사용자 지시] "마지막 참여일을 캘린더 2주 범위로만 선택 가능하도록" —
+// 너무 먼 미래 날짜를 신청하면 그 사이 페널티/벌금 상태가 여러 번
+// 바뀔 수 있어 신청 시점의 반환액 미리보기가 무의미해진다. todayStr과
+// 동일한 시간대 기준(UTC 자정)으로 14일 뒤까지만 허용한다.
+function maxSelectableDateStr() {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + 14);
+  return d.toISOString().slice(0, 10);
+}
+
 // 🔧 [정산 퇴실 절차 명확화, 사용자 지시] "퇴실 신청 → 마지막 참여일
 // 익일에 정산 내역과 동의 버튼 출력. 단, 미납 벌금이 있거나 상금
 // 정산이 처리되지 않았으면 내역과 동의 버튼을 보여주지 않음 → 동의를
@@ -183,6 +193,7 @@ export function DepositRefundDialog({
                 type="date"
                 value={selectedDate}
                 min={todayStr()}
+                max={maxSelectableDateStr()}
                 onChange={(e) => setSelectedDate(e.target.value)}
                 className="sm:h-12 sm:text-base md:text-base"
               />

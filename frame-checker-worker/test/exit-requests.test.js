@@ -15,6 +15,7 @@ import { TEST_SERVICE_ACCOUNT_JSON, oauthTokenResponse } from "./helpers/service
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 const TEST_SECRET = "test-session-secret";
@@ -175,6 +176,55 @@ describe("handleSetExitRequest", () => {
     const { entry } = await getRes.json();
     expect(entry).toMatchObject({ exitDate: "2026-09-20", agreedAt: null });
   });
+
+  // 🔧 [사용자 지시] "마지막 참여일을 캘린더 2주 범위로만 선택 가능하도록"
+  it("14일보다 먼 미래 날짜면 400을 반환한다", async () => {
+    stubOauthFetch();
+    const testEnv = makeTestEnv({ GOOGLE_SHEET_FILE_ID: "exit-req-set-toofar" });
+    const token = await makeMemberToken();
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 8, 18));
+    const req = makeRequest("https://worker/exit-request", {
+      token,
+      method: "POST",
+      body: { exitDate: "2026-10-03" }, // 2026-09-18 기준 15일 뒤
+    });
+
+    const res = await handleSetExitRequest(req, testEnv, "https://example.com");
+    expect(res.status).toBe(400);
+  });
+
+  it("이미 지난 날짜면 400을 반환한다", async () => {
+    stubOauthFetch();
+    const testEnv = makeTestEnv({ GOOGLE_SHEET_FILE_ID: "exit-req-set-past" });
+    const token = await makeMemberToken();
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 8, 18));
+    const req = makeRequest("https://worker/exit-request", {
+      token,
+      method: "POST",
+      body: { exitDate: "2026-09-17" },
+    });
+
+    const res = await handleSetExitRequest(req, testEnv, "https://example.com");
+    expect(res.status).toBe(400);
+  });
+
+  it("정확히 14일 뒤 날짜는 통과한다(경계 포함)", async () => {
+    stubOauthFetch();
+    const testEnv = makeTestEnv({ GOOGLE_SHEET_FILE_ID: "exit-req-set-boundary" });
+    const token = await makeMemberToken();
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 8, 18));
+    const req = makeRequest("https://worker/exit-request", {
+      token,
+      method: "POST",
+      body: { exitDate: "2026-10-02" }, // 2026-09-18 + 14일
+    });
+
+    const res = await handleSetExitRequest(req, testEnv, "https://example.com");
+    expect(res.status).toBe(200);
+  });
 });
 
 describe("handleAgreeExitRequest", () => {
@@ -200,10 +250,18 @@ describe("handleAgreeExitRequest", () => {
     stubOauthFetch();
     const testEnv = makeTestEnv({ GOOGLE_SHEET_FILE_ID: "exit-req-agree-notsettled" });
     const token = await makeMemberToken({ memberNumber: "4" });
+    // 🔧 [테스트 조정] handleSetExitRequest가 이제 신청 시점(서버 시각)
+    // 기준 "오늘~14일 이내"만 exitDate로 허용한다(사용자 지시: "마지막
+    // 참여일을 캘린더 2주 범위로만 선택 가능하도록") — 신청 시점을 그
+    // exitDate의 10일 전으로 고정해, 신청 자체는 통과하되(2주 이내) 동의
+    // 시점(신청 직후, 아직 exitDate 당일도 안 지남)에는 여전히 "집계가
+    // 끝나지 않음"을 재현한다.
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 8, 1));
     const setReq = makeRequest("https://worker/exit-request", {
       token,
       method: "POST",
-      body: { exitDate: "2999-01-01" },
+      body: { exitDate: "2026-09-10" },
     });
     await handleSetExitRequest(setReq, testEnv, "https://example.com");
 
@@ -217,12 +275,19 @@ describe("handleAgreeExitRequest", () => {
     const testEnv = makeTestEnv({ GOOGLE_SHEET_FILE_ID: "exit-req-agree-ok" });
     const token = await makeMemberToken({ memberNumber: "5" });
     const exitDate = "2026-08-17";
+    // 🔧 [테스트 조정] 신청 시점(handleSetExitRequest)은 exitDate로부터
+    // 2주 이내여야 통과한다(사용자 지시로 추가된 신청 범위 제한) — exitDate
+    // 5일 전으로 신청 시점을 고정하고, 실제 동의 판정은 exitDate 익일
+    // 이후로 시계를 이동해 검증한다.
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 7, 12));
     const setReq = makeRequest("https://worker/exit-request", {
       token,
       method: "POST",
       body: { exitDate },
     });
     await handleSetExitRequest(setReq, testEnv, "https://example.com");
+    vi.setSystemTime(Date.UTC(2026, 7, 19)); // exitDate 익일 이후
 
     stubAgreeExitFetch({ member: { number: 5, name: "가", email: MEMBER_EMAIL }, exitDate });
     const req = makeRequest("https://worker/exit-request/agree", { token, method: "POST" });
@@ -238,12 +303,15 @@ describe("handleAgreeExitRequest", () => {
     const testEnv = makeTestEnv({ GOOGLE_SHEET_FILE_ID: "exit-req-agree-fine-unpaid" });
     const token = await makeMemberToken({ memberNumber: "6" });
     const exitDate = "2026-08-17";
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 7, 12));
     const setReq = makeRequest("https://worker/exit-request", {
       token,
       method: "POST",
       body: { exitDate },
     });
     await handleSetExitRequest(setReq, testEnv, "https://example.com");
+    vi.setSystemTime(Date.UTC(2026, 7, 19)); // exitDate 익일 이후
 
     const personalRows = personalTabRows();
     personalRows[32] = ["", "", 1]; // ROW_FINE_NO_STATUS col2=1(미납)
@@ -272,12 +340,16 @@ describe("handleAgreeExitRequest", () => {
     const testEnv = makeTestEnv({ GOOGLE_SHEET_FILE_ID: "exit-req-agree-sunday-reset" });
     const token = await makeMemberToken({ memberNumber: "7" });
     const exitDate = "2026-08-16"; // 일요일
+    // 신청 시점(2주 이내 범위 제한)을 exitDate 5일 전으로 고정한다.
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 7, 11));
     const setReq = makeRequest("https://worker/exit-request", {
       token,
       method: "POST",
       body: { exitDate },
     });
     await handleSetExitRequest(setReq, testEnv, "https://example.com");
+    vi.useRealTimers();
 
     const weekOf = weekOfForDate(exitDate);
     const backupFileId = `backup-${weekOf}`;
@@ -451,6 +523,9 @@ describe("autoAgreeExpiredExitRequests", () => {
     // (autoAgreeExpiredExitRequests는 회원번호와 무관하게 exitDate/agreedAt만
     // 본다), 이 describe 블록 안에서만 쓰는 고유한 날짜를 쓴다.
     const exitDate = "2026-08-11";
+    // 신청 시점(2주 이내 범위 제한)을 exitDate 당일로 고정한다.
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 7, 11));
     const setReq = makeRequest("https://worker/exit-request", {
       token,
       method: "POST",
@@ -460,7 +535,6 @@ describe("autoAgreeExpiredExitRequests", () => {
 
     // 익일(2026-08-12 00:00 KST) + 48시간 + 1분 뒤로 시계를 고정한다.
     const nextDayMidnightUtcMs = Date.UTC(2026, 7, 11, 15, 0, 0); // 2026-08-12 00:00 KST
-    vi.useFakeTimers();
     vi.setSystemTime(nextDayMidnightUtcMs + 48 * 60 * 60 * 1000 + 60_000);
 
     stubAgreeExitFetch({ member: { number: 11, name: "라", email: MEMBER_EMAIL }, exitDate });
@@ -479,6 +553,8 @@ describe("autoAgreeExpiredExitRequests", () => {
     const testEnv = makeTestEnv({ GOOGLE_SHEET_FILE_ID: "exit-req-auto-agree-tooSoon" });
     const token = await makeMemberToken({ memberNumber: "12" });
     const exitDate = "2026-08-12"; // 다른 케이스와 겹치지 않는 고유 날짜(§테스트 격리)
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 7, 12));
     const setReq = makeRequest("https://worker/exit-request", {
       token,
       method: "POST",
@@ -487,7 +563,6 @@ describe("autoAgreeExpiredExitRequests", () => {
     await handleSetExitRequest(setReq, testEnv, "https://example.com");
 
     const nextDayMidnightUtcMs = Date.UTC(2026, 7, 12, 15, 0, 0);
-    vi.useFakeTimers();
     vi.setSystemTime(nextDayMidnightUtcMs + 47 * 60 * 60 * 1000);
 
     // listExitRequests만 호출되고(대상 없음) 그 이후 조회는 없어야 하므로
@@ -508,6 +583,8 @@ describe("autoAgreeExpiredExitRequests", () => {
     const testEnv = makeTestEnv({ GOOGLE_SHEET_FILE_ID: "exit-req-auto-agree-blocked" });
     const token = await makeMemberToken({ memberNumber: "13" });
     const exitDate = "2026-08-13"; // 다른 케이스와 겹치지 않는 고유 날짜(§테스트 격리)
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 7, 13));
     const setReq = makeRequest("https://worker/exit-request", {
       token,
       method: "POST",
@@ -516,7 +593,6 @@ describe("autoAgreeExpiredExitRequests", () => {
     await handleSetExitRequest(setReq, testEnv, "https://example.com");
 
     const nextDayMidnightUtcMs = Date.UTC(2026, 7, 13, 15, 0, 0);
-    vi.useFakeTimers();
     vi.setSystemTime(nextDayMidnightUtcMs + 48 * 60 * 60 * 1000 + 60_000);
 
     const personalRows = personalTabRows();

@@ -18,6 +18,7 @@ import {
   buildPersonalStatus,
   resolveExitSourceFileId,
   listAllMembers,
+  todayKSTDateString,
 } from "./index.js";
 import { invalidateMemberCache, invalidatePersonalStatusCache } from "./cache.js";
 
@@ -30,6 +31,20 @@ export async function handleSetExitRequest(req, env, origin) {
   const { exitDate } = await req.json().catch(() => ({}));
   if (exitDate && !/^\d{4}-\d{2}-\d{2}$/.test(exitDate)) {
     return json({ error: "희망 퇴실일 형식이 올바르지 않습니다." }, 400, origin);
+  }
+  // 🔧 [사용자 지시] "마지막 참여일을 캘린더 2주 범위로만 선택 가능하도록" —
+  // 프론트(DepositRefundDialog)가 <input type="date">에 min/max를 걸어
+  // UI에서 막지만, 이 범위는 브라우저 표시일 뿐 강제가 아니라(직접
+  // 텍스트 입력이나 API 직접 호출로 우회 가능) 서버에서도 같은 범위를
+  // 다시 확인한다. KST 기준 오늘부터 14일 뒤까지만 허용.
+  if (exitDate) {
+    const today = todayKSTDateString();
+    const maxDate = new Date(`${today}T00:00:00Z`);
+    maxDate.setUTCDate(maxDate.getUTCDate() + 14);
+    const maxDateStr = maxDate.toISOString().slice(0, 10);
+    if (exitDate < today || exitDate > maxDateStr) {
+      return json({ error: "마지막 참여일은 오늘부터 2주 이내로만 선택할 수 있습니다." }, 400, origin);
+    }
   }
 
   try {

@@ -185,6 +185,15 @@ export type DepositCauseItem = { key: string; label: string; rate: number };
 // 사건을 중복 표시하고 있었다(사용자 지적). 반환액 계산(depositRefundBreakdown
 // 의 amount)도 R3를 기다리지 않고 페널티 카운트만으로 이미 0원을 산출하므로,
 // 이 항목을 빼도 판정 정확도나 우회 가능성에는 영향이 없다.
+// 🔧 2026-09: "벌금 미납" 항목도 같은 이유로 제거했다(사용자 지적) —
+// depositRefundBreakdown(deposit.js)에서 fineNoStatus===1이면 reason이
+// "벌금 시한 내 미납"으로 확정되어 다른 계산과 무관하게 amount가 이미
+// 0으로 강제된다(deposit.js:89,103). 게다가 벌금 미납은 forcedExitChecks
+// (deposit.js:130)의 강제퇴실 조건이라, 그 상태의 회원은 애초에 "정산
+// 퇴실"이 아니라 강제퇴실(직권 P 포함)로 처리되어야 한다 — 정산 퇴실
+// 동의 단계(exit-request.js의 agreeExitRequestForMember)도 fineUnpaid면
+// 명시적으로 차단해 이 경로 자체를 막는다. 사유 자체는 "주의사항" 카드
+// (breakdown.reason)에 이미 별도로 안내되므로 정보 손실도 없다.
 export function buildDepositCauseItems(
   breakdown: DepositRefundBreakdown,
   lateNoticeRate: number
@@ -200,16 +209,6 @@ export function buildDepositCauseItems(
       // 앞말과 띄어 쓴다("3일내" → "3일 내").
       label: "퇴실 통보 지연 (3일 내)",
       rate: lateNoticeRate,
-    },
-    {
-      key: "fine",
-      // 🔧 2026-09: 어느 요일에 미납이 발생했는지 항상 괄호로 병기한다
-      // (사용자 지시) — "30일 미만 참여 (D+N)"과 동일하게 rate가 0%여도
-      // 괄호 표시 자체는 계속 남긴다. 미납 요일이 없으면 "(해당 없음)".
-      // 🔧 [사용자 지시] 표준 국어 띄어쓰기 규범 — '해당'과 형용사 '없다'의
-      // 활용형 '없음'은 별개 단어이므로 띄어 쓴다("해당없음" → "해당 없음").
-      label: `벌금 미납 (${breakdown.fineUnpaidDays?.length ? breakdown.fineUnpaidDays.join(", ") : "해당 없음"})`,
-      rate: breakdown.fineUnpaid ? 100 : 0,
     },
     {
       key: "days",
