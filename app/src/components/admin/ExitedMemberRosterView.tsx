@@ -1,21 +1,17 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import {
-  User,
-  ChevronDown,
-  Hash,
-  PiggyBank,
-  TrendingDown,
-  Eye,
-  Search,
-  ExternalLink,
-} from "lucide-react";
+import { User, ChevronDown, PiggyBank, TrendingDown, Eye, Search } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { InfoCard, SubRow, TintedPill, buildDepositCauseItems } from "@/components/dashboard/shared";
 import type { DepositCauseItem } from "@/components/dashboard/shared";
-import { displayExitedName as displayName, AdminListSkeleton, AdminEmptyState } from "@/components/admin/shared";
+import {
+  displayExitedName as displayName,
+  AdminListSkeleton,
+  AdminEmptyState,
+  MemberStatusInfoCard,
+} from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { usePullRefreshListener } from "@/hooks/usePullToRefresh";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
@@ -48,14 +44,10 @@ function won(n: number) {
   return `₩${(n || 0).toLocaleString()}`;
 }
 
-// 🔧 [사용자 지시] "'최근 접속일자' 출력도 24시간제로", "퇴실 예약일자,
-// 집행일자도 2026. 8. 23. 처럼 출력해줘" — 최근 접속(epoch ms)은
-// 시:분:초까지 24시간제(hour12: false)로, 퇴실 예약/집행일자("YYYY-MM-DD"
-// 문자열)는 한국어 로케일 날짜 표기("2026. 8. 20.")로 통일한다.
-function formatDateTime24h(ts: number): string {
-  return new Date(ts).toLocaleString("ko-KR", { hour12: false });
-}
-
+// 🔧 [사용자 지시] "퇴실 예약일자, 집행일자도 2026. 8. 23. 처럼
+// 출력해줘" — 퇴실 예약/집행일자("YYYY-MM-DD" 문자열)를 한국어 로케일
+// 날짜 표기("2026. 8. 20.")로 통일한다. 최근 접속 일자 포맷은
+// MemberStatusInfoCard(admin/shared.tsx)로 옮겨졌다.
 function formatKoreanDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("ko-KR");
 }
@@ -674,84 +666,33 @@ export const ExitedMemberRosterView = forwardRef<
 
                     {result && (
                       <>
-                        {/* 🔧 [사용자 지시] "'참여 스터디원 목록'의 상태
-                            정보를 '퇴실 스터디원 목록'에도 반환 예치금
-                            위에" — MemberRosterList의 상태 정보 카드에서
-                            발췌한 항목(준비시험/계정/대시보드/시트번호)에
-                            더해, 최근 접속 일자·IP/퇴실 예약일자/퇴실
-                            집행일자도 추가했다(사용자 지시. 순서는 최근
-                            접속 IP 다음에 예약·집행일자가 오도록 배치).
-                            퇴실 예약일자는
-                            참여자 뷰의 "2026-09-25 희망" 같은 진행중 표현
-                            대신 이미 끝난 일이므로 날짜값만 그대로 보여준다.
-                            퇴실 집행일자는 별도 필드가 아니라 "처리 결과"
-                            카드의 processedDate를 그대로 병기한다. 이
-                            필드들을 저장하기 시작한 시점(2026-09) 이전에
-                            처리된 퇴실자는 값이 없어 "-"로 표시된다. */}
-                        <InfoCard className="flex flex-col gap-1.5 bg-card">
-                          <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
-                            <Hash className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-                            상태 정보
-                          </span>
-                          <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
-                            <SubRow label="준비 시험" value={result.examKind || "-"} />
-                            <SubRow label="구글 계정" value={result.googleAccount || "-"} />
-                            <SubRow label="구루미 계정" value={result.gooroomeeAccount || "-"} />
-                            {/* 🔧 퇴실자의 원래 회원번호(m.number, "exited:{이름}
-                                (퇴실)")는 살아있는 회원과 달리 다른 회원에게
-                                재배정될 위험이 없다 — handleAdminMemberStatus가
-                                이 접두사를 인식해 백업 탭 스냅샷을 보여준다. */}
-                            {/* 🔧 [사용자 지시] "대시보드, 시트번호를 모두
-                                출력 값을 '바로가기'로 하고 아이콘 모양도
-                                일치시켜줘" — 시트번호 링크와 동일하게
-                                텍스트/아이콘(ExternalLink)을 통일한다. */}
-                            <SubRow
-                              label="대시보드"
-                              value={
-                                <a
-                                  href={`#/?member=${encodeURIComponent(m.number)}`}
-                                  className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
-                                >
-                                  바로가기
-                                  <ExternalLink className="size-3 shrink-0" strokeWidth={ICON_STROKE.default} />
-                                </a>
-                              }
-                            />
-                            <SubRow
-                              label="시트 번호"
-                              value={
-                                result.backupFileId && result.sheetGid !== undefined && result.sheetGid !== null ? (
-                                  <a
-                                    href={`https://docs.google.com/spreadsheets/d/${result.backupFileId}/edit#gid=${result.sheetGid}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
-                                  >
-                                    바로가기
-                                    <ExternalLink className="size-3 shrink-0" strokeWidth={ICON_STROKE.default} />
-                                  </a>
-                                ) : (
-                                  "-"
-                                )
-                              }
-                            />
-                            <SubRow
-                              label="최근 접속 일자"
-                              value={result.lastLoginAt ? formatDateTime24h(result.lastLoginAt) : "-"}
-                            />
-                            <SubRow label="최근 접속 IP" value={result.lastLoginIp || "-"} />
-                            {/* 🔧 [사용자 지시] "'퇴실 예약일자', '퇴실
-                                집행일자'는 '최근 접속 IP' 밑으로 내려줘". */}
-                            <SubRow
-                              label="퇴실 예약 일자"
-                              value={result.exitRequestDate ? formatKoreanDate(result.exitRequestDate) : "-"}
-                            />
-                            <SubRow
-                              label="퇴실 집행 일자"
-                              value={result.processedDate ? formatKoreanDate(result.processedDate) : "-"}
-                            />
-                          </div>
-                        </InfoCard>
+                        {/* 🔧 2026-09: 참여자 뷰(MemberRosterList)와 거의
+                            동일한 카드를 각자 복붙해 구현하고 있었다(사용자
+                            지적) — MemberStatusInfoCard(admin/shared.tsx)로
+                            공통화했다. 퇴실자의 원래 회원번호(m.number,
+                            "exited:{이름} (퇴실)")는 살아있는 회원과 달리
+                            다른 회원에게 재배정될 위험이 없어 항상 링크를
+                            건다. 퇴실 예약 일자는 이미 끝난 일이라 날짜값만
+                            그대로 넘기고("접수됨" 같은 진행중 표현 없음),
+                            퇴실 집행 일자는 "처리 결과" 카드의 processedDate를
+                            그대로 병기한다(퇴실자 전용이라 별도 prop으로
+                            전달). 이 필드들을 저장하기 시작한 시점(2026-09)
+                            이전에 처리된 퇴실자는 값이 없어 "-"로 표시된다. */}
+                        <MemberStatusInfoCard
+                          examKind={result.examKind || ""}
+                          googleAccount={result.googleAccount || ""}
+                          gooroomeeAccount={result.gooroomeeAccount || ""}
+                          dashboardHref={`#/?member=${encodeURIComponent(m.number)}`}
+                          sheetHref={
+                            result.backupFileId && result.sheetGid !== undefined && result.sheetGid !== null
+                              ? `https://docs.google.com/spreadsheets/d/${result.backupFileId}/edit#gid=${result.sheetGid}`
+                              : undefined
+                          }
+                          lastLoginAt={result.lastLoginAt}
+                          lastLoginIp={result.lastLoginIp || ""}
+                          exitRequestDateValue={result.exitRequestDate ? formatKoreanDate(result.exitRequestDate) : "-"}
+                          exitProcessedDateValue={result.processedDate ? formatKoreanDate(result.processedDate) : "-"}
+                        />
 
                         {/* 🔧 [사용자 지시] "현재 페이지(관리자)의 위계도
                             맞춰줘" — 이 소제목만 다른 소제목(차감 원인 등,

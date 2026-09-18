@@ -1,12 +1,12 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { Users, User, ChevronDown, Hash, Bell, ExternalLink, FlaskConical, Search } from "lucide-react";
+import { Users, User, ChevronDown, Bell, FlaskConical, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { InfoCard, SubRow, TintedPill } from "@/components/dashboard/shared";
-import { SectionHeader, AdminListSkeleton, AdminEmptyState } from "@/components/admin/shared";
+import { SectionHeader, AdminListSkeleton, AdminEmptyState, MemberStatusInfoCard } from "@/components/admin/shared";
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
 import { ExitedMemberRosterView } from "@/components/admin/ExitedMemberRosterView";
 import type { RosterViewHandle, RosterViewState } from "@/components/admin/ExitedMemberRosterView";
@@ -588,85 +588,29 @@ const ActiveMemberRosterView = forwardRef<
 
                 <CollapsiblePanel className="flex flex-col">
                   <div className="flex flex-col gap-2.5 pt-2.5">
-                    <div className="flex flex-col gap-1.5 rounded-xl border bg-card p-4 sm:p-5">
-                      <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
-                        <Hash className="size-3.5 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-                        상태 정보
-                      </span>
-                      {/* 🔧 [사용자 지시] "현재 페이지(관리자)의 위계도
-                          맞춰줘" — SubRow 기본 크기(text-micro-lg
-                          sm:text-xs)가 제보 화면 기준(text-xs sm:text-sm)
-                          보다 한 단계 작았다. 호출부마다
-                          labelClassName/valueClassName을 개별 지정하는
-                          대신, SubRow만 감싸는 컨테이너에 자손 선택자로
-                          한 번에 적용한다 — valueClassName으로 이미 색만
-                          지정된 곳(퇴실 예약일자 등)과도 충돌 없이
-                          합쳐진다. */}
-                      <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
-                        <SubRow label="준비 시험" value={m.examKind || "-"} />
-                        <SubRow label="구글 계정" value={m.googleAccount || "-"} />
-                        <SubRow label="구루미 계정" value={m.gooroomeeAccount || "-"} />
-                        {/* 🔧 [사용자 지시] "'시트번호' 위에 '대시보드'를
-                            만들고 해당 유저의 대시보드를 확인할 수 있는
-                            링크" — StatusPage의 관리자용 회원 선택
-                            드롭다운을 `?member=<번호>` 쿼리로 초기 선택되게
-                            해뒀다(StatusPage.tsx 참고). 로그인 세션이
-                            "한 번만"(sessionStorage) 모드면 새 탭에는
-                            세션이 없어 로그인 화면으로 튕기므로, 새 탭이
-                            아니라 같은 탭에서 대시보드 홈("/")으로
-                            이동한다 — 목업 미리보기 중인 더미 회원은 실제
-                            회원번호가 아니므로(showingDummy) 링크를 걸지
-                            않는다. */}
-                        {/* 🔧 [사용자 지시] "퇴실자 쪽 출력 형태로 일치시켜줘"
-                            — 값 텍스트를 "바로가기"로, 아이콘을 시트번호와
-                            동일한 ExternalLink로 통일한다(ExitedMemberRosterView
-                            참고). showingDummy 분기(더미 회원은 링크를 걸지
-                            않음)는 참여자 뷰 고유의 안전장치라 그대로 둔다. */}
-                        <SubRow
-                          label="대시보드"
-                          value={
-                            showingDummy ? (
-                              "-"
-                            ) : (
-                              <a
-                                href={`#/?member=${encodeURIComponent(m.number)}`}
-                                className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
-                              >
-                                바로가기
-                                <ExternalLink className="size-3 shrink-0" strokeWidth={ICON_STROKE.default} />
-                              </a>
-                            )
-                          }
-                        />
-                        <SubRow
-                          label="시트 번호"
-                          value={
-                            spreadsheetId && m.sheetGid !== null ? (
-                              <a
-                                href={`https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${m.sheetGid}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
-                              >
-                                바로가기
-                                <ExternalLink className="size-3 shrink-0" strokeWidth={ICON_STROKE.default} />
-                              </a>
-                            ) : (
-                              "-"
-                            )
-                          }
-                        />
-                        <SubRow
-                          label="최근 접속 일자"
-                          value={m.lastLoginAt ? new Date(m.lastLoginAt).toLocaleString("ko-KR", { hour12: false }) : "-"}
-                        />
-                        <SubRow label="최근 접속 IP" value={m.lastLoginIp || "-"} />
-                        <SubRow
-                          label="퇴실 예약 일자"
-                          value={m.exitRequested ? (m.exitRequestDate ? m.exitRequestDate : "접수됨") : "-"}
-                        />
-                      </div>
-                    </div>
+                    {/* 🔧 2026-09: 퇴실자 뷰(ExitedMemberRosterView)와 거의
+                        동일한 카드를 각자 복붙해 구현하고 있었다(사용자
+                        지적) — MemberStatusInfoCard(admin/shared.tsx)로
+                        공통화해 필드 순서/라벨 변경 시 한 곳만 고치면
+                        되게 했다. 대시보드 링크는 목업 미리보기 중인 더미
+                        회원(showingDummy)이면 실제 회원번호가 아니므로
+                        undefined를 넘겨 "-"로 표시한다. 퇴실 예약 일자는
+                        참여자 뷰만의 진행중 표현("접수됨")이 있어 완성된
+                        노드로 직접 넘긴다. */}
+                    <MemberStatusInfoCard
+                      examKind={m.examKind}
+                      googleAccount={m.googleAccount}
+                      gooroomeeAccount={m.gooroomeeAccount}
+                      dashboardHref={showingDummy ? undefined : `#/?member=${encodeURIComponent(m.number)}`}
+                      sheetHref={
+                        spreadsheetId && m.sheetGid !== null
+                          ? `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${m.sheetGid}`
+                          : undefined
+                      }
+                      lastLoginAt={m.lastLoginAt}
+                      lastLoginIp={m.lastLoginIp}
+                      exitRequestDateValue={m.exitRequested ? (m.exitRequestDate ? m.exitRequestDate : "접수됨") : "-"}
+                    />
 
                     {/* 🔧 [관리자용 알림 설정 열람] 조회 전용 — 실제 변경은
                         회원 본인만 자기 대시보드의 알림 설정에서 할 수 있다. */}
@@ -808,7 +752,11 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
   }
 
   return (
-    <Collapsible defaultOpen className="flex flex-col">
+    // 🔧 [사용자 지시] "'스터디원 목록'의 토글도 모양만 남기고 실제론
+    // 접히지 않도록" — "스터디원 등록"(AdminMemberPenaltyTab.tsx)과
+    // 동일하게 open + disabled로 고정한다. chevron은 SectionHeader가
+    // 그대로 그려 모양은 유지되지만 클릭해도 접히지 않는다.
+    <Collapsible open disabled className="flex flex-col">
       <SectionHeader
         icon={Users}
         title="스터디원 목록"

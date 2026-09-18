@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { RotateCw, FileText, Image as ImageIcon, Loader2, Search, type LucideIcon } from "lucide-react";
+import { RotateCw, FileText, Image as ImageIcon, Loader2, Search, Hash, ExternalLink, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -21,6 +21,100 @@ import type { PenaltySlotHistoryEntry } from "@/lib/api/types";
 // 등)이 여럿이라 표시용 이름만 뽑는 로직을 공용으로 둔다.
 export function displayExitedName(name: string): string {
   return name.replace(/ \(퇴실\)$/, "");
+}
+
+// 🔧 [사용자 지시] "'최근 접속 일자'에서 시간부를 00:00:00 형식으로" —
+// toLocaleString의 "hour12: false"만으로는 로케일 기본 표기("7시 13분
+// 20초")가 유지돼 시:분:초를 직접 2자리로 패딩한다.
+function formatLastLoginDateTime(ts: number): string {
+  const d = new Date(ts);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.toLocaleDateString("ko-KR")} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+// "스터디원 목록"의 참여자 뷰/퇴실자 뷰가 각자 손으로 복붙해 구현하던
+// "상태 정보" 카드(준비 시험/계정/대시보드/시트 번호/최근 접속 일자·IP)를
+// 공통 컴포넌트로 뽑았다 — 필드 순서나 라벨을 바꿀 때마다 두 파일을
+// 매번 함께 고쳐야 했던 것이 실제 문제였다(사용자 지적: "참여자랑
+// 퇴실자랑 UI가 겹치는 부분이 많은데 재활용되고 있는 상황이야?"). 대시보드
+// 링크는 참여자 뷰에서만 쓰는 showingDummy 가드(더미 회원은 실제
+// 회원번호가 아니라 링크를 걸지 않음)가 있어 옵션으로 받는다. 퇴실
+// 예약일자 값은 두 뷰가 의미가 달라(참여자는 "신청됨~아직 처리 전"이라
+// "접수됨" 같은 진행중 표현이 필요하고, 퇴실자는 이미 끝난 일이라 날짜만)
+// 완성된 노드를 그대로 받는다. 퇴실 집행 일자는 퇴실자 전용이라 옵션.
+export function MemberStatusInfoCard({
+  examKind,
+  googleAccount,
+  gooroomeeAccount,
+  dashboardHref,
+  sheetHref,
+  lastLoginAt,
+  lastLoginIp,
+  exitRequestDateValue,
+  exitProcessedDateValue,
+}: {
+  examKind: string;
+  googleAccount: string;
+  gooroomeeAccount: string;
+  /** undefined면 "대시보드" 행 값을 "-"로 표시(예: 목업 미리보기 중). */
+  dashboardHref: string | undefined;
+  /** undefined면 "시트 번호" 행 값을 "-"로 표시. */
+  sheetHref: string | undefined;
+  lastLoginAt: number | null | undefined;
+  lastLoginIp: string;
+  /** "퇴실 예약 일자" 행에 표시할 완성된 값(뷰마다 의미가 달라 노드로 받는다). */
+  exitRequestDateValue: ReactNode;
+  /** 있으면 "퇴실 예약 일자" 아래에 "퇴실 집행 일자" 행을 추가한다(퇴실자 뷰 전용). */
+  exitProcessedDateValue?: ReactNode;
+}) {
+  return (
+    <InfoCard className="flex flex-col gap-1.5 bg-card">
+      <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
+        <Hash className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
+        상태 정보
+      </span>
+      <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
+        <SubRow label="준비 시험" value={examKind || "-"} />
+        <SubRow label="구글 계정" value={googleAccount || "-"} />
+        <SubRow label="구루미 계정" value={gooroomeeAccount || "-"} />
+        <SubRow
+          label="대시보드"
+          value={
+            dashboardHref ? (
+              <a href={dashboardHref} className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline">
+                바로가기
+                <ExternalLink className="size-3 shrink-0" strokeWidth={ICON_STROKE.default} />
+              </a>
+            ) : (
+              "-"
+            )
+          }
+        />
+        <SubRow
+          label="시트 번호"
+          value={
+            sheetHref ? (
+              <a
+                href={sheetHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
+              >
+                바로가기
+                <ExternalLink className="size-3 shrink-0" strokeWidth={ICON_STROKE.default} />
+              </a>
+            ) : (
+              "-"
+            )
+          }
+        />
+        <SubRow label="최근 접속 일자" value={lastLoginAt ? formatLastLoginDateTime(lastLoginAt) : "-"} />
+        <SubRow label="최근 접속 IP" value={lastLoginIp || "-"} />
+        <SubRow label="퇴실 예약 일자" value={exitRequestDateValue} />
+        {exitProcessedDateValue !== undefined && <SubRow label="퇴실 집행 일자" value={exitProcessedDateValue} />}
+      </div>
+    </InfoCard>
+  );
 }
 
 export function ItemTitle({ children, className }: { children: ReactNode; className?: string }) {
