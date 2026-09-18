@@ -206,7 +206,7 @@ export function NewMemberForm() {
         <div className="flex flex-col gap-1.5">
           <Label
             htmlFor="new-member-name"
-            className="inline-flex items-center gap-1.25 text-sm font-medium text-muted-foreground sm:text-base"
+            className="inline-flex items-center gap-1.25 text-sm font-medium text-foreground sm:text-base"
           >
             <User className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
             이름
@@ -221,7 +221,7 @@ export function NewMemberForm() {
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label className="inline-flex items-center gap-1.25 text-sm font-medium text-muted-foreground sm:text-base">
+          <Label className="inline-flex items-center gap-1.25 text-sm font-medium text-foreground sm:text-base">
             <ListChecks className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
             참여유형
           </Label>
@@ -240,7 +240,7 @@ export function NewMemberForm() {
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label className="inline-flex items-center gap-1.25 text-sm font-medium text-muted-foreground sm:text-base">
+          <Label className="inline-flex items-center gap-1.25 text-sm font-medium text-foreground sm:text-base">
             <Hash className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
             시트번호
           </Label>
@@ -270,7 +270,7 @@ export function NewMemberForm() {
         <div className="flex flex-col gap-1.5">
           <Label
             htmlFor="new-member-email"
-            className="inline-flex items-center gap-1.25 text-sm font-medium text-muted-foreground sm:text-base"
+            className="inline-flex items-center gap-1.25 text-sm font-medium text-foreground sm:text-base"
           >
             <Mail className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
             구글 계정
@@ -289,7 +289,7 @@ export function NewMemberForm() {
         <div className="flex flex-col gap-1.5">
           <Label
             htmlFor="new-member-gooroomee"
-            className="inline-flex items-center gap-1.25 text-sm font-medium text-muted-foreground sm:text-base"
+            className="inline-flex items-center gap-1.25 text-sm font-medium text-foreground sm:text-base"
           >
             <Video className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
             구루미 계정
@@ -330,7 +330,7 @@ export function NewMemberForm() {
         <div className="flex flex-col gap-1.5">
           <Label
             htmlFor="new-member-exam"
-            className="inline-flex items-center gap-1.25 text-sm font-medium text-muted-foreground sm:text-base"
+            className="inline-flex items-center gap-1.25 text-sm font-medium text-foreground sm:text-base"
           >
             <GraduationCap className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
             준비 중인 시험
@@ -347,7 +347,7 @@ export function NewMemberForm() {
         <div className="flex flex-col gap-1.5">
           <Label
             htmlFor="new-member-join-date"
-            className="inline-flex items-center gap-1.25 text-sm font-medium text-muted-foreground sm:text-base"
+            className="inline-flex items-center gap-1.25 text-sm font-medium text-foreground sm:text-base"
           >
             <CalendarDays className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
             첫 참여일 설정
@@ -365,6 +365,7 @@ export function NewMemberForm() {
       </div>
 
       <Button
+        variant="secondary"
         className="w-full sm:h-12 sm:text-base"
         disabled={submitting || noSlots || !allFieldsFilled}
         onClick={handleSubmit}

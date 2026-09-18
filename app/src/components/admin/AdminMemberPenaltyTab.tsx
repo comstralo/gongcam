@@ -17,7 +17,7 @@ export function AdminMemberPenaltyTab({ visible }: { visible: boolean }) {
       </SectionCard>
 
       <SectionCard>
-        <Collapsible defaultOpen={false} className="flex flex-col">
+        <Collapsible open disabled className="flex flex-col">
           <SectionHeader icon={UserPlus} title="신규 스터디원 등록" />
           <CollapsiblePanel className="flex flex-col gap-3">
             <NewMemberForm />

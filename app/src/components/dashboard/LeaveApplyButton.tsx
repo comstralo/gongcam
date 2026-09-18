@@ -159,6 +159,7 @@ export function LeaveApplyButton({
           </Button>
         ) : (
           <Button
+            variant="secondary"
             className="min-w-0 flex-1 sm:h-11"
             disabled={pending || draft === 0}
             onClick={() => apply(draft)}

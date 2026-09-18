@@ -155,7 +155,12 @@ export function GoalTypeScheduleDialog({
                 </ul>
               </InfoCard>
 
-              <Button className="w-full sm:h-12 sm:text-base" disabled={submitting} onClick={handleSubmit}>
+              <Button
+                variant="secondary"
+                className="w-full sm:h-12 sm:text-base"
+                disabled={submitting}
+                onClick={handleSubmit}
+              >
                 다음 주 예약 저장
               </Button>
             </>

@@ -604,6 +604,7 @@ export function HalfDayLeaveDialog({
                     </Button>
                   </div>
                   <Button
+                    variant="secondary"
                     className={cn("min-w-0 flex-1 sm:h-11")}
                     disabled={!canSubmit}
                     onClick={handleSubmit}

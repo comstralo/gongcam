@@ -691,7 +691,7 @@ export function ImageEditDialog({
               <RotateCcw className="size-3.5 sm:size-4" />
               초기화
             </Button>
-            <Button type="button" className={cn("sm:h-11")} onClick={handleConfirm}>
+            <Button type="button" variant="secondary" className={cn("sm:h-11")} onClick={handleConfirm}>
               완료
             </Button>
           </div>
