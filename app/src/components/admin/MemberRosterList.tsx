@@ -590,7 +590,7 @@ const ActiveMemberRosterView = forwardRef<
                   <div className="flex flex-col gap-2.5 pt-2.5">
                     <div className="flex flex-col gap-1.5 rounded-xl border bg-card p-4 sm:p-5">
                       <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
-                        <Hash className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
+                        <Hash className="size-3.5 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                         상태 정보
                       </span>
                       {/* 🔧 [사용자 지시] "현재 페이지(관리자)의 위계도
@@ -603,7 +603,7 @@ const ActiveMemberRosterView = forwardRef<
                           지정된 곳(퇴실 예약일자 등)과도 충돌 없이
                           합쳐진다. */}
                       <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
-                        <SubRow label="준비시험" value={m.examKind || "-"} />
+                        <SubRow label="준비 시험" value={m.examKind || "-"} />
                         <SubRow label="구글 계정" value={m.googleAccount || "-"} />
                         <SubRow label="구루미 계정" value={m.gooroomeeAccount || "-"} />
                         {/* 🔧 [사용자 지시] "'시트번호' 위에 '대시보드'를
@@ -639,7 +639,7 @@ const ActiveMemberRosterView = forwardRef<
                           }
                         />
                         <SubRow
-                          label="시트번호"
+                          label="시트 번호"
                           value={
                             spreadsheetId && m.sheetGid !== null ? (
                               <a
@@ -657,11 +657,11 @@ const ActiveMemberRosterView = forwardRef<
                           }
                         />
                         <SubRow
-                          label="퇴실 예약일자"
+                          label="퇴실 예약 일자"
                           value={m.exitRequested ? (m.exitRequestDate ? m.exitRequestDate : "접수됨") : "-"}
                         />
                         <SubRow
-                          label="최근 접속일자"
+                          label="최근 접속 일자"
                           value={m.lastLoginAt ? new Date(m.lastLoginAt).toLocaleString("ko-KR", { hour12: false }) : "-"}
                         />
                         <SubRow label="최근 접속 IP" value={m.lastLoginIp || "-"} />
@@ -672,7 +672,7 @@ const ActiveMemberRosterView = forwardRef<
                         회원 본인만 자기 대시보드의 알림 설정에서 할 수 있다. */}
                     <div className="flex flex-col gap-1.5 rounded-xl border bg-card p-4 sm:p-5">
                       <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
-                        <Bell className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
+                        <Bell className="size-3.5 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                         알림 설정
                       </span>
                       {/* 🔧 [PUSH 구독 OFF 시 세부 항목도 OFF로 표시] PUSH

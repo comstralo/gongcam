@@ -185,15 +185,19 @@ export function buildDepositCauseItems(
   return [
     {
       key: "lateNotice",
-      label: "퇴실 통보 지연 (3일내)",
+      // 🔧 [사용자 지시] 표준 국어 띄어쓰기 규범 — "내(內)"는 의존 명사라
+      // 앞말과 띄어 쓴다("3일내" → "3일 내").
+      label: "퇴실 통보 지연 (3일 내)",
       rate: lateNoticeRate,
     },
     {
       key: "fine",
       // 🔧 2026-09: 어느 요일에 미납이 발생했는지 항상 괄호로 병기한다
       // (사용자 지시) — "30일 미만 참여자 (D+N)"과 동일하게 rate가 0%여도
-      // 괄호 표시 자체는 계속 남긴다. 미납 요일이 없으면 "(해당없음)".
-      label: `벌금 미납 (${breakdown.fineUnpaidDays?.length ? breakdown.fineUnpaidDays.join(", ") : "해당없음"})`,
+      // 괄호 표시 자체는 계속 남긴다. 미납 요일이 없으면 "(해당 없음)".
+      // 🔧 [사용자 지시] 표준 국어 띄어쓰기 규범 — '해당'과 형용사 '없다'의
+      // 활용형 '없음'은 별개 단어이므로 띄어 쓴다("해당없음" → "해당 없음").
+      label: `벌금 미납 (${breakdown.fineUnpaidDays?.length ? breakdown.fineUnpaidDays.join(", ") : "해당 없음"})`,
       rate: breakdown.fineUnpaid ? 100 : 0,
     },
     {

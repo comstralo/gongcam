@@ -690,11 +690,11 @@ export const ExitedMemberRosterView = forwardRef<
                             처리된 퇴실자는 값이 없어 "-"로 표시된다. */}
                         <InfoCard className="flex flex-col gap-1.5 bg-card">
                           <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
-                            <Hash className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
+                            <Hash className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                             상태 정보
                           </span>
                           <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
-                            <SubRow label="준비시험" value={result.examKind || "-"} />
+                            <SubRow label="준비 시험" value={result.examKind || "-"} />
                             <SubRow label="구글 계정" value={result.googleAccount || "-"} />
                             <SubRow label="구루미 계정" value={result.gooroomeeAccount || "-"} />
                             {/* 🔧 퇴실자의 원래 회원번호(m.number, "exited:{이름}
@@ -718,7 +718,7 @@ export const ExitedMemberRosterView = forwardRef<
                               }
                             />
                             <SubRow
-                              label="시트번호"
+                              label="시트 번호"
                               value={
                                 result.backupFileId && result.sheetGid !== undefined && result.sheetGid !== null ? (
                                   <a
@@ -736,18 +736,18 @@ export const ExitedMemberRosterView = forwardRef<
                               }
                             />
                             <SubRow
-                              label="최근 접속일자"
+                              label="최근 접속 일자"
                               value={result.lastLoginAt ? formatDateTime24h(result.lastLoginAt) : "-"}
                             />
                             <SubRow label="최근 접속 IP" value={result.lastLoginIp || "-"} />
                             {/* 🔧 [사용자 지시] "'퇴실 예약일자', '퇴실
                                 집행일자'는 '최근 접속 IP' 밑으로 내려줘". */}
                             <SubRow
-                              label="퇴실 예약일자"
+                              label="퇴실 예약 일자"
                               value={result.exitRequestDate ? formatKoreanDate(result.exitRequestDate) : "-"}
                             />
                             <SubRow
-                              label="퇴실 집행일자"
+                              label="퇴실 집행 일자"
                               value={result.processedDate ? formatKoreanDate(result.processedDate) : "-"}
                             />
                           </div>
@@ -763,7 +763,7 @@ export const ExitedMemberRosterView = forwardRef<
                             제목과 시각적으로 구분되게 한다. */}
                         <InfoCard className="flex items-center justify-between gap-2 bg-card">
                           <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
-                            <PiggyBank className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
+                            <PiggyBank className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                             반환 예치금
                           </span>
                           <span
@@ -785,7 +785,7 @@ export const ExitedMemberRosterView = forwardRef<
                             (text-xs sm:text-sm)보다 작았다 — 함께 맞춘다. */}
                         <InfoCard className="flex flex-col gap-1.5 bg-card">
                           <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
-                            <TrendingDown className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
+                            <TrendingDown className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                             차감 원인
                           </span>
                           <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
@@ -822,7 +822,7 @@ export const ExitedMemberRosterView = forwardRef<
                             제거했다(사용자 지시). */}
                         <InfoCard className="flex flex-col gap-1.5 bg-card">
                           <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
-                            <Eye className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
+                            <Eye className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                             처리 결과
                           </span>
                           <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
@@ -835,7 +835,7 @@ export const ExitedMemberRosterView = forwardRef<
                                 "강제 퇴실자"로 통일), 강제 퇴실자일 때만
                                 강조한다. */}
                             <SubRow
-                              label="퇴실유형"
+                              label="퇴실 유형"
                               value={exitTypeLabel(result.kindStr)}
                               valueClassName={result.kindStr === "강제 퇴실자" ? "text-destructive" : undefined}
                             />

@@ -281,7 +281,7 @@ export function ReasonLeaveReviewList({
                                 <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:gap-3.5 sm:p-5">
                                   <div className="flex flex-col gap-1.5">
                                     <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
-                                      <ImageIcon className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
+                                      <ImageIcon className="size-3.5 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                       증빙 이미지
                                     </span>
                                     {session?.token ? (
@@ -302,7 +302,7 @@ export function ReasonLeaveReviewList({
                                       제보 화면 기준보다 한 단계 작았다. */}
                                   <div className="flex flex-col gap-1.5">
                                     <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
-                                      <FileText className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
+                                      <FileText className="size-3.5 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                       신청 정보
                                     </span>
                                     <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">

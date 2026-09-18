@@ -326,7 +326,7 @@ export function ExitProcessDialog({
               {preview && (
                 <InfoCard className="flex items-center justify-between gap-2">
                   <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
-                    <PiggyBank className="size-3.5 shrink-0 sm:size-4" />
+                    <PiggyBank className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                     반환 예치금
                   </span>
                   <span
@@ -348,7 +348,7 @@ export function ExitProcessDialog({
               {preview && preview.breakdown && (
                 <InfoCard className="flex flex-col gap-1.5">
                   <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
-                    <TrendingDown className="size-3.5 shrink-0 sm:size-4" />
+                    <TrendingDown className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                     차감 원인
                   </span>
                   <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
@@ -367,14 +367,14 @@ export function ExitProcessDialog({
               {preview && (
                 <InfoCard className="flex flex-col gap-1.5">
                   <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
-                    <Eye className="size-3.5 shrink-0 sm:size-4" />
+                    <Eye className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                     처리 결과
                   </span>
                   <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
                     <SubRow label="반환 예치금" value={won(preview.refundAmount)} />
                     <SubRow label="귀속 예치금" value={won(preview.heldAmount)} />
                     <SubRow label="납부된 벌금" value={won(preview.fineAlreadyPayment)} />
-                    <SubRow label="처리일자" value={preview.processedDate} />
+                    <SubRow label="처리 일자" value={preview.processedDate} />
                   </div>
                 </InfoCard>
               )}
@@ -382,7 +382,7 @@ export function ExitProcessDialog({
               {preview && (
                 <InfoCard className="flex flex-col gap-1.5">
                   <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
-                    <ArrowRightLeft className="size-3.5 shrink-0 sm:size-4" />
+                    <ArrowRightLeft className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                     시트 변동사항
                   </span>
                   <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
@@ -419,7 +419,7 @@ export function ExitProcessDialog({
               {preview && (
                 <InfoCard className="flex items-center justify-between gap-2">
                   <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
-                    <PiggyBank className="size-3.5 shrink-0 sm:size-4" />
+                    <PiggyBank className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                     반환 예치금
                   </span>
                   <span
@@ -441,7 +441,7 @@ export function ExitProcessDialog({
               {preview && preview.breakdown && (
                 <InfoCard className="flex flex-col gap-1.5">
                   <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
-                    <TrendingDown className="size-3.5 shrink-0 sm:size-4" />
+                    <TrendingDown className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                     차감 원인
                   </span>
                   <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
@@ -460,14 +460,14 @@ export function ExitProcessDialog({
               {preview && (
                 <InfoCard className="flex flex-col gap-1.5">
                   <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
-                    <Eye className="size-3.5 shrink-0 sm:size-4" />
+                    <Eye className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                     처리 결과
                   </span>
                   <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
                     <SubRow label="반환 예치금" value={won(preview.refundAmount)} />
                     <SubRow label="귀속 예치금" value={won(preview.heldAmount)} />
                     <SubRow label="납부된 벌금" value={won(preview.fineAlreadyPayment)} />
-                    <SubRow label="처리일자" value={preview.processedDate} />
+                    <SubRow label="처리 일자" value={preview.processedDate} />
                   </div>
                 </InfoCard>
               )}
@@ -475,7 +475,7 @@ export function ExitProcessDialog({
               {preview && (
                 <InfoCard className="flex flex-col gap-1.5">
                   <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
-                    <ArrowRightLeft className="size-3.5 shrink-0 sm:size-4" />
+                    <ArrowRightLeft className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                     시트 변동사항
                   </span>
                   <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
@@ -488,17 +488,17 @@ export function ExitProcessDialog({
               {preview && preview.exitProcess && (
                 <InfoCard className="flex flex-col gap-1.5">
                   <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
-                    <ClipboardList className="size-3.5 shrink-0 sm:size-4" />
+                    <ClipboardList className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                     퇴실 프로세스
                   </span>
                   <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
                     <SubRow
-                      label="신청일자"
+                      label="신청 일자"
                       value={preview.exitProcess.requestedAt ? new Date(preview.exitProcess.requestedAt).toLocaleString("ko-KR") : "-"}
                     />
-                    <SubRow label="예약일자" value={preview.exitProcess.exitDate || "-"} />
+                    <SubRow label="예약 일자" value={preview.exitProcess.exitDate || "-"} />
                     <SubRow
-                      label="예치금 정산액 동의일자"
+                      label="예치금 정산액 동의 일자"
                       value={preview.exitProcess.agreedAt ? new Date(preview.exitProcess.agreedAt).toLocaleString("ko-KR") : "미동의"}
                       valueClassName={!preview.exitProcess.agreedAt ? "text-destructive" : undefined}
                     />
