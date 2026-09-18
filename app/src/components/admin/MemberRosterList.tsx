@@ -603,7 +603,7 @@ const ActiveMemberRosterView = forwardRef<
                           지정된 곳(퇴실 예약일자 등)과도 충돌 없이
                           합쳐진다. */}
                       <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
-                        <SubRow label="준비 중인 시험" value={m.examKind || "-"} />
+                        <SubRow label="준비시험" value={m.examKind || "-"} />
                         <SubRow label="구글 계정" value={m.googleAccount || "-"} />
                         <SubRow label="구루미 계정" value={m.gooroomeeAccount || "-"} />
                         {/* 🔧 [사용자 지시] "'시트번호' 위에 '대시보드'를
@@ -653,8 +653,7 @@ const ActiveMemberRosterView = forwardRef<
                         />
                         <SubRow
                           label="퇴실 예약일자"
-                          value={m.exitRequested ? (m.exitRequestDate ? `${m.exitRequestDate} 희망` : "접수됨") : "-"}
-                          valueClassName={m.exitRequested ? "text-amber-600 dark:text-amber-400" : undefined}
+                          value={m.exitRequested ? (m.exitRequestDate ? m.exitRequestDate : "접수됨") : "-"}
                         />
                         <SubRow
                           label="최근 접속일자"

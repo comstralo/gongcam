@@ -133,8 +133,8 @@ function insertAdminForcedCauseItem(items: DepositCauseItem[], kind: ExitKind): 
 //      "차감 원인" 카드에 두 항목이 함께 표시되는지 확인.
 const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
   {
-    number: "exited:김재희 (퇴실)",
-    name: "김재희 (퇴실)",
+    number: "exited:재희 (퇴실)",
+    name: "재희 (퇴실)",
     result: {
       kind: "forced",
       kindStr: "강제 퇴실자",
@@ -163,8 +163,8 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
     },
   },
   {
-    number: "exited:이서준 (퇴실)",
-    name: "이서준 (퇴실)",
+    number: "exited:서준 (퇴실)",
+    name: "서준 (퇴실)",
     result: {
       kind: "admin_forced",
       kindStr: "강제 퇴실자",
@@ -196,8 +196,8 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
     // 검토로 확인, daily_calc()가 total_pen>=2일 때만 이 값을 씀), 예치금
     // 미납만 있고 페널티가 0회인 조합은 실제로 발생할 수 없다 — outputPen/
     // timePen을 2회로 맞춰 실제 있을 수 있는 조합으로 더미를 구성한다.
-    number: "exited:윤아름 (퇴실)",
-    name: "윤아름 (퇴실)",
+    number: "exited:아름 (퇴실)",
+    name: "아름 (퇴실)",
     result: {
       kind: "forced",
       kindStr: "강제 퇴실자",
@@ -223,8 +223,8 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
     },
   },
   {
-    number: "exited:한지민 (퇴실)",
-    name: "한지민 (퇴실)",
+    number: "exited:지민 (퇴실)",
+    name: "지민 (퇴실)",
     result: {
       kind: "forced",
       kindStr: "강제 퇴실자",
@@ -250,8 +250,8 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
     },
   },
   {
-    number: "exited:박도윤 (퇴실)",
-    name: "박도윤 (퇴실)",
+    number: "exited:도윤 (퇴실)",
+    name: "도윤 (퇴실)",
     result: {
       kind: "settle",
       kindStr: "정산 퇴실자",
@@ -281,8 +281,8 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
     // 한다(calcSettleReturnDeposit 수정으로 depositRefundBreakdown과 일치
     // 시킴, 2026-09) — 이전 더미는 이 조합에서도 50%/₩5,000으로 남아있던
     // 실제 처리 로직 버그를 그대로 반영한 상태였다.
-    number: "exited:최하은 (퇴실)",
-    name: "최하은 (퇴실)",
+    number: "exited:하은 (퇴실)",
+    name: "하은 (퇴실)",
     result: {
       kind: "settle",
       kindStr: "정산 퇴실자",
@@ -310,16 +310,16 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
   {
     // 이 기능(2026-09) 도입 이전에 처리된 퇴실자 — 저장된 결과가 없어
     // "조회 불가" 안내만 뜨는 케이스도 함께 확인한다.
-    number: "exited:정유나 (퇴실)",
-    name: "정유나 (퇴실)",
+    number: "exited:유나 (퇴실)",
+    name: "유나 (퇴실)",
     result: null,
   },
   {
     // 8) settle 50% 반환 — 페널티 1회 단독(고지지연 없음)일 때만 나오는
     //    유일한 중간 반환율 케이스. 기존 더미(5, 6번)는 100%/0%뿐이라
     //    이 분기가 빠져 있었다.
-    number: "exited:최민서 (퇴실)",
-    name: "최민서 (퇴실)",
+    number: "exited:민서 (퇴실)",
+    name: "민서 (퇴실)",
     result: {
       kind: "settle",
       kindStr: "정산 퇴실자",
@@ -343,7 +343,7 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
       googleAccount: "minseo.choi@gmail.com",
       gooroomeeAccount: "minseo.choi@gmail.com",
       // examKind/sheetGid/backupFileId가 온전히 채워진 두 번째 사례
-      // (1번 김재희와 함께) — 이 필드가 "특이 케이스"가 아니라 정상
+      // (1번 재희와 함께) — 이 필드가 "특이 케이스"가 아니라 정상
       // 케이스임을 확인하기 위해 둘 이상 둔다.
       examKind: "세무사",
       sheetGid: 135792468,
@@ -382,10 +382,10 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
   },
   {
     // 10) admin_forced + blacklist=false — 기존 admin_forced 더미(2번,
-    //     이서준)는 blacklist=true뿐이라, "직권 P인데 블랙리스트는 등록
+    //     서준)는 blacklist=true뿐이라, "직권 P인데 블랙리스트는 등록
     //     안 한"(체크박스를 일부러 안 누른 관리자) 조합이 없었다.
-    number: "exited:정하준 (퇴실)",
-    name: "정하준 (퇴실)",
+    number: "exited:하준 (퇴실)",
+    name: "하준 (퇴실)",
     result: {
       kind: "admin_forced",
       kindStr: "강제 퇴실자",
@@ -414,8 +414,8 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
     // 11) forced, 벌금 미납 + 페널티 2회 이상이 동시에 걸리는 케이스 —
     //     "차감 원인" 카드에 두 항목이 함께 표시되는지 확인(참여자 목록
     //     5번 도윤과 동일한 취지, 퇴실자 쪽엔 이 이중 조건 케이스가 없었다).
-    number: "exited:오세아 (퇴실)",
-    name: "오세아 (퇴실)",
+    number: "exited:세아 (퇴실)",
+    name: "세아 (퇴실)",
     result: {
       kind: "forced",
       kindStr: "강제 퇴실자",
