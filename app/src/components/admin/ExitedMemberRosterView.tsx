@@ -24,6 +24,7 @@ import { ApiError } from "@/lib/api/client";
 import { ICON_STROKE, cn } from "@/lib/utils";
 import type {
   AdminExitedMembersResponse,
+  DepositRefundBreakdown,
   ExitedMemberEntry,
   ExitKind,
   SetExitBlacklistResponse,
@@ -84,23 +85,30 @@ function exitTypeLabel(kindStr: string, reasons: { code: string; label: string }
 // discountRatio가 사유와 무관하게 항상 1로 고정이기 때문). 관리자가 "이
 // 회원이 직권 P로 처리됐는지"를 차감 원인 목록에서도 명시적으로 확인할
 // 수 있도록, "퇴실 스터디원 목록"에서만(사용자 지시 — 다른 화면은
-// 그대로 둠) "페널티 (직권 P N회)" 항목을 끼워 넣는다. 블랙리스트
-// SubRow와 마찬가지로(사용자 지시) admin_forced가 아닌 유형에서도 항상
-// 표시하되 "0회"(rate 0)로, admin_forced면 "1회"(rate 100, 직권 P는
-// 항상 반환율 0%=전액 차감)로 값만 다르게 채운다. buildDepositCauseItems
-// 가 최대 차감률이 낮은 순(고지지연 50% → 나머지 100%)으로 정렬되므로,
-// 이 항목도 같은 100% 그룹인 "페널티" 항목 바로 뒤(=배열 맨 끝)에 둔다.
-// (참고: buildDepositCauseItems의 "예치금 미납" 항목은 별도로 제거됨 —
-// R3="미납"은 항상 페널티 2회 이상의 파생 표시일 뿐이라 "페널티" 항목과
-// 중복이었다.)
-function insertAdminForcedCauseItem(items: DepositCauseItem[], kind: ExitKind): DepositCauseItem[] {
+// 그대로 둠) 직권 P 횟수를 함께 보여준다.
+// 🔧 [사용자 지시] "직권 P를 별개의 항목으로 빼지 말고, 두 항목을 합쳐줘.
+// 페널티 쪽을 '송출 P : 1회' 같은 형식으로" — 원래는 "페널티 (직권 P
+// N회)"를 별도 항목으로 끼워 넣었으나, 기존 "페널티(송출 P+주간 P)"
+// 항목 하나에 직권 P까지 한 줄로 합치고 각 값 앞에 콜론을 붙인다.
+// buildDepositCauseItems가 만든 penalty 항목(key: "penalty")을 찾아
+// 라벨만 다시 조립한다(breakdown 원본값을 직접 받아 문자열 재파싱 없이
+// 안전하게 조립) — rate는 그 항목이 이미 계산해둔 값(송출/주간 페널티
+// 합산 기준)과 admin_forced 여부 중 더 큰 차감률을 쓴다(직권 P는 항상
+// 100%=전액 차감이므로 admin_forced면 무조건 100%).
+function mergePenaltyLabel(
+  items: DepositCauseItem[],
+  breakdown: DepositRefundBreakdown,
+  kind: ExitKind
+): DepositCauseItem[] {
   const isAdminForced = kind === "admin_forced";
-  const adminForcedItem: DepositCauseItem = {
-    key: "adminForced",
-    label: `페널티 (직권 P ${isAdminForced ? 1 : 0}회)`,
-    rate: isAdminForced ? 100 : 0,
-  };
-  return [...items, adminForcedItem];
+  return items.map((item) => {
+    if (item.key !== "penalty") return item;
+    return {
+      ...item,
+      label: `페널티 (송출 P : ${breakdown.outputPen ?? 0}회 + 주간 P : ${breakdown.timePen ?? 0}회 + 직권 P : ${isAdminForced ? 1 : 0}회)`,
+      rate: isAdminForced ? 100 : item.rate,
+    };
+  });
 }
 
 // 🧪 [목업 미리보기] "새로고침" 버튼 옆의 실험용 버튼(셸이 소유) — 실제
@@ -658,8 +666,10 @@ export const ExitedMemberRosterView = forwardRef<
                             정보를 '퇴실 스터디원 목록'에도 반환 예치금
                             위에" — MemberRosterList의 상태 정보 카드에서
                             발췌한 항목(준비시험/계정/대시보드/시트번호)에
-                            더해, 퇴실 예약일자/퇴실 집행일자/최근 접속
-                            일자·IP도 추가했다(사용자 지시). 퇴실 예약일자는
+                            더해, 최근 접속 일자·IP/퇴실 예약일자/퇴실
+                            집행일자도 추가했다(사용자 지시. 순서는 최근
+                            접속 IP 다음에 예약·집행일자가 오도록 배치).
+                            퇴실 예약일자는
                             참여자 뷰의 "2026-09-25 희망" 같은 진행중 표현
                             대신 이미 끝난 일이므로 날짜값만 그대로 보여준다.
                             퇴실 집행일자는 별도 필드가 아니라 "처리 결과"
@@ -709,13 +719,15 @@ export const ExitedMemberRosterView = forwardRef<
                                 )
                               }
                             />
-                            <SubRow label="퇴실 예약일자" value={result.exitRequestDate || "-"} />
-                            <SubRow label="퇴실 집행일자" value={result.processedDate || "-"} />
                             <SubRow
                               label="최근 접속일자"
                               value={result.lastLoginAt ? new Date(result.lastLoginAt).toLocaleString("ko-KR") : "-"}
                             />
                             <SubRow label="최근 접속 IP" value={result.lastLoginIp || "-"} />
+                            {/* 🔧 [사용자 지시] "'퇴실 예약일자', '퇴실
+                                집행일자'는 '최근 접속 IP' 밑으로 내려줘". */}
+                            <SubRow label="퇴실 예약일자" value={result.exitRequestDate || "-"} />
+                            <SubRow label="퇴실 집행일자" value={result.processedDate || "-"} />
                           </div>
                         </InfoCard>
 
@@ -755,8 +767,9 @@ export const ExitedMemberRosterView = forwardRef<
                             차감 원인
                           </span>
                           <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
-                            {insertAdminForcedCauseItem(
+                            {mergePenaltyLabel(
                               buildDepositCauseItems(result.breakdown, result.breakdown.lateNotice ? 50 : 0),
+                              result.breakdown,
                               result.kind
                             ).map((item) => (
                               <SubRow
