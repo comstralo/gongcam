@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ShieldAlert, ChevronDown, CalendarDays, User, Radio, CalendarClock } from "lucide-react";
+import { ShieldAlert, ChevronDown, CalendarDays, FlaskConical, User, Radio, CalendarClock } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
@@ -11,7 +11,7 @@ import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { usePollingRefresh } from "@/hooks/usePollingRefresh";
 import { useAuth } from "@/lib/auth/useAuth";
 import { ICON_STROKE, cn } from "@/lib/utils";
-import type { AdminExitCandidatesResponse, ExitCandidate, ExitKind } from "@/lib/api/types";
+import type { AdminExitCandidatesResponse, ExitCandidate, ExitKind, PenaltySlotHistoryEntry } from "@/lib/api/types";
 
 const STATUS_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
 const UNKNOWN_DAY = "요일 미확인";
@@ -67,6 +67,39 @@ function groupByDay(candidates: ExitCandidate[]) {
   return ordered;
 }
 
+// 🧪 [목업 미리보기, 사용자 지시] "'PEN MONEY' 탭의 각 요소도 새로고침
+// 좌측에 목업 버튼을 만들고 적절한 목업을 생성" — 실 운영에서 나올 수
+// 있는 분기(요일 확인/미확인, 대기·재납·강퇴 3가지 처리 상태, 송출P·
+// 주간P 이력)를 한 화면에서 모두 볼 수 있는 고정 스냅샷.
+function dummyPenHistory(label: string, when: string, reason: string): PenaltySlotHistoryEntry {
+  return { label, cycle: 1, when, reason, captureId: null };
+}
+
+const DUMMY_EXIT_CANDIDATES: ExitCandidate[] = [
+  {
+    number: "9201",
+    name: "한소율",
+    suggestedKind: "forced",
+    reasons: ["페널티 누적 2회"],
+    occurredDay: "월",
+    outputPenHistory: [
+      dummyPenHistory("구두경고 (1차)", "2026-09-08 09:12", "화각 불량 제보 승인"),
+      dummyPenHistory("벌점 (1차)", "2026-09-14 21:40", "화각 불량 제보 승인"),
+    ],
+    timePenHistory: [dummyPenHistory("페널티 (1차)", "2026-09-14 23:59", "일간 목표시간 3회 미달")],
+  },
+  {
+    number: "9202",
+    name: "임가온",
+    suggestedKind: "forced",
+    reasons: ["페널티 누적 2회"],
+    // 슬롯 주석이 없어 요일을 특정할 수 없는 실제 케이스 — "요일 미확인" 그룹.
+    occurredDay: null,
+    outputPenHistory: [dummyPenHistory("페널티 (2차)", "2026-09-10 14:02", "화각 불량 제보 승인")],
+    timePenHistory: [dummyPenHistory("페널티 (2차)", "2026-09-13 23:59", "일간 목표시간 3회 미달")],
+  },
+];
+
 // PENALTY 탭의 "예치금 재납 대상자" — 페널티 누적 2 이상인 회원만 다룬다. 이제
 // 페널티 2회 이상은 강제 퇴실자 조건 중 하나라 반환율이 항상 0%로 고정되며,
 // 유형 선택 없이 강제 퇴실자로 곧바로 확정할 수 있다(lockKind="forced").
@@ -83,6 +116,9 @@ export function PenaltyCandidateList({
   const { call } = useApi();
   const { session } = useAuth();
 
+  // 🧪 [목업 미리보기, 사용자 지시] 켜져 있는 동안 API 호출 없이 고정
+  // 스냅샷(요일 확인/미확인 대상자, 대기 상태)을 보여준다.
+  const [showingDummy, setShowingDummy] = useState(false);
   const [candidates, setCandidates] = useState<ExitCandidate[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -105,6 +141,7 @@ export function PenaltyCandidateList({
   const loadingRef = useRef(false);
 
   function load() {
+    if (showingDummy) return;
     if (loadingRef.current) return;
     loadingRef.current = true;
     setLoading(true);
@@ -131,9 +168,36 @@ export function PenaltyCandidateList({
   // 상태 탭만 예외).
   const refreshProgress = usePollingRefresh(visible, load, 20 * 60_000);
 
+  const effectiveCandidates = showingDummy ? DUMMY_EXIT_CANDIDATES : candidates;
+
   return (
     <Collapsible defaultOpen className="flex flex-col">
-      <SectionHeader icon={ShieldAlert} title="예치금 재납 처리" loading={loading} onRefresh={load} refreshProgress={refreshProgress} />
+      <SectionHeader
+        icon={ShieldAlert}
+        title="예치금 재납 처리"
+        loading={loading}
+        onRefresh={load}
+        refreshProgress={refreshProgress}
+        trailing={
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            className={cn("shrink-0", showingDummy && "border-ok/30 bg-ok/15 text-ok hover:bg-ok/25 dark:hover:bg-ok/25")}
+            onClick={() => {
+              setShowingDummy((v) => !v);
+              setExpandedDay(null);
+              setExpandedNumber(null);
+              setProcessed({});
+            }}
+            aria-pressed={showingDummy}
+            aria-label={showingDummy ? "목업 미리보기 끄기" : "목업 데이터로 미리보기"}
+            title={showingDummy ? "목업 미리보기 끄기" : "목업 데이터로 미리보기"}
+          >
+            <FlaskConical className="size-3.5" strokeWidth={ICON_STROKE.default} />
+          </Button>
+        }
+      />
       <CollapsiblePanel className="flex flex-col gap-4">
         {error && (
           <Alert variant="destructive">
@@ -147,13 +211,13 @@ export function PenaltyCandidateList({
             있었다(Playwright 실측, ~1초 지속). loading을 빼고 candidates의
             실제 값만으로 렌더링해 재조회 중엔 이전 화면이 그대로
             유지되게 한다. */}
-        {!candidates && <AdminListSkeleton />}
+        {!effectiveCandidates && <AdminListSkeleton />}
 
-        {candidates && candidates.length === 0 && <AdminEmptyState>처리 대상이 없습니다.</AdminEmptyState>}
+        {effectiveCandidates && effectiveCandidates.length === 0 && <AdminEmptyState>처리 대상이 없습니다.</AdminEmptyState>}
 
-        {candidates && candidates.length > 0 && (
+        {effectiveCandidates && effectiveCandidates.length > 0 && (
           <div className="flex flex-col gap-2 sm:gap-2.5">
-            {groupByDay(candidates).map((group) => {
+            {groupByDay(effectiveCandidates).map((group) => {
               const isDayExpanded = expandedDay === group.day;
               const isUnknown = group.day === UNKNOWN_DAY;
               const forcedCount = group.items.filter((c) => processed[c.number] === "forced").length;
@@ -272,26 +336,53 @@ export function PenaltyCandidateList({
                                       </p>
                                     )}
                                     <div className="grid grid-cols-2 gap-2">
-                                      <ExitProcessDialog
-                                        candidate={c}
-                                        onConfirmed={(kind) => setProcessed((prev) => ({ ...prev, [c.number]: kind }))}
-                                        lockKind="forced"
-                                        cycleFileId={cycleFileId}
-                                      >
-                                        <Button variant="destructive" className="w-full sm:h-12 sm:text-base">
-                                          강제퇴실자 처리
-                                        </Button>
-                                      </ExitProcessDialog>
-                                      <ExitProcessDialog
-                                        candidate={c}
-                                        onConfirmed={(kind) => setProcessed((prev) => ({ ...prev, [c.number]: kind }))}
-                                        lockKind="deposit_again"
-                                        cycleFileId={cycleFileId}
-                                      >
-                                        <Button variant="destructive" className="w-full sm:h-12 sm:text-base">
-                                          재납자 처리
-                                        </Button>
-                                      </ExitProcessDialog>
+                                      {showingDummy ? (
+                                        // 🧪 목업 중엔 ExitProcessDialog(실제 퇴실
+                                        // 확정 API를 호출하는 컴포넌트)를 열지
+                                        // 않는다 — 두 버튼 모두 비활성화해 이
+                                        // 액션이 화면에 존재한다는 것만 보여준다.
+                                        <>
+                                          <Button
+                                            variant="destructive"
+                                            disabled
+                                            title="목업 중에는 실제 퇴실 처리를 실행할 수 없습니다."
+                                            className="w-full sm:h-12 sm:text-base"
+                                          >
+                                            강제퇴실자 처리
+                                          </Button>
+                                          <Button
+                                            variant="destructive"
+                                            disabled
+                                            title="목업 중에는 실제 재납 처리를 실행할 수 없습니다."
+                                            className="w-full sm:h-12 sm:text-base"
+                                          >
+                                            재납자 처리
+                                          </Button>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <ExitProcessDialog
+                                            candidate={c}
+                                            onConfirmed={(kind) => setProcessed((prev) => ({ ...prev, [c.number]: kind }))}
+                                            lockKind="forced"
+                                            cycleFileId={cycleFileId}
+                                          >
+                                            <Button variant="destructive" className="w-full sm:h-12 sm:text-base">
+                                              강제퇴실자 처리
+                                            </Button>
+                                          </ExitProcessDialog>
+                                          <ExitProcessDialog
+                                            candidate={c}
+                                            onConfirmed={(kind) => setProcessed((prev) => ({ ...prev, [c.number]: kind }))}
+                                            lockKind="deposit_again"
+                                            cycleFileId={cycleFileId}
+                                          >
+                                            <Button variant="destructive" className="w-full sm:h-12 sm:text-base">
+                                              재납자 처리
+                                            </Button>
+                                          </ExitProcessDialog>
+                                        </>
+                                      )}
                                     </div>
                                   </>
                                 )}
