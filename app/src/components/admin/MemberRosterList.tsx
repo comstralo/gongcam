@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
-import { Users, User, ChevronDown, Hash, Bell, ExternalLink, FlaskConical } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Users, User, ChevronDown, Hash, Bell, ExternalLink, FlaskConical, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 import { InfoCard, SubRow, TintedPill } from "@/components/dashboard/shared";
@@ -208,6 +209,9 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
   const [expandedNumber, setExpandedNumber] = useState<string | null>(null);
   const [cancelingNumber, setCancelingNumber] = useState<string | null>(null);
   const [togglingNumber, setTogglingNumber] = useState<string | null>(null);
+  // 🔧 [사용자 지시] "퇴실 스터디원 목록"과 동일한 이름 검색 —
+  // ExitedMemberList와 같은 패턴(대소문자 무시, 부분 일치)을 재사용한다.
+  const [query, setQuery] = useState("");
   // 🧪 [목업 미리보기] true인 동안은 실제 API 대신 DUMMY_MEMBERS를 보여준다
   // — 다시 누르면 꺼지고 즉시 실제 목록을 다시 불러온다.
   const [showingDummy, setShowingDummy] = useState(false);
@@ -300,6 +304,13 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
   useRefreshOnVisible(visible, load);
   const refreshProgress = usePollingRefresh(visible, load, 20 * 60_000);
 
+  const filteredMembers = useMemo(() => {
+    if (!members) return members;
+    const trimmed = query.trim().toLowerCase();
+    if (!trimmed) return members;
+    return members.filter((m) => m.name.toLowerCase().includes(trimmed));
+  }, [members, query]);
+
   return (
     <Collapsible defaultOpen className="flex flex-col">
       <SectionHeader
@@ -330,6 +341,24 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
           </Alert>
         )}
 
+        {/* 🔧 [사용자 지시] "퇴실 스터디원 목록"과 동일한 이름 검색 UI —
+            ExitedMemberList §검색창과 동일한 마크업(위치/아이콘/placeholder
+            스타일)을 그대로 재사용한다. */}
+        {members && members.length > 0 && (
+          <div className="relative">
+            <Search
+              className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground sm:size-4"
+              strokeWidth={ICON_STROKE.default}
+            />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="이름으로 검색"
+              className="pl-9 sm:h-11 sm:pl-10 sm:text-base"
+            />
+          </div>
+        )}
+
         {/* 🔧 [버그 수정, 2026-09] ReasonLeaveReviewList와 동일한 근본
             수정 — 세 조건이 loading에 게이팅돼 있어 재조회 시작 직후
             (loading=true, members=[]) 전부 거짓이 되는 진짜 공백이
@@ -340,9 +369,15 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
 
         {members && members.length === 0 && <AdminEmptyState>등록된 스터디원이 없습니다.</AdminEmptyState>}
 
-        {members && members.length > 0 && (
+        {!loading && members && members.length > 0 && filteredMembers && filteredMembers.length === 0 && (
+          <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">
+            "{query}"와 일치하는 스터디원이 없습니다.
+          </p>
+        )}
+
+        {filteredMembers && filteredMembers.length > 0 && (
           <div className="flex flex-col gap-2 sm:gap-2.5">
-            {members.map((m) => {
+            {filteredMembers.map((m) => {
               const isExpanded = expandedNumber === m.number;
               return (
                 // 🔧 [사용자 지시] "제보 쪽 토글의 전환 애니메이션처럼 부드럽게"
@@ -350,7 +385,10 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
                 // 전환)을 여기도 적용해 펼침이 즉시 나타나지 않고 부드럽게
                 // 펼쳐지도록 한다.
                 <Collapsible key={m.number} open={isExpanded} onOpenChange={(open) => setExpandedNumber(open ? m.number : null)}>
-                <InfoCard className="flex flex-col gap-2.5 bg-card">
+                {/* 🔧 [사용자 지시] "퇴실예약" 뱃지를 단 회원의 카드(토글
+                    박스)에 은은한 amber 글로우를 얹어 목록에서 한눈에
+                    띄게 한다 — 위 뱃지와 같은 톤(amber)을 그대로 쓴다. */}
+                <InfoCard className={cn("flex flex-col gap-2.5 bg-card", m.exitRequested && "animate-exit-requested-glow")}>
                   <CollapsibleTrigger className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded" hideChevron>
                     <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                       <User className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
@@ -360,9 +398,12 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
                       {/* 🔧 [사용자 지시] "'화각 불량 제보'에서 설정한 디자인을 기준으로
                           비슷한 모양의 다른 화면에도 적용" — 패딩 오버라이드(px-2 py-1
                           leading-none)를 없애 TintedPill 기본 크기로 통일한다. 이전엔
-                          바로 옆 "퇴실 예약" 뱃지와 미묘하게 크기가 달랐다. */}
+                          바로 옆 "퇴실 예약" 뱃지와 미묘하게 크기가 달랐다.
+                          🔧 [사용자 지시] 참여상태 3종을 색으로 바로 구분되게:
+                          스터디장=보라(purple), 부스터디장=파랑(blue),
+                          스터디원=초록(ok). */}
                       <TintedPill
-                        tone={m.partiStatus === "스터디장" ? "primary" : m.partiStatus === "부스터디장" ? "ok" : "muted"}
+                        tone={m.partiStatus === "스터디장" ? "purple" : m.partiStatus === "부스터디장" ? "blue" : "ok"}
                       >
                         {m.partiStatus}
                       </TintedPill>

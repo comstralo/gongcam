@@ -19,7 +19,7 @@ export function ItemTitle({ children, className }: { children: ReactNode; classN
   return <span className={cn("text-sm font-bold sm:text-base", className)}>{children}</span>;
 }
 
-type PillTone = "ok" | "warn" | "muted" | "primary" | "amber";
+type PillTone = "ok" | "warn" | "muted" | "primary" | "amber" | "purple" | "blue";
 
 const PILL_TONE_CLASSES: Record<PillTone, string> = {
   ok: "bg-ok/15 text-ok",
@@ -27,6 +27,10 @@ const PILL_TONE_CLASSES: Record<PillTone, string> = {
   muted: "bg-foreground/8 text-muted-foreground",
   primary: "bg-primary/15 text-primary",
   amber: "bg-amber-600/15 text-amber-600 dark:bg-amber-400/15 dark:text-amber-400",
+  // 🔧 [사용자 지시] "참여 스터디원 목록"의 참여상태 뱃지 전용 — 스터디장
+  // (purple)/부스터디장(blue)을 기존 톤(primary/ok/muted)과 구분한다.
+  purple: "bg-violet-600/15 text-violet-600 dark:bg-violet-400/15 dark:text-violet-400",
+  blue: "bg-blue-600/15 text-blue-600 dark:bg-blue-400/15 dark:text-blue-400",
 };
 
 // 대시보드 전반(내 대시보드/전체 대시보드/지난 기록)에서 반복되는 "틴트된 상태 배지".

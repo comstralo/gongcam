@@ -66,14 +66,22 @@
 
 /* 벌금 미납 요일 버튼을 눈에 띄게 반짝이게 하는 애니메이션. 기본 animate-pulse는
    opacity만 흐려져 존재감이 약해서, 테두리 그림자(글로우)가 부풀었다 줄었다 하는
-   전용 keyframe을 둔다. */
+   전용 keyframe을 둔다.
+   🔧 [사용자 지시, overflow-hidden 잘림 수정] 원래 바깥으로 퍼지는
+   box-shadow(0 0 0 5px, 링이 요소 바깥으로 번짐)였는데, 이 유틸을 쓰는
+   여러 곳(StatusView의 7열 요일 그리드, CycleSwitcher, ReportReviewList/
+   MyOutputPenSection의 항목 카드)이 SectionCard/CollapsiblePanel(둘 다
+   overflow-hidden)에 패딩 없이 바짝 붙어 있어 링의 좌우가 실제로 잘리는
+   게 확인됐다(요일 그리드 맨 왼쪽 "월" 버튼에서 실측). inset box-shadow
+   (요소 경계 안쪽에서만 그려짐)로 바꿔 조상의 overflow-hidden과 무관하게
+   만든다 — "테두리가 밝아졌다 옅어지는" 느낌은 그대로 유지된다. */
 @keyframes unpaid-glow {
   0%,
   100% {
-    box-shadow: 0 0 0 0 color-mix(in oklab, var(--destructive) 55%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--destructive) 45%, transparent);
   }
   50% {
-    box-shadow: 0 0 0 5px color-mix(in oklab, var(--destructive) 0%, transparent);
+    box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--destructive) 90%, transparent);
   }
 }
 @utility animate-unpaid-glow {
@@ -84,16 +92,17 @@
 }
 
 /* 화각 체커 — 가로모드에서 6장 촬영이 끝나 "파일 저장" 버튼으로 바뀐
-   순간을 눈에 띄게 알리는 글로우. 위 unpaid-glow와 같은 원리(box-shadow
-   부풀림)지만 primary(파란/보라 등 테마 강조색) 버전 — 그 버튼 자체가
-   이미 border-primary라 같은 색으로 통일된다. */
+   순간을 눈에 띄게 알리는 글로우. 위 unpaid-glow와 같은 원리(inset
+   box-shadow 부풀림, 동일한 이유로 overflow-hidden 잘림 방지)지만
+   primary(파란/보라 등 테마 강조색) 버전 — 그 버튼 자체가 이미
+   border-primary라 같은 색으로 통일된다. */
 @keyframes save-ready-glow {
   0%,
   100% {
-    box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 55%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--primary) 45%, transparent);
   }
   50% {
-    box-shadow: 0 0 0 5px color-mix(in oklab, var(--primary) 0%, transparent);
+    box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--primary) 90%, transparent);
   }
 }
 @utility animate-save-ready-glow {
@@ -117,6 +126,44 @@
 }
 @utility animate-notif-pulse {
   animation: notif-pulse 1.6s ease-in-out infinite;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+/* "참여 스터디원 목록"에서 퇴실 예약 뱃지(amber 톤)를 단 회원의 카드를
+   눈에 띄게 하는 글로우. 위 unpaid-glow/save-ready-glow와 달리 이 카드는
+   overflow-hidden인 SectionCard 안에 좌우 패딩 없이 꽉 차게 배치돼 있어
+   (사용자 실측 — 바깥으로 번지는 box-shadow 방식은 좌우가 그대로 잘림),
+   바깥으로 퍼지는 링 대신 inset box-shadow(요소 경계 안쪽에서만 그려짐)
+   로 테두리 자체가 밝아졌다 옅어지는 펄스를 준다 — overflow-hidden에
+   전혀 영향받지 않는다. 다크모드(.dark 클래스, 이 앱은 prefers-color-
+   scheme이 아니라 명시적 토글을 쓴다 — 위 @custom-variant dark 참고)
+   에서 더 밝은 amber-400을 써야 배경 대비 눈에 띄므로, 별도 keyframe을
+   두고 .dark 안에서만 그 애니메이션으로 바꿔 끼운다. */
+@keyframes exit-requested-glow {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 1px rgb(217 119 6 / 0.35); /* amber-600 */
+  }
+  50% {
+    box-shadow: inset 0 0 0 2px rgb(217 119 6 / 0.9);
+  }
+}
+@keyframes exit-requested-glow-dark {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 1px rgb(251 191 36 / 0.35); /* amber-400 */
+  }
+  50% {
+    box-shadow: inset 0 0 0 2px rgb(251 191 36 / 0.9);
+  }
+}
+@utility animate-exit-requested-glow {
+  animation: exit-requested-glow 1.8s ease-in-out infinite;
+  .dark & {
+    animation: exit-requested-glow-dark 1.8s ease-in-out infinite;
+  }
   @media (prefers-reduced-motion: reduce) {
     animation: none;
   }
