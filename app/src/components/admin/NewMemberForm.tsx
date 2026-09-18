@@ -208,7 +208,7 @@ export function NewMemberForm() {
             htmlFor="new-member-name"
             className="inline-flex items-center gap-1.25 text-sm font-medium text-foreground sm:text-base"
           >
-            <User className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
+            <User className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
             이름
           </Label>
           <Input
@@ -222,7 +222,7 @@ export function NewMemberForm() {
 
         <div className="flex flex-col gap-1.5">
           <Label className="inline-flex items-center gap-1.25 text-sm font-medium text-foreground sm:text-base">
-            <ListChecks className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
+            <ListChecks className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
             참여유형
           </Label>
           <Select value={participationType} onValueChange={(v) => setParticipationType(v ?? "8|교시제")}>
@@ -241,7 +241,7 @@ export function NewMemberForm() {
 
         <div className="flex flex-col gap-1.5">
           <Label className="inline-flex items-center gap-1.25 text-sm font-medium text-foreground sm:text-base">
-            <Hash className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
+            <Hash className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
             시트번호
           </Label>
           <Select value={number} onValueChange={(v) => setNumber(v ?? "")} disabled={!slots || noSlots}>
@@ -272,7 +272,7 @@ export function NewMemberForm() {
             htmlFor="new-member-email"
             className="inline-flex items-center gap-1.25 text-sm font-medium text-foreground sm:text-base"
           >
-            <Mail className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
+            <Mail className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
             구글 계정
           </Label>
           <Input
@@ -291,7 +291,7 @@ export function NewMemberForm() {
             htmlFor="new-member-gooroomee"
             className="inline-flex items-center gap-1.25 text-sm font-medium text-foreground sm:text-base"
           >
-            <Video className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
+            <Video className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
             구루미 계정
           </Label>
           <Input
@@ -332,7 +332,7 @@ export function NewMemberForm() {
             htmlFor="new-member-exam"
             className="inline-flex items-center gap-1.25 text-sm font-medium text-foreground sm:text-base"
           >
-            <GraduationCap className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
+            <GraduationCap className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
             준비 중인 시험
           </Label>
           <Input
@@ -349,7 +349,7 @@ export function NewMemberForm() {
             htmlFor="new-member-join-date"
             className="inline-flex items-center gap-1.25 text-sm font-medium text-foreground sm:text-base"
           >
-            <CalendarDays className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
+            <CalendarDays className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
             첫 참여일 설정
           </Label>
           <Input

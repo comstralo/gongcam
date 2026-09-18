@@ -421,7 +421,7 @@ export function PenaltyHistorySection({
           지시) — admin 쪽 다른 ItemTitle 용례(예: 회원 이름)는 semibold
           그대로 두고 여기만 개별적으로 올린다. */}
       <span className="inline-flex items-center gap-1.25">
-        <Icon className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
+        <Icon className="size-3.5 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
         <ItemTitle className="font-bold">{title}</ItemTitle>
       </span>
       {/* 🔧 2026-09 재정정: "-" 가짜 값 문제를 고친 뒤에도 여전히 위계가
