@@ -373,7 +373,7 @@ export function ExitProcessDialog({
                   <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
                     <SubRow label="반환 예치금" value={won(preview.refundAmount)} />
                     <SubRow label="귀속 예치금" value={won(preview.heldAmount)} />
-                    <SubRow label="주간 납부 벌금" value={won(preview.fineAlreadyPayment)} />
+                    <SubRow label="납부된 벌금" value={won(preview.fineAlreadyPayment)} />
                     <SubRow label="처리일자" value={preview.processedDate} />
                   </div>
                 </InfoCard>
@@ -466,7 +466,7 @@ export function ExitProcessDialog({
                   <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
                     <SubRow label="반환 예치금" value={won(preview.refundAmount)} />
                     <SubRow label="귀속 예치금" value={won(preview.heldAmount)} />
-                    <SubRow label="주간 납부 벌금" value={won(preview.fineAlreadyPayment)} />
+                    <SubRow label="납부된 벌금" value={won(preview.fineAlreadyPayment)} />
                     <SubRow label="처리일자" value={preview.processedDate} />
                   </div>
                 </InfoCard>

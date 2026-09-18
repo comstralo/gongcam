@@ -390,5 +390,116 @@ describe("handleAdminExitConfirm", () => {
     // 이번 케이스는 지난 주 백업으로 넘어가지 않은 정상 흐름이라
     // backupFileId는 라이브 시트(fileId) 그대로여야 한다.
     expect(saved.backupFileId).toBe("exit-confirm-confirm-status-info");
+    // 🔧 [사용자 지시] "'퇴실 예약일자', '최근 접속일자', '최근 접속 IP'도
+    // 출력되도록" — 이 케이스는 신청도, 로그인 기록도 미리 심어두지 않았으므로
+    // null/빈 값으로 안전하게 저장돼야 한다(신청 없이 처리 가능한 forced).
+    expect(saved.exitRequestDate).toBeNull();
+    expect(saved.lastLoginAt).toBeNull();
+    expect(saved.lastLoginIp).toBe("");
+  });
+
+  it("확정 처리 전 신청/최근 접속 기록이 있으면 그 값을 그대로 캡처해 저장한다", async () => {
+    const testEnv = makeTestEnv({ GOOGLE_SHEET_FILE_ID: "exit-confirm-confirm-request-login" });
+    const token = await makeAdminToken();
+    const rows = personalTabRows();
+
+    // 확정 처리 전에 퇴실 신청(LeaveQueue DO)과 최근 접속 기록
+    // (MemberSettingsDO)을 미리 심어둔다 — performExitReset이 회원번호
+    // 슬롯을 초기화하고 do/exit/delete가 신청 기록을 지우기 전에, 이
+    // 값들이 정확히 캡처되는지 검증한다.
+    const { getLeaveQueueStub, getMemberSettingsStub } = await import("../src/index.js");
+    await getLeaveQueueStub(testEnv).fetch("https://do/exit/put", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ memberNumber: "1", exitDate: "2026-08-20", ts: Date.now(), agreedAt: null }),
+    });
+    await getMemberSettingsStub(testEnv).fetch("https://do/last-login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ memberNumber: "1", ts: 1755900000000, ip: "203.0.113.5" }),
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url, init) => {
+        const u = String(url);
+        if (u.includes("oauth2.googleapis.com")) return Promise.resolve(oauthTokenResponse());
+        if (u.includes("V50")) return Promise.resolve(dataSheetResponse([{ number: 1, name: "가", email: "a@b.com" }]));
+        if (u.includes("values:batchGet")) {
+          return Promise.resolve(new Response(JSON.stringify({ valueRanges: [[], []] })));
+        }
+        if (u.includes("U42")) return Promise.resolve(new Response(JSON.stringify({ values: rows })));
+        if (u.includes("'") && /F\d+%3AM\d+/.test(u)) {
+          return Promise.resolve(new Response(JSON.stringify({ values: [[0, 0, 0, "1", 0, "1", 0, 0]] })));
+        }
+        if (u.includes("F4%3AM4") || u.includes("F4:M4")) {
+          return Promise.resolve(new Response(JSON.stringify({ values: [] })));
+        }
+        if (u.includes("D25")) return Promise.resolve(new Response(JSON.stringify({ values: [["1"]] })));
+        if (u.includes("A4%3AL18") || u.includes("A4:L18")) {
+          return Promise.resolve(new Response(JSON.stringify({ values: [] })));
+        }
+        if (u.includes("D23%3AD24") || u.includes("D23:D24")) {
+          return Promise.resolve(new Response(JSON.stringify({ values: [["0"], ["0"]] })));
+        }
+        if (u.includes("fields=sheets.properties")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                sheets: [
+                  { properties: { sheetId: 1, title: "1" } },
+                  { properties: { sheetId: 99, title: "template" } },
+                ],
+              })
+            )
+          );
+        }
+        if (u.includes(":copyTo")) return Promise.resolve(new Response(JSON.stringify({ sheetId: 888 })));
+        if (u.includes("fields=sheets(properties.sheetId")) {
+          return Promise.resolve(new Response(JSON.stringify({ sheets: [{ properties: { sheetId: 888 }, protectedRanges: [] }] })));
+        }
+        if (u.includes("/permissions") && !init) {
+          return Promise.resolve(new Response(JSON.stringify({ permissions: [] })));
+        }
+        if (/:batchUpdate$/.test(u)) {
+          return Promise.resolve(new Response(JSON.stringify({ ok: true })));
+        }
+        if (u.includes("values:batchUpdate")) {
+          return Promise.resolve(new Response(JSON.stringify({ ok: true })));
+        }
+        if (u.includes("D4%3AE4") || u.includes("D4:E4")) {
+          return Promise.resolve(new Response(JSON.stringify({ values: [["", "세무사"]] })));
+        }
+        if (u.includes("B4%3AB2000") || u.includes("B4:B2000")) {
+          return Promise.resolve(new Response(JSON.stringify({ values: [] })));
+        }
+        throw new Error("unexpected fetch: " + u);
+      })
+    );
+
+    const req = makeRequest("https://worker/admin/exit/confirm", {
+      token,
+      method: "POST",
+      body: { number: "1", kind: "forced" },
+    });
+
+    const res = await handleAdminExitConfirm(req, testEnv, "https://example.com");
+    const body = await res.json();
+    expect(res.status, JSON.stringify(body)).toBe(200);
+
+    const listRes = await getMemberSettingsStub(testEnv).fetch("https://do/exit/list");
+    const { items } = await listRes.json();
+    const saved = items["가 (퇴실)"];
+    expect(saved).toBeTruthy();
+    expect(saved.exitRequestDate).toBe("2026-08-20");
+    expect(saved.lastLoginAt).toBe(1755900000000);
+    expect(saved.lastLoginIp).toBe("203.0.113.5");
+
+    // 확정 처리가 끝나면 신청 기록은 삭제돼야 한다(기존 동작 회귀 확인).
+    const exitGetRes = await getLeaveQueueStub(testEnv).fetch(
+      "https://do/exit/get?memberNumber=1"
+    );
+    const { entry } = await exitGetRes.json();
+    expect(entry).toBeNull();
   });
 });

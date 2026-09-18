@@ -634,17 +634,25 @@ export async function handleAdminExitConfirm(req, env, origin) {
     const member = members.find((m) => m.number === String(sheetNum));
     if (!member) return json({ error: "존재하지 않는 회원번호입니다." }, 404, origin);
 
+    // 🔧 [퇴실 신청 정보 선(先) 조회] 원래는 settle 검증에만 쓰였지만,
+    // 이 조회 결과(exitRequestDate)를 "퇴실 스터디원 목록"의 "상태 정보"
+    // 카드에도 영구 보존해야 해서(사용자 지시) kind와 무관하게 항상
+    // 조회한다 — forced/admin_forced는 신청 없이도 처리될 수 있어
+    // exitRequestEntry가 null일 수 있다(그대로 허용, 아래 저장 시 null).
+    // 이 값은 확정 처리 끝(do/exit/delete)에서 신청 기록이 지워지기 전에
+    // 미리 읽어두는 것이므로, 여기서 한 번만 조회해 재사용한다.
+    const exitRequestEntry = await getLeaveQueueStub(env)
+      .fetch(`https://do/exit/get?memberNumber=${encodeURIComponent(member.number)}`)
+      .then((r) => r.json())
+      .then((d) => d.entry)
+      .catch(() => null);
+
     // 🔧 [동의 없이 확정 처리하는 경로 차단] 프론트가 "동의합니다"를 누르기
     // 전엔 관리자 쪽 "정산" 버튼 자체를 비활성화해두지만(사용자 지시), API를
     // 직접 호출하는 경로까지 막기 위해 서버에서도 신청+동의 여부를 함께
     // 확인한다. confirm을 preview 없이 직접 호출하는 경로도 막아야 하므로
     // 여기서 다시 확인한다.
     if (kind === "settle") {
-      const exitRequestEntry = await getLeaveQueueStub(env)
-        .fetch(`https://do/exit/get?memberNumber=${encodeURIComponent(member.number)}`)
-        .then((r) => r.json())
-        .then((d) => d.entry)
-        .catch(() => null);
       if (!exitRequestEntry) {
         return json({ error: "퇴실 신청이 접수되지 않은 회원은 정산 퇴실로 처리할 수 없습니다." }, 400, origin);
       }
@@ -698,6 +706,18 @@ export async function handleAdminExitConfirm(req, env, origin) {
     if (kind === "deposit_again") {
       await performDepositAgainReset(env, accessToken, fileId, member, result.resultMsg);
     } else {
+      // 🔧 [사용자 지시] "'퇴실 예약일자', '최근 접속일자', '최근 접속 IP'도
+      // 출력되도록" — 최근 접속 기록은 회원번호 기준으로 저장되고, 이
+      // 번호는 퇴실 처리 후 곧 다른 신규 회원에게 재배정될 수 있다. 데이터
+      // 초기화(performExitReset) 전에 미리 조회해 영구 저장해야 나중에
+      // 엉뚱한(재사용된) 값을 가리키지 않는다 — members.js의 "다른 회원
+      // 보기" 드롭다운이 쓰는 것과 동일한 소스(do/last-login/list).
+      const lastLoginRes = await getMemberSettingsStub(env)
+        .fetch("https://do/last-login/list")
+        .then((r) => r.json())
+        .catch(() => ({ items: {} }));
+      const lastLogin = (lastLoginRes.items || {})[member.number] || null;
+
       const exitAccounts = await performExitReset(
         env,
         accessToken,
@@ -742,6 +762,14 @@ export async function handleAdminExitConfirm(req, env, origin) {
               examKind: exitAccounts?.examKind || "",
               sheetGid: exitAccounts?.sheetGid ?? null,
               backupFileId: exitAccounts?.backupFileId || "",
+              // 🔧 [사용자 지시] "'퇴실 예약일자', '최근 접속일자', '최근
+              // 접속 IP'도 출력되도록" — exitRequestEntry는 이 함수 상단에서
+              // 신청 여부와 무관하게 이미 조회해뒀다(forced/admin_forced는
+              // 신청 없이 처리될 수 있어 null일 수 있음). "퇴실 집행일자"는
+              // 별도 필드 없이 위 processedDate를 프론트가 그대로 재사용한다.
+              exitRequestDate: exitRequestEntry?.exitDate || null,
+              lastLoginAt: lastLogin?.ts || null,
+              lastLoginIp: lastLogin?.ip || "",
             },
           }),
         })

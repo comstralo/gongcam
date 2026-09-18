@@ -6,7 +6,6 @@ import {
   PiggyBank,
   TrendingDown,
   Eye,
-  ClipboardList,
   Search,
   LayoutDashboard,
   ExternalLink,
@@ -158,6 +157,12 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
       examKind: "9급 공무원",
       sheetGid: 987654321,
       backupFileId: "dummy-backup-file-id",
+      // 🔧 [사용자 지시] "퇴실 예약일자/최근 접속/퇴실 집행일자" 렌더링
+      // 확인용 — forced는 신청 없이도 처리될 수 있지만, 이 케이스는 신청
+      // 후 처리된(exitRequestDate 있음) 조합으로 둔다.
+      exitRequestDate: "2026-08-20",
+      lastLoginAt: Date.UTC(2026, 7, 23, 9, 0, 0),
+      lastLoginIp: "121.128.55.10",
     },
   },
   {
@@ -652,12 +657,15 @@ export const ExitedMemberRosterView = forwardRef<
                         {/* 🔧 [사용자 지시] "'참여 스터디원 목록'의 상태
                             정보를 '퇴실 스터디원 목록'에도 반환 예치금
                             위에" — MemberRosterList의 상태 정보 카드에서
-                            퇴실자에게도 의미가 있는 항목(준비시험/
-                            계정/대시보드/시트번호)만 발췌한다. 퇴실 예약
-                            일자·최근 접속은 이미 퇴실한 회원에게 개념상
-                            의미가 없어 제외. 이 필드들을 저장하기 시작한
-                            시점(2026-09) 이전에 처리된 퇴실자는 값이 없어
-                            "-"로 표시된다. */}
+                            발췌한 항목(준비시험/계정/대시보드/시트번호)에
+                            더해, 퇴실 예약일자/퇴실 집행일자/최근 접속
+                            일자·IP도 추가했다(사용자 지시). 퇴실 예약일자는
+                            참여자 뷰의 "2026-09-25 희망" 같은 진행중 표현
+                            대신 이미 끝난 일이므로 날짜값만 그대로 보여준다.
+                            퇴실 집행일자는 별도 필드가 아니라 "처리 결과"
+                            카드의 processedDate를 그대로 병기한다. 이
+                            필드들을 저장하기 시작한 시점(2026-09) 이전에
+                            처리된 퇴실자는 값이 없어 "-"로 표시된다. */}
                         <InfoCard className="flex flex-col gap-1.5 bg-card">
                           <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
                             <Hash className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
@@ -701,12 +709,24 @@ export const ExitedMemberRosterView = forwardRef<
                                 )
                               }
                             />
+                            <SubRow label="퇴실 예약일자" value={result.exitRequestDate || "-"} />
+                            <SubRow label="퇴실 집행일자" value={result.processedDate || "-"} />
+                            <SubRow
+                              label="최근 접속일자"
+                              value={result.lastLoginAt ? new Date(result.lastLoginAt).toLocaleString("ko-KR") : "-"}
+                            />
+                            <SubRow label="최근 접속 IP" value={result.lastLoginIp || "-"} />
                           </div>
                         </InfoCard>
 
                         {/* 🔧 [사용자 지시] "현재 페이지(관리자)의 위계도
                             맞춰줘" — 이 소제목만 다른 소제목(차감 원인 등,
-                            text-sm sm:text-base)보다 한 단계 작았다. */}
+                            text-sm sm:text-base)보다 한 단계 작았다.
+                            🔧 [사용자 지시] "우측의 텍스트 위계를 좌측
+                            제목과 일치시켜줘. 대신 볼드 처리는 하지마" —
+                            값(₩0 등)의 크기를 제목과 같은 text-sm
+                            sm:text-base로 맞추되 font-semibold는 주지 않아
+                            제목과 시각적으로 구분되게 한다. */}
                         <InfoCard className="flex items-center justify-between gap-2 bg-card">
                           <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
                             <PiggyBank className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
@@ -714,7 +734,7 @@ export const ExitedMemberRosterView = forwardRef<
                           </span>
                           <span
                             className={cn(
-                              "text-xs sm:text-sm",
+                              "text-sm sm:text-base",
                               result.refundAmount >= 5000 && "text-ok",
                               result.refundAmount === 0 && "text-destructive"
                             )}
@@ -749,6 +769,12 @@ export const ExitedMemberRosterView = forwardRef<
                           </div>
                         </InfoCard>
 
+                        {/* 🔧 [사용자 지시] "'퇴실유형'을 '처리 결과'에
+                            귀속시켜" — 별도 카드였던 퇴실유형/블랙리스트를
+                            하나의 카드로 합쳤다. "유형" 라벨은 "퇴실유형"으로
+                            이름을 바꾼다. "처리일자"는 "상태 정보" 카드의
+                            "퇴실 집행일자"(같은 값 processedDate)와 중복이라
+                            제거했다(사용자 지시). */}
                         <InfoCard className="flex flex-col gap-1.5 bg-card">
                           <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                             <Eye className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
@@ -757,18 +783,8 @@ export const ExitedMemberRosterView = forwardRef<
                           <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
                             <SubRow label="반환 예치금" value={won(result.refundAmount)} />
                             <SubRow label="귀속 예치금" value={won(result.heldAmount)} />
-                            <SubRow label="주간 납부 벌금" value={won(result.fineAlreadyPayment)} />
-                            <SubRow label="처리일자" value={result.processedDate} />
-                          </div>
-                        </InfoCard>
-
-                        <InfoCard className="flex flex-col gap-1.5 bg-card">
-                          <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
-                            <ClipboardList className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
-                            퇴실유형
-                          </span>
-                          <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
-                            <SubRow label="유형" value={exitTypeLabel(result.kindStr, result.reasons)} />
+                            <SubRow label="납부된 벌금" value={won(result.fineAlreadyPayment)} />
+                            <SubRow label="퇴실유형" value={exitTypeLabel(result.kindStr, result.reasons)} />
                             {/* 🔧 2026-09: 처음엔 admin_forced(직권 P)에서만
                                 조건부로 보였으나, 사용자 지시로 모든 퇴실
                                 유형에 항상 표시하도록 변경 — forced/settle은

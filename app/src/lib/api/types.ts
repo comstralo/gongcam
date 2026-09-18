@@ -628,6 +628,14 @@ export type ExitedMemberResult = {
   // 파일일 수 있다. "참여 스터디원 목록"처럼 전역 spreadsheetId를 쓸 수
   // 없는 이유이기도 하다.
   backupFileId?: string;
+  // 🔧 [사용자 지시] "'퇴실 예약일자', '최근 접속일자', '최근 접속 IP'도
+  // 출력되도록" — 전부 회원번호 기준으로 저장되던 값이라, 그 번호가
+  // 재사용되기 전(확정 처리 시점)에 캡처해 영구 저장한 것. 신청 없이
+  // 처리된 forced/admin_forced는 exitRequestDate가 null일 수 있다.
+  // "퇴실 집행일자"는 별도 필드 없이 위 processedDate를 그대로 쓴다.
+  exitRequestDate?: string | null;
+  lastLoginAt?: number | null;
+  lastLoginIp?: string;
 };
 
 export type ExitedMemberEntry = {
