@@ -7,10 +7,10 @@ import {
   InfoCard,
   SubRow,
   buildDepositCauseItems,
+  mergePenaltyLabel,
   won,
   RefundAmountCard,
   DepositCauseCard,
-  type DepositCauseItem,
 } from "@/components/dashboard/shared";
 import { WORKER_BASE } from "@/lib/api/client";
 import { cn, ICON_STROKE } from "@/lib/utils";
@@ -137,51 +137,6 @@ export function exitTypeLabel(kindStr: string): string {
   return kindStr;
 }
 
-// 🔧 2026-09: "차감 원인" 카드(buildDepositCauseItems)는 회원 대시보드/
-// ExitProcessDialog와 공유하는 함수라, 그 회원의 실제 시트 상태(벌금
-// 미납, 가입일수, 송출P/주간P 페널티)만 보여준다 — kind=admin_forced
-// (직권 P)로 처리됐다는 사실 자체는 여기에 전혀 반영되지 않는다(계산에도
-// 관여하지 않음, discountRatio가 사유와 무관하게 항상 1로 고정이기
-// 때문). 관리자가 "이 회원이 직권 P로 처리됐는지"를 차감 원인 목록에서도
-// 명시적으로 확인할 수 있도록 직권 P 횟수를 함께 보여준다.
-// 🔧 [사용자 지시] "직권 P를 별개의 항목으로 빼지 말고, 두 항목을 합쳐줘.
-// 페널티 쪽을 '송출 P : 1회' 같은 형식으로" — 원래는 "페널티 (직권 P
-// N회)"를 별도 항목으로 끼워 넣었으나, 기존 "페널티(송출 P+주간 P)"
-// 항목 하나에 직권 P까지 한 줄로 합치고 각 값 앞에 콜론을 붙인다.
-// buildDepositCauseItems가 만든 penalty 항목(key: "penalty")을 찾아
-// 라벨만 다시 조립한다(breakdown 원본값을 직접 받아 문자열 재파싱 없이
-// 안전하게 조립) — rate는 그 항목이 이미 계산해둔 값(송출/주간 페널티
-// 합산 기준)과 admin_forced 여부 중 더 큰 차감률을 쓴다(직권 P는 항상
-// 100%=전액 차감이므로 admin_forced면 무조건 100%).
-// 🔧 [사용자 지시] "페널티에 0회인건 출력에서 제외해달라고 했는데
-// 여전히 출력되고 있어" — 이전엔 rate===0(전부 0회)일 때만 항목 자체를
-// 숨겼는데, 실제 요구는 "송출/주간/직권 P 중 0회인 개별 값은 라벨
-// 문자열에서 빼라"는 것이었다(예: 직권 P만 0이면 "송출 P : 1회 + 주간
-// P : 1회"만 남고 "직권 P : 0회"는 아예 안 보여야 함). 0회가 아닌
-// 항목만 걸러 "+"로 이어붙인다.
-export function mergePenaltyLabel(
-  items: DepositCauseItem[],
-  breakdown: DepositRefundBreakdown,
-  kind: ExitKind
-): DepositCauseItem[] {
-  const isAdminForced = kind === "admin_forced";
-  return items.map((item) => {
-    if (item.key !== "penalty") return item;
-    const parts = [
-      { label: "송출 P", count: breakdown.outputPen ?? 0 },
-      { label: "주간 P", count: breakdown.timePen ?? 0 },
-      { label: "직권 P", count: isAdminForced ? 1 : 0 },
-    ].filter((p) => p.count > 0);
-    return {
-      ...item,
-      // 🔧 [사용자 지시] "아무 페널티도 받은 적 없으면 (해당없음)이라고
-      // 출력해줘" — 표준 국어 띄어쓰기 규범상 '해당'과 '없음'은 별개
-      // 단어라 다른 카드(벌금 미납 등)와 동일하게 "해당 없음"으로 띄어 쓴다.
-      label: parts.length > 0 ? `페널티 (${parts.map((p) => `${p.label} : ${p.count}회`).join(" + ")})` : "페널티 (해당 없음)",
-      rate: isAdminForced ? 100 : item.rate,
-    };
-  });
-}
 
 // "정산 퇴실"/"직권 P 퇴실" 모달(ExitProcessDialog)의 미리보기와 "퇴실
 // 스터디원 목록"(ExitedMemberRosterView)의 확정된 처리 결과가 "반환

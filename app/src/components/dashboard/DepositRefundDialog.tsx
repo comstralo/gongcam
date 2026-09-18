@@ -11,7 +11,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { InfoCard, ItemTitle, buildDepositCauseItems, RefundAmountCard, DepositCauseCard } from "@/components/dashboard/shared";
+import {
+  InfoCard,
+  ItemTitle,
+  buildDepositCauseItems,
+  mergePenaltyLabel,
+  RefundAmountCard,
+  DepositCauseCard,
+} from "@/components/dashboard/shared";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/lib/auth/useAuth";
 import { cn } from "@/lib/utils";
@@ -147,7 +154,12 @@ export function DepositRefundDialog({
         return daysUntilLastAttend !== null && daysUntilLastAttend < 3 ? 50 : 0;
       })();
 
-  const causeItems = buildDepositCauseItems(breakdown, lateNoticeRate);
+  // 🔧 [사용자 지시] "차감 원인의 페널티 출력 형태도 다른 곳이랑 다른데?"
+  // — 회원이 스스로 신청하는 이 화면은 "직권 P" 개념이 없으니 kind를
+  // 항상 "settle"로 고정해 mergePenaltyLabel을 적용한다. 이렇게 하면
+  // 관리자 확정 결과(ExitResultCards)와 동일하게 "송출 P : N회" 콜론
+  // 형식, 0회 항목 생략, "페널티 (해당 없음)" 문구까지 일치한다.
+  const causeItems = mergePenaltyLabel(buildDepositCauseItems(breakdown, lateNoticeRate), breakdown, "settle");
 
   return (
     <Dialog>
@@ -210,7 +222,7 @@ export function DepositRefundDialog({
           <RefundAmountCard
             valueContent={isAdmin ? won(amount) : "-"}
             valueClassName={cn(
-              "text-xs sm:text-sm",
+              "text-sm sm:text-base",
               isAdmin && isReduced ? "text-destructive" : isAdmin ? "text-ok" : "text-muted-foreground"
             )}
             footnote={
