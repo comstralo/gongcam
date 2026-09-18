@@ -14,15 +14,16 @@ export function isSettlementVisibleToMembers() {
   return hour > 23 || (hour === 23 && minute >= 30);
 }
 
-// 🔧 [일간 집계 완료 시점 반영] daily_calc()(앱스크립트)는 "그날 다음날
-// 자정~오전 1시 사이"에 실행돼야 그날치 벌금 미납/페널티 판정이 최종
-// 반영된다 — exitDate 당일이 KST로 지났다고 바로 동의를 허용하면, 아직
-// 그날 집계가 안 끝난 값에 회원이 동의해버릴 수 있다(사용자 지적). exitDate
-// 다음날 오전 2시(집계 시각보다 여유를 둔 시각) KST 이후부터 허용한다.
+// 🔧 [정산 퇴실 절차 명확화, 사용자 지시] "퇴실 신청 → 마지막 참여일
+// 익일에 정산 내역과 동의 버튼 출력. 단, 미납 벌금이 있거나 상금 정산이
+// 처리되지 않았으면 내역과 동의 버튼을 보여주지 않음 → 동의를 누르면
+// 관리자가 확인 후 확정 처리" — 이전엔 "exitDate 다음날 오전 2시"라는
+// 모호한 시간 기준이었으나, "익일(자정)"로 단순화하고 벌금 미납/상금
+// 미정산 여부는 handleAgreeExitRequest(exit-request.js)가 별도로 검증한다.
 export function exitDateSettled(exitDate) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(exitDate || "");
   if (!m) return false;
   const exitDateMidnightUtcMs = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) - 9 * 60 * 60 * 1000;
-  const settledAtUtcMs = exitDateMidnightUtcMs + 26 * 60 * 60 * 1000;
-  return Date.now() >= settledAtUtcMs;
+  const nextDayMidnightUtcMs = exitDateMidnightUtcMs + 24 * 60 * 60 * 1000;
+  return Date.now() >= nextDayMidnightUtcMs;
 }

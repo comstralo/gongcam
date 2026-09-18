@@ -219,7 +219,12 @@ export function ExitResultCards({
           반환 예치금
         </span>
         <span
-          className={cn("text-sm sm:text-base", refundAmount >= 5000 && "text-ok", refundAmount === 0 && "text-destructive")}
+          className={cn(
+            "text-sm sm:text-base",
+            refundAmount >= 10000 && "text-ok",
+            refundAmount === 5000 && "text-amber-600 dark:text-amber-400",
+            refundAmount === 0 && "text-destructive"
+          )}
         >
           {won(refundAmount)}
         </span>
@@ -252,7 +257,13 @@ export function ExitResultCards({
         <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
           <SubRow label="귀속 예치금" value={won(heldAmount)} />
           <SubRow label="납부된 벌금" value={won(fineAlreadyPayment)} />
-          <SubRow label="퇴실 유형" value={exitTypeLabel(kindStr)} valueClassName={kindStr === "강제 퇴실자" ? "text-destructive" : undefined} />
+          <SubRow
+            label="퇴실 유형"
+            value={exitTypeLabel(kindStr)}
+            valueClassName={
+              kindStr === "강제 퇴실자" ? "text-destructive" : kindStr === "정산 퇴실자" ? "text-ok" : undefined
+            }
+          />
           {blacklist !== undefined && (
             <SubRow label="블랙리스트" value={blacklist ? "Y" : "N"} valueClassName={blacklist ? "text-destructive" : undefined} />
           )}

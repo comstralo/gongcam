@@ -57,6 +57,69 @@ function stubOauthFetch() {
   );
 }
 
+// 🔧 [사용자 지시] "미납 벌금이 있거나 상금 정산이 처리되지 않았으면
+// 내역과 동의 버튼을 보여주지 않음" — handleAgreeExitRequest가 이제
+// buildPersonalStatus(exit-confirm.test.js의 stubForcedExitFetch와 동일한
+// 최소 mock 표면)를 태워 fineUnpaid/prizePending을 확인한다.
+function dataSheetResponse(members) {
+  const rows = [["헤더", "번호", "이름", "이메일"]];
+  for (const m of members) rows.push(["", String(m.number), m.name, m.email || ""]);
+  return new Response(JSON.stringify({ values: rows }));
+}
+
+function personalTabRows({ partiStatus = "스터디원", dday = "D+45" } = {}) {
+  const rows = Array.from({ length: 42 }, () => []);
+  rows[2] = ["", "", "", "", "", "", "", "", dday, "", "", "스터디원"];
+  rows[2][11] = partiStatus;
+  rows[2][17] = "";
+  rows[31] = ["", "", ""];
+  rows[32] = ["", "", 0];
+  return rows;
+}
+
+function metaResponse(sheetTitles) {
+  return new Response(JSON.stringify({ sheets: sheetTitles.map((title, i) => ({ properties: { sheetId: i, title } })) }));
+}
+
+function stubAgreeExitFetch({ member, personalRows = personalTabRows() }) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((url) => {
+      const u = String(url);
+      if (u.includes("oauth2.googleapis.com")) return Promise.resolve(oauthTokenResponse());
+      if (u.includes("V50")) return Promise.resolve(dataSheetResponse([member]));
+      if (u.includes("values:batchGet")) {
+        return Promise.resolve(new Response(JSON.stringify({ valueRanges: [[], []] })));
+      }
+      if (u.includes("U42")) {
+        return Promise.resolve(new Response(JSON.stringify({ values: personalRows })));
+      }
+      if (u.includes("F4%3AM4") || u.includes("F4:M4")) {
+        return Promise.resolve(new Response(JSON.stringify({ values: [] })));
+      }
+      if (/F\d+%3AM\d+|F\d+:M\d+/.test(u)) {
+        return Promise.resolve(new Response(JSON.stringify({ values: [[]] })));
+      }
+      if (u.includes("D25")) {
+        return Promise.resolve(new Response(JSON.stringify({ values: [["1"]] })));
+      }
+      if (u.includes("A4%3AL18") || u.includes("A4:L18")) {
+        return Promise.resolve(new Response(JSON.stringify({ values: [] })));
+      }
+      if (u.includes("D23%3AD24") || u.includes("D23:D24")) {
+        return Promise.resolve(new Response(JSON.stringify({ values: [["0"], ["0"]] })));
+      }
+      if (u.includes("fields=sheets.properties")) {
+        return Promise.resolve(metaResponse(["1", "template"]));
+      }
+      if (u.includes("집계!P6")) {
+        return Promise.resolve(new Response(JSON.stringify({ values: [] })));
+      }
+      throw new Error("unexpected fetch: " + u);
+    })
+  );
+}
+
 describe("handleSetExitRequest", () => {
   it("로그인하지 않으면 401을 반환한다", async () => {
     const testEnv = makeTestEnv();
@@ -144,12 +207,38 @@ describe("handleAgreeExitRequest", () => {
     });
     await handleSetExitRequest(setReq, testEnv, "https://example.com");
 
+    stubAgreeExitFetch({ member: { number: 5, name: "가", email: MEMBER_EMAIL } });
     const req = makeRequest("https://worker/exit-request/agree", { token, method: "POST" });
     const res = await handleAgreeExitRequest(req, testEnv, "https://example.com");
     const body = await res.json();
     expect(res.status, JSON.stringify(body)).toBe(200);
     expect(body.ok).toBe(true);
     expect(typeof body.agreedAt).toBe("number");
+  });
+
+  it("벌금 미납분이 있으면 400을 반환하고 동의가 기록되지 않는다", async () => {
+    stubOauthFetch();
+    const testEnv = makeTestEnv({ GOOGLE_SHEET_FILE_ID: "exit-req-agree-fine-unpaid" });
+    const token = await makeMemberToken({ memberNumber: "6" });
+    const setReq = makeRequest("https://worker/exit-request", {
+      token,
+      method: "POST",
+      body: { exitDate: "2020-01-01" },
+    });
+    await handleSetExitRequest(setReq, testEnv, "https://example.com");
+
+    const personalRows = personalTabRows();
+    personalRows[32] = ["", "", 1]; // ROW_FINE_NO_STATUS col2=1(미납)
+    stubAgreeExitFetch({ member: { number: 6, name: "나", email: MEMBER_EMAIL }, personalRows });
+    const req = makeRequest("https://worker/exit-request/agree", { token, method: "POST" });
+    const res = await handleAgreeExitRequest(req, testEnv, "https://example.com");
+    expect(res.status).toBe(400);
+
+    const id = testEnv.LEAVE_QUEUE_DO.idFromName("leave-queue");
+    const stub = testEnv.LEAVE_QUEUE_DO.get(id);
+    const getRes = await stub.fetch("https://do/exit/get?memberNumber=6");
+    const { entry } = await getRes.json();
+    expect(entry.agreedAt).toBeNull();
   });
 });
 

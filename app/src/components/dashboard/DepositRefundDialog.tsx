@@ -26,22 +26,22 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
 
-// 🔧 [일간 집계 완료 시점 반영] "마지막 참여일" 당일이 KST로 지났다고
-// 해서 그날의 최종 반환액이 바로 확정되는 게 아니다 — 앱스크립트의
-// daily_calc()가 "그날 다음날 자정~오전 1시 사이"에 실행돼야 그날치 벌금
-// 미납/페널티 판정이 최종 반영된다(사용자 지적). 그래서 exitDate 당일이
-// 지났다고 바로 "동의합니다" 버튼을 보여주면, 아직 집계가 안 끝난 값을
-// 회원이 동의해버릴 수 있다 — exitDate 다음날 오전 2시(집계 시각보다
-// 넉넉히 여유를 둔 시각) 이후부터 노출한다.
-function exitDateSettled(exitDate: string): boolean {
+// 🔧 [정산 퇴실 절차 명확화, 사용자 지시] "퇴실 신청 → 마지막 참여일
+// 익일에 정산 내역과 동의 버튼 출력. 단, 미납 벌금이 있거나 상금
+// 정산이 처리되지 않았으면 내역과 동의 버튼을 보여주지 않음 → 동의를
+// 누르면 관리자가 확인 후 확정 처리" — 이전엔 "exitDate 다음날 오전
+// 2시 이후"라는 모호한 시간 기준이었으나, 이제 "익일(자정)"로 단순화하고
+// 벌금 미납/상금 미정산 여부는 별도 조건(fineUnpaid/prizePending)으로
+// 명시적으로 분리한다.
+function exitDatePassedDay(exitDate: string): boolean {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(exitDate);
   if (!m) return false;
   // exitDate(그 날짜)의 KST 자정을 UTC ms로 표현: KST는 UTC+9이므로,
   // "그 날짜 00:00 KST"는 "그 날짜 00:00 UTC - 9시간"과 같다.
   const exitDateMidnightUtcMs = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) - 9 * 60 * 60 * 1000;
-  // 다음날 오전 2시(KST) = 그 날짜 자정(UTC 환산) + 24시간 + 2시간.
-  const settledAtUtcMs = exitDateMidnightUtcMs + 26 * 60 * 60 * 1000;
-  return Date.now() >= settledAtUtcMs;
+  // 익일 00:00(KST) = 그 날짜 자정(UTC 환산) + 24시간.
+  const nextDayMidnightUtcMs = exitDateMidnightUtcMs + 24 * 60 * 60 * 1000;
+  return Date.now() >= nextDayMidnightUtcMs;
 }
 
 export function DepositRefundDialog({
@@ -50,6 +50,7 @@ export function DepositRefundDialog({
   exitRequested,
   exitRequestDate,
   exitAgreedAt,
+  prizePending,
   onExitRequestChange,
   children,
 }: {
@@ -61,6 +62,10 @@ export function DepositRefundDialog({
   // 안 눌렀으면 null — 이 경우 퇴실일이 지나도 관리자의 정산 처리 버튼은
   // 비활성 상태로 남는다.
   exitAgreedAt: number | null;
+  // 마지막 참여일이 일요일이고 이 회원이 그 주 순위권(1~5등)인데 아직
+  // 상금 정산이 집행되지 않은 상태 — true면 벌금 미납 여부와 무관하게
+  // 동의 버튼을 보여주지 않는다(personal-status.js 참고).
+  prizePending: boolean;
   onExitRequestChange: () => void;
   children: ReactNode;
 }) {
@@ -70,11 +75,17 @@ export function DepositRefundDialog({
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState(exitRequestDate || todayStr());
 
-  // 🔧 [퇴실 프로세스 확장] 마지막 참여일(exitRequestDate)의 일간 집계가
-  // 실제로 끝나야만(다음날 오전 2시 이후) "예치금 정산액에 동의합니다"
-  // 버튼이 나타난다 — 그 전까지는 지금까지처럼 "퇴실 신청 취소하기"만
-  // 보여준다(사용자 지시).
-  const exitDatePassed = exitRequested && !!exitRequestDate && exitDateSettled(exitRequestDate);
+  // 🔧 [사용자 지시] "퇴실 신청 → 마지막 참여일 익일에 정산 내역과 동의
+  // 버튼 출력. 단, 미납 벌금이 있거나 상금 정산이 처리되지 않았으면
+  // 내역과 동의 버튼을 보여주지 않음" — 익일이 됐어도 벌금 미납이나
+  // 상금 미정산이 남아있으면 아직 정확한 반환액을 계산할 수 없어 동의
+  // 자체를 막는다.
+  const exitDatePassed =
+    exitRequested &&
+    !!exitRequestDate &&
+    exitDatePassedDay(exitRequestDate) &&
+    !breakdown.fineUnpaid &&
+    !prizePending;
 
   function handleRequestExit() {
     setSubmitting(true);
@@ -282,9 +293,26 @@ export function DepositRefundDialog({
               </div>
             )
           ) : exitRequested ? (
-            <Button variant="outline" className="w-full sm:h-12 sm:text-base" disabled={submitting} onClick={handleCancelExit}>
-              퇴실 신청 취소
-            </Button>
+            <>
+              {/* 🔧 [사용자 지시] "미납 벌금이 있거나 상금 정산이 처리되지
+                  않았으면 내역과 동의 버튼을 보여주지 않음" — 마지막
+                  참여일 익일이 지났는데도 동의 버튼이 안 보이면 회원이
+                  이유를 알 수 있게 사유를 안내한다. */}
+              {exitRequestDate && exitDatePassedDay(exitRequestDate) && (breakdown.fineUnpaid || prizePending) && (
+                <Alert variant="destructive">
+                  <AlertDescription>
+                    {breakdown.fineUnpaid && prizePending
+                      ? "벌금 미납분과 상금 정산이 아직 처리되지 않아 예치금 정산액을 확인할 수 없습니다."
+                      : breakdown.fineUnpaid
+                        ? "벌금 미납분이 남아있어 예치금 정산액을 확인할 수 없습니다."
+                        : "이번 주 상금 정산이 아직 처리되지 않아 예치금 정산액을 확인할 수 없습니다."}
+                  </AlertDescription>
+                </Alert>
+              )}
+              <Button variant="outline" className="w-full sm:h-12 sm:text-base" disabled={submitting} onClick={handleCancelExit}>
+                퇴실 신청 취소
+              </Button>
+            </>
           ) : (
             <Button
               variant="destructive"

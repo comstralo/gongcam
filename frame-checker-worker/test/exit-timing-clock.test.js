@@ -55,30 +55,30 @@ describe("exitDateSettled", () => {
   });
 
   // exitDate = 2026-09-07(월) 00:00 KST == 2026-09-06 15:00 UTC.
-  // settledAt = 그 시각 + 26시간 = 2026-09-07 17:00 UTC == 2026-09-08 02:00 KST.
+  // settledAt = 익일(2026-09-08) 00:00 KST == 2026-09-07 15:00 UTC.
   const exitDate = "2026-09-07";
-  const settledAtUtcMs = Date.UTC(2026, 8, 7, 17, 0, 0);
+  const settledAtUtcMs = Date.UTC(2026, 8, 7, 15, 0, 0);
 
-  it("exitDate 다음날 새벽 2시(KST) 정각에 true(경계 포함)", () => {
+  it("익일(KST) 정각에 true(경계 포함)", () => {
     vi.useFakeTimers();
     vi.setSystemTime(settledAtUtcMs);
     expect(exitDateSettled(exitDate)).toBe(true);
   });
 
-  it("새벽 1시 59분에는 아직 false", () => {
+  it("익일 정각 1분 전에는 아직 false", () => {
     vi.useFakeTimers();
     vi.setSystemTime(settledAtUtcMs - 60_000);
     expect(exitDateSettled(exitDate)).toBe(false);
   });
 
-  it("exitDate 당일 아무리 늦은 시각(23:59)이어도 아직 false(다음날 2시가 안 지남)", () => {
+  it("exitDate 당일 아무리 늦은 시각(23:59)이어도 아직 false(익일이 안 지남)", () => {
     // 2026-09-07(월) 23:59 KST == 2026-09-07 14:59 UTC.
     vi.useFakeTimers();
     vi.setSystemTime(Date.UTC(2026, 8, 7, 14, 59, 0));
     expect(exitDateSettled(exitDate)).toBe(false);
   });
 
-  it("경계 이후(다음날 새벽 2시보다 한참 지난 시각)에도 true 유지", () => {
+  it("경계 이후(익일보다 한참 지난 시각)에도 true 유지", () => {
     vi.useFakeTimers();
     vi.setSystemTime(settledAtUtcMs + 24 * 60 * 60 * 1000);
     expect(exitDateSettled(exitDate)).toBe(true);

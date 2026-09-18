@@ -13,6 +13,8 @@ import {
   resolveMemberNumber,
   getLeaveQueueStub,
   exitDateSettled,
+  findMemberNumberByEmail,
+  buildPersonalStatus,
 } from "./index.js";
 import { invalidateMemberCache, invalidatePersonalStatusCache } from "./cache.js";
 
@@ -76,6 +78,21 @@ export async function handleAgreeExitRequest(req, env, origin) {
     }
     if (!exitDateSettled(existing.exitDate)) {
       return json({ error: "아직 마지막 참여일의 일간 집계가 끝나지 않았습니다." }, 400, origin);
+    }
+
+    // 🔧 [사용자 지시] "미납 벌금이 있거나 상금 정산이 처리되지 않았으면
+    // 내역과 동의 버튼을 보여주지 않음" — 프론트가 이미 같은 조건으로
+    // 버튼 자체를 숨기지만(DepositRefundDialog), API를 직접 호출하는
+    // 경로까지 막기 위해 서버에서도 다시 확인한다. buildPersonalStatus가
+    // fineUnpaid/prizePending을 함께 계산해두므로 그대로 재사용한다.
+    const member = await findMemberNumberByEmail(env, accessToken, env.GOOGLE_SHEET_FILE_ID, session.email);
+    if (!member) return json({ error: "데이터 시트 명단에서 계정을 찾을 수 없습니다." }, 403, origin);
+    const status = await buildPersonalStatus(env, accessToken, env.GOOGLE_SHEET_FILE_ID, member.number, member.name);
+    if (status.depositRefundBreakdown.fineUnpaid) {
+      return json({ error: "벌금 미납분이 남아있어 동의할 수 없습니다." }, 400, origin);
+    }
+    if (status.prizePending) {
+      return json({ error: "이번 주 상금 정산이 아직 처리되지 않아 동의할 수 없습니다." }, 400, origin);
     }
 
     const agreedAt = Date.now();

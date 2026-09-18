@@ -418,7 +418,7 @@ export function ExitProcessDialog({
                     />
                     <SubRow label="예약 일자" value={preview.exitProcess.exitDate || "-"} />
                     <SubRow
-                      label="예치금 정산액 동의 일자"
+                      label="동의 일자"
                       value={preview.exitProcess.agreedAt ? new Date(preview.exitProcess.agreedAt).toLocaleString("ko-KR") : "미동의"}
                       valueClassName={!preview.exitProcess.agreedAt ? "text-destructive" : undefined}
                     />

@@ -209,6 +209,14 @@ export type StatusResponse = {
   // 마지막 참여일이 지난 뒤 "예치금 정산액에 동의합니다"를 누른 시각(ms
   // epoch). 아직 안 눌렀으면 null.
   exitAgreedAt: number | null;
+  // 🔧 [정산 퇴실 절차 명확화] 마지막 참여일이 일요일(주 마지막 날)이고
+  // 이 회원이 그 주 순위권(1~5등)인데 아직 관리자가 "상금 정산 집행"
+  // 버튼을 누르지 않은 상태 — true면 벌금 미납 여부와 무관하게 "예치금
+  // 정산액에 동의합니다" 버튼을 보여주지 않는다(상금이 먼저 정산돼야
+  // 정확한 반환액을 계산·동의할 수 있으므로). 마지막 참여일이 일요일이
+  // 아니면 그 시점에 상금 지급 대상 여부 자체가 확정되지 않으므로 항상
+  // false.
+  prizePending: boolean;
   periodAttendanceRate: string;
   periodAttendanceBreakdown: PeriodAttendanceBreakdown;
   periodGrid: PeriodGridDay[];

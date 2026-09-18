@@ -43,6 +43,7 @@ export function SettingsPage({ visible = true }: { visible?: boolean }) {
                 exitRequested={!!status.exitRequested}
                 exitRequestDate={status.exitRequestDate}
                 exitAgreedAt={status.exitAgreedAt}
+                prizePending={!!status.prizePending}
                 onExitRequestChange={refresh}
               >
                 <InfoCard className="flex items-center justify-between gap-2.5 bg-card">

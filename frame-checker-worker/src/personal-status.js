@@ -668,6 +668,25 @@ export async function buildPersonalStatus(env, accessToken, fileId, memberNumber
   const exitRequestDate = exitRequestEntry?.exitDate || null;
   const exitAgreedAt = exitRequestEntry?.agreedAt || null;
   const depositRefundBreakdownResult = depositRefundBreakdown(rows, penCounts, exitRequestDate);
+  // 🔧 [정산 퇴실 절차 명확화] "마지막 참여일 익일에 정산 내역과 동의
+  // 버튼 출력. 단, 미납 벌금이 있거나 상금 정산이 처리되지 않았으면
+  // 보여주지 않음"(사용자 지시) — 상금은 그 주(월~일) 1~5등에게
+  // 분배되므로, 마지막 참여일이 일요일(주 마지막 날)이 아니면 그 시점에
+  // 상금 지급 대상 여부 자체가 아직 확정되지 않아 상금 조건은 애초에
+  // 적용할 수 없다(사용자 지적) — 벌금 미납 여부만으로 판단한다.
+  // 일요일인 경우에만 "이 회원이 순위권(1~5등)인데 아직 지급 안 됨"을
+  // 함께 확인한다. 집계!P6은 회원별이 아니라 그 주 전체에 하나뿐인
+  // "상금 정산 집행" 마킹(handleAdminPrizeSettle/roster-status.js 참고)
+  // 이라, 순위와 조합해야만 "이 회원"의 미지급 여부가 나온다.
+  let prizePending = false;
+  if (exitRequestDate && new Date(exitRequestDate).getDay() === 0) {
+    const rankNum = Number(rawRank);
+    if (rankNum >= 1 && rankNum <= 5) {
+      const prizeSettleRows = await getSheetValues(env, accessToken, fileId, "집계!P6").catch(() => []);
+      const settlementSettled = ((prizeSettleRows[0] && prizeSettleRows[0][0]) || "").toString().trim() === "완료";
+      prizePending = !settlementSettled;
+    }
+  }
   const zeroConditions = meritZeroConditions(rows, depositRefundBreakdownResult.daysSinceJoin, penCounts.total);
   const zeroReason = (zeroConditions.find((c) => c.met) || {}).label || null;
   const weeklyMeritRank = rawRank === "-" ? `- (${zeroReason || "미집계"})` : rawRank;
@@ -780,6 +799,7 @@ export async function buildPersonalStatus(env, accessToken, fileId, memberNumber
     exitRequested: exitRequestEntry !== null,
     exitRequestDate,
     exitAgreedAt,
+    prizePending,
     periodAttendanceRate,
     periodAttendanceBreakdown: periodAttendanceBreakdownResult,
     periodGrid,
