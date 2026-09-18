@@ -193,7 +193,7 @@ export function buildDepositCauseItems(
     {
       key: "fine",
       // 🔧 2026-09: 어느 요일에 미납이 발생했는지 항상 괄호로 병기한다
-      // (사용자 지시) — "30일 미만 참여자 (D+N)"과 동일하게 rate가 0%여도
+      // (사용자 지시) — "30일 미만 참여 (D+N)"과 동일하게 rate가 0%여도
       // 괄호 표시 자체는 계속 남긴다. 미납 요일이 없으면 "(해당 없음)".
       // 🔧 [사용자 지시] 표준 국어 띄어쓰기 규범 — '해당'과 형용사 '없다'의
       // 활용형 '없음'은 별개 단어이므로 띄어 쓴다("해당없음" → "해당 없음").
@@ -202,7 +202,7 @@ export function buildDepositCauseItems(
     },
     {
       key: "days",
-      label: `30일 미만 참여자 (D+${daysSinceJoin >= 0 ? daysSinceJoin : "-"})`,
+      label: `30일 미만 참여 (D+${daysSinceJoin >= 0 ? daysSinceJoin : "-"})`,
       rate: daysSinceJoin >= 0 && daysSinceJoin < 30 ? 100 : 0,
     },
     {
