@@ -784,12 +784,12 @@ export const ExitedMemberRosterView = forwardRef<
                         </InfoCard>
 
                         <Button
-                          variant="outline"
+                          variant={result.blacklist ? "outline" : "destructive"}
                           className="w-full sm:h-11 sm:text-base"
                           disabled={togglingNumber === m.number}
                           onClick={() => toggleBlacklist(m)}
                         >
-                          {result.blacklist ? "블랙리스트 등록 해제" : "블랙리스트 등록"}
+                          {result.blacklist ? "블랙리스트 해제" : "블랙리스트 등록"}
                         </Button>
                       </>
                     )}
