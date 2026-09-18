@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Users, User, ChevronDown, Hash, Bell, ExternalLink } from "lucide-react";
+import { Users, User, ChevronDown, Hash, Bell, ExternalLink, FlaskConical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
@@ -25,6 +25,105 @@ function formatGoalType(raw: string): string {
   return raw.replace(/[()]/g, "").replace(/\s+/g, " ").trim();
 }
 
+// 🧪 [목업 미리보기] "새로고침" 버튼 옆의 실험용 버튼 — 실제 API 호출 없이
+// 이 화면이 다룰 수 있는 상태(스터디장/부스터디장/스터디원, 퇴실 예약
+// 유무, 알림 설정 ON/OFF, 시트 gid 유무)를 한 번에 눈으로 점검하기 위한
+// 것이다(사용자 지시). 실제 /admin/members/roster 응답과 동일한 타입을
+// 그대로 써서 화면 코드는 손대지 않는다.
+const DUMMY_NOTIFY_CATEGORIES: Record<NotifyCategory, string> = {
+  report_result: "제보 처리 결과",
+  leave_proof_result: "사유 반휴 처리 결과",
+  fine_status: "벌금 상태 변경",
+  exit_result: "퇴실/재납 처리 결과",
+  direct_message: "다른 참여자의 알림(귓속말)",
+};
+const DUMMY_MEMBERS: MemberRosterEntry[] = [
+  {
+    number: "1",
+    name: "김재희",
+    joinDate: "2026-01-05",
+    totalPenalty: 0,
+    suggestedKind: "settle",
+    reasons: [],
+    exitRequested: false,
+    exitRequestDate: null,
+    exitRequestedAt: null,
+    exitAgreedAt: null,
+    partiStatus: "스터디장",
+    pushSubscribed: true,
+    notifyPrefs: {
+      report_result: true,
+      leave_proof_result: true,
+      fine_status: true,
+      exit_result: true,
+      direct_message: false,
+    },
+    googleAccount: "jaehee.kim@gmail.com",
+    gooroomeeAccount: "jaehee.kim@gmail.com",
+    examKind: "공시",
+    goalType: "10H (교시제)",
+    lastLoginAt: Date.now() - 1000 * 60 * 40,
+    lastLoginIp: "121.128.55.10",
+    sheetGid: 123456789,
+  },
+  {
+    number: "2",
+    name: "이서준",
+    joinDate: "2026-02-14",
+    totalPenalty: 1,
+    suggestedKind: "settle",
+    reasons: [],
+    exitRequested: true,
+    exitRequestDate: "2026-09-25",
+    exitRequestedAt: Date.now() - 1000 * 60 * 60 * 24 * 2,
+    exitAgreedAt: null,
+    partiStatus: "부스터디장",
+    pushSubscribed: true,
+    notifyPrefs: {
+      report_result: true,
+      leave_proof_result: false,
+      fine_status: true,
+      exit_result: true,
+      direct_message: true,
+    },
+    googleAccount: "seojun.lee@gmail.com",
+    gooroomeeAccount: "seojun.lee@gmail.com",
+    examKind: "CPA",
+    goalType: "9H (달성제)",
+    lastLoginAt: Date.now() - 1000 * 60 * 60 * 5,
+    lastLoginIp: "58.234.11.202",
+    sheetGid: 234567890,
+  },
+  {
+    number: "3",
+    name: "윤아름",
+    joinDate: "2026-03-02",
+    totalPenalty: 2,
+    suggestedKind: "forced",
+    reasons: [],
+    exitRequested: false,
+    exitRequestDate: null,
+    exitRequestedAt: null,
+    exitAgreedAt: null,
+    partiStatus: "스터디원",
+    pushSubscribed: false,
+    notifyPrefs: {
+      report_result: true,
+      leave_proof_result: true,
+      fine_status: false,
+      exit_result: true,
+      direct_message: false,
+    },
+    googleAccount: "areum.yoon@gmail.com",
+    gooroomeeAccount: "",
+    examKind: "",
+    goalType: "8H (교시제)",
+    lastLoginAt: null,
+    lastLoginIp: "",
+    sheetGid: null,
+  },
+];
+
 export function MemberRosterList({ visible = true }: { visible?: boolean }) {
   const { call } = useApi();
 
@@ -40,12 +139,35 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
   const [expandedNumber, setExpandedNumber] = useState<string | null>(null);
   const [cancelingNumber, setCancelingNumber] = useState<string | null>(null);
   const [togglingNumber, setTogglingNumber] = useState<string | null>(null);
+  // 🧪 [목업 미리보기] true인 동안은 실제 API 대신 DUMMY_MEMBERS를 보여준다
+  // — 다시 누르면 꺼지고 즉시 실제 목록을 다시 불러온다.
+  const [showingDummy, setShowingDummy] = useState(false);
   // 탭 복귀/당겨서 새로고침/폴링이 겹쳐 load()가 중복 호출되는 걸 막는
   // 가드 — loading state는 비동기라 ref로 즉시 확인한다.
   const loadingRef = useRef(false);
 
-  function load() {
-    if (loadingRef.current) return;
+  function toggleDummyPreview() {
+    if (showingDummy) {
+      setShowingDummy(false);
+      load(true);
+      return;
+    }
+    setShowingDummy(true);
+    setError(null);
+    setExpandedNumber(null);
+    setMembers(DUMMY_MEMBERS);
+    setNotifyCategories(DUMMY_NOTIFY_CATEGORIES);
+    setSpreadsheetId(null);
+  }
+
+  // force: 목업 미리보기를 끄는 시점(toggleDummyPreview)처럼, 아직 state에
+  // 반영되지 않은 showingDummy=true를 무시하고 강제로 실제 목록을 불러올
+  // 때 쓴다 — setState 직후 같은 틱에서 부르는 클로저는 이전 렌더의
+  // showingDummy 값을 참조하므로 가드만으로는 막을 수 없다.
+  function load(force = false) {
+    // 🧪 목업 미리보기 중에는 자동 새로고침/폴링이 실제 데이터로
+    // 덮어쓰지 않도록 막는다.
+    if ((showingDummy && !force) || loadingRef.current) return;
     loadingRef.current = true;
     setLoading(true);
     setError(null);
@@ -66,7 +188,7 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
     setCancelingNumber(number);
     setError(null);
     call<{ ok: boolean }>("/exit-request/cancel", { method: "POST", body: { number } })
-      .then(load)
+      .then(() => load())
       .catch((err) => setError(err instanceof Error ? err.message : "퇴실 신청 취소에 실패했습니다."))
       .finally(() => setCancelingNumber(null));
   }
@@ -78,13 +200,13 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
       method: "POST",
       body: { number: m.number, appoint: m.partiStatus !== "부스터디장" },
     })
-      .then(load)
+      .then(() => load())
       .catch((err) => setError(err instanceof Error ? err.message : "부스터디장 임명/해제에 실패했습니다."))
       .finally(() => setTogglingNumber(null));
   }
 
-  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
-  usePullRefreshListener(true, load);
+  useEffect(() => load(), []); // eslint-disable-line react-hooks/exhaustive-deps
+  usePullRefreshListener(true, () => load());
   // 이 탭으로 돌아올 때마다 다시 불러오고(신규등록/퇴실/번호이동은 다른
   // 화면에서 처리되므로), 계속 띄워둔 채로도 관련 캐시의 3배 이상 주기로
   // 폴링해 자동 갱신되게 한다.
@@ -98,7 +220,27 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
 
   return (
     <Collapsible defaultOpen className="flex flex-col">
-      <SectionHeader icon={Users} title="참여 스터디원 목록" loading={loading} onRefresh={load} refreshProgress={refreshProgress} />
+      <SectionHeader
+        icon={Users}
+        title="참여 스터디원 목록"
+        loading={loading}
+        onRefresh={() => load()}
+        refreshProgress={refreshProgress}
+        trailing={
+          <Button
+            type="button"
+            variant={showingDummy ? "secondary" : "outline"}
+            size="icon-sm"
+            className="shrink-0"
+            onClick={toggleDummyPreview}
+            aria-pressed={showingDummy}
+            aria-label={showingDummy ? "목업 미리보기 끄기" : "목업 데이터로 미리보기"}
+            title={showingDummy ? "목업 미리보기 끄기" : "목업 데이터로 미리보기"}
+          >
+            <FlaskConical className="size-3.5" strokeWidth={ICON_STROKE.default} />
+          </Button>
+        }
+      />
       <CollapsiblePanel className="flex flex-col gap-4">
         {error && (
           <Alert variant="destructive">
@@ -257,7 +399,7 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
                         >
                           {m.partiStatus === "부스터디장" ? "임명 해제" : "부스터디장 임명"}
                         </Button>
-                        <ExitProcessDialog candidate={m} lockKind="admin_forced" onConfirmed={load} triggerClassName="w-full">
+                        <ExitProcessDialog candidate={m} lockKind="admin_forced" onConfirmed={() => load()} triggerClassName="w-full">
                           <Button variant="destructive" className="w-full sm:h-12 sm:text-base">
                             직권 P 퇴실
                           </Button>
@@ -265,7 +407,7 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
                         <ExitProcessDialog
                           candidate={m}
                           lockKind="settle"
-                          onConfirmed={load}
+                          onConfirmed={() => load()}
                           triggerClassName="w-full"
                         >
                           <Button
