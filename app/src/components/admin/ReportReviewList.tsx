@@ -1311,20 +1311,18 @@ export function ReportReviewList({
                                 ) : (
                                   <TintedPill tone="muted">대기</TintedPill>
                                 )}
+                                {/* 🔧 [사용자 지시] "1차 토글(요일 그룹 헤더)처럼 버튼
+                                    모양이 안 보이게" — render={<Button variant=.../>}로
+                                    아이콘 버튼을 합성하면 outline/ghost 어느 variant든
+                                    hover 시 배경이 생겼다. 1차 토글과 동일하게 render 없이
+                                    CollapsibleTrigger 자체를 클릭 영역으로 쓰고(기본
+                                    렌더 요소가 이미 <button>), 순수 아이콘만 넣어
+                                    hover에도 배경이 전혀 생기지 않게 한다. */}
                                 <CollapsibleTrigger
-                                  className="size-7 shrink-0"
-                                  render={
-                                    <Button
-                                      variant="ghost"
-                                      size="icon-sm"
-                                      aria-label={isMemberExpanded ? "상세 접기" : "상세 펼치기"}
-                                    />
-                                  }
+                                  className="flex size-7 shrink-0 items-center justify-center rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                                  aria-label={isMemberExpanded ? "상세 접기" : "상세 펼치기"}
                                   hideChevron
                                 >
-                                  {/* 🔧 [사용자 지시] 제보 화면 기준 통일 — 색 지정이 없으면 outline
-                                      버튼의 기본 전경색을 물려받아 날짜 그룹 헤더의 chevron
-                                      (text-muted-foreground)보다 진하게 보였다. */}
                                   <ChevronDown
                                     className={cn(
                                       "size-3.5 text-muted-foreground transition-transform",
