@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { BedDouble, ChevronDown, CalendarDays, User, FileText, Image as ImageIcon } from "lucide-react";
+import { BedDouble, ChevronDown, CalendarDays, FlaskConical, User, FileText, Image as ImageIcon } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -64,6 +64,50 @@ function groupByDay(items: LeaveProofReviewItem[]) {
   return STATUS_DAYS.filter((d) => map.has(d)).map((day) => ({ day, items: map.get(day)! }));
 }
 
+// 🧪 [목업 미리보기, 사용자 지시] "'PEN MONEY' 탭의 각 요소도 새로고침
+// 좌측에 목업 버튼을 만들고 적절한 목업을 생성" — 실 운영에서 나올 수
+// 있는 분기(대기·승인·반려, 봇 대기중 표시, 1장/2장 신청, 봇 동기화
+// 실패 경고)를 한 화면에서 모두 볼 수 있는 고정 스냅샷.
+const DUMMY_LEAVE_PROOF_ITEMS: LeaveProofReviewItem[] = [
+  {
+    id: "dummy-1",
+    memberNumber: "9301",
+    memberName: "윤서아",
+    day: "월",
+    reason: "감기몸살로 병원 진료",
+    requesterEmail: "dummy1@example.com",
+    ts: Date.now() - 3 * 60 * 60 * 1000,
+    reviewStatus: "pending",
+    rejectReason: null,
+    count: 1,
+    queued: true,
+  },
+  {
+    id: "dummy-2",
+    memberNumber: "9302",
+    memberName: "배주원",
+    day: "월",
+    reason: "가족 경조사 참석",
+    requesterEmail: "dummy2@example.com",
+    ts: Date.now() - 26 * 60 * 60 * 1000,
+    reviewStatus: "approved",
+    rejectReason: null,
+    count: 2,
+  },
+  {
+    id: "dummy-3",
+    memberNumber: "9303",
+    memberName: "장은우",
+    day: "수",
+    reason: "증빙 사진이 흐릿함",
+    requesterEmail: "dummy3@example.com",
+    ts: Date.now() - 50 * 60 * 60 * 1000,
+    reviewStatus: "rejected",
+    rejectReason: "제출된 증빙이 신청 사유와 무관해 보입니다.",
+    count: 1,
+  },
+];
+
 export function ReasonLeaveReviewList({
   visible,
   cycleFileId,
@@ -76,6 +120,9 @@ export function ReasonLeaveReviewList({
   const { call } = useApi();
   const { session } = useAuth();
 
+  // 🧪 [목업 미리보기, 사용자 지시] 켜져 있는 동안 API 호출 없이 고정
+  // 스냅샷(대기·승인·반려 혼재)을 보여준다.
+  const [showingDummy, setShowingDummy] = useState(false);
   const [items, setItems] = useState<LeaveProofReviewItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -99,6 +146,7 @@ export function ReasonLeaveReviewList({
   const loadingRef = useRef(false);
 
   function load() {
+    if (showingDummy) return;
     if (loadingRef.current) return;
     loadingRef.current = true;
     setLoading(true);
@@ -129,6 +177,18 @@ export function ReasonLeaveReviewList({
   const refreshProgress = usePollingRefresh(visible, load, 20 * 60_000);
 
   function decide(item: LeaveProofReviewItem, decision: "approved" | "rejected", rejectReason?: string) {
+    // 🧪 목업 중엔 실제 API를 호출하지 않고 로컬 state만 바꿔 승인/반려
+    // 전환만 보여준다 — 운영 데이터(시트/봇 manifest)에 어떤 쓰기도
+    // 발생하지 않는다.
+    if (showingDummy) {
+      if (decision === "approved") {
+        setApproved((prev) => ({ ...prev, [item.id]: true }));
+      } else {
+        setRejected((prev) => ({ ...prev, [item.id]: { reason: rejectReason || "" } }));
+        setRejecting((prev) => ({ ...prev, [item.id]: false }));
+      }
+      return;
+    }
     setDecidingId(item.id);
     setError(null);
     call<LeaveProofDecideResponse>("/admin/leave-proof/decide", {
@@ -157,6 +217,8 @@ export function ReasonLeaveReviewList({
       .finally(() => setDecidingId(null));
   }
 
+  const effectiveItems = showingDummy ? DUMMY_LEAVE_PROOF_ITEMS : items;
+
   return (
     <Collapsible defaultOpen className="flex flex-col">
       <SectionHeader
@@ -165,6 +227,27 @@ export function ReasonLeaveReviewList({
         loading={loading}
         onRefresh={load}
         refreshProgress={refreshProgress}
+        trailing={
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            className={cn("shrink-0", showingDummy && "border-ok/30 bg-ok/15 text-ok hover:bg-ok/25 dark:hover:bg-ok/25")}
+            onClick={() => {
+              setShowingDummy((v) => !v);
+              setExpandedDay(null);
+              setExpandedId(null);
+              setApproved({});
+              setRejected({});
+              setRejecting({});
+            }}
+            aria-pressed={showingDummy}
+            aria-label={showingDummy ? "목업 미리보기 끄기" : "목업 데이터로 미리보기"}
+            title={showingDummy ? "목업 미리보기 끄기" : "목업 데이터로 미리보기"}
+          >
+            <FlaskConical className="size-3.5" strokeWidth={ICON_STROKE.default} />
+          </Button>
+        }
       />
       <CollapsiblePanel className="flex flex-col gap-4">
         {error && (
@@ -182,13 +265,13 @@ export function ReasonLeaveReviewList({
             이전 렌더링(대개 빈 상태 메시지나 이전 목록)이 그대로 유지돼
             깜빡임 자체가 없다 — "로딩 중" 티는 SectionHeader의 loading
             prop(새로고침 아이콘 회전)만으로 충분하다. */}
-        {!items && <AdminListSkeleton />}
+        {!effectiveItems && <AdminListSkeleton />}
 
-        {items && items.length === 0 && <AdminEmptyState>검토 대기 중인 신청이 없습니다.</AdminEmptyState>}
+        {effectiveItems && effectiveItems.length === 0 && <AdminEmptyState>검토 대기 중인 신청이 없습니다.</AdminEmptyState>}
 
-        {items && items.length > 0 && (
+        {effectiveItems && effectiveItems.length > 0 && (
           <div className="flex flex-col gap-2 sm:gap-2.5">
-            {groupByDay(items).map((group) => {
+            {groupByDay(effectiveItems).map((group) => {
               const isDayExpanded = expandedDay === group.day;
               const approvedCount = group.items.filter((item) => isItemApproved(item, approved)).length;
               const rejectedCount = group.items.filter((item) => isItemRejected(item, rejected)).length;
@@ -284,7 +367,13 @@ export function ReasonLeaveReviewList({
                                       <ImageIcon className="size-3.5 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                       증빙 이미지
                                     </span>
-                                    {session?.token ? (
+                                    {showingDummy ? (
+                                      // 🧪 목업 항목은 실제 파일이 없어 CapturePreview의
+                                      // fetch가 항상 실패한다 — 정적 플레이스홀더로 대체.
+                                      <div className="flex aspect-video w-full items-center justify-center rounded-lg border border-dashed bg-muted">
+                                        <p className="text-xs text-muted-foreground sm:text-sm">목업 이미지 (실제 파일 없음)</p>
+                                      </div>
+                                    ) : session?.token ? (
                                       <CapturePreview id={item.id} token={session.token} endpoint="/admin/leave-proof/file" />
                                     ) : (
                                       <div className="flex aspect-video w-full items-center justify-center rounded-lg border border-dashed bg-muted">
