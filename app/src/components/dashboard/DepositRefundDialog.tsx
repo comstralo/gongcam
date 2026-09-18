@@ -422,8 +422,16 @@ export function DepositRefundDialog({
               refundOverlayMessage가 있을 때만 불투명 오버레이를 얹는다.
               관리자(effectiveIsAdmin)는 오버레이 없이 항상 실제 값을
               본다. */}
-          <div className="relative">
-            <div className="flex flex-col gap-3">
+          {/* 🔧 [버그 수정] "(도래, 상금 미정산)의 경우 화면이 잘리는데?" —
+              오버레이를 absolute inset-0으로 겹쳐두면 부모(relative
+              wrapper)의 실제 높이는 안쪽 카드들(반환 예치금+차감 원인)의
+              콘텐츠 높이로만 정해진다. 상금 미정산 문구가 다른 두 문구
+              (접수중/벌금 미납)보다 길어 좁은 모바일 너비(max-w-sm)에서
+              줄바꿈되면 그 텍스트가 카드 높이를 넘어서 잘렸다 — grid로
+              오버레이와 카드들을 같은 셀에 겹쳐(두 자식 다 1/1에 배치)
+              더 큰 쪽이 실제 높이를 결정하게 한다(absolute 대신). */}
+          <div className="grid">
+            <div className="col-start-1 row-start-1 flex flex-col gap-3">
               <RefundAmountCard
                 valueContent={refundOverlayMessage ? "-" : won(amount)}
                 valueClassName={cn(
@@ -434,7 +442,7 @@ export function DepositRefundDialog({
               <DepositCauseCard items={causeItems} maskValues={!!refundOverlayMessage} />
             </div>
             {refundOverlayMessage && (
-              <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-background/85 p-3 text-center backdrop-blur-[1px]">
+              <div className="col-start-1 row-start-1 flex items-center justify-center rounded-lg bg-background/85 p-3 text-center backdrop-blur-[1px]">
                 <p className="text-xs font-medium text-muted-foreground sm:text-sm">{refundOverlayMessage}</p>
               </div>
             )}
