@@ -664,7 +664,7 @@ const ActiveMemberRosterView = forwardRef<
                         disabled={showingDummy || m.partiStatus === "스터디장" || togglingNumber === m.number}
                         onClick={() => toggleViceLeader(m)}
                       >
-                        {m.partiStatus === "부스터디장" ? "임명 해제" : "부스터디장 임명"}
+                        {m.partiStatus === "부스터디장" ? "부스터디장 해임" : "부스터디장 임명"}
                       </Button>
                       <ExitProcessDialog
                         candidate={m}
