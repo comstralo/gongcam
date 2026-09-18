@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { Users, User, ChevronDown, Hash, Bell, ExternalLink, FlaskConical, Search, LayoutDashboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { InfoCard, SubRow, TintedPill } from "@/components/dashboard/shared";
 import { SectionHeader, AdminListSkeleton, AdminEmptyState } from "@/components/admin/shared";
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
+import { ExitedMemberRosterView } from "@/components/admin/ExitedMemberRosterView";
+import type { RosterViewHandle, RosterViewState } from "@/components/admin/ExitedMemberRosterView";
 import { useApi } from "@/hooks/useApi";
 import { usePullRefreshListener } from "@/hooks/usePullToRefresh";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
@@ -351,7 +354,17 @@ function buildMockExitPreview(member: MemberRosterEntry, kind: ExitKind, forcedR
   };
 }
 
-export function MemberRosterList({ visible = true }: { visible?: boolean }) {
+// 🔧 [사용자 지시] "'참여 스터디원 목록'과 '퇴실 스터디원 목록'을 합칠거야"
+// — 참여자 뷰 본문. 셸(MemberRosterList)이 SectionHeader/드롭다운/목업
+// 버튼을 소유하고, 이 컴포넌트는 그 아래 실제 목록(검색창~카드 목록)만
+// 렌더링한다. load는 ref(RosterViewHandle)로 셸에 노출해 새로고침 버튼이
+// 호출할 수 있게 하고, loading/refreshProgress는 onStateChange 콜백으로
+// 셸의 state에 반영한다(ref로 노출하면 값이 바뀌어도 부모가 리렌더되지
+// 않아 헤더가 낡은 값을 보여줄 수 있다).
+const ActiveMemberRosterView = forwardRef<
+  RosterViewHandle,
+  { visible: boolean; showingDummy: boolean; onStateChange: (state: RosterViewState) => void }
+>(function ActiveMemberRosterView({ visible, showingDummy, onStateChange }, ref) {
   const { call } = useApi();
 
   const [members, setMembers] = useState<MemberRosterEntry[] | null>(null);
@@ -367,55 +380,64 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
   const [cancelingNumber, setCancelingNumber] = useState<string | null>(null);
   const [togglingNumber, setTogglingNumber] = useState<string | null>(null);
   // 🔧 [사용자 지시] "퇴실 스터디원 목록"과 동일한 이름 검색 —
-  // ExitedMemberList와 같은 패턴(대소문자 무시, 부분 일치)을 재사용한다.
+  // ExitedMemberRosterView와 같은 패턴(대소문자 무시, 부분 일치)을 재사용한다.
   const [query, setQuery] = useState("");
-  // 🧪 [목업 미리보기] true인 동안은 실제 API 대신 DUMMY_MEMBERS를 보여준다
-  // — 다시 누르면 꺼지고 즉시 실제 목록을 다시 불러온다.
-  const [showingDummy, setShowingDummy] = useState(false);
   // 탭 복귀/당겨서 새로고침/폴링이 겹쳐 load()가 중복 호출되는 걸 막는
   // 가드 — loading state는 비동기라 ref로 즉시 확인한다.
   const loadingRef = useRef(false);
+  // showingDummy는 이제 셸(MemberRosterList)이 소유한다 — 이전엔 이
+  // 컴포넌트 안에서 직접 뒤집던 state를 prop으로 받고, 그 변화를 감지해
+  // 목업 주입/실 데이터 재조회를 수행한다. 최초 마운트 시(showingDummy가
+  // 처음부터 false)까지 "꺼지는 전환"으로 오인해 불필요한 강제 재조회가
+  // 한 번 더 일어나지 않도록 이전 값을 추적한다.
+  const wasDummyRef = useRef(false);
 
-  function toggleDummyPreview() {
+  // force: 목업 미리보기를 끄는 시점처럼, 아직 state에 반영되지 않은
+  // showingDummy=true를 무시하고 강제로 실제 목록을 불러올 때 쓴다 —
+  // setState 직후 같은 틱에서 부르는 클로저는 이전 렌더의 showingDummy
+  // 값을 참조하므로 가드만으로는 막을 수 없다.
+  // useCallback으로 안정화 — useImperativeHandle이 이 함수를 deps로
+  // 참조하는데, 매 렌더 새 함수면 handle도 매번 새로 만들어진다(무해하지만
+  // 불필요한 재실행 경고를 유발한다).
+  const load = useCallback(
+    (force = false) => {
+      // 🧪 목업 미리보기 중에는 자동 새로고침/폴링이 실제 데이터로
+      // 덮어쓰지 않도록 막는다.
+      if ((showingDummy && !force) || loadingRef.current) return;
+      loadingRef.current = true;
+      setLoading(true);
+      setError(null);
+      call<AdminMembersRosterResponse>("/admin/members/roster")
+        .then((data) => {
+          setMembers(data.members || []);
+          setNotifyCategories(data.notifyCategories || null);
+          setSpreadsheetId(data.spreadsheetId || null);
+        })
+        .catch((err) => setError(err instanceof Error ? err.message : "스터디원 목록을 불러오지 못했습니다."))
+        .finally(() => {
+          loadingRef.current = false;
+          setLoading(false);
+        });
+    },
+    [call, showingDummy]
+  );
+
+  useEffect(() => {
     if (showingDummy) {
-      setShowingDummy(false);
+      setError(null);
+      setExpandedNumber(null);
+      setMembers(DUMMY_MEMBERS);
+      setNotifyCategories(DUMMY_NOTIFY_CATEGORIES);
+      // 실제로 존재하지 않는 시트를 가리키는 가짜 링크를 만들지 않도록
+      // spreadsheetId는 비워둔다 — 컴포넌트의 기존 분기(spreadsheetId가
+      // 없으면 시트번호를 일반 텍스트로만 표시)가 그대로 적용된다.
+      setSpreadsheetId(null);
+    } else if (wasDummyRef.current) {
       load(true);
-      return;
     }
-    setShowingDummy(true);
-    setError(null);
-    setExpandedNumber(null);
-    setMembers(DUMMY_MEMBERS);
-    setNotifyCategories(DUMMY_NOTIFY_CATEGORIES);
-    // 실제로 존재하지 않는 시트를 가리키는 가짜 링크를 만들지 않도록
-    // spreadsheetId는 비워둔다 — 컴포넌트의 기존 분기(spreadsheetId가
-    // 없으면 시트번호를 일반 텍스트로만 표시)가 그대로 적용된다.
-    setSpreadsheetId(null);
-  }
-
-  // force: 목업 미리보기를 끄는 시점(toggleDummyPreview)처럼, 아직 state에
-  // 반영되지 않은 showingDummy=true를 무시하고 강제로 실제 목록을 불러올
-  // 때 쓴다 — setState 직후 같은 틱에서 부르는 클로저는 이전 렌더의
-  // showingDummy 값을 참조하므로 가드만으로는 막을 수 없다.
-  function load(force = false) {
-    // 🧪 목업 미리보기 중에는 자동 새로고침/폴링이 실제 데이터로
-    // 덮어쓰지 않도록 막는다.
-    if ((showingDummy && !force) || loadingRef.current) return;
-    loadingRef.current = true;
-    setLoading(true);
-    setError(null);
-    call<AdminMembersRosterResponse>("/admin/members/roster")
-      .then((data) => {
-        setMembers(data.members || []);
-        setNotifyCategories(data.notifyCategories || null);
-        setSpreadsheetId(data.spreadsheetId || null);
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : "참여 스터디원 목록을 불러오지 못했습니다."))
-      .finally(() => {
-        loadingRef.current = false;
-        setLoading(false);
-      });
-  }
+    wasDummyRef.current = showingDummy;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showingDummy]);
 
   function cancelExitRequest(number: string) {
     // 🧪 목업 미리보기 중에는 실제 회원이 아니므로 API를 호출하지 않는다.
@@ -450,7 +472,7 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
 
   useEffect(() => load(), []); // eslint-disable-line react-hooks/exhaustive-deps
   usePullRefreshListener(true, () => load());
-  // 이 탭으로 돌아올 때마다 다시 불러오고(신규등록/퇴실/번호이동은 다른
+  // 이 뷰로 돌아올 때마다 다시 불러오고(신규등록/퇴실/번호이동은 다른
   // 화면에서 처리되므로), 계속 띄워둔 채로도 관련 캐시의 3배 이상 주기로
   // 폴링해 자동 갱신되게 한다.
   // 🔧 [사용자 지시] "봇 상태를 제외하곤 모두 폴링 주기 20분으로 맞춰" —
@@ -461,6 +483,20 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
   useRefreshOnVisible(visible, load);
   const refreshProgress = usePollingRefresh(visible, load, 20 * 60_000);
 
+  // load는 매 렌더 새로 만들어지는 클로저(showingDummy를 참조)라 deps에서
+  // 빼면 셸이 오래된 showingDummy 값을 참조하는 handle을 들고 있게 될 수
+  // 있다 — load도 deps에 포함해 항상 최신 클로저를 노출한다.
+  useImperativeHandle(ref, () => ({ load }), [load]);
+
+  // 🔧 [버그 방지] ref(useImperativeHandle)로 loading/refreshProgress를
+  // 그대로 노출하면, 이 값이 바뀌어도(자식 리렌더) 부모(셸)는 리렌더되지
+  // 않아 헤더의 로딩 스피너·새로고침 게이지가 낡은 값에 머무를 수 있다 —
+  // 콜백으로 부모의 state에 반영해 정상적으로 리렌더를 트리거한다.
+  useEffect(() => {
+    onStateChange({ loading, refreshProgress });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, refreshProgress]);
+
   const filteredMembers = useMemo(() => {
     if (!members) return members;
     const trimmed = query.trim().toLowerCase();
@@ -469,285 +505,366 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
   }, [members, query]);
 
   return (
-    <Collapsible defaultOpen className="flex flex-col">
-      <SectionHeader
-        icon={Users}
-        title="참여 스터디원 목록"
-        loading={loading}
-        onRefresh={() => load()}
-        refreshProgress={refreshProgress}
-        trailing={
-          <Button
-            type="button"
-            variant={showingDummy ? "secondary" : "outline"}
-            size="icon-sm"
-            className="shrink-0"
-            onClick={toggleDummyPreview}
-            aria-pressed={showingDummy}
-            aria-label={showingDummy ? "목업 미리보기 끄기" : "목업 데이터로 미리보기"}
-            title={showingDummy ? "목업 미리보기 끄기" : "목업 데이터로 미리보기"}
-          >
-            <FlaskConical className="size-3.5" strokeWidth={ICON_STROKE.default} />
-          </Button>
-        }
-      />
-      <CollapsiblePanel className="flex flex-col gap-4">
-        {error && (
-          <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
+    <>
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
-        {/* 🔧 [사용자 지시] "퇴실 스터디원 목록"과 동일한 이름 검색 UI —
-            ExitedMemberList §검색창과 동일한 마크업(위치/아이콘/placeholder
-            스타일)을 그대로 재사용한다. */}
-        {members && members.length > 0 && (
-          <div className="relative">
-            <Search
-              className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground sm:size-4"
-              strokeWidth={ICON_STROKE.default}
-            />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="이름으로 검색"
-              className="pl-9 sm:h-11 sm:pl-10 sm:text-base"
-            />
-          </div>
-        )}
+      {/* 🔧 [사용자 지시] "퇴실 스터디원 목록"과 동일한 이름 검색 UI —
+          ExitedMemberRosterView §검색창과 동일한 마크업(위치/아이콘/placeholder
+          스타일)을 그대로 재사용한다. */}
+      {members && members.length > 0 && (
+        <div className="relative">
+          <Search
+            className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground sm:size-4"
+            strokeWidth={ICON_STROKE.default}
+          />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="이름으로 검색"
+            className="pl-9 sm:h-11 sm:pl-10 sm:text-base"
+          />
+        </div>
+      )}
 
-        {/* 🔧 [버그 수정, 2026-09] ReasonLeaveReviewList와 동일한 근본
-            수정 — 세 조건이 loading에 게이팅돼 있어 재조회 시작 직후
-            (loading=true, members=[]) 전부 거짓이 되는 진짜 공백이
-            있었다(Playwright 실측, ~1초 지속). loading을 빼고 members의
-            실제 값만으로 렌더링해 재조회 중엔 이전 화면이 그대로
-            유지되게 한다. */}
-        {!members && <AdminListSkeleton />}
+      {/* 🔧 [버그 수정, 2026-09] ReasonLeaveReviewList와 동일한 근본
+          수정 — 세 조건이 loading에 게이팅돼 있어 재조회 시작 직후
+          (loading=true, members=[]) 전부 거짓이 되는 진짜 공백이
+          있었다(Playwright 실측, ~1초 지속). loading을 빼고 members의
+          실제 값만으로 렌더링해 재조회 중엔 이전 화면이 그대로
+          유지되게 한다. */}
+      {!members && <AdminListSkeleton />}
 
-        {members && members.length === 0 && <AdminEmptyState>등록된 스터디원이 없습니다.</AdminEmptyState>}
+      {members && members.length === 0 && <AdminEmptyState>등록된 스터디원이 없습니다.</AdminEmptyState>}
 
-        {!loading && members && members.length > 0 && filteredMembers && filteredMembers.length === 0 && (
-          <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">
-            "{query}"와 일치하는 스터디원이 없습니다.
-          </p>
-        )}
+      {!loading && members && members.length > 0 && filteredMembers && filteredMembers.length === 0 && (
+        <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">
+          "{query}"와 일치하는 스터디원이 없습니다.
+        </p>
+      )}
 
-        {filteredMembers && filteredMembers.length > 0 && (
-          <div className="flex flex-col gap-2 sm:gap-2.5">
-            {filteredMembers.map((m) => {
-              const isExpanded = expandedNumber === m.number;
-              return (
-                // 🔧 [사용자 지시] "제보 쪽 토글의 전환 애니메이션처럼 부드럽게"
-                // — MyOutputPenSection에 적용한 base-ui Collapsible(높이
-                // 전환)을 여기도 적용해 펼침이 즉시 나타나지 않고 부드럽게
-                // 펼쳐지도록 한다.
-                <Collapsible key={m.number} open={isExpanded} onOpenChange={(open) => setExpandedNumber(open ? m.number : null)}>
-                {/* 🔧 [사용자 지시] "퇴실예약" 뱃지를 단 회원의 카드(토글
-                    박스)에 은은한 amber 글로우를 얹어 목록에서 한눈에
-                    띄게 한다 — 위 뱃지와 같은 톤(amber)을 그대로 쓴다. */}
-                <InfoCard className={cn("flex flex-col gap-2.5 bg-card", m.exitRequested && "animate-exit-requested-glow")}>
-                  <CollapsibleTrigger className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded" hideChevron>
-                    <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
-                      <User className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-                      {m.name}
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      {/* 🔧 [사용자 지시] "'화각 불량 제보'에서 설정한 디자인을 기준으로
-                          비슷한 모양의 다른 화면에도 적용" — 패딩 오버라이드(px-2 py-1
-                          leading-none)를 없애 TintedPill 기본 크기로 통일한다. 이전엔
-                          바로 옆 "퇴실 예약" 뱃지와 미묘하게 크기가 달랐다.
-                          🔧 [사용자 지시] 참여상태 3종을 색으로 바로 구분되게:
-                          스터디장=보라(purple), 부스터디장=파랑(blue),
-                          스터디원=초록(ok). */}
-                      <TintedPill
-                        tone={m.partiStatus === "스터디장" ? "purple" : m.partiStatus === "부스터디장" ? "blue" : "ok"}
+      {filteredMembers && filteredMembers.length > 0 && (
+        <div className="flex flex-col gap-2 sm:gap-2.5">
+          {filteredMembers.map((m) => {
+            const isExpanded = expandedNumber === m.number;
+            return (
+              // 🔧 [사용자 지시] "제보 쪽 토글의 전환 애니메이션처럼 부드럽게"
+              // — MyOutputPenSection에 적용한 base-ui Collapsible(높이
+              // 전환)을 여기도 적용해 펼침이 즉시 나타나지 않고 부드럽게
+              // 펼쳐지도록 한다.
+              <Collapsible key={m.number} open={isExpanded} onOpenChange={(open) => setExpandedNumber(open ? m.number : null)}>
+              {/* 🔧 [사용자 지시] "퇴실예약" 뱃지를 단 회원의 카드(토글
+                  박스)에 은은한 amber 글로우를 얹어 목록에서 한눈에
+                  띄게 한다 — 위 뱃지와 같은 톤(amber)을 그대로 쓴다. */}
+              <InfoCard className={cn("flex flex-col gap-2.5 bg-card", m.exitRequested && "animate-exit-requested-glow")}>
+                <CollapsibleTrigger className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded" hideChevron>
+                  <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
+                    <User className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
+                    {m.name}
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    {/* 🔧 [사용자 지시] "'화각 불량 제보'에서 설정한 디자인을 기준으로
+                        비슷한 모양의 다른 화면에도 적용" — 패딩 오버라이드(px-2 py-1
+                        leading-none)를 없애 TintedPill 기본 크기로 통일한다. 이전엔
+                        바로 옆 "퇴실 예약" 뱃지와 미묘하게 크기가 달랐다.
+                        🔧 [사용자 지시] 참여상태 3종을 색으로 바로 구분되게:
+                        스터디장=보라(purple), 부스터디장=파랑(blue),
+                        스터디원=초록(ok). */}
+                    <TintedPill
+                      tone={m.partiStatus === "스터디장" ? "purple" : m.partiStatus === "부스터디장" ? "blue" : "ok"}
+                    >
+                      {m.partiStatus}
+                    </TintedPill>
+                    {m.exitRequested && <TintedPill tone="amber">퇴실 예약</TintedPill>}
+                    <ChevronDown
+                      className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", isExpanded && "rotate-180")}
+                      strokeWidth={ICON_STROKE.default}
+                    />
+                  </span>
+                </CollapsibleTrigger>
+
+                <CollapsiblePanel className="flex flex-col">
+                  <div className="flex flex-col gap-2.5 pt-2.5">
+                    <div className="flex flex-col gap-1.5 rounded-xl border bg-card p-4 sm:p-5">
+                      <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
+                        <Hash className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
+                        상태 정보
+                      </span>
+                      {/* 🔧 [사용자 지시] "현재 페이지(관리자)의 위계도
+                          맞춰줘" — SubRow 기본 크기(text-micro-lg
+                          sm:text-xs)가 제보 화면 기준(text-xs sm:text-sm)
+                          보다 한 단계 작았다. 호출부마다
+                          labelClassName/valueClassName을 개별 지정하는
+                          대신, SubRow만 감싸는 컨테이너에 자손 선택자로
+                          한 번에 적용한다 — valueClassName으로 이미 색만
+                          지정된 곳(퇴실 예약일자 등)과도 충돌 없이
+                          합쳐진다. */}
+                      <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
+                        <SubRow label="준비 중인 시험" value={m.examKind || "-"} />
+                        <SubRow label="구글 계정" value={m.googleAccount || "-"} />
+                        <SubRow label="구루미 계정" value={m.gooroomeeAccount || "-"} />
+                        {/* 🔧 [사용자 지시] "'시트번호' 위에 '대시보드'를
+                            만들고 해당 유저의 대시보드를 확인할 수 있는
+                            링크" — StatusPage의 관리자용 회원 선택
+                            드롭다운을 `?member=<번호>` 쿼리로 초기 선택되게
+                            해뒀다(StatusPage.tsx 참고). 로그인 세션이
+                            "한 번만"(sessionStorage) 모드면 새 탭에는
+                            세션이 없어 로그인 화면으로 튕기므로, 새 탭이
+                            아니라 같은 탭에서 대시보드 홈("/")으로
+                            이동한다 — 목업 미리보기 중인 더미 회원은 실제
+                            회원번호가 아니므로(showingDummy) 링크를 걸지
+                            않는다. */}
+                        <SubRow
+                          label="대시보드"
+                          value={
+                            showingDummy ? (
+                              `${m.name}`
+                            ) : (
+                              <a
+                                href={`#/?member=${encodeURIComponent(m.number)}`}
+                                className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
+                              >
+                                {m.name}
+                                <LayoutDashboard className="size-3 shrink-0" strokeWidth={ICON_STROKE.default} />
+                              </a>
+                            )
+                          }
+                        />
+                        <SubRow
+                          label="시트번호"
+                          value={
+                            spreadsheetId && m.sheetGid !== null ? (
+                              <a
+                                href={`https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${m.sheetGid}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
+                              >
+                                {m.number}번
+                                <ExternalLink className="size-3 shrink-0" strokeWidth={ICON_STROKE.default} />
+                              </a>
+                            ) : (
+                              `${m.number}번`
+                            )
+                          }
+                        />
+                        <SubRow
+                          label="퇴실 예약일자"
+                          value={m.exitRequested ? (m.exitRequestDate ? `${m.exitRequestDate} 희망` : "접수됨") : "-"}
+                          valueClassName={m.exitRequested ? "text-amber-600 dark:text-amber-400" : undefined}
+                        />
+                        <SubRow
+                          label="최근 접속일자"
+                          value={m.lastLoginAt ? new Date(m.lastLoginAt).toLocaleString("ko-KR") : "-"}
+                        />
+                        <SubRow label="최근 접속 IP" value={m.lastLoginIp || "-"} />
+                      </div>
+                    </div>
+
+                    {/* 🔧 [관리자용 알림 설정 열람] 조회 전용 — 실제 변경은
+                        회원 본인만 자기 대시보드의 알림 설정에서 할 수 있다. */}
+                    <div className="flex flex-col gap-1.5 rounded-xl border bg-card p-4 sm:p-5">
+                      <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
+                        <Bell className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
+                        알림 설정
+                      </span>
+                      {/* 🔧 [PUSH 구독 OFF 시 세부 항목도 OFF로 표시] PUSH
+                          구독은 알림 수신의 최상위 조건이다 — 꺼져 있으면
+                          카테고리별 설정이 ON이어도 실제로는 아무 알림도
+                          못 받는다. 저장된 원본값을 그대로 보여주면 "구독은
+                          꺼졌는데 세부 항목은 죄다 ON"으로 보여 혼란을
+                          줬다(사용자 지적) — PUSH 구독 행 자체는 없애고,
+                          구독이 꺼진 회원은 세부 항목을 실제 저장값과
+                          무관하게 전부 OFF로 보여준다. */}
+                      <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
+                        {notifyCategories &&
+                          Object.entries(notifyCategories).map(([key, label]) => {
+                            const enabled = m.pushSubscribed && m.notifyPrefs[key as NotifyCategory];
+                            return (
+                              <SubRow
+                                key={key}
+                                label={label}
+                                value={enabled ? "ON" : "OFF"}
+                                valueClassName={enabled ? "text-ok" : "text-muted-foreground"}
+                              />
+                            );
+                          })}
+                      </div>
+                    </div>
+
+                    {/* 🔧 [퇴실 처리 버튼 분리] "스터디원 목록"은 자진 퇴실
+                        전용 화면이다 — 페널티 누적으로 인한 강제퇴실/예치금
+                        재납은 "페널티 대상자" 화면에서 별도로 처리하므로
+                        여기서는 유형을 직접 고를 필요가 없다(오히려 관리자가
+                        같은 회원에게 kind만 다르게 골라 반환율이 달라지는
+                        걸 방지하기 위함, 사용자 지적: "무조건 계산은 어디서나
+                        일치해야 해"). "직권 P"(admin_forced, 즉시 0% 반환)와
+                        "정산"(settle, 페널티 0/1회 기준 100%/50% 반환) 두
+                        가지로 고정한다. 정산은 회원이 실제로 퇴실 신청(예약)
+                        했을 뿐 아니라, 마지막 참여일이 지난 뒤 "예치금
+                        정산액에 동의합니다"까지 눌러야만 누를 수 있다 —
+                        신청만으로 관리자가 바로 확정 처리할 수 있으면 회원이
+                        실제 반환액을 확인하기도 전에 처리가 끝나버릴 수
+                        있다(사용자 지시로 동의 단계 추가). */}
+                    <div className={cn("grid gap-2", m.exitRequested ? "grid-cols-4" : "grid-cols-3")}>
+                      <Button
+                        variant="outline"
+                        className="w-full sm:h-12 sm:text-base"
+                        disabled={showingDummy || m.partiStatus === "스터디장" || togglingNumber === m.number}
+                        onClick={() => toggleViceLeader(m)}
                       >
-                        {m.partiStatus}
-                      </TintedPill>
-                      {m.exitRequested && <TintedPill tone="amber">퇴실 예약</TintedPill>}
-                      <ChevronDown
-                        className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", isExpanded && "rotate-180")}
-                        strokeWidth={ICON_STROKE.default}
-                      />
-                    </span>
-                  </CollapsibleTrigger>
-
-                  <CollapsiblePanel className="flex flex-col">
-                    <div className="flex flex-col gap-2.5 pt-2.5">
-                      <div className="flex flex-col gap-1.5 rounded-xl border bg-card p-4 sm:p-5">
-                        <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
-                          <Hash className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
-                          상태 정보
-                        </span>
-                        {/* 🔧 [사용자 지시] "현재 페이지(관리자)의 위계도
-                            맞춰줘" — SubRow 기본 크기(text-micro-lg
-                            sm:text-xs)가 제보 화면 기준(text-xs sm:text-sm)
-                            보다 한 단계 작았다. 호출부마다
-                            labelClassName/valueClassName을 개별 지정하는
-                            대신, SubRow만 감싸는 컨테이너에 자손 선택자로
-                            한 번에 적용한다 — valueClassName으로 이미 색만
-                            지정된 곳(퇴실 예약일자 등)과도 충돌 없이
-                            합쳐진다. */}
-                        <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
-                          <SubRow label="준비 중인 시험" value={m.examKind || "-"} />
-                          <SubRow label="구글 계정" value={m.googleAccount || "-"} />
-                          <SubRow label="구루미 계정" value={m.gooroomeeAccount || "-"} />
-                          {/* 🔧 [사용자 지시] "'시트번호' 위에 '대시보드'를
-                              만들고 해당 유저의 대시보드를 확인할 수 있는
-                              링크" — StatusPage의 관리자용 회원 선택
-                              드롭다운을 `?member=<번호>` 쿼리로 초기 선택되게
-                              해뒀다(StatusPage.tsx 참고). 로그인 세션이
-                              "한 번만"(sessionStorage) 모드면 새 탭에는
-                              세션이 없어 로그인 화면으로 튕기므로, 새 탭이
-                              아니라 같은 탭에서 대시보드 홈("/")으로
-                              이동한다 — 목업 미리보기 중인 더미 회원은 실제
-                              회원번호가 아니므로(showingDummy) 링크를 걸지
-                              않는다. */}
-                          <SubRow
-                            label="대시보드"
-                            value={
-                              showingDummy ? (
-                                `${m.name}`
-                              ) : (
-                                <a
-                                  href={`#/?member=${encodeURIComponent(m.number)}`}
-                                  className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
-                                >
-                                  {m.name}
-                                  <LayoutDashboard className="size-3 shrink-0" strokeWidth={ICON_STROKE.default} />
-                                </a>
-                              )
-                            }
-                          />
-                          <SubRow
-                            label="시트번호"
-                            value={
-                              spreadsheetId && m.sheetGid !== null ? (
-                                <a
-                                  href={`https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${m.sheetGid}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
-                                >
-                                  {m.number}번
-                                  <ExternalLink className="size-3 shrink-0" strokeWidth={ICON_STROKE.default} />
-                                </a>
-                              ) : (
-                                `${m.number}번`
-                              )
-                            }
-                          />
-                          <SubRow
-                            label="퇴실 예약일자"
-                            value={m.exitRequested ? (m.exitRequestDate ? `${m.exitRequestDate} 희망` : "접수됨") : "-"}
-                            valueClassName={m.exitRequested ? "text-amber-600 dark:text-amber-400" : undefined}
-                          />
-                          <SubRow
-                            label="최근 접속일자"
-                            value={m.lastLoginAt ? new Date(m.lastLoginAt).toLocaleString("ko-KR") : "-"}
-                          />
-                          <SubRow label="최근 접속 IP" value={m.lastLoginIp || "-"} />
-                        </div>
-                      </div>
-
-                      {/* 🔧 [관리자용 알림 설정 열람] 조회 전용 — 실제 변경은
-                          회원 본인만 자기 대시보드의 알림 설정에서 할 수 있다. */}
-                      <div className="flex flex-col gap-1.5 rounded-xl border bg-card p-4 sm:p-5">
-                        <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
-                          <Bell className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
-                          알림 설정
-                        </span>
-                        {/* 🔧 [PUSH 구독 OFF 시 세부 항목도 OFF로 표시] PUSH
-                            구독은 알림 수신의 최상위 조건이다 — 꺼져 있으면
-                            카테고리별 설정이 ON이어도 실제로는 아무 알림도
-                            못 받는다. 저장된 원본값을 그대로 보여주면 "구독은
-                            꺼졌는데 세부 항목은 죄다 ON"으로 보여 혼란을
-                            줬다(사용자 지적) — PUSH 구독 행 자체는 없애고,
-                            구독이 꺼진 회원은 세부 항목을 실제 저장값과
-                            무관하게 전부 OFF로 보여준다. */}
-                        <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
-                          {notifyCategories &&
-                            Object.entries(notifyCategories).map(([key, label]) => {
-                              const enabled = m.pushSubscribed && m.notifyPrefs[key as NotifyCategory];
-                              return (
-                                <SubRow
-                                  key={key}
-                                  label={label}
-                                  value={enabled ? "ON" : "OFF"}
-                                  valueClassName={enabled ? "text-ok" : "text-muted-foreground"}
-                                />
-                              );
-                            })}
-                        </div>
-                      </div>
-
-                      {/* 🔧 [퇴실 처리 버튼 분리] "스터디원 목록"은 자진 퇴실
-                          전용 화면이다 — 페널티 누적으로 인한 강제퇴실/예치금
-                          재납은 "페널티 대상자" 화면에서 별도로 처리하므로
-                          여기서는 유형을 직접 고를 필요가 없다(오히려 관리자가
-                          같은 회원에게 kind만 다르게 골라 반환율이 달라지는
-                          걸 방지하기 위함, 사용자 지적: "무조건 계산은 어디서나
-                          일치해야 해"). "직권 P"(admin_forced, 즉시 0% 반환)와
-                          "정산"(settle, 페널티 0/1회 기준 100%/50% 반환) 두
-                          가지로 고정한다. 정산은 회원이 실제로 퇴실 신청(예약)
-                          했을 뿐 아니라, 마지막 참여일이 지난 뒤 "예치금
-                          정산액에 동의합니다"까지 눌러야만 누를 수 있다 —
-                          신청만으로 관리자가 바로 확정 처리할 수 있으면 회원이
-                          실제 반환액을 확인하기도 전에 처리가 끝나버릴 수
-                          있다(사용자 지시로 동의 단계 추가). */}
-                      <div className={cn("grid gap-2", m.exitRequested ? "grid-cols-4" : "grid-cols-3")}>
+                        {m.partiStatus === "부스터디장" ? "임명 해제" : "부스터디장 임명"}
+                      </Button>
+                      <ExitProcessDialog
+                        candidate={m}
+                        lockKind="admin_forced"
+                        onConfirmed={() => load()}
+                        triggerClassName="w-full"
+                        mockPreview={showingDummy ? (kind, reason) => buildMockExitPreview(m, kind, reason) : undefined}
+                      >
+                        <Button variant="destructive" className="w-full sm:h-12 sm:text-base">
+                          직권 P 퇴실
+                        </Button>
+                      </ExitProcessDialog>
+                      <ExitProcessDialog
+                        candidate={m}
+                        lockKind="settle"
+                        onConfirmed={() => load()}
+                        triggerClassName="w-full"
+                        mockPreview={showingDummy ? (kind, reason) => buildMockExitPreview(m, kind, reason) : undefined}
+                      >
+                        <Button
+                          variant="destructive"
+                          className="w-full sm:h-12 sm:text-base"
+                        >
+                          정산 퇴실
+                        </Button>
+                      </ExitProcessDialog>
+                      {m.exitRequested && (
                         <Button
                           variant="outline"
                           className="w-full sm:h-12 sm:text-base"
-                          disabled={showingDummy || m.partiStatus === "스터디장" || togglingNumber === m.number}
-                          onClick={() => toggleViceLeader(m)}
+                          disabled={showingDummy || cancelingNumber === m.number}
+                          onClick={() => cancelExitRequest(m.number)}
                         >
-                          {m.partiStatus === "부스터디장" ? "임명 해제" : "부스터디장 임명"}
+                          신청 취소
                         </Button>
-                        <ExitProcessDialog
-                          candidate={m}
-                          lockKind="admin_forced"
-                          onConfirmed={() => load()}
-                          triggerClassName="w-full"
-                          mockPreview={showingDummy ? (kind, reason) => buildMockExitPreview(m, kind, reason) : undefined}
-                        >
-                          <Button variant="destructive" className="w-full sm:h-12 sm:text-base">
-                            직권 P 퇴실
-                          </Button>
-                        </ExitProcessDialog>
-                        <ExitProcessDialog
-                          candidate={m}
-                          lockKind="settle"
-                          onConfirmed={() => load()}
-                          triggerClassName="w-full"
-                          mockPreview={showingDummy ? (kind, reason) => buildMockExitPreview(m, kind, reason) : undefined}
-                        >
-                          <Button
-                            variant="destructive"
-                            className="w-full sm:h-12 sm:text-base"
-                          >
-                            정산 퇴실
-                          </Button>
-                        </ExitProcessDialog>
-                        {m.exitRequested && (
-                          <Button
-                            variant="outline"
-                            className="w-full sm:h-12 sm:text-base"
-                            disabled={showingDummy || cancelingNumber === m.number}
-                            onClick={() => cancelExitRequest(m.number)}
-                          >
-                            신청 취소
-                          </Button>
-                        )}
-                      </div>
+                      )}
                     </div>
-                  </CollapsiblePanel>
-                </InfoCard>
-                </Collapsible>
-              );
-            })}
+                  </div>
+                </CollapsiblePanel>
+              </InfoCard>
+              </Collapsible>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+});
+
+// 🔧 [사용자 지시] "'참여 스터디원 목록'을 '스터디원 목록'으로 바꾸고,
+// 목업 버튼 좌측에 드롭다운으로 '참여자'/'퇴실자'를 눌러서 토글" — 이
+// 컴포넌트가 뷰 전환 셸이 된다. SectionHeader/Collapsible/뷰 전환
+// 드롭다운/목업 토글 버튼은 여기서 한 번만 렌더링하고, 그 아래 본문은
+// view에 따라 ActiveMemberRosterView(참여자) 또는
+// ExitedMemberRosterView(퇴실자)로 갈아끼운다. 두 뷰는 언마운트하지
+// 않고 hidden으로만 숨긴다(DashboardPage의 everOpened+hidden 패턴과
+// 동일) — 전환해도 검색어/펼침 상태/목업 여부가 각자 그대로 유지된다.
+export function MemberRosterList({ visible = true }: { visible?: boolean }) {
+  const [view, setView] = useState<"active" | "exited">("active");
+  // 🧪 [목업 미리보기] 뷰마다 독립된 토글 — 참여자에서 켜둔 채 퇴실자로
+  // 넘어가도 퇴실자 뷰는 실제 데이터 그대로 보인다(각 뷰의 실제 데이터
+  // 상태와 버튼 표시가 항상 일치해야 예측 가능하므로).
+  const [activeDummy, setActiveDummy] = useState(false);
+  const [exitedDummy, setExitedDummy] = useState(false);
+  // 각 뷰가 onStateChange 콜백으로 알려주는 loading/refreshProgress를
+  // 셸의 state로 들고 있는다 — ref로 직접 읽으면 자식이 바뀌어도 부모가
+  // 리렌더되지 않아 헤더가 낡은 값을 계속 보여줄 수 있다.
+  const [activeState, setActiveState] = useState<RosterViewState>({ loading: true });
+  const [exitedState, setExitedState] = useState<RosterViewState>({ loading: true });
+  // 처음 선택된 뷰(active)만 우선 마운트하고, 퇴실자 뷰는 한 번이라도
+  // 선택된 뒤에야 마운트한다 — 그래야 앱 진입 시 퇴실자 API를 불필요하게
+  // 먼저 호출하지 않는다(DashboardPage의 everOpened 패턴과 동일 원리).
+  const everOpened = useRef<Record<"active" | "exited", boolean>>({ active: true, exited: false });
+  everOpened.current[view] = true;
+
+  const activeRef = useRef<RosterViewHandle>(null);
+  const exitedRef = useRef<RosterViewHandle>(null);
+  const currentState = view === "active" ? activeState : exitedState;
+  const currentDummy = view === "active" ? activeDummy : exitedDummy;
+
+  function toggleCurrentDummy() {
+    if (view === "active") setActiveDummy((v) => !v);
+    else setExitedDummy((v) => !v);
+  }
+
+  return (
+    <Collapsible defaultOpen className="flex flex-col">
+      <SectionHeader
+        icon={Users}
+        title="스터디원 목록"
+        loading={currentState.loading}
+        onRefresh={() => (view === "active" ? activeRef.current : exitedRef.current)?.load()}
+        // 퇴실자 뷰는 폴링이 없어 게이지 자체가 의미 없다 — undefined면
+        // SectionHeader가 게이지를 그리지 않는다.
+        refreshProgress={currentState.refreshProgress}
+        trailing={
+          <div className="flex items-center gap-1.5">
+            {/* 🔧 [사용자 지시] "목업 버튼 좌측에 드롭다운으로 '참여자'/
+                '퇴실자'를 눌러서 토글되도록, 기본은 참여자" */}
+            <Select value={view} onValueChange={(v) => v && setView(v as "active" | "exited")}>
+              <SelectTrigger className="w-fit shrink-0 bg-card data-[size=default]:h-7 sm:text-sm">
+                <SelectValue>{view === "active" ? "참여자" : "퇴실자"}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active" className="sm:text-base">
+                  참여자
+                </SelectItem>
+                <SelectItem value="exited" className="sm:text-base">
+                  퇴실자
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              type="button"
+              variant={currentDummy ? "secondary" : "outline"}
+              size="icon-sm"
+              className="shrink-0"
+              onClick={toggleCurrentDummy}
+              aria-pressed={currentDummy}
+              aria-label={currentDummy ? "목업 미리보기 끄기" : "목업 데이터로 미리보기"}
+              title={currentDummy ? "목업 미리보기 끄기" : "목업 데이터로 미리보기"}
+            >
+              <FlaskConical className="size-3.5" strokeWidth={ICON_STROKE.default} />
+            </Button>
           </div>
-        )}
+        }
+      />
+      <CollapsiblePanel className="flex flex-col gap-4">
+        <div hidden={view !== "active"} className="flex flex-col gap-4">
+          {everOpened.current.active && (
+            <ActiveMemberRosterView
+              ref={activeRef}
+              visible={visible && view === "active"}
+              showingDummy={activeDummy}
+              onStateChange={setActiveState}
+            />
+          )}
+        </div>
+        <div hidden={view !== "exited"} className="flex flex-col gap-4">
+          {everOpened.current.exited && (
+            <ExitedMemberRosterView
+              ref={exitedRef}
+              visible={visible && view === "exited"}
+              showingDummy={exitedDummy}
+              onStateChange={setExitedState}
+            />
+          )}
+        </div>
       </CollapsiblePanel>
     </Collapsible>
   );
