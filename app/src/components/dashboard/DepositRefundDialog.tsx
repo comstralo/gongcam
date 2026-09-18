@@ -57,12 +57,16 @@ function nextDummyStage(current: DummyExitStage): DummyExitStage {
   return DUMMY_STAGE_ORDER[(idx + 1) % DUMMY_STAGE_ORDER.length];
 }
 
+// 🔧 [사용자 지시] "지금처럼 작은 초록색 글씨로 하지 말고, '퇴실신청'
+// 같은 제목을 '퇴실신청 (더미)'로 하고 ·으로 '신청 전' 같이 화면
+// 구분을 해줘" — 별도 안내 줄 대신 DialogTitle 자체에 "(더미) · <단계>"
+// 를 이어 붙인다.
 const DUMMY_STAGE_LABEL: Record<DummyExitStage, string> = {
-  before: "목업 · 신청 전",
-  requested: "목업 · 신청 후(미도래)",
-  arrivedOk: "목업 · 신청 후(도래, 정상)",
-  arrivedFineUnpaid: "목업 · 신청 후(도래, 벌금 미납)",
-  arrivedPrizePending: "목업 · 신청 후(도래, 상금 미정산)",
+  before: "신청 전",
+  requested: "신청 후(미도래)",
+  arrivedOk: "신청 후(도래, 정상)",
+  arrivedFineUnpaid: "신청 후(도래, 벌금 미납)",
+  arrivedPrizePending: "신청 후(도래, 상금 미정산)",
 };
 
 // exitRequestDate는 "YYYY-MM-DD" 문자열만 쓰이므로, 미도래는 오늘로부터
@@ -306,10 +310,23 @@ export function DepositRefundDialog({
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle className="flex items-center justify-between gap-2">
-            <span className="flex items-center gap-1.5">
-              <Search className="size-4 text-primary sm:size-5" />
-              퇴실신청
+          {/* 🔧 [사용자 지시] "토글 버튼이 창 닫기 버튼이랑 약간 겹치거든?
+              좀 더 좌측으로 옮겨야 할 것 같아" — DialogContent의 닫기
+              버튼(absolute top-4 right-4, XIcon size-4)이 이 제목의
+              justify-between 우측 끝과 겹친다. 다른 다이얼로그는 제목
+              옆에 트레일링 컨트롤을 두지 않아 이 문제가 없었다 —
+              닫기 버튼 폭만큼 pr로 여백을 비워 토글 버튼을 그만큼
+              왼쪽으로 밀어낸다. */}
+          <DialogTitle className="flex items-center justify-between gap-2 pr-6">
+            <span className="flex min-w-0 items-center gap-1.5 truncate">
+              <Search className="size-4 shrink-0 text-primary sm:size-5" />
+              {/* 🔧 [사용자 지시] "지금처럼 작은 초록색 글씨로 하지 말고,
+                  '퇴실신청' 같은 제목을 '퇴실신청 (더미)'로 하고 ·으로
+                  '신청 전' 같이 화면 구분을 해줘" — 별도 안내 줄 대신
+                  제목 자체에 "(더미) · <단계>"를 이어 붙인다. */}
+              <span className="truncate">
+                퇴실신청{showingDummy && ` (더미) · ${DUMMY_STAGE_LABEL[dummyStage]}`}
+              </span>
             </span>
             {/* 🧪 [사용자 지시] "'퇴실신청' 다이얼로그 제목 옆에 목업 토글
                 버튼을 만들어줘" — 관리자만 이 버튼을 본다(회원 본인
@@ -355,10 +372,6 @@ export function DepositRefundDialog({
             )}
           </DialogTitle>
         </DialogHeader>
-
-        {showingDummy && (
-          <p className="text-micro-lg text-ok sm:text-xs">{DUMMY_STAGE_LABEL[dummyStage]}</p>
-        )}
 
         <div className="flex flex-col gap-3">
           {/* 🔧 2026-09: 이 다이얼로그의 카드 제목들이 dashboard/shared.tsx가
