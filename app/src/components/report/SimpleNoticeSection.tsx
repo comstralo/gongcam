@@ -105,7 +105,7 @@ export function SimpleNoticeSection({
           </div>
         )}
         <div className="flex flex-col gap-1.5">
-          <Label className="flex items-center gap-1.25 text-sm font-bold sm:text-base">
+          <Label className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
             <User className="size-3 shrink-0 text-muted-foreground sm:size-3.5" />
             수신 대상자
           </Label>
@@ -142,7 +142,7 @@ export function SimpleNoticeSection({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="notice-reason" className="flex items-center gap-1.25 text-sm font-bold sm:text-base">
+          <Label htmlFor="notice-reason" className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
             <MessageSquareWarning className="size-3 shrink-0 text-muted-foreground sm:size-3.5" />
             전송 원인
           </Label>
@@ -187,7 +187,7 @@ export function SimpleNoticeSection({
       <InfoCard className="flex flex-col gap-1 border-amber-600/30 bg-amber-600/5 dark:border-amber-400/30 dark:bg-amber-400/5">
         <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
           <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
-          <span className="text-sm font-bold sm:text-base">주의사항</span>
+          <span className="text-sm font-semibold sm:text-base">주의사항</span>
         </div>
         <ul className="flex flex-col gap-0.5">
           {NOTICE_CAUTIONS.map((text) => (

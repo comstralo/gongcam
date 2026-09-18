@@ -298,7 +298,7 @@ export function ExitProcessDialog({
           ) : isAdminForcedOnly ? (
             <>
               <InfoCard className="flex flex-col gap-1.5 bg-card">
-                <Label htmlFor="forced-reason" className="flex items-center gap-1.25 text-sm font-bold sm:text-base">
+                <Label htmlFor="forced-reason" className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                   <MessageSquareWarning className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                   직권 퇴실 사유
                 </Label>
@@ -348,7 +348,7 @@ export function ExitProcessDialog({
 
               {preview && (
                 <InfoCard className="flex flex-col gap-1.5 bg-card">
-                  <span className="flex items-center gap-1.25 text-sm font-bold sm:text-base">
+                  <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                     <ArrowRightLeft className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                     시트 변동사항
                   </span>
@@ -394,7 +394,7 @@ export function ExitProcessDialog({
 
               {preview && (
                 <InfoCard className="flex flex-col gap-1.5 bg-card">
-                  <span className="flex items-center gap-1.25 text-sm font-bold sm:text-base">
+                  <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                     <ArrowRightLeft className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                     시트 변동사항
                   </span>
@@ -407,7 +407,7 @@ export function ExitProcessDialog({
 
               {preview && preview.exitProcess && (
                 <InfoCard className="flex flex-col gap-1.5 bg-card">
-                  <span className="flex items-center gap-1.25 text-sm font-bold sm:text-base">
+                  <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                     <ClipboardList className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                     퇴실 프로세스
                   </span>
@@ -483,7 +483,7 @@ export function ExitProcessDialog({
 
               {preview && (
                 <InfoCard className="flex flex-col gap-2 bg-card">
-                  <span className="text-sm font-bold sm:text-base">{preview.kindStr} 처리 결과</span>
+                  <span className="text-sm font-semibold sm:text-base">{preview.kindStr} 처리 결과</span>
                   {preview.allChecks.length > 0 && <ForcedExitChecklist checks={preview.allChecks} />}
                   <pre className="whitespace-pre-wrap font-mono text-xs text-muted-foreground sm:text-sm">
                     {preview.resultMsg}
@@ -495,7 +495,7 @@ export function ExitProcessDialog({
                 <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
                   <div className="flex items-center gap-1.5 text-destructive">
                     <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
-                    <span className="text-sm font-bold sm:text-base">주의사항</span>
+                    <span className="text-sm font-semibold sm:text-base">주의사항</span>
                   </div>
                   <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
                     확정하면 현재 시트가 백업 탭으로 옮겨지고 원래 슬롯이 초기화됩니다. 되돌릴 수 없으니

@@ -38,13 +38,7 @@ export function InstallAppCard() {
     <InfoCard className="flex items-center justify-between gap-2.5 bg-card">
       <span className="inline-flex min-w-0 flex-1 items-center gap-1.5">
         <Download className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-        {/* 🔧 [사용자 지시] "'재희', '앱으로 설치', '상태 메시지'가 모두 같은
-            크기의 위계가 맞아?" — 크기(text-sm sm:text-base)는 같았지만,
-            이 ItemTitle(dashboard/shared.tsx 버전, font-bold)이 다른 두
-            제목(font-semibold)보다 한 단계 굵었다 — 이 카드만 같은 굵기로
-            맞춘다("앱으로 설치"만 대시보드 위계를 갖다 쓸 이유가 없는
-            일반 설정 카드 제목이므로 className으로 오버라이드). */}
-        <ItemTitle className="font-semibold">앱으로 설치</ItemTitle>
+        <ItemTitle>앱으로 설치</ItemTitle>
       </span>
 
       {canInstall && platform === "ios" ? (

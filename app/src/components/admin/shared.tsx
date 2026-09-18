@@ -17,12 +17,15 @@ import { cn, ICON_STROKE } from "@/lib/utils";
 import type { PenaltySlotHistoryEntry, DepositRefundBreakdown, ExitKind } from "@/lib/api/types";
 
 // 관리자 탭 전반의 텍스트 위계를 명시적으로 나눈 프리미티브들.
-// 1. SectionHeader 제목  — text-sm/base, font-bold   (섹션의 최상위 텍스트)
-// 2. ItemTitle           — text-sm/base, font-semibold (리스트 한 항목의 1차 텍스트, 섹션 제목보다 굵기 한 단계 낮음)
+// 1. SectionHeader 제목  — text-sm/base, font-semibold (섹션의 최상위 텍스트)
+// 2. ItemTitle           — text-sm/base, font-semibold (리스트 한 항목의 1차 텍스트)
 // 3. FieldLabel          — text-xs/sm,  font-medium, muted (카드 안 항목명 — 크기 자체를 한 단계 낮춰 값과 구분)
 // 4. FieldValue          — text-xs/sm,  font-semibold (카드 안 강조 값, FieldLabel과 나란히 쓰임)
-// 이전에는 섹션 제목과 리스트 아이템 이름, 카드 라벨이 모두 text-sm/base 크기를 공유해
-// 굵기 차이(bold vs semibold)만으로 위계를 나누려 해서 시각적으로 거의 구분되지 않았다.
+// 🔧 [사용자 지시] "우리 시스템에서 볼드로 처리된 부분 모두 세미볼드로
+// 전수조사해서 바꿔버려" — 앱 전체의 font-bold를 font-semibold로
+// 통일했다. SectionHeader와 ItemTitle의 굵기 자체는 이제 같지만
+// text-sm/base 크기가 나머지 두 단계와 이미 구분해주므로 위계는
+// 유지된다.
 
 // 백엔드가 퇴실자를 "{이름} (퇴실)" 형태(백업 탭 이름 그대로)로 내려주는
 // 곳(ExitedMemberRosterView, "다른 회원 보기" 드롭다운, 신규 등록 블랙리스트 경고
@@ -384,7 +387,7 @@ export function SectionHeader({
           눌러도 똑같이 펼쳐진다. 두 번째 트리거의 제목 텍스트는 화면엔
           안 보이되(sr-only) 스크린 리더용 라벨로 남긴다. */}
       <CollapsibleTrigger className={trailing ? "w-auto shrink-0" : "flex-1"} hideChevron>
-        <span className="flex items-center gap-2 text-sm font-bold sm:text-base">
+        <span className="flex items-center gap-2 text-sm font-semibold sm:text-base">
           <Icon className="size-4 shrink-0 text-primary sm:size-5" strokeWidth={ICON_STROKE.default} />
           {title}
         </span>
@@ -608,15 +611,10 @@ export function PenaltyHistorySection({
           와 거의 같은 크기(12/14px)라 위계가 잘 안 읽혔다 — 위 4단 체계의
           ItemTitle(14/16px)로 올렸다. TotalPenaltyDialog(회원용)와
           PenaltyCandidateList(관리자용) 둘 다 이 컴포넌트를 공유하므로
-          한 번에 적용된다. font-bold 오버라이드: 이 admin/shared.tsx의
-          ItemTitle은 4단 체계상 font-semibold가 맞지만, TotalPenaltyDialog
-          쪽에서는 이미 검증된 기준값인 MeritBreakdownDialog(text-sm
-          font-bold sm:text-base)와 굵기까지 정확히 맞춰야 한다(사용자
-          지시) — admin 쪽 다른 ItemTitle 용례(예: 회원 이름)는 semibold
-          그대로 두고 여기만 개별적으로 올린다. */}
+          한 번에 적용된다. */}
       <span className="inline-flex items-center gap-1.25">
         <Icon className="size-3.5 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-        <ItemTitle className="font-bold">{title}</ItemTitle>
+        <ItemTitle>{title}</ItemTitle>
       </span>
       {/* 🔧 2026-09 재정정: "-" 가짜 값 문제를 고친 뒤에도 여전히 위계가
           안 맞아 보인다는 지적을 받았다 — 원인은 크기였다. SubRow

@@ -75,7 +75,7 @@ export function AppShell({ children, title, titleIcon: TitleIcon, hideEyebrow, f
                   공부합시당 캠스터디
                 </span>
               )}
-              <h1 className="flex items-center gap-2 text-xl font-bold sm:text-2xl">
+              <h1 className="flex items-center gap-2 text-xl font-semibold sm:text-2xl">
                 {TitleIcon && (
                   <TitleIcon className="size-5 text-primary sm:size-6" strokeWidth={ICON_STROKE.default} />
                 )}

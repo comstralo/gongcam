@@ -706,7 +706,7 @@ function SpreadsheetOperatorSection() {
           쓰는 특수 케이스라, SectionHeader와 동일하게 음수 마진으로 배경을
           부모 SectionCard 패딩 바깥(카드 가장자리)까지 넓힌다. */}
       <div className="-mx-2.5 -mt-2.5 mb-3.5 flex items-center bg-section-header px-2.5 py-3 sm:-mx-3.5 sm:-mt-3.5 sm:mb-4 sm:px-3.5 sm:py-3.5">
-        <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
+        <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
           <Database className="size-4 shrink-0 text-primary sm:size-5" strokeWidth={ICON_STROKE.default} />
           스프레드시트 오퍼레이터
         </span>

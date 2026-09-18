@@ -278,11 +278,9 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
 
         {state === "on" && devices && devices.length > 0 && (
           <div className="flex flex-col gap-1.5 border-t pt-2.5">
-            {/* 🔧 [사용자 지시] 이 ItemTitle(dashboard/shared.tsx 버전,
-                font-bold)이 "푸시 알림"(font-semibold)보다 굵었다 — 통일한다. */}
             <span className="inline-flex items-center gap-1.25">
               <Smartphone className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-              <ItemTitle className="font-semibold">알림 받는 기기</ItemTitle>
+              <ItemTitle>알림 받는 기기</ItemTitle>
             </span>
             {devices.map((d) =>
               editingDeviceId === d.id ? (

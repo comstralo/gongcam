@@ -92,7 +92,7 @@ export function CheckerPage() {
           <Link to="/" className="text-xs font-semibold tracking-tight text-primary sm:text-sm">
             공부합시당 캠스터디
           </Link>
-          <h1 className="flex items-center gap-2 text-xl font-bold sm:text-2xl">
+          <h1 className="flex items-center gap-2 text-xl font-semibold sm:text-2xl">
             <ScanLine className="size-5 text-primary sm:size-6" strokeWidth={ICON_STROKE.default} />
             화각 체커
           </h1>
@@ -205,7 +205,7 @@ export function CheckerPage() {
               {isCountingDown && (
                 <div className="absolute inset-0 z-7 flex flex-col items-center justify-center gap-1 bg-black/40 px-4">
                   <span
-                    className="block w-full text-center font-mono font-bold tabular-nums text-yellow-400"
+                    className="block w-full text-center font-mono font-semibold tabular-nums text-yellow-400"
                     style={{
                       fontSize: size ? Math.round(size.width * 0.16) : undefined,
                       textShadow: "0 2px 8px rgba(0,0,0,0.8)",
@@ -215,7 +215,7 @@ export function CheckerPage() {
                     {capture.startCountdown}초 후
                   </span>
                   <span
-                    className="block w-full text-center font-mono font-bold tabular-nums text-yellow-400"
+                    className="block w-full text-center font-mono font-semibold tabular-nums text-yellow-400"
                     style={{
                       fontSize: size ? Math.round(size.width * 0.16) : undefined,
                       textShadow: "0 2px 8px rgba(0,0,0,0.8)",
@@ -273,7 +273,7 @@ export function CheckerPage() {
                     <img src={src} className="size-full rounded-sm border object-cover" alt={`촬영 ${i + 1}`} />
                     <span className="absolute inset-0 flex items-center justify-center rounded-sm bg-black/45">
                       <span
-                        className="font-mono text-base font-bold text-white"
+                        className="font-mono text-base font-semibold text-white"
                         style={{ textShadow: "0 1px 4px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,0.9)" }}
                       >
                         {i + 1}
@@ -308,7 +308,7 @@ export function CheckerPage() {
                       <img src={src} className="aspect-video w-full rounded-sm border object-cover" alt={`촬영 ${i + 1}`} />
                       <span className="absolute inset-0 flex items-center justify-center rounded-sm bg-black/45">
                         <span
-                          className="font-mono text-2xl font-bold text-white sm:text-3xl"
+                          className="font-mono text-2xl font-semibold text-white sm:text-3xl"
                           style={{ textShadow: "0 1px 4px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,0.9)" }}
                         >
                           {i + 1}
@@ -547,7 +547,7 @@ export function CheckerPage() {
           <InfoCard className="flex flex-col gap-1 border-amber-600/30 bg-amber-600/5 mobile-landscape:hidden dark:border-amber-400/30 dark:bg-amber-400/5">
             <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
               <TriangleAlert className="size-3.5 shrink-0 sm:size-4" />
-              <span className="text-sm font-bold sm:text-base">주의사항</span>
+              <span className="text-sm font-semibold sm:text-base">주의사항</span>
             </div>
             <ul className="flex flex-col gap-0.5">
               {CHECKER_CAUTIONS.map((text) => (
@@ -576,7 +576,7 @@ export function CheckerPage() {
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
                 <TriangleAlert className="size-4 shrink-0" />
-                <span className="text-base font-bold">주의사항</span>
+                <span className="text-base font-semibold">주의사항</span>
               </div>
               <button
                 type="button"

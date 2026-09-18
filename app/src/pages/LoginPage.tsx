@@ -92,7 +92,7 @@ export function LoginPage() {
         <span className="text-xs font-semibold tracking-tight text-primary sm:text-sm">
           공부합시당 캠스터디
         </span>
-        <h1 className="text-xl font-bold sm:text-2xl">스터디 대시보드</h1>
+        <h1 className="text-xl font-semibold sm:text-2xl">스터디 대시보드</h1>
       </div>
 
       <Card className="w-full page-content">
@@ -147,7 +147,7 @@ export function LoginPage() {
               <ScanLine className="size-5 text-primary sm:size-6" />
             </span>
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span className="text-[15px] font-bold sm:text-lg">화각 체커</span>
+              <span className="text-[15px] font-semibold sm:text-lg">화각 체커</span>
               <span className="text-xs text-muted-foreground sm:text-sm">4×4 격자로 화각을 점검하고 사진/영상을 촬영합니다</span>
             </span>
             <span className="shrink-0 font-mono text-micro uppercase tracking-wide text-primary sm:text-xs">누구나</span>

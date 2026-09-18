@@ -37,7 +37,7 @@ export function RankBadge({ rank }: { rank: string }) {
     return <span className="w-7 shrink-0 text-center text-lg sm:text-xl">{RANK_EMOJI[value]}</span>;
   }
   return (
-    <span className="flex w-7 shrink-0 items-center justify-center text-sm font-bold tabular-nums text-muted-foreground sm:text-base">
+    <span className="flex w-7 shrink-0 items-center justify-center text-sm font-semibold tabular-nums text-muted-foreground sm:text-base">
       {rank}
     </span>
   );

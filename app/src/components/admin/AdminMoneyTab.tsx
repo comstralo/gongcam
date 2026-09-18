@@ -257,7 +257,7 @@ function PaidFineList({
 
       <InfoCard className="flex items-center justify-between gap-2 bg-card">
         <FieldLabel>납부된 총 벌금액</FieldLabel>
-        <span className="font-mono text-base font-bold tabular-nums text-ok sm:text-lg">{won(totalAmount)}</span>
+        <span className="font-mono text-base font-semibold tabular-nums text-ok sm:text-lg">{won(totalAmount)}</span>
       </InfoCard>
 
       {/* 🔧 [버그 수정, 2026-09] ReasonLeaveReviewList와 동일한 근본
@@ -597,7 +597,7 @@ function PrizeRecipientList({
 
         <InfoCard className="flex items-center justify-between gap-2 bg-card">
           <FieldLabel>총 모금액</FieldLabel>
-          <span className="font-mono text-base font-bold tabular-nums text-ok sm:text-lg">{won(collectMoney)}</span>
+          <span className="font-mono text-base font-semibold tabular-nums text-ok sm:text-lg">{won(collectMoney)}</span>
         </InfoCard>
 
         {/* 🔧 [버그 수정, 2026-09] ReasonLeaveReviewList와 동일한 근본

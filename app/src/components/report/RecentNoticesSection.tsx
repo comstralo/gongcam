@@ -56,7 +56,7 @@ export function RecentNoticesSection({ refreshSignal }: { refreshSignal?: number
     // 없이 기본 전경색), SubRow도 오버라이드 없이 기본 크기(더 작음)
     // 그대로였다.
     <SectionCard className="flex flex-col gap-1.5">
-      <span className="flex items-center gap-1.25 text-sm font-bold sm:text-base">
+      <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
         <History className="size-3 shrink-0 text-muted-foreground sm:size-3.5" />
         최근 전송된 알림
       </span>
