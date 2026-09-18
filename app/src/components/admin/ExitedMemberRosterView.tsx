@@ -652,7 +652,7 @@ export const ExitedMemberRosterView = forwardRef<
                         {/* 🔧 [사용자 지시] "'참여 스터디원 목록'의 상태
                             정보를 '퇴실 스터디원 목록'에도 반환 예치금
                             위에" — MemberRosterList의 상태 정보 카드에서
-                            퇴실자에게도 의미가 있는 항목(준비 중인 시험/
+                            퇴실자에게도 의미가 있는 항목(준비시험/
                             계정/대시보드/시트번호)만 발췌한다. 퇴실 예약
                             일자·최근 접속은 이미 퇴실한 회원에게 개념상
                             의미가 없어 제외. 이 필드들을 저장하기 시작한
@@ -664,7 +664,7 @@ export const ExitedMemberRosterView = forwardRef<
                             상태 정보
                           </span>
                           <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
-                            <SubRow label="준비 중인 시험" value={result.examKind || "-"} />
+                            <SubRow label="준비시험" value={result.examKind || "-"} />
                             <SubRow label="구글 계정" value={result.googleAccount || "-"} />
                             <SubRow label="구루미 계정" value={result.gooroomeeAccount || "-"} />
                             {/* 🔧 퇴실자의 원래 회원번호(m.number, "exited:{이름}
