@@ -296,7 +296,7 @@ export function DepositRefundDialog({
     : !effectiveExitRequested
       ? null
       : !lastAttendDayPassed
-        ? "마지막 참여일 다음 날부터 반환 예치금을 확인할 수 있습니다."
+        ? "마지막 참여일 다음 날부터 반환 예치금과 차감 원인을 확인할 수 있습니다."
         : effectiveBreakdown.fineUnpaid
           ? "미납 벌금을 먼저 납부해 주세요. 이후 퇴실 절차가 진행됩니다."
           : effectivePrizePending
