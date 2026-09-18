@@ -114,11 +114,11 @@ const FINE_BADGE_TONE: Record<FineAction, "ok" | "warn" | "amber" | "primary"> =
 // 실제 데이터의 자연스러운 형태라 단계 순환(다른 화면의 dummyStage
 // 패턴)보다 이 방식이 더 적합하다.
 const DUMMY_PAID_FINE_RECORDS: FineRecord[] = [
-  { number: "9001", name: "김민준", day: "월", baseStatus: "미납" },
-  { number: "9002", name: "이서연", day: "월", baseStatus: "납부" },
-  { number: "9003", name: "박도윤", day: "화", baseStatus: "면제" },
-  { number: "9004", name: "최지우", day: "화", baseStatus: "미납" },
-  { number: "9001", name: "김민준", day: "금", baseStatus: "미납" },
+  { number: "1", name: "재희", day: "월", baseStatus: "미납" },
+  { number: "2", name: "서준", day: "월", baseStatus: "납부" },
+  { number: "3", name: "아름", day: "화", baseStatus: "면제" },
+  { number: "4", name: "지민", day: "화", baseStatus: "미납" },
+  { number: "1", name: "재희", day: "금", baseStatus: "미납" },
 ];
 
 const DUMMY_ADMIN_FORCED_COUNTS: Record<string, number> = { 월: 0, 화: 0, 수: 0, 목: 0, 금: 1, 토: 0, 일: 0 };
@@ -176,26 +176,26 @@ function dummyWeekDays(overrides: Partial<Record<string, Partial<StatusResponse[
 }
 
 // 회원번호 → (상세 펼침용 7일치 요일 카드, 반환예치금 breakdown). 실제
-// 처리 대상(9001~9004)마다 다른 분기를 보여준다: 미납이 두 요일(월·금)
-// 누적돼 반환액이 깎인 경우(9001), 정상 납부라 영향 없는 경우(9002),
-// 면제라 벌금 자체가 없는 경우(9003), 재납이 발생 중인 경우(9004).
+// 처리 대상(1~4번)마다 다른 분기를 보여준다: 미납이 두 요일(월·금)
+// 누적돼 반환액이 깎인 경우(1번), 정상 납부라 영향 없는 경우(2번),
+// 면제라 벌금 자체가 없는 경우(3번), 재납이 발생 중인 경우(4번).
 const DUMMY_MEMBER_DETAIL: Record<string, { days: StatusResponse["days"]; breakdown: StatusResponse["depositRefundBreakdown"] }> = {
-  "9001": {
+  "1": {
     days: dummyWeekDays({
       월: { total: 5000, paymentStatus: "미납" },
       금: { total: 5000, paymentStatus: "미납" },
     }),
     breakdown: dummyDepositRefundBreakdown({ amount: 5000, timePen: 5000, fineUnpaid: true, fineUnpaidDays: ["월", "금"] }),
   },
-  "9002": {
+  "2": {
     days: dummyWeekDays({}),
     breakdown: dummyDepositRefundBreakdown({ amount: 10000 }),
   },
-  "9003": {
+  "3": {
     days: dummyWeekDays({ 화: { total: 0, complete: true, paymentStatus: "면제", explain: "사유반휴 인정" } }),
     breakdown: dummyDepositRefundBreakdown({ amount: 10000 }),
   },
-  "9004": {
+  "4": {
     days: dummyWeekDays({ 화: { total: 5000, isDepositAgainDay: true, paymentStatus: "미납" } }),
     breakdown: dummyDepositRefundBreakdown({ amount: 5000, timePen: 5000, depositAgainStatus: "미납" }),
   },
@@ -205,15 +205,15 @@ const DUMMY_MEMBER_DETAIL: Record<string, { days: StatusResponse["days"]; breakd
 // 필요는 없다, 실제로도 참여 인원이 적으면 5등 미만일 수 있다)과 각자의
 // 타이머·상점(RosterMember, 카드에 표시)을 함께 준비한다.
 const DUMMY_SETTLEMENT: RosterMember[] = [
-  { number: "9101", name: "정하은", timer: "50:00:00", merit: "12.500", rank: "1", status: "" },
-  { number: "9102", name: "오준서", timer: "48:20:00", merit: "10.800", rank: "2", status: "" },
-  { number: "9103", name: "강지호", timer: "45:10:00", merit: "9.200", rank: "3", status: "" },
+  { number: "5", name: "하은", timer: "50:00 / 50:00", merit: "12.500", rank: "1", status: "" },
+  { number: "6", name: "유나", timer: "48:20 / 50:00", merit: "10.800", rank: "2", status: "" },
+  { number: "7", name: "민서", timer: "45:10 / 50:00", merit: "9.200", rank: "3", status: "" },
 ];
 
 const DUMMY_SETTLEMENT_ITEMS: SettlementItem[] = [
-  { number: "9101", name: "정하은", rank: 1, amount: 20000 },
-  { number: "9102", name: "오준서", rank: 2, amount: 20000 },
-  { number: "9103", name: "강지호", rank: 3, amount: 20000 },
+  { number: "5", name: "하은", rank: 1, amount: 20000 },
+  { number: "6", name: "유나", rank: 2, amount: 20000 },
+  { number: "7", name: "민서", rank: 3, amount: 20000 },
 ];
 
 const DUMMY_COLLECT_MONEY = 60000;

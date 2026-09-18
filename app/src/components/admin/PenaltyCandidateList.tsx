@@ -77,26 +77,26 @@ function dummyPenHistory(label: string, when: string, reason: string): PenaltySl
 
 const DUMMY_EXIT_CANDIDATES: ExitCandidate[] = [
   {
-    number: "9201",
-    name: "한소율",
+    number: "8",
+    name: "민준",
     suggestedKind: "forced",
     reasons: ["페널티 누적 2회"],
     occurredDay: "월",
     outputPenHistory: [
-      dummyPenHistory("구두경고 (1차)", "2026-09-08 09:12", "화각 불량 제보 승인"),
-      dummyPenHistory("벌점 (1차)", "2026-09-14 21:40", "화각 불량 제보 승인"),
+      dummyPenHistory("구두경고 (1차)", "2026. 9. 8. 오전 9:12:34", "화각 불량 제보 승인"),
+      dummyPenHistory("벌점 (1차)", "2026. 9. 14. 오후 9:40:11", "화각 불량 제보 승인"),
     ],
-    timePenHistory: [dummyPenHistory("페널티 (1차)", "2026-09-14 23:59", "일간 목표시간 3회 미달")],
+    timePenHistory: [dummyPenHistory("페널티 (1차)", "2026. 9. 14. 오후 11:59:02", "일간 목표시간 3회 미달")],
   },
   {
-    number: "9202",
-    name: "임가온",
+    number: "9",
+    name: "하준",
     suggestedKind: "forced",
     reasons: ["페널티 누적 2회"],
     // 슬롯 주석이 없어 요일을 특정할 수 없는 실제 케이스 — "요일 미확인" 그룹.
     occurredDay: null,
-    outputPenHistory: [dummyPenHistory("페널티 (2차)", "2026-09-10 14:02", "화각 불량 제보 승인")],
-    timePenHistory: [dummyPenHistory("페널티 (2차)", "2026-09-13 23:59", "일간 목표시간 3회 미달")],
+    outputPenHistory: [dummyPenHistory("페널티 (2차)", "2026. 9. 10. 오후 2:02:47", "화각 불량 제보 승인")],
+    timePenHistory: [dummyPenHistory("페널티 (2차)", "2026. 9. 13. 오후 11:59:02", "일간 목표시간 3회 미달")],
   },
 ];
 

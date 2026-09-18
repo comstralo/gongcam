@@ -384,7 +384,15 @@ function SeverityPicker({
 // 좌측에 목업 버튼을 만들고 적절한 목업을 생성" — 실 운영에서 나올 수
 // 있는 분기(대상자 응답 대기, 이의제기 + 합의 투표 진행 중, 확정 적용,
 // 반려)를 한 화면에서 모두 볼 수 있는 고정 스냅샷.
-const DUMMY_CO_REVIEWERS: CoReviewer[] = [{ number: "9401", name: "재희1" }];
+// 실제 슬롯 열 배치(frame-checker-worker/src/index.js·report-penalty.js)와
+// 동일하게 맞춰야 occurrence/col/dayCol 조합이 실제로 나올 수 있는
+// 값이 된다 — 송출P(1~6차)와 제보상점(1~5차)은 서로 다른 열 대역을
+// 쓰고, dayCol(요일)은 이 둘과 또 다른 축이다.
+const DUMMY_OUTPUT_PEN_SLOT_COLUMNS = ["F", "G", "H", "I", "J", "K"]; // 1차..6차
+const DUMMY_REPORT_MERIT_SLOT_COLUMNS = ["R", "S", "T", "U", "V"]; // 1차..5차
+const DUMMY_STATUS_DAY_COLS = ["C", "F", "I", "L", "O", "R", "U"]; // 월..일
+
+const DUMMY_CO_REVIEWERS: CoReviewer[] = [{ number: "13", name: "유나" }];
 
 const DUMMY_CAPTURE_ITEMS: CaptureReviewItem[] = [
   {
@@ -392,7 +400,7 @@ const DUMMY_CAPTURE_ITEMS: CaptureReviewItem[] = [
     nickname: "노트북(태블릿)",
     reason: "화면 미확인",
     mode: "screenshot",
-    reporterEmail: "dummy-reporter1@example.com",
+    reporterEmail: "areum.study@gmail.com",
     ts: Date.now() - 20 * 60 * 1000,
     reviewStatus: "pending",
     nextOccurrence: 1,
@@ -400,7 +408,7 @@ const DUMMY_CAPTURE_ITEMS: CaptureReviewItem[] = [
     shouldDefer: false,
     deferOccurrence: null,
     deferredOccurrence: null,
-    reporterName: "재희2",
+    reporterName: "아름",
     targetResponse: null,
     targetRespondedAt: null,
     targetResponseAuto: false,
@@ -415,7 +423,7 @@ const DUMMY_CAPTURE_ITEMS: CaptureReviewItem[] = [
     nickname: "스마트폰",
     reason: "화면 미확인",
     mode: "video",
-    reporterEmail: "dummy-reporter2@example.com",
+    reporterEmail: "jimin.cam@gmail.com",
     ts: Date.now() - 3 * 60 * 60 * 1000,
     reviewStatus: "pending",
     nextOccurrence: 2,
@@ -427,9 +435,9 @@ const DUMMY_CAPTURE_ITEMS: CaptureReviewItem[] = [
     targetResponse: "disputed",
     targetRespondedAt: Date.now() - 2.5 * 60 * 60 * 1000,
     targetResponseAuto: false,
-    // 부스터디장(9401)은 이미 "위반 O"를 제출했고, 스터디장 본인은 아직
+    // 부스터디장(13번)은 이미 "위반 O"를 제출했고, 스터디장 본인은 아직
     // 미제출 — computeConsensus의 "전원 제출 대기 중" 분기를 보여준다.
-    votes: { "9401": { name: "재희1", severity: "yes" as CaptureVote["severity"], votedAt: Date.now() - 60 * 60 * 1000 } },
+    votes: { "13": { name: "유나", severity: "yes" as CaptureVote["severity"], votedAt: Date.now() - 60 * 60 * 1000 } },
     penalty: null,
     merit: null,
     timeDeduction: null,
@@ -440,7 +448,7 @@ const DUMMY_CAPTURE_ITEMS: CaptureReviewItem[] = [
     nickname: "태블릿",
     reason: "화면 미확인",
     mode: "screenshot",
-    reporterEmail: "dummy-reporter3@example.com",
+    reporterEmail: "areum.study@gmail.com",
     ts: Date.now() - 26 * 60 * 60 * 1000,
     reviewStatus: "approved",
     nextOccurrence: null,
@@ -448,13 +456,18 @@ const DUMMY_CAPTURE_ITEMS: CaptureReviewItem[] = [
     shouldDefer: false,
     deferOccurrence: null,
     deferredOccurrence: null,
-    reporterName: "재희2",
+    reporterName: "아름",
     targetResponse: "recognized",
     targetRespondedAt: Date.now() - 25.5 * 60 * 60 * 1000,
     targetResponseAuto: false,
     votes: {},
-    penalty: { number: "9402", name: "정하람", occurrence: 3, isPCount: false, col: "H", deductedMinutes: 15, dayCol: "H", weeklyMinorPenaltyCount: 2 },
-    merit: { number: "9403", name: "재희2", occurrence: 1, col: "C" },
+    // occurrence 3 → OUTPUT_PEN_SLOT_COLUMNS[2] = "H"(F,G,H,I,J,K가 1~6차).
+    // dayCol은 실제 발생 요일 열(화요일 = STATUS_DAY_COLS[1] = "F")이어야
+    // 한다 — occurrence 열과 요일 열은 서로 다른 축이라 값이 겹치지 않는다.
+    // merit.col은 제보상점 전용 슬롯(REPORT_MERIT_SLOT_COLUMNS, R~V가
+    // 1~5차)이라 occurrence 1이면 "R".
+    penalty: { number: "14", name: "민준", occurrence: 3, isPCount: false, col: "H", deductedMinutes: 15, dayCol: "F", weeklyMinorPenaltyCount: 2 },
+    merit: { number: "3", name: "아름", occurrence: 1, col: "R" },
     timeDeduction: null,
     sourceFileId: null,
   },
@@ -463,7 +476,7 @@ const DUMMY_CAPTURE_ITEMS: CaptureReviewItem[] = [
     nickname: "노트북",
     reason: "화면 미확인",
     mode: "screenshot",
-    reporterEmail: "dummy-reporter4@example.com",
+    reporterEmail: "doyun.p@gmail.com",
     ts: Date.now() - 30 * 60 * 60 * 1000,
     reviewStatus: "rejected",
     nextOccurrence: 4,
@@ -643,6 +656,9 @@ export function ReportReviewList({
       if (decision === "rejected") {
         setRejected((prev) => ({ ...prev, [item.id]: true }));
       } else {
+        const occurrence = item.nextOccurrence ?? 1;
+        const dayIndex = (new Date(item.ts).getDay() + 6) % 7; // 월=0..일=6
+        const dayCol = DUMMY_STATUS_DAY_COLS[dayIndex];
         setApplied((prev) => ({
           ...prev,
           [item.id]: {
@@ -651,19 +667,19 @@ export function ReportReviewList({
               decision === "rejected_recognized"
                 ? null
                 : {
-                    number: "9999",
+                    number: "14",
                     name: item.nickname,
-                    occurrence: item.nextOccurrence ?? 1,
+                    occurrence,
                     isPCount: false,
-                    col: "H",
+                    col: DUMMY_OUTPUT_PEN_SLOT_COLUMNS[occurrence - 1] || "K",
                     deductedMinutes: expectedDeductedMinutes(item) ?? 0,
-                    dayCol: "H",
+                    dayCol,
                     weeklyMinorPenaltyCount: item.weeklyMinorPenaltyCount + 1,
                   },
-            merit: { number: "9998", name: item.reporterName || "제보자", occurrence: 1, col: "C" },
+            merit: { number: "3", name: item.reporterName || "아름", occurrence: 1, col: DUMMY_REPORT_MERIT_SLOT_COLUMNS[0] },
             timeDeduction:
               decision === "deferred"
-                ? { number: "9999", deductedMinutes: expectedDeductedMinutes(item) ?? 0, dayCol: "H" }
+                ? { number: "14", deductedMinutes: expectedDeductedMinutes(item) ?? 0, dayCol }
                 : null,
             sourceFileId: null,
           },
