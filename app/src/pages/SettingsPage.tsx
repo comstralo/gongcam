@@ -53,7 +53,7 @@ export function SettingsPage({ visible = true }: { visible?: boolean }) {
                       items={[
                         "퇴실신청",
                         <span className="truncate text-xs font-normal text-muted-foreground sm:text-sm">
-                          {status.exitRequested ? "신청됨" : "최소 3일 전까지 신청 바랍니다."}
+                          {status.exitRequested ? "신청됨" : "최소 3일 전까지 신청"}
                         </span>,
                       ]}
                     />
@@ -76,7 +76,7 @@ export function SettingsPage({ visible = true }: { visible?: boolean }) {
                     items={[
                       "퇴실신청",
                       <span className="truncate text-xs font-normal text-muted-foreground sm:text-sm">
-                        최소 3일 전까지 신청 바랍니다.
+                        최소 3일 전까지 신청
                       </span>,
                     ]}
                   />

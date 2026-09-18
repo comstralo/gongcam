@@ -214,7 +214,7 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
             <Bell className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
             <DividedValue
               items={[
-                "푸시 알림",
+                "PUSH 알림",
                 <span className="truncate text-xs font-normal text-muted-foreground sm:text-sm">
                   {PUSH_STATE_LABEL[state]}
                 </span>,
