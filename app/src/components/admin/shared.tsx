@@ -169,7 +169,10 @@ export function mergePenaltyLabel(
     ].filter((p) => p.count > 0);
     return {
       ...item,
-      label: parts.length > 0 ? `페널티 (${parts.map((p) => `${p.label} : ${p.count}회`).join(" + ")})` : "페널티 (0회)",
+      // 🔧 [사용자 지시] "아무 페널티도 받은 적 없으면 (해당없음)이라고
+      // 출력해줘" — 표준 국어 띄어쓰기 규범상 '해당'과 '없음'은 별개
+      // 단어라 다른 카드(벌금 미납 등)와 동일하게 "해당 없음"으로 띄어 쓴다.
+      label: parts.length > 0 ? `페널티 (${parts.map((p) => `${p.label} : ${p.count}회`).join(" + ")})` : "페널티 (해당 없음)",
       rate: isAdminForced ? 100 : item.rate,
     };
   });
@@ -207,11 +210,14 @@ export function ExitResultCards({
   /** undefined면 "처리 결과" 카드에 블랙리스트 행을 표시하지 않는다. */
   blacklist?: boolean;
 }) {
-  const causeItems = mergePenaltyLabel(
-    buildDepositCauseItems(breakdown, breakdown.lateNotice ? 50 : 0),
-    breakdown,
-    kind
-  ).filter((item) => !(item.key === "penalty" && item.rate === 0));
+  // 🔧 [버그 수정] "페널티가 0회면 항목 자체가 사라진다" — 이전엔
+  // rate===0인 penalty 항목을 통째로 걸러냈으나, 사용자 지적대로 다른
+  // 항목(퇴실 통보 지연/30일 미만 참여)은 0%여도 항상 표시되는 것과
+  // 일관되지 않았다. "항목 출력은 언제나 하되, 괄호 안에서 0건인
+  // 텍스트만 출력하지 말라"는 것이 원래 의도였다 — 그 부분은 이미
+  // mergePenaltyLabel이 처리하므로(각 P 종류별 0회 항목만 라벨에서
+  // 생략), 여기서 항목 자체를 지우는 필터는 제거한다.
+  const causeItems = mergePenaltyLabel(buildDepositCauseItems(breakdown, breakdown.lateNotice ? 50 : 0), breakdown, kind);
 
   return (
     <>
