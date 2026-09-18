@@ -28,6 +28,7 @@ import type {
   StatusResponse,
   RosterStatusResponse,
   RosterMember,
+  SettlementItem,
   PrizeSettleResponse,
   CycleWeek,
 } from "@/lib/api/types";
@@ -199,6 +200,23 @@ const DUMMY_MEMBER_DETAIL: Record<string, { days: StatusResponse["days"]; breakd
     breakdown: dummyDepositRefundBreakdown({ amount: 5000, timePen: 5000, depositAgainStatus: "미납" }),
   },
 };
+
+// 🧪 [목업 미리보기] "상금 수령 처리" — 1~3등 정산 대상(전원을 채울
+// 필요는 없다, 실제로도 참여 인원이 적으면 5등 미만일 수 있다)과 각자의
+// 타이머·상점(RosterMember, 카드에 표시)을 함께 준비한다.
+const DUMMY_SETTLEMENT: RosterMember[] = [
+  { number: "9101", name: "정하은", timer: "50:00:00", merit: "12.500", rank: "1", status: "" },
+  { number: "9102", name: "오준서", timer: "48:20:00", merit: "10.800", rank: "2", status: "" },
+  { number: "9103", name: "강지호", timer: "45:10:00", merit: "9.200", rank: "3", status: "" },
+];
+
+const DUMMY_SETTLEMENT_ITEMS: SettlementItem[] = [
+  { number: "9101", name: "정하은", rank: 1, amount: 20000 },
+  { number: "9102", name: "오준서", rank: 2, amount: 20000 },
+  { number: "9103", name: "강지호", rank: 3, amount: 20000 },
+];
+
+const DUMMY_COLLECT_MONEY = 60000;
 
 // 시트의 "납부확인" 값은 회원·요일마다 항상 미납/납부/면제 중 하나다 — 이
 // 화면은 그 값이 무엇이든 전원을 요일별로 보여주고(사용자 지적: 미납만
@@ -633,6 +651,9 @@ function PrizeRecipientList({
   cycleFileId: string | null;
 }) {
   const { call } = useApi();
+  // 🧪 [목업 미리보기, 사용자 지시] 켜져 있는 동안 API 호출 없이 고정
+  // 스냅샷(1~3등 정산 대상, 총 모금액)을 보여준다.
+  const [showingDummy, setShowingDummy] = useState(false);
   const [collectMoney, setCollectMoney] = useState(0);
   // "랭킹"(RosterView)의 타이머·상점을 그대로 보여주려면 members(그 두
   // 값을 가진 원본)와 settlement(순위·분배금)을 회원번호로 매칭해야
@@ -667,6 +688,7 @@ function PrizeRecipientList({
   // 제한을 걸지 않는다(index.js, handleRosterStatus). cycle 쿼리는 이미
   // handleRosterStatus가 resolveTargetFileId로 지원하는 기존 패턴이다.
   function load() {
+    if (showingDummy) return;
     if (loadingRef.current) return;
     loadingRef.current = true;
     setLoading(true);
@@ -720,6 +742,12 @@ function PrizeRecipientList({
   // 함께 현재 화면에 표시된 수령자 번호 순서(expectedSettlementNumbers)도
   // 보내, 서버가 재계산한 최신 명단과 정확히 일치할 때만 집행을 허용한다.
   async function handleSettle() {
+    // 🧪 목업 중엔 실제 집행 API(handleAdminPrizeSettle)를 호출하지 않고
+    // "집행 완료" 상태만 로컬로 흉내낸다.
+    if (showingDummy) {
+      setSettlementSettled(true);
+      return;
+    }
     setSettling(true);
     setError(null);
     try {
@@ -744,6 +772,11 @@ function PrizeRecipientList({
     }
   }
 
+  const effectiveCollectMoney = showingDummy ? DUMMY_COLLECT_MONEY : collectMoney;
+  const effectiveMembers = showingDummy ? DUMMY_SETTLEMENT : members;
+  const effectiveSettlement = showingDummy ? DUMMY_SETTLEMENT_ITEMS : settlement;
+  const effectiveCanSettle = showingDummy || canSettle;
+
   return (
     <Collapsible defaultOpen className="flex flex-col">
       <SectionHeader
@@ -752,6 +785,23 @@ function PrizeRecipientList({
         loading={loading}
         onRefresh={load}
         refreshProgress={refreshProgress}
+        trailing={
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            className={cn("shrink-0", showingDummy && "border-ok/30 bg-ok/15 text-ok hover:bg-ok/25 dark:hover:bg-ok/25")}
+            onClick={() => {
+              setShowingDummy((v) => !v);
+              setSettlementSettled(false);
+            }}
+            aria-pressed={showingDummy}
+            aria-label={showingDummy ? "목업 미리보기 끄기" : "목업 데이터로 미리보기"}
+            title={showingDummy ? "목업 미리보기 끄기" : "목업 데이터로 미리보기"}
+          >
+            <FlaskConical className="size-3.5" strokeWidth={ICON_STROKE.default} />
+          </Button>
+        }
       />
       <CollapsiblePanel className="flex flex-col gap-4">
         {error && (
@@ -762,17 +812,17 @@ function PrizeRecipientList({
 
         <InfoCard className="flex items-center justify-between gap-2 bg-card">
           <FieldLabel>총 모금액</FieldLabel>
-          <span className="font-mono text-base font-semibold tabular-nums text-ok sm:text-lg">{won(collectMoney)}</span>
+          <span className="font-mono text-base font-semibold tabular-nums text-ok sm:text-lg">{won(effectiveCollectMoney)}</span>
         </InfoCard>
 
         {/* 🔧 [버그 수정, 2026-09] ReasonLeaveReviewList와 동일한 근본
             수정 — loading을 빼고 settlement의 실제 값만으로 렌더링해
             재조회 중엔 이전 화면이 그대로 유지되게 한다. */}
-        {!settlement && <AdminListSkeleton />}
+        {!effectiveSettlement && <AdminListSkeleton />}
 
-        {settlement && settlement.length === 0 && <AdminEmptyState>이번 주 정산 대상이 없습니다.</AdminEmptyState>}
+        {effectiveSettlement && effectiveSettlement.length === 0 && <AdminEmptyState>이번 주 정산 대상이 없습니다.</AdminEmptyState>}
 
-        {settlement && settlement.length > 0 && (
+        {effectiveSettlement && effectiveSettlement.length > 0 && (
           // §"랭킹"(RosterView)의 카드 출력 형태를 그대로 재활용한다 —
           // 타이머·상점 서브로우(DividedValue)는 그대로 두고, 거기에
           // 구분선으로 세 번째 항목만 추가해 분배받을 금액을 보여준다
@@ -780,8 +830,8 @@ function PrizeRecipientList({
           // 표시"). settlement 자체엔 timer/merit가 없어 members에서
           // 회원번호로 찾아 합친다.
           <div className="flex flex-col gap-2 sm:gap-2.5">
-            {settlement.map((s) => {
-              const m = members.find((mm) => mm.number === s.number);
+            {effectiveSettlement.map((s) => {
+              const m = effectiveMembers.find((mm) => mm.number === s.number);
               return (
                 <InfoCard key={s.number} className="flex items-center gap-3 bg-card sm:gap-4">
                   <RankBadge rank={String(s.rank)} />
@@ -812,11 +862,11 @@ function PrizeRecipientList({
           </div>
         )}
 
-        {settlement && settlement.length > 0 && (
+        {effectiveSettlement && effectiveSettlement.length > 0 && (
           <Button
             variant="outline"
             className="w-full sm:h-12 sm:text-base"
-            disabled={!canSettle || settling || settlementSettled}
+            disabled={!effectiveCanSettle || settling || settlementSettled}
             onClick={handleSettle}
           >
             {/* 🔧 [사용자 지시, 2026-09-12] "현재"(이번 주) 사이클에서는
@@ -824,7 +874,7 @@ function PrizeRecipientList({
                 필수로 받음) 버튼을 숨기는 대신 비활성화하고, 라벨로
                 이유를 알려준다 — 관리자가 "왜 버튼이 없지?" 헷갈리지
                 않도록. */}
-            {!canSettle
+            {!effectiveCanSettle
               ? "지난 주 사이클을 선택하면 집행할 수 있습니다"
               : settlementSettled
                 ? "집행 완료"
