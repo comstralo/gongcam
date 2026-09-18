@@ -127,14 +127,18 @@ const DUMMY_TOTAL_PAID_AMOUNT = 15000;
 
 // 회원 상세 펼침(DayDetailCard)이 쓰는 최소 필드만 채운다 — StatusResponse
 // 전체를 완성할 필요 없이 day/depositRefundBreakdown만 실제로 읽힌다.
+// explain은 화면에 렌더링되지 않지만(personal-status.js의 explainDay()가
+// 만드는 "목표시간 벌금 ₩5,000만 부과되어 ₩5,000 확정" 같은 자동 생성
+// 서술문, 짧은 라벨이 아님), total=goal, morning=0 조합에 맞는 실제 함수
+// 출력 형식으로 채워 필드 자체의 값 형태는 정확히 유지한다.
 function dummyStatusDay(day: string, overrides: Partial<StatusResponse["days"][number]> = {}): StatusResponse["days"][number] {
   return {
     day,
     date: null,
     total: 5000,
-    goal: 0,
+    goal: 5000,
     morning: 0,
-    explain: "일간 목표시간 미달",
+    explain: "목표시간 벌금 ₩5,000만 부과되어 ₩5,000 확정",
     confirmed: true,
     complete: false,
     studyTime: "07:40",
@@ -172,7 +176,7 @@ function dummyDepositRefundBreakdown(overrides: Partial<StatusResponse["depositR
 // 모양을 지켜야 하므로, 언급되지 않은 요일은 "해당 없음"(total 0,
 // complete)으로 채우고 실제 처리 대상 요일만 의미 있는 값을 넣는다.
 function dummyWeekDays(overrides: Partial<Record<string, Partial<StatusResponse["days"][number]>>>): StatusResponse["days"] {
-  return STATUS_DAYS.map((d) => dummyStatusDay(d, overrides[d] ?? { total: 0, complete: true, paymentStatus: "납부", explain: "" }));
+  return STATUS_DAYS.map((d) => dummyStatusDay(d, overrides[d] ?? { total: 0, goal: 0, complete: true, paymentStatus: "납부", explain: "벌금 없음 (목표 달성)" }));
 }
 
 // 회원번호 → (상세 펼침용 7일치 요일 카드, 반환예치금 breakdown). 실제
@@ -192,7 +196,7 @@ const DUMMY_MEMBER_DETAIL: Record<string, { days: StatusResponse["days"]; breakd
     breakdown: dummyDepositRefundBreakdown({ amount: 10000 }),
   },
   "3": {
-    days: dummyWeekDays({ 화: { total: 0, complete: true, paymentStatus: "면제", explain: "사유반휴 인정" } }),
+    days: dummyWeekDays({ 화: { total: 0, goal: 0, complete: true, paymentStatus: "면제", explain: "벌금 없음 (목표 달성)" } }),
     breakdown: dummyDepositRefundBreakdown({ amount: 10000 }),
   },
   "4": {

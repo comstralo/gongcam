@@ -80,11 +80,11 @@ const DUMMY_EXIT_CANDIDATES: ExitCandidate[] = [
     number: "8",
     name: "민준",
     suggestedKind: "forced",
-    reasons: ["페널티 누적 2회"],
+    reasons: ["페널티 누적 2회 이상 (송출 P 2회 / 주간 P 1회)"],
     occurredDay: "월",
     outputPenHistory: [
-      dummyPenHistory("구두경고 (1차)", "2026. 9. 8. 오전 9:12:34", "화각 불량 제보 승인"),
-      dummyPenHistory("벌점 (1차)", "2026. 9. 14. 오후 9:40:11", "화각 불량 제보 승인"),
+      dummyPenHistory("구두경고 (1차)", "2026. 9. 8. 오전 9:12:34", "전자기기 사용목적 확인 불가"),
+      dummyPenHistory("벌점 (1차)", "2026. 9. 14. 오후 9:40:11", "격자 기준을 벗어난 근접 화각"),
     ],
     timePenHistory: [dummyPenHistory("페널티 (1차)", "2026. 9. 14. 오후 11:59:02", "일간 목표시간 3회 미달")],
   },
@@ -92,10 +92,10 @@ const DUMMY_EXIT_CANDIDATES: ExitCandidate[] = [
     number: "9",
     name: "하준",
     suggestedKind: "forced",
-    reasons: ["페널티 누적 2회"],
+    reasons: ["페널티 누적 2회 이상 (송출 P 2회 / 주간 P 1회)"],
     // 슬롯 주석이 없어 요일을 특정할 수 없는 실제 케이스 — "요일 미확인" 그룹.
     occurredDay: null,
-    outputPenHistory: [dummyPenHistory("페널티 (2차)", "2026. 9. 10. 오후 2:02:47", "화각 불량 제보 승인")],
+    outputPenHistory: [dummyPenHistory("페널티 (2차)", "2026. 9. 10. 오후 2:02:47", "손 또는 학습자료 확인 불가")],
     timePenHistory: [dummyPenHistory("페널티 (2차)", "2026. 9. 13. 오후 11:59:02", "일간 목표시간 3회 미달")],
   },
 ];

@@ -394,11 +394,18 @@ const DUMMY_STATUS_DAY_COLS = ["C", "F", "I", "L", "O", "R", "U"]; // 월..일
 
 const DUMMY_CO_REVIEWERS: CoReviewer[] = [{ number: "13", name: "유나" }];
 
+// 🔧 [사용자 지적] "화각 불량 제보 처리"의 nickname은 기기 이름이 아니라
+// 제보 "대상자"(위반 의심 회원) 본인의 이름이다 — ReportPage.tsx의
+// "제보 대상자" Select가 members(실제 회원 이름 목록)에서 값을 받아 그대로
+// nickname으로 전송하고(report-intake.js:99 "대상자는 항상 본인 —
+// member.name"), 관리자 화면도 <User> 아이콘과 함께 그 값을 이름처럼
+// 렌더링한다. reason도 실제 REASON_OPTIONS(ReportPage.tsx) 프리셋 중
+// 하나여야 한다 — "화면 미확인"은 존재하지 않는 임의 문구였다.
 const DUMMY_CAPTURE_ITEMS: CaptureReviewItem[] = [
   {
     id: "dummy-report-1",
-    nickname: "노트북(태블릿)",
-    reason: "화면 미확인",
+    nickname: "지민",
+    reason: "전자기기 사용목적 확인 불가",
     mode: "screenshot",
     reporterEmail: "areum.study@gmail.com",
     ts: Date.now() - 20 * 60 * 1000,
@@ -420,8 +427,8 @@ const DUMMY_CAPTURE_ITEMS: CaptureReviewItem[] = [
   },
   {
     id: "dummy-report-2",
-    nickname: "스마트폰",
-    reason: "화면 미확인",
+    nickname: "도윤",
+    reason: "손 또는 학습자료 확인 불가",
     mode: "video",
     reporterEmail: "jimin.cam@gmail.com",
     ts: Date.now() - 3 * 60 * 60 * 1000,
@@ -445,8 +452,8 @@ const DUMMY_CAPTURE_ITEMS: CaptureReviewItem[] = [
   },
   {
     id: "dummy-report-3",
-    nickname: "태블릿",
-    reason: "화면 미확인",
+    nickname: "민준",
+    reason: "격자 기준을 벗어난 근접 화각",
     mode: "screenshot",
     reporterEmail: "areum.study@gmail.com",
     ts: Date.now() - 26 * 60 * 60 * 1000,
@@ -465,16 +472,18 @@ const DUMMY_CAPTURE_ITEMS: CaptureReviewItem[] = [
     // dayCol은 실제 발생 요일 열(화요일 = STATUS_DAY_COLS[1] = "F")이어야
     // 한다 — occurrence 열과 요일 열은 서로 다른 축이라 값이 겹치지 않는다.
     // merit.col은 제보상점 전용 슬롯(REPORT_MERIT_SLOT_COLUMNS, R~V가
-    // 1~5차)이라 occurrence 1이면 "R".
-    penalty: { number: "14", name: "민준", occurrence: 3, isPCount: false, col: "H", deductedMinutes: 15, dayCol: "F", weeklyMinorPenaltyCount: 2 },
+    // 1~5차)이라 occurrence 1이면 "R". penalty/merit의 name은 각각 실제
+    // 벌점 대상자(nickname과 동일)와 제보자(reporterName과 동일)여야
+    // 한다 — 앞서 서로 다른 이름을 넣은 것은 모순이었다.
+    penalty: { number: "8", name: "민준", occurrence: 3, isPCount: false, col: "H", deductedMinutes: 15, dayCol: "F", weeklyMinorPenaltyCount: 2 },
     merit: { number: "3", name: "아름", occurrence: 1, col: "R" },
     timeDeduction: null,
     sourceFileId: null,
   },
   {
     id: "dummy-report-4",
-    nickname: "노트북",
-    reason: "화면 미확인",
+    nickname: "하준",
+    reason: "얼굴, 정수리 등 노출",
     mode: "screenshot",
     reporterEmail: "doyun.p@gmail.com",
     ts: Date.now() - 30 * 60 * 60 * 1000,
