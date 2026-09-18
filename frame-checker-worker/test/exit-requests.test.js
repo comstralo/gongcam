@@ -9,6 +9,7 @@ import {
   handleAgreeExitRequest,
   handleCancelExitRequest,
   handleBotExitRequests,
+  autoAgreeExpiredExitRequests,
 } from "../src/exit-request.js";
 import { TEST_SERVICE_ACCOUNT_JSON, oauthTokenResponse } from "./helpers/service-account.js";
 
@@ -430,5 +431,104 @@ describe("handleBotExitRequests", () => {
     const body = await res.json();
     expect(res.status, JSON.stringify(body)).toBe(200);
     expect(body.exitDates["10"]).toBe("2026-09-22");
+  });
+});
+
+// 🔧 [사용자 지시] "신청자가 동의를 누르지 않으면 48시간 뒤에는 자동
+// 동의처리" — 5분 cron(index.js scheduled)이 부르는
+// autoAgreeExpiredExitRequests를 직접 호출해 검증한다. 익일(exitDateSettled
+// 기준)로부터 48시간 지난 미동의 신청만 대상이 되는지, 그 전이면 손대지
+// 않는지, 벌금 미납 등으로 막힌 신청은 자동 동의도 통과 못 하고 다음
+// 크론까지 그대로 남는지 확인한다.
+describe("autoAgreeExpiredExitRequests", () => {
+  it("익일로부터 48시간이 지난 미동의 신청을 자동으로 동의 처리한다", async () => {
+    stubOauthFetch();
+    const testEnv = makeTestEnv({ GOOGLE_SHEET_FILE_ID: "exit-req-auto-agree-ok" });
+    const token = await makeMemberToken({ memberNumber: "11" });
+    // 🔧 [테스트 격리] LeaveQueue DO는 idFromName("leave-queue")로 파일별
+    // 구분 없이 전역 공유된다 — 다른 테스트가 같은 exitDate로 미동의 상태를
+    // 남기면 fake timer 설정 시 그 항목까지 대상에 함께 걸릴 수 있어
+    // (autoAgreeExpiredExitRequests는 회원번호와 무관하게 exitDate/agreedAt만
+    // 본다), 이 describe 블록 안에서만 쓰는 고유한 날짜를 쓴다.
+    const exitDate = "2026-08-11";
+    const setReq = makeRequest("https://worker/exit-request", {
+      token,
+      method: "POST",
+      body: { exitDate },
+    });
+    await handleSetExitRequest(setReq, testEnv, "https://example.com");
+
+    // 익일(2026-08-12 00:00 KST) + 48시간 + 1분 뒤로 시계를 고정한다.
+    const nextDayMidnightUtcMs = Date.UTC(2026, 7, 11, 15, 0, 0); // 2026-08-12 00:00 KST
+    vi.useFakeTimers();
+    vi.setSystemTime(nextDayMidnightUtcMs + 48 * 60 * 60 * 1000 + 60_000);
+
+    stubAgreeExitFetch({ member: { number: 11, name: "라", email: MEMBER_EMAIL }, exitDate });
+    await autoAgreeExpiredExitRequests(testEnv);
+    vi.useRealTimers();
+
+    const id = testEnv.LEAVE_QUEUE_DO.idFromName("leave-queue");
+    const stub = testEnv.LEAVE_QUEUE_DO.get(id);
+    const getRes = await stub.fetch("https://do/exit/get?memberNumber=11");
+    const { entry } = await getRes.json();
+    expect(entry.agreedAt).not.toBeNull();
+  });
+
+  it("48시간이 아직 지나지 않았으면 손대지 않는다", async () => {
+    stubOauthFetch();
+    const testEnv = makeTestEnv({ GOOGLE_SHEET_FILE_ID: "exit-req-auto-agree-tooSoon" });
+    const token = await makeMemberToken({ memberNumber: "12" });
+    const exitDate = "2026-08-12"; // 다른 케이스와 겹치지 않는 고유 날짜(§테스트 격리)
+    const setReq = makeRequest("https://worker/exit-request", {
+      token,
+      method: "POST",
+      body: { exitDate },
+    });
+    await handleSetExitRequest(setReq, testEnv, "https://example.com");
+
+    const nextDayMidnightUtcMs = Date.UTC(2026, 7, 12, 15, 0, 0);
+    vi.useFakeTimers();
+    vi.setSystemTime(nextDayMidnightUtcMs + 47 * 60 * 60 * 1000);
+
+    // listExitRequests만 호출되고(대상 없음) 그 이후 조회는 없어야 하므로
+    // 다른 경로는 stub하지 않는다 — 잘못 호출되면 "unexpected fetch"로 실패.
+    stubOauthFetch();
+    await autoAgreeExpiredExitRequests(testEnv);
+    vi.useRealTimers();
+
+    const id = testEnv.LEAVE_QUEUE_DO.idFromName("leave-queue");
+    const stub = testEnv.LEAVE_QUEUE_DO.get(id);
+    const getRes = await stub.fetch("https://do/exit/get?memberNumber=12");
+    const { entry } = await getRes.json();
+    expect(entry.agreedAt).toBeNull();
+  });
+
+  it("벌금 미납분이 남아있으면 48시간이 지나도 자동 동의하지 않는다", async () => {
+    stubOauthFetch();
+    const testEnv = makeTestEnv({ GOOGLE_SHEET_FILE_ID: "exit-req-auto-agree-blocked" });
+    const token = await makeMemberToken({ memberNumber: "13" });
+    const exitDate = "2026-08-13"; // 다른 케이스와 겹치지 않는 고유 날짜(§테스트 격리)
+    const setReq = makeRequest("https://worker/exit-request", {
+      token,
+      method: "POST",
+      body: { exitDate },
+    });
+    await handleSetExitRequest(setReq, testEnv, "https://example.com");
+
+    const nextDayMidnightUtcMs = Date.UTC(2026, 7, 13, 15, 0, 0);
+    vi.useFakeTimers();
+    vi.setSystemTime(nextDayMidnightUtcMs + 48 * 60 * 60 * 1000 + 60_000);
+
+    const personalRows = personalTabRows();
+    personalRows[32] = ["", "", 1]; // ROW_FINE_NO_STATUS col2=1(미납)
+    stubAgreeExitFetch({ member: { number: 13, name: "마", email: MEMBER_EMAIL }, personalRows, exitDate });
+    await autoAgreeExpiredExitRequests(testEnv);
+    vi.useRealTimers();
+
+    const id = testEnv.LEAVE_QUEUE_DO.idFromName("leave-queue");
+    const stub = testEnv.LEAVE_QUEUE_DO.get(id);
+    const getRes = await stub.fetch("https://do/exit/get?memberNumber=13");
+    const { entry } = await getRes.json();
+    expect(entry.agreedAt).toBeNull();
   });
 });

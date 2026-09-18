@@ -222,6 +222,7 @@ import {
   handleAgreeExitRequest,
   handleCancelExitRequest,
   handleBotExitRequests,
+  autoAgreeExpiredExitRequests,
 } from "./exit-request.js";
 import {
   handleAdminExitedMembers,
@@ -2079,6 +2080,16 @@ export default {
       await flushDailyUsageStats(env);
     } catch (e) {
       console.error("[cron] usage flush 실패:", e);
+    }
+    // 🔧 [48시간 자동 동의 — 사용자 지시] "신청자가 동의를 누르지 않으면
+    // 48시간 뒤에는 자동 동의 처리" — 위 90분 자동 위반인정과 동일한
+    // 이유로 별도 try/catch로 분리한다. 봇 연결과 무관한 로직(도움봇
+    // 대시보드를 거치지 않고 시트/LeaveQueue DO만 조회)이라 아래
+    // proxyToBotDashboard 실패 여부와도 독립적으로 항상 시도한다.
+    try {
+      await autoAgreeExpiredExitRequests(env);
+    } catch (e) {
+      console.error("[cron] 퇴실 신청 자동 동의 실패:", e);
     }
     const data = await proxyToBotDashboard(env, "/captures");
     if (!data) return; // 봇 연결 불가 — 다음 크론 실행이나 화면 조회 시 안전망이 재시도.

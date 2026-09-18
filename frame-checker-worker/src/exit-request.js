@@ -13,9 +13,11 @@ import {
   resolveMemberNumber,
   getLeaveQueueStub,
   exitDateSettled,
+  exitDateMidnightUtcMs,
   findMemberNumberByEmail,
   buildPersonalStatus,
   resolveExitSourceFileId,
+  listAllMembers,
 } from "./index.js";
 import { invalidateMemberCache, invalidatePersonalStatusCache } from "./cache.js";
 
@@ -55,6 +57,62 @@ export async function handleSetExitRequest(req, env, origin) {
   }
 }
 
+// 🔧 [구조 개선] handleAgreeExitRequest(회원 본인이 누르는 API)와
+// autoAgreeExpiredExitRequests(48시간 자동 동의 크론)가 "신청 조회 →
+// 조건 검증 → 동의 기록" 로직을 그대로 공유해야 해서 뽑았다. 성공하면
+// { agreedAt }, 검증 실패면 { error }를 던지지 않고 반환해 두 호출부가
+// 각자의 방식(HTTP 에러 응답 vs 조용히 건너뛰고 다음 대상 처리)으로
+// 처리하게 한다 — 실패를 예외로 던지면 크론이 한 회원의 실패로 나머지
+// 대상까지 멈추게 된다.
+async function agreeExitRequestForMember(env, accessToken, memberNumber, member, existing) {
+  // exitDate 존재 여부/exitDateSettled 판정은 이 함수를 부르기 전에
+  // 이미 끝났다고 가정한다(handleAgreeExitRequest/autoAgreeExpiredExitRequests
+  // 양쪽 다 대상 필터링 단계에서 확인) — findMemberNumberByEmail/
+  // buildPersonalStatus 같은 무거운 조회를 그 판정도 되기 전에 미리
+  // 하지 않기 위해서다.
+
+  // 🔧 [사용자 지시] "미납 벌금이 있거나 상금 정산이 처리되지 않았으면
+  // 내역과 동의 버튼을 보여주지 않음" — 프론트가 이미 같은 조건으로
+  // 버튼 자체를 숨기지만(DepositRefundDialog), API를 직접 호출하는
+  // 경로까지 막기 위해 서버에서도 다시 확인한다. buildPersonalStatus가
+  // fineUnpaid/prizePending을 함께 계산해두므로 그대로 재사용한다.
+  // 🔧 [버그 수정] 마지막 참여일이 일요일이고, 회원이 그 다음 주
+  // 월요일 새벽 sheet_reset(06:00 KST) 이후에야 동의를 시도하면, 원본
+  // 시트(env.GOOGLE_SHEET_FILE_ID)는 이미 새 사이클로 넘어가 지난 주
+  // 순위/집계!P6이 사라진 상태다(순위가 "-"가 되어 항상 순위권 밖으로
+  // 오판 → 상금이 실제로는 미지급인데도 동의를 허용해버리는 위험).
+  // exit-confirm.js의 computeExitResult가 확정 처리 경로에서 이미 쓰는
+  // resolveExitSourceFileId(kind: "settle")를 그대로 재사용해, 리셋을
+  // 넘겼으면 그 주의 백업 파일에서 조회하도록 한다.
+  const { sourceFileId } = await resolveExitSourceFileId(
+    env,
+    accessToken,
+    env.GOOGLE_SHEET_FILE_ID,
+    memberNumber,
+    "settle",
+    null
+  );
+  const status = await buildPersonalStatus(env, accessToken, sourceFileId, member.number, member.name);
+  if (status.depositRefundBreakdown.fineUnpaid) {
+    return { error: "벌금 미납분이 남아있어 동의할 수 없습니다." };
+  }
+  if (status.prizePending) {
+    return { error: "이번 주 상금 정산이 아직 처리되지 않아 동의할 수 없습니다." };
+  }
+
+  const agreedAt = Date.now();
+  await getLeaveQueueStub(env).fetch("https://do/exit/put", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ memberNumber, exitDate: existing.exitDate, ts: existing.ts, agreedAt }),
+  });
+  await Promise.all([
+    invalidatePersonalStatusCache(env, env.GOOGLE_SHEET_FILE_ID, memberNumber),
+    invalidateMemberCache(env, ["exitRequest"]),
+  ]);
+  return { agreedAt };
+}
+
 // 회원 본인이 "예치금 정산액에 동의합니다"를 누르는 API — 퇴실 예약일
 // (exitDate)의 일간 집계가 실제로 끝나야만(exitDateSettled) 누를 수 있다.
 // 이 동의가 있어야만 관리자의 "정산" 처리 버튼이 활성화된다 — 신청만으로
@@ -73,7 +131,6 @@ export async function handleAgreeExitRequest(req, env, origin) {
     const existingRes = await leaveQueueStub.fetch(`https://do/exit/get?memberNumber=${encodeURIComponent(memberNumber)}`);
     const { entry: existing } = await existingRes.json();
     if (!existing) return json({ error: "퇴실 신청 내역이 없습니다." }, 404, origin);
-
     if (!existing.exitDate) {
       return json({ error: "마지막 참여일이 지정되지 않은 신청입니다." }, 400, origin);
     }
@@ -81,50 +138,55 @@ export async function handleAgreeExitRequest(req, env, origin) {
       return json({ error: "아직 마지막 참여일의 일간 집계가 끝나지 않았습니다." }, 400, origin);
     }
 
-    // 🔧 [사용자 지시] "미납 벌금이 있거나 상금 정산이 처리되지 않았으면
-    // 내역과 동의 버튼을 보여주지 않음" — 프론트가 이미 같은 조건으로
-    // 버튼 자체를 숨기지만(DepositRefundDialog), API를 직접 호출하는
-    // 경로까지 막기 위해 서버에서도 다시 확인한다. buildPersonalStatus가
-    // fineUnpaid/prizePending을 함께 계산해두므로 그대로 재사용한다.
-    // 🔧 [버그 수정] 마지막 참여일이 일요일이고, 회원이 그 다음 주
-    // 월요일 새벽 sheet_reset(06:00 KST) 이후에야 동의를 시도하면, 원본
-    // 시트(env.GOOGLE_SHEET_FILE_ID)는 이미 새 사이클로 넘어가 지난 주
-    // 순위/집계!P6이 사라진 상태다(순위가 "-"가 되어 항상 순위권 밖으로
-    // 오판 → 상금이 실제로는 미지급인데도 동의를 허용해버리는 위험).
-    // exit-confirm.js의 computeExitResult가 확정 처리 경로에서 이미 쓰는
-    // resolveExitSourceFileId(kind: "settle")를 그대로 재사용해, 리셋을
-    // 넘겼으면 그 주의 백업 파일에서 조회하도록 한다.
     const member = await findMemberNumberByEmail(env, accessToken, env.GOOGLE_SHEET_FILE_ID, session.email);
     if (!member) return json({ error: "데이터 시트 명단에서 계정을 찾을 수 없습니다." }, 403, origin);
-    const { sourceFileId } = await resolveExitSourceFileId(
-      env,
-      accessToken,
-      env.GOOGLE_SHEET_FILE_ID,
-      memberNumber,
-      "settle",
-      null
-    );
-    const status = await buildPersonalStatus(env, accessToken, sourceFileId, member.number, member.name);
-    if (status.depositRefundBreakdown.fineUnpaid) {
-      return json({ error: "벌금 미납분이 남아있어 동의할 수 없습니다." }, 400, origin);
-    }
-    if (status.prizePending) {
-      return json({ error: "이번 주 상금 정산이 아직 처리되지 않아 동의할 수 없습니다." }, 400, origin);
-    }
 
-    const agreedAt = Date.now();
-    await leaveQueueStub.fetch("https://do/exit/put", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ memberNumber, exitDate: existing.exitDate, ts: existing.ts, agreedAt }),
-    });
-    await Promise.all([
-      invalidatePersonalStatusCache(env, env.GOOGLE_SHEET_FILE_ID, memberNumber),
-      invalidateMemberCache(env, ["exitRequest"]),
-    ]);
-    return json({ ok: true, agreedAt }, 200, origin);
+    const result = await agreeExitRequestForMember(env, accessToken, memberNumber, member, existing);
+    if (result.error) return json({ error: result.error }, 400, origin);
+    return json({ ok: true, agreedAt: result.agreedAt }, 200, origin);
   } catch (err) {
     return json({ error: "동의 처리 실패: " + err.message }, 500, origin);
+  }
+}
+
+// 🔧 [사용자 지시] "신청자가 동의를 누르지 않으면 48시간 뒤에는 자동
+// 동의처리" — 회원이 마지막 참여일 익일에 정산 내역을 확인하고도 계속
+// 미루면 관리자의 확정 처리가 무기한 보류된다. exitDateSettled(익일)
+// 시점 기준 48시간이 지났는데도 agreedAt이 없는 신청을 5분 cron
+// (scheduled, index.js)이 자동으로 동의 처리한다 — "90분 자동
+// 위반인정"(applyAutoRecognitionForExpired, report-review.js)과 동일한
+// 시간 기반 자동 처리 패턴이다. 벌금 미납/상금 미정산으로 막힌 신청은
+// agreeExitRequestForMember가 그대로 error를 반환해 건너뛰고, 다음 크론
+// 실행 때 그 조건이 풀리면 그때 자동 동의된다(무기한 재시도, 목표 기간
+// 보장을 강제하지 않음 — 사람이 수동으로 눌러도 조건은 똑같이 걸린다).
+export async function autoAgreeExpiredExitRequests(env) {
+  const AUTO_AGREE_TIMEOUT_MS = 48 * 60 * 60 * 1000;
+  const exitRequests = await listExitRequests(env);
+  const now = Date.now();
+  const targets = [...exitRequests.entries()].filter(([, entry]) => {
+    if (!entry || !entry.exitDate || entry.agreedAt) return false;
+    const midnightMs = exitDateMidnightUtcMs(entry.exitDate);
+    if (midnightMs === null) return false;
+    // 익일 00:00(KST, exitDateSettled와 동일한 기준점)로부터 48시간이
+    // 지났는지 — exitDateSettled(entry.exitDate) 체크는 사실상 이 조건에
+    // 포함되므로(48시간 ⊃ 0시간) 생략해도 되지만, 의도를 명확히 남긴다.
+    const nextDayMidnightMs = midnightMs + 24 * 60 * 60 * 1000;
+    return now - nextDayMidnightMs >= AUTO_AGREE_TIMEOUT_MS;
+  });
+  if (targets.length === 0) return;
+
+  const accessToken = await getServiceAccountAccessToken(env);
+  const members = await listAllMembers(env, accessToken, env.GOOGLE_SHEET_FILE_ID);
+  const memberByNumber = new Map(members.map((m) => [m.number, m]));
+
+  for (const [memberNumber, existing] of targets) {
+    const member = memberByNumber.get(memberNumber);
+    if (!member) continue; // 이미 퇴실 처리됐거나 명단에서 사라진 번호 — 다음 크론에서 재시도해도 계속 없으면 자연히 무시된다.
+    try {
+      await agreeExitRequestForMember(env, accessToken, memberNumber, member, existing);
+    } catch (err) {
+      console.error(`[cron] 회원 ${memberNumber} 자동 동의 처리 실패:`, err);
+    }
   }
 }
 
