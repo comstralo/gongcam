@@ -474,6 +474,67 @@ describe("handleCancelExitRequest", () => {
     const res = await handleCancelExitRequest(req, testEnv, "https://example.com");
     expect(res.status).toBe(200);
   });
+
+  // 🔧 [사용자 지시] "'퇴실 신청 취소'는 마지막 참여일까지는 본인이
+  // 자발적으로 가능하고, 익일이 되면 취소하지 못하게 처리해줘(관리자는
+  // 취소 가능)".
+  it("본인이 마지막 참여일 익일 이후 취소를 시도하면 400을 반환하고 신청이 남아있다", async () => {
+    stubOauthFetch();
+    const testEnv = makeTestEnv({ GOOGLE_SHEET_FILE_ID: "exit-req-cancel-self-toolate" });
+    const token = await makeMemberToken({ memberNumber: "14" });
+    const exitDate = "2026-08-14"; // 확실히 익일이 지난 과거 날짜
+    const setReq = makeRequest("https://worker/exit-request", {
+      token,
+      method: "POST",
+      body: { exitDate },
+    });
+    // 신청 시점(2주 이내 범위 제한)을 exitDate 당일로 고정한다.
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 7, 14));
+    await handleSetExitRequest(setReq, testEnv, "https://example.com");
+    vi.useRealTimers(); // 취소 시도는 실제(익일이 이미 지난) 현재 시각 기준.
+
+    const req = makeRequest("https://worker/exit-request/cancel", { token, method: "POST" });
+    const res = await handleCancelExitRequest(req, testEnv, "https://example.com");
+    expect(res.status).toBe(400);
+
+    const id = testEnv.LEAVE_QUEUE_DO.idFromName("leave-queue");
+    const stub = testEnv.LEAVE_QUEUE_DO.get(id);
+    const getRes = await stub.fetch("https://do/exit/get?memberNumber=14");
+    const { entry } = await getRes.json();
+    expect(entry).toMatchObject({ exitDate });
+  });
+
+  it("관리자는 마지막 참여일 익일이 지난 뒤에도 다른 회원의 신청을 취소할 수 있다", async () => {
+    stubOauthFetch();
+    const testEnv = makeTestEnv({ GOOGLE_SHEET_FILE_ID: "exit-req-cancel-admin-toolate" });
+    const memberToken = await makeMemberToken({ memberNumber: "15" });
+    const exitDate = "2026-08-14";
+    const setReq = makeRequest("https://worker/exit-request", {
+      token: memberToken,
+      method: "POST",
+      body: { exitDate },
+    });
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 7, 14));
+    await handleSetExitRequest(setReq, testEnv, "https://example.com");
+    vi.useRealTimers();
+
+    const adminToken = await signSession({ email: ADMIN_EMAIL, exp: Date.now() / 1000 + 3600 }, TEST_SECRET);
+    const req = makeRequest("https://worker/exit-request/cancel", {
+      token: adminToken,
+      method: "POST",
+      body: { number: "15" },
+    });
+    const res = await handleCancelExitRequest(req, testEnv, "https://example.com");
+    expect(res.status).toBe(200);
+
+    const id = testEnv.LEAVE_QUEUE_DO.idFromName("leave-queue");
+    const stub = testEnv.LEAVE_QUEUE_DO.get(id);
+    const getRes = await stub.fetch("https://do/exit/get?memberNumber=15");
+    const { entry } = await getRes.json();
+    expect(entry).toBeFalsy();
+  });
 });
 
 describe("handleBotExitRequests", () => {

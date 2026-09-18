@@ -158,17 +158,25 @@ export function DepositRefundDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showingDummy, dummyStage]);
 
+  // 마지막 참여일 익일이 지났는지(벌금 미납/상금 미정산 여부와 무관) —
+  // "퇴실 신청 취소" 가능 여부를 이 값 하나로 판단한다.
+  const lastAttendDayPassed = !!effectiveExitRequestDate && exitDatePassedDay(effectiveExitRequestDate);
+
   // 🔧 [사용자 지시] "퇴실 신청 → 마지막 참여일 익일에 정산 내역과 동의
   // 버튼 출력. 단, 미납 벌금이 있거나 상금 정산이 처리되지 않았으면
   // 내역과 동의 버튼을 보여주지 않음" — 익일이 됐어도 벌금 미납이나
   // 상금 미정산이 남아있으면 아직 정확한 반환액을 계산할 수 없어 동의
   // 자체를 막는다.
   const exitDatePassed =
-    effectiveExitRequested &&
-    !!effectiveExitRequestDate &&
-    exitDatePassedDay(effectiveExitRequestDate) &&
-    !effectiveBreakdown.fineUnpaid &&
-    !effectivePrizePending;
+    effectiveExitRequested && lastAttendDayPassed && !effectiveBreakdown.fineUnpaid && !effectivePrizePending;
+
+  // 🔧 [사용자 지시] "'퇴실 신청 취소'는 마지막 참여일까지는 본인이
+  // 자발적으로 가능하고, 익일이 되면 취소하지 못하게 처리해줘(관리자는
+  // 취소 가능)" — 이 다이얼로그는 회원 본인용이라, 관리자가 자기 계정
+  // 설정에서 목업으로 열어본 것이 아닌 한(showingDummy는 항상 회원
+  // 시점 기준이므로 여기서 isAdmin은 "이 회원이 관리자 본인인지"를
+  // 뜻한다) 익일이 지나면 취소 버튼을 막는다.
+  const canCancelExit = isAdmin || !lastAttendDayPassed;
 
   // 🧪 목업 미리보기 중에는 실제 회원 상태가 아니므로 API를 호출하지
   // 않는다 — 대신 dummyStage만 다음 단계로 넘긴다(신청 전 → 신청 후
@@ -302,7 +310,7 @@ export function DepositRefundDialog({
                 <CalendarDays className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                 <ItemTitle>마지막 참여일</ItemTitle>
               </span>
-              <span className="text-xs sm:text-sm">{effectiveExitRequestDate || "-"}</span>
+              <span className="text-sm sm:text-base">{effectiveExitRequestDate || "-"}</span>
             </InfoCard>
           ) : (
             <InfoCard className="flex flex-col gap-1.5 bg-card">
@@ -386,15 +394,24 @@ export function DepositRefundDialog({
                 </AlertDescription>
               </Alert>
             ) : (
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  variant="outline"
-                  className="w-full sm:h-12 sm:text-base"
-                  disabled={submitting}
-                  onClick={handleCancelExit}
-                >
-                  퇴실 신청 취소
-                </Button>
+              // 🔧 [사용자 지시] "퇴실 신청 취소는 마지막 참여일까지는
+              // 본인이 자발적으로 가능하고, 익일이 되면 취소하지
+              // 못하게(관리자는 취소 가능)" — 이 블록은 exitDatePassed가
+              // true인 상태(마지막 참여일 익일이 이미 지남)라 회원
+              // 본인에게는 canCancelExit가 항상 false다. "동의합니다"만
+              // 단독으로 보여주고(canCancelExit=false), 관리자는 계속
+              // 두 버튼을 함께 본다.
+              <div className={cn("grid gap-2", canCancelExit ? "grid-cols-2" : "grid-cols-1")}>
+                {canCancelExit && (
+                  <Button
+                    variant="outline"
+                    className="w-full sm:h-12 sm:text-base"
+                    disabled={submitting}
+                    onClick={handleCancelExit}
+                  >
+                    퇴실 신청 취소
+                  </Button>
+                )}
                 <Button
                   variant="destructive"
                   className="w-full sm:h-12 sm:text-base"
@@ -412,22 +429,33 @@ export function DepositRefundDialog({
                   않았으면 내역과 동의 버튼을 보여주지 않음" — 마지막
                   참여일 익일이 지났는데도 동의 버튼이 안 보이면 회원이
                   이유를 알 수 있게 사유를 안내한다. */}
-              {effectiveExitRequestDate &&
-                exitDatePassedDay(effectiveExitRequestDate) &&
-                (effectiveBreakdown.fineUnpaid || effectivePrizePending) && (
-                  <Alert variant="destructive">
-                    <AlertDescription>
-                      {effectiveBreakdown.fineUnpaid && effectivePrizePending
-                        ? "벌금 미납분과 상금 정산이 아직 처리되지 않아 예치금 정산액을 확인할 수 없습니다."
-                        : effectiveBreakdown.fineUnpaid
-                          ? "벌금 미납분이 남아있어 예치금 정산액을 확인할 수 없습니다."
-                          : "이번 주 상금 정산이 아직 처리되지 않아 예치금 정산액을 확인할 수 없습니다."}
-                    </AlertDescription>
-                  </Alert>
-                )}
-              <Button variant="outline" className="w-full sm:h-12 sm:text-base" disabled={submitting} onClick={handleCancelExit}>
-                퇴실 신청 취소
-              </Button>
+              {lastAttendDayPassed && (effectiveBreakdown.fineUnpaid || effectivePrizePending) && (
+                <Alert variant="destructive">
+                  <AlertDescription>
+                    {effectiveBreakdown.fineUnpaid && effectivePrizePending
+                      ? "벌금 미납분과 상금 정산이 아직 처리되지 않아 예치금 정산액을 확인할 수 없습니다."
+                      : effectiveBreakdown.fineUnpaid
+                        ? "벌금 미납분이 남아있어 예치금 정산액을 확인할 수 없습니다."
+                        : "이번 주 상금 정산이 아직 처리되지 않아 예치금 정산액을 확인할 수 없습니다."}
+                  </AlertDescription>
+                </Alert>
+              )}
+              {/* 🔧 [사용자 지시] "퇴실 신청 취소는 마지막 참여일까지는
+                  본인이 자발적으로 가능하고, 익일이 되면 취소하지
+                  못하게(관리자는 취소 가능)" — 위 벌금/상금 안내와
+                  달리, 이 경우는 회원 본인에게는 버튼조차 보여주지
+                  않는다(관리자만 계속 볼 수 있음).*/}
+              {canCancelExit ? (
+                <Button variant="outline" className="w-full sm:h-12 sm:text-base" disabled={submitting} onClick={handleCancelExit}>
+                  퇴실 신청 취소
+                </Button>
+              ) : (
+                <Alert variant="destructive">
+                  <AlertDescription>
+                    마지막 참여일이 지나 더 이상 본인이 신청을 취소할 수 없습니다. 관리자에게 문의해주세요.
+                  </AlertDescription>
+                </Alert>
+              )}
             </>
           ) : (
             <Button

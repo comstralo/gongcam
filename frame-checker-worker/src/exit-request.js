@@ -222,6 +222,21 @@ export async function handleCancelExitRequest(req, env, origin) {
     } else {
       const accessToken = await getServiceAccountAccessToken(env);
       memberNumber = await resolveMemberNumber(env, accessToken, session);
+      // 🔧 [사용자 지시] "'퇴실 신청 취소'는 마지막 참여일까지는 본인이
+      // 자발적으로 가능하고, 익일이 되면 취소하지 못하게 처리해줘.
+      // (관리자는 취소 가능)" — 본인이 스스로 취소하는 이 경로(number
+      // 없이 호출)에만 적용한다. 위 분기(number가 있는, 관리자가 다른
+      // 회원을 대상으로 취소하는 경로)는 그대로 항상 허용된다.
+      const leaveQueueStub = getLeaveQueueStub(env);
+      const existingRes = await leaveQueueStub.fetch(`https://do/exit/get?memberNumber=${encodeURIComponent(memberNumber)}`);
+      const { entry: existing } = await existingRes.json();
+      if (existing && existing.exitDate && exitDateSettled(existing.exitDate)) {
+        return json(
+          { error: "마지막 참여일이 지나 더 이상 본인이 신청을 취소할 수 없습니다. 관리자에게 문의해주세요." },
+          400,
+          origin
+        );
+      }
     }
     await getLeaveQueueStub(env).fetch("https://do/exit/delete", {
       method: "POST",
