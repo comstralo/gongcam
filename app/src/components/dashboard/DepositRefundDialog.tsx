@@ -430,8 +430,8 @@ export function DepositRefundDialog({
               줄바꿈되면 그 텍스트가 카드 높이를 넘어서 잘렸다 — grid로
               오버레이와 카드들을 같은 셀에 겹쳐(두 자식 다 1/1에 배치)
               더 큰 쪽이 실제 높이를 결정하게 한다(absolute 대신). */}
-          <div className="grid">
-            <div className="col-start-1 row-start-1 flex flex-col gap-3">
+          <div className="grid min-w-0">
+            <div className="col-start-1 row-start-1 flex min-w-0 flex-col gap-3">
               <RefundAmountCard
                 valueContent={refundOverlayMessage ? "-" : won(amount)}
                 valueClassName={cn(
@@ -442,8 +442,8 @@ export function DepositRefundDialog({
               <DepositCauseCard items={causeItems} maskValues={!!refundOverlayMessage} />
             </div>
             {refundOverlayMessage && (
-              <div className="col-start-1 row-start-1 flex items-center justify-center rounded-lg bg-background/85 p-3 text-center backdrop-blur-[1px]">
-                <p className="text-xs font-medium text-muted-foreground sm:text-sm">{refundOverlayMessage}</p>
+              <div className="col-start-1 row-start-1 flex min-w-0 items-center justify-center rounded-lg bg-background/85 p-3 text-center backdrop-blur-[1px]">
+                <p className="min-w-0 text-xs font-medium text-muted-foreground sm:text-sm">{refundOverlayMessage}</p>
               </div>
             )}
           </div>
