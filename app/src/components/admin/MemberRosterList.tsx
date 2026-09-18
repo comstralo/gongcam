@@ -657,14 +657,14 @@ const ActiveMemberRosterView = forwardRef<
                           }
                         />
                         <SubRow
-                          label="퇴실 예약 일자"
-                          value={m.exitRequested ? (m.exitRequestDate ? m.exitRequestDate : "접수됨") : "-"}
-                        />
-                        <SubRow
                           label="최근 접속 일자"
                           value={m.lastLoginAt ? new Date(m.lastLoginAt).toLocaleString("ko-KR", { hour12: false }) : "-"}
                         />
                         <SubRow label="최근 접속 IP" value={m.lastLoginIp || "-"} />
+                        <SubRow
+                          label="퇴실 예약 일자"
+                          value={m.exitRequested ? (m.exitRequestDate ? m.exitRequestDate : "접수됨") : "-"}
+                        />
                       </div>
                     </div>
 
