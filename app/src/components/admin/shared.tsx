@@ -1,21 +1,17 @@
 import { useEffect, useState, type ReactNode } from "react";
-import {
-  RotateCw,
-  FileText,
-  Image as ImageIcon,
-  Loader2,
-  Search,
-  Hash,
-  ExternalLink,
-  PiggyBank,
-  TrendingDown,
-  Eye,
-  type LucideIcon,
-} from "lucide-react";
+import { RotateCw, FileText, Image as ImageIcon, Loader2, Search, Hash, ExternalLink, Eye, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { InfoCard, SubRow, buildDepositCauseItems, won, type DepositCauseItem } from "@/components/dashboard/shared";
+import {
+  InfoCard,
+  SubRow,
+  buildDepositCauseItems,
+  won,
+  RefundAmountCard,
+  DepositCauseCard,
+  type DepositCauseItem,
+} from "@/components/dashboard/shared";
 import { WORKER_BASE } from "@/lib/api/client";
 import { cn, ICON_STROKE } from "@/lib/utils";
 import type { PenaltySlotHistoryEntry, DepositRefundBreakdown, ExitKind } from "@/lib/api/types";
@@ -211,43 +207,25 @@ export function ExitResultCards({
   /** undefined면 "처리 결과" 카드에 블랙리스트 행을 표시하지 않는다. */
   blacklist?: boolean;
 }) {
+  const causeItems = mergePenaltyLabel(
+    buildDepositCauseItems(breakdown, breakdown.lateNotice ? 50 : 0),
+    breakdown,
+    kind
+  ).filter((item) => !(item.key === "penalty" && item.rate === 0));
+
   return (
     <>
-      <InfoCard className="flex items-center justify-between gap-2 bg-card">
-        <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
-          <PiggyBank className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-          반환 예치금
-        </span>
-        <span
-          className={cn(
-            "text-sm sm:text-base",
-            refundAmount >= 10000 && "text-ok",
-            refundAmount === 5000 && "text-amber-600 dark:text-amber-400",
-            refundAmount === 0 && "text-destructive"
-          )}
-        >
-          {won(refundAmount)}
-        </span>
-      </InfoCard>
+      <RefundAmountCard
+        valueContent={won(refundAmount)}
+        valueClassName={cn(
+          "text-sm sm:text-base",
+          refundAmount >= 10000 && "text-ok",
+          refundAmount === 5000 && "text-amber-600 dark:text-amber-400",
+          refundAmount === 0 && "text-destructive"
+        )}
+      />
 
-      <InfoCard className="flex flex-col gap-1.5 bg-card">
-        <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
-          <TrendingDown className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-          차감 원인
-        </span>
-        <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
-          {mergePenaltyLabel(buildDepositCauseItems(breakdown, breakdown.lateNotice ? 50 : 0), breakdown, kind)
-            .filter((item) => !(item.key === "penalty" && item.rate === 0))
-            .map((item) => (
-              <SubRow
-                key={item.key}
-                label={item.label}
-                value={`${item.rate}%`}
-                valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
-              />
-            ))}
-        </div>
-      </InfoCard>
+      <DepositCauseCard items={causeItems} />
 
       <InfoCard className="flex flex-col gap-1.5 bg-card">
         <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">

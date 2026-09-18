@@ -1,4 +1,4 @@
-import { CalendarDays, CheckCircle2, DoorOpen, PiggyBank, Search, TrendingDown, TriangleAlert } from "lucide-react";
+import { CalendarDays, CheckCircle2, Search, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import {
   Dialog,
@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { SubRow, InfoCard, ItemTitle, buildDepositCauseItems } from "@/components/dashboard/shared";
+import { InfoCard, ItemTitle, buildDepositCauseItems, RefundAmountCard, DepositCauseCard } from "@/components/dashboard/shared";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/lib/auth/useAuth";
 import { cn } from "@/lib/utils";
@@ -153,10 +153,9 @@ export function DepositRefundDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
-          {/* 🔧 2026-09: 이 다이얼로그의 카드 제목들이 text-xs font-semibold
-              sm:text-sm(12/14px)로, dashboard/shared.tsx가 이미 정의해둔
-              "카드 1차 텍스트" 컴포넌트 ItemTitle(text-sm font-semibold
-              sm:text-base, 14/16px)보다 작았다 — 정작 그 밑의 SubRow는
+          {/* 🔧 2026-09: 이 다이얼로그의 카드 제목들이 dashboard/shared.tsx가
+              이미 정의해둔 "카드 1차 텍스트" 컴포넌트 ItemTitle(text-sm
+              font-bold sm:text-base)보다 작았다 — 정작 그 밑의 SubRow는
               기본값이 이미 한 단계 작고(11/12px) 옅은 색(muted-foreground)
               인데, 제목이 SubRow와 비슷한 크기라 위계가 잘 안 읽혔다
               (MeritBreakdownDialog에서 같은 문제를 겪고 사용자 확인 후
@@ -190,50 +189,30 @@ export function DepositRefundDialog({
             </InfoCard>
           )}
 
-          <InfoCard className="flex flex-col gap-1.5 bg-card">
-            <div className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-1.5">
-                <PiggyBank className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
-                <ItemTitle>예치금 반환 예상액</ItemTitle>
-              </span>
-              <span
-                className={cn(
-                  "text-xs sm:text-sm",
-                  isAdmin && isReduced ? "text-destructive" : isAdmin ? "text-ok" : "text-muted-foreground"
-                )}
-              >
-                {isAdmin ? won(amount) : "-"}
-              </span>
-            </div>
-
-            {!isAdmin && (
-              <span className="text-micro-lg text-muted-foreground sm:text-xs">
-                마지막 참여일 다음 날 확인하실 수 있습니다.
-              </span>
+          {/* 🔧 2026-09: "반환 예치금"/"차감 원인" 카드 껍데기를
+              ExitResultCards(관리자용, admin/shared.tsx)와 각자 복붙해
+              구현하고 있었다(사용자 지적: "예치금 반환, 차감 원인 쪽이
+              재활용 가능해 보인다") — RefundAmountCard/DepositCauseCard
+              (dashboard/shared.tsx)로 공통화했다. 값 표시 정책은 이 모달
+              고유의 것이라(회원에게는 "-"로 가림, 관리자만 실제 금액+2단계
+              색상) valueContent/valueClassName으로 그대로 넘긴다. */}
+          <RefundAmountCard
+            title="예치금 반환 예상액"
+            valueContent={isAdmin ? won(amount) : "-"}
+            valueClassName={cn(
+              "text-xs sm:text-sm",
+              isAdmin && isReduced ? "text-destructive" : isAdmin ? "text-ok" : "text-muted-foreground"
             )}
-          </InfoCard>
+            footnote={
+              !isAdmin && (
+                <span className="text-micro-lg text-muted-foreground sm:text-xs">
+                  마지막 참여일 다음 날 확인하실 수 있습니다.
+                </span>
+              )
+            }
+          />
 
-          {isAdmin && (
-            <InfoCard className="flex flex-col gap-1.5 bg-card">
-              <span className="flex items-center gap-1.5">
-                <TrendingDown className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
-                <ItemTitle>차감 원인</ItemTitle>
-              </span>
-              {/* 🔧 2026-09: SubRow 기본값(11/12px)이 아니라 MeritBreakdownDialog
-                  에서 이미 검증된 하위 항목 크기(text-xs sm:text-sm, 12/14px)로
-                  맞춘다 — 같은 "카드 제목 밑 하위 항목" 역할인데 화면마다
-                  크기가 다르면 위계가 화면 간에 어긋나 보인다(사용자 지적). */}
-              {causeItems.map((item) => (
-                <SubRow
-                  key={item.key}
-                  label={item.label}
-                  value={`${item.rate}%`}
-                  labelClassName="text-xs sm:text-sm"
-                  valueClassName={cn("font-sans text-xs sm:text-sm", item.rate > 0 && "text-destructive")}
-                />
-              ))}
-            </InfoCard>
-          )}
+          {isAdmin && <DepositCauseCard items={causeItems} />}
 
           <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
             <div className="flex items-center gap-1.5 text-destructive">
@@ -320,8 +299,7 @@ export function DepositRefundDialog({
               disabled={submitting || !selectedDate}
               onClick={handleRequestExit}
             >
-              <DoorOpen className="size-3.5 shrink-0" />
-              퇴실 신청하기
+              퇴실 신청
             </Button>
           )}
         </div>

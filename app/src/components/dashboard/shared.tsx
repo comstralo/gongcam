@@ -1,5 +1,16 @@
 import type { ReactNode } from "react";
-import { Search, SquarePen, CircleCheck, CircleDot, Timer, BedDouble, Wallet, type LucideIcon } from "lucide-react";
+import {
+  Search,
+  SquarePen,
+  CircleCheck,
+  CircleDot,
+  Timer,
+  BedDouble,
+  Wallet,
+  TrendingDown,
+  PiggyBank,
+  type LucideIcon,
+} from "lucide-react";
 import { cn, ICON_STROKE } from "@/lib/utils";
 import type { StatusDay, DepositRefundBreakdown } from "@/lib/api/types";
 
@@ -260,6 +271,85 @@ export function InfoCard({ className, children, ...props }: React.ComponentProps
 
 export function won(n: number) {
   return "₩" + (n || 0).toLocaleString();
+}
+
+// 🔧 2026-09: "차감 원인" 카드 껍데기(아이콘+제목+SubRow 나열)를
+// DepositRefundDialog(회원 본인용 퇴실신청 모달)와
+// ExitProcessDialog·ExitedMemberRosterView(관리자용, admin/shared.tsx의
+// ExitResultCards가 소유)가 각자 복붙해 구현하고 있었다(사용자 지적: "예치금
+// 반환, 차감 원인 쪽이 재활용 가능해 보인다"). buildDepositCauseItems(항목
+// 자체를 만드는 로직)는 이미 공유 함수였으니, 이 카드는 그 결과를 어떻게
+// "보여줄지"만 공통화한다. 두 화면이 값 텍스트 크기가 다르다(회원용은
+// text-xs/sm, 관리자 확정 결과는 text-sm/base — SubRow 기본 크기 자체를
+// 다르게 오버라이드해왔다) — sizeClassName으로 그 차이만 옵션으로 남긴다.
+export function DepositCauseCard({
+  items,
+  size = "default",
+}: {
+  items: DepositCauseItem[];
+  /** "default"(text-xs sm:text-sm, 관리자 확정 결과 화면)와 "compact"
+   * (text-micro-lg sm:text-xs, SubRow 기본 크기 그대로 — 회원용 모달)를
+   * 미리 정의된 두 클래스로만 받는다. Tailwind는 클래스명을 정적으로
+   * 스캔하므로 문자열 조합으로 동적 생성하면 실제로는 스타일이 적용되지
+   * 않는다 — 그래서 크기 값을 자유 문자열로 받지 않고 두 variant로 고정한다. */
+  size?: "default" | "compact";
+}) {
+  return (
+    <InfoCard className="flex flex-col gap-1.5 bg-card">
+      <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
+        <TrendingDown className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
+        차감 원인
+      </span>
+      <div
+        className={cn(
+          "flex flex-col gap-1.5",
+          size === "default" ? "[&_span]:text-xs [&_span]:sm:text-sm" : "[&_span]:text-micro-lg [&_span]:sm:text-xs"
+        )}
+      >
+        {items.map((item) => (
+          <SubRow
+            key={item.key}
+            label={item.label}
+            value={`${item.rate}%`}
+            valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
+          />
+        ))}
+      </div>
+    </InfoCard>
+  );
+}
+
+// 🔧 2026-09: "반환 예치금"/"예치금 반환 예상액" 카드 껍데기 — 제목·아이콘
+// 배치는 동일하지만 값 표시 정책이 화면마다 다르다: 관리자 확정 결과는
+// 항상 실제 금액을 3단계 색상(10,000=초록/5,000=주황/0=빨강)으로,
+// DepositRefundDialog(회원용)는 회원에게는 "-"로 가리고 관리자가 열람할
+// 때만 금액+2단계 색상(제목과 동일한 이유로 값 크기도 다름)을 보여준다 —
+// valueContent/valueClassName을 호출부가 완성해 넘기게 해서 이 정책
+// 차이를 컴포넌트 내부 분기 없이 그대로 표현한다.
+export function RefundAmountCard({
+  title = "반환 예치금",
+  valueContent,
+  valueClassName,
+  footnote,
+}: {
+  title?: string;
+  valueContent: ReactNode;
+  valueClassName?: string;
+  /** 값 아래 보조 설명(예: "마지막 참여일 다음 날 확인하실 수 있습니다.") — 없으면 생략. */
+  footnote?: ReactNode;
+}) {
+  return (
+    <InfoCard className="flex flex-col gap-1.5 bg-card">
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
+          <PiggyBank className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
+          {title}
+        </span>
+        <span className={valueClassName}>{valueContent}</span>
+      </div>
+      {footnote}
+    </InfoCard>
+  );
 }
 
 // appscript.js deposit_value(고정 예치금)와 동일 — 재납 대상이면 이 금액
