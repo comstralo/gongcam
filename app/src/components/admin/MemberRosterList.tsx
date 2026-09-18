@@ -38,9 +38,10 @@ const DUMMY_NOTIFY_CATEGORIES: Record<NotifyCategory, string> = {
   direct_message: "다른 참여자의 알림(귓속말)",
 };
 const DUMMY_MEMBERS: MemberRosterEntry[] = [
+  // 1) 기본 케이스: 스터디장, 활발히 접속 중, 알림 전부 ON, 시트 링크 정상.
   {
     number: "1",
-    name: "김재희",
+    name: "재희",
     joinDate: "2026-01-05",
     totalPenalty: 0,
     suggestedKind: "settle",
@@ -56,19 +57,21 @@ const DUMMY_MEMBERS: MemberRosterEntry[] = [
       leave_proof_result: true,
       fine_status: true,
       exit_result: true,
-      direct_message: false,
+      direct_message: true,
     },
-    googleAccount: "jaehee.kim@gmail.com",
-    gooroomeeAccount: "jaehee.kim@gmail.com",
+    googleAccount: "hui.jae@gmail.com",
+    gooroomeeAccount: "hui.jae@gmail.com",
     examKind: "공시",
     goalType: "10H (교시제)",
     lastLoginAt: Date.now() - 1000 * 60 * 40,
     lastLoginIp: "121.128.55.10",
     sheetGid: 123456789,
   },
+  // 2) 부스터디장, 퇴실 신청은 했지만 아직 동의 전(exitAgreedAt=null) — 신청
+  //    취소 버튼이 노출되는 케이스. 알림 설정도 절반만 ON으로 섞는다.
   {
     number: "2",
-    name: "이서준",
+    name: "서준",
     joinDate: "2026-02-14",
     totalPenalty: 1,
     suggestedKind: "settle",
@@ -83,20 +86,23 @@ const DUMMY_MEMBERS: MemberRosterEntry[] = [
       report_result: true,
       leave_proof_result: false,
       fine_status: true,
-      exit_result: true,
+      exit_result: false,
       direct_message: true,
     },
-    googleAccount: "seojun.lee@gmail.com",
-    gooroomeeAccount: "seojun.lee@gmail.com",
+    googleAccount: "seojun.dev@gmail.com",
+    gooroomeeAccount: "seojun.dev@gmail.com",
     examKind: "CPA",
     goalType: "9H (달성제)",
     lastLoginAt: Date.now() - 1000 * 60 * 60 * 5,
     lastLoginIp: "58.234.11.202",
     sheetGid: 234567890,
   },
+  // 3) 스터디원, 페널티 누적(강제퇴실 후보), 구루미 계정 미기재, PUSH 구독
+  //    자체가 꺼져 있어 notifyPrefs 원본이 ON이어도 화면은 전부 OFF로
+  //    보여야 하는 케이스(코드 주석의 "PUSH 구독 OFF 시 세부 항목도 OFF").
   {
     number: "3",
-    name: "윤아름",
+    name: "아름",
     joinDate: "2026-03-02",
     totalPenalty: 2,
     suggestedKind: "forced",
@@ -110,16 +116,79 @@ const DUMMY_MEMBERS: MemberRosterEntry[] = [
     notifyPrefs: {
       report_result: true,
       leave_proof_result: true,
+      fine_status: true,
+      exit_result: true,
+      direct_message: true,
+    },
+    googleAccount: "areum.study@gmail.com",
+    gooroomeeAccount: "",
+    examKind: "",
+    goalType: "8H (교시제)",
+    lastLoginAt: Date.now() - 1000 * 60 * 60 * 24 * 9,
+    lastLoginIp: "211.36.140.7",
+    sheetGid: 345678901,
+  },
+  // 4) 스터디원, 퇴실 신청 + 동의까지 완료(exitAgreedAt 있음) — "정산 퇴실"
+  //    버튼이 실제로 활성화되는 유일한 조합. 한 번도 로그인한 적 없어
+  //    lastLoginAt/lastLoginIp가 전부 null/빈 값인 케이스도 겸한다.
+  {
+    number: "4",
+    name: "지민",
+    joinDate: "2026-04-20",
+    totalPenalty: 0,
+    suggestedKind: "settle",
+    reasons: [],
+    exitRequested: true,
+    exitRequestDate: "2026-09-21",
+    exitRequestedAt: Date.now() - 1000 * 60 * 60 * 24 * 5,
+    exitAgreedAt: Date.now() - 1000 * 60 * 60 * 3,
+    partiStatus: "스터디원",
+    pushSubscribed: true,
+    notifyPrefs: {
+      report_result: false,
+      leave_proof_result: false,
       fine_status: false,
       exit_result: true,
       direct_message: false,
     },
-    googleAccount: "areum.yoon@gmail.com",
-    gooroomeeAccount: "",
-    examKind: "",
-    goalType: "8H (교시제)",
+    googleAccount: "jimin.cam@gmail.com",
+    gooroomeeAccount: "jimin.cam@gmail.com",
+    examKind: "공무원",
+    goalType: "10H (달성제)",
     lastLoginAt: null,
     lastLoginIp: "",
+    sheetGid: 456789012,
+  },
+  // 5) 스터디원, 시트 gid를 찾지 못한 엣지 케이스(sheetGid=null이지만
+  //    spreadsheetId는 있는 상태 — 시트번호가 링크 없이 일반 텍스트로
+  //    표시돼야 함), 알림 설정 전부 OFF, 최근 접속 IP는 있지만 준비 중인
+  //    시험은 미기재.
+  {
+    number: "5",
+    name: "도윤",
+    joinDate: "2026-05-11",
+    totalPenalty: 0,
+    suggestedKind: "settle",
+    reasons: [],
+    exitRequested: false,
+    exitRequestDate: null,
+    exitRequestedAt: null,
+    exitAgreedAt: null,
+    partiStatus: "스터디원",
+    pushSubscribed: true,
+    notifyPrefs: {
+      report_result: false,
+      leave_proof_result: false,
+      fine_status: false,
+      exit_result: false,
+      direct_message: false,
+    },
+    googleAccount: "doyun.p@gmail.com",
+    gooroomeeAccount: "doyun.p@gmail.com",
+    examKind: "",
+    goalType: "9H (교시제)",
+    lastLoginAt: Date.now() - 1000 * 60 * 5,
+    lastLoginIp: "112.170.88.44",
     sheetGid: null,
   },
 ];
@@ -157,6 +226,9 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
     setExpandedNumber(null);
     setMembers(DUMMY_MEMBERS);
     setNotifyCategories(DUMMY_NOTIFY_CATEGORIES);
+    // 실제로 존재하지 않는 시트를 가리키는 가짜 링크를 만들지 않도록
+    // spreadsheetId는 비워둔다 — 컴포넌트의 기존 분기(spreadsheetId가
+    // 없으면 시트번호를 일반 텍스트로만 표시)가 그대로 적용된다.
     setSpreadsheetId(null);
   }
 
@@ -185,6 +257,11 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
   }
 
   function cancelExitRequest(number: string) {
+    // 🧪 목업 미리보기 중에는 실제 회원이 아니므로 API를 호출하지 않는다.
+    if (showingDummy) {
+      setError("목업 미리보기 중입니다 — 실제 데이터에는 영향을 주지 않습니다.");
+      return;
+    }
     setCancelingNumber(number);
     setError(null);
     call<{ ok: boolean }>("/exit-request/cancel", { method: "POST", body: { number } })
@@ -194,6 +271,11 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
   }
 
   function toggleViceLeader(m: MemberRosterEntry) {
+    // 🧪 목업 미리보기 중에는 실제 회원이 아니므로 API를 호출하지 않는다.
+    if (showingDummy) {
+      setError("목업 미리보기 중입니다 — 실제 데이터에는 영향을 주지 않습니다.");
+      return;
+    }
     setTogglingNumber(m.number);
     setError(null);
     call<SetPartiStatusResponse>("/admin/members/parti-status", {
@@ -394,13 +476,13 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
                         <Button
                           variant="outline"
                           className="w-full sm:h-12 sm:text-base"
-                          disabled={m.partiStatus === "스터디장" || togglingNumber === m.number}
+                          disabled={showingDummy || m.partiStatus === "스터디장" || togglingNumber === m.number}
                           onClick={() => toggleViceLeader(m)}
                         >
                           {m.partiStatus === "부스터디장" ? "임명 해제" : "부스터디장 임명"}
                         </Button>
                         <ExitProcessDialog candidate={m} lockKind="admin_forced" onConfirmed={() => load()} triggerClassName="w-full">
-                          <Button variant="destructive" className="w-full sm:h-12 sm:text-base">
+                          <Button variant="destructive" className="w-full sm:h-12 sm:text-base" disabled={showingDummy}>
                             직권 P 퇴실
                           </Button>
                         </ExitProcessDialog>
@@ -413,6 +495,7 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
                           <Button
                             variant="destructive"
                             className="w-full sm:h-12 sm:text-base"
+                            disabled={showingDummy}
                           >
                             정산 퇴실
                           </Button>
@@ -421,7 +504,7 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
                           <Button
                             variant="outline"
                             className="w-full sm:h-12 sm:text-base"
-                            disabled={cancelingNumber === m.number}
+                            disabled={showingDummy || cancelingNumber === m.number}
                             onClick={() => cancelExitRequest(m.number)}
                           >
                             신청 취소
