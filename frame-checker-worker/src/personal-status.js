@@ -983,10 +983,19 @@ export async function handleStatus(req, env, origin, url) {
 
   try {
     const accessToken = await getServiceAccountAccessToken(env);
+    // 🔧 [사용자 지시] "관리자 본인의 화면에서도 뜨도록" — AdminCycleRangeSelect
+    // (사이클 범위 선택 드롭다운)를 관리자가 자기 자신의 대시보드를 볼 때도
+    // 쓸 수 있어야 한다. 이 핸들러는 관리자든 아니든 누구나 호출하는 공용
+    // 엔드포인트라, isAdmin이 아니면 cycleAny를 조용히 무시하고 기존 cycle
+    // 처리로 폴백한다(handleRosterStatus와 동일 패턴).
+    const isAdmin = (session.email || "").toLowerCase() === (env.ADMIN_EMAIL || "").toLowerCase();
+    const cycleAnyFileId = isAdmin && url ? url.searchParams.get("cycleAny") : null;
     // cycle 쿼리 파라미터(백업 fileId)가 있으면 "현재 사이클에 속한 과거
     // 주차" 데이터를, 없으면 실시간(현재 활성 시트) 데이터를 대상으로 한다.
     const cycleFileId = url ? url.searchParams.get("cycle") : null;
-    const { fileId: targetFileId, weekOf } = await resolveTargetFileId(env, accessToken, cycleFileId);
+    const { fileId: targetFileId, weekOf } = cycleAnyFileId
+      ? await resolveTargetFileIdForAnyBackup(env, accessToken, cycleAnyFileId)
+      : await resolveTargetFileId(env, accessToken, cycleFileId);
 
     // 세션에 회원번호가 이미 있고 실시간 조회면(대상 파일이 현재 활성
     // 시트와 같으면) 권한관리 탭 재조회를 생략한다 — 과거 백업 파일은

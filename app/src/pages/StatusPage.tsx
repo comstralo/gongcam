@@ -106,11 +106,9 @@ export function StatusPage({
     setOtherLoading(true);
     setOtherError(null);
     // 🔧 [사용자 지시] "1주차 → 2주차 → 3주차로 딱 3주 단위로 끊어서
-    // 확인" — cycleAny는 관리자가 다른 회원을 볼 때(/admin/members/:number)
-    // 만 지원한다. 본인 조회(/status)는 selected===SELF_VALUE일 때만
-    // 타므로 이 파라미터를 지원하지 않지만, AdminCycleRangeSelect 자체를
-    // "다른 회원을 볼 때"만 노출하므로 selected===SELF_VALUE와
-    // cycleAnyFileId가 함께 오는 경우는 실무상 없다.
+    // 확인" — cycleAny는 관리자 본인 조회(/status)와 다른 회원 조회
+    // (/admin/members/:number) 둘 다 지원한다(handleStatus/
+    // handleAdminMemberStatus 모두 관리자일 때만 이 파라미터를 인정).
     const cycleParam = cycleAnyFileId
       ? `?cycleAny=${encodeURIComponent(String(cycleAnyFileId))}`
       : cycleFileId
@@ -245,11 +243,11 @@ export function StatusPage({
           includeForced
         />
       )}
-      {/* 🔧 [사용자 지시] "주차 토글 옆에 관리자만 확인할 수 있는 사이클
-          범위를 지정할 수 있는 기능" — 본인 조회(/status)는 cycleAny를
-          지원하지 않으므로, 관리자가 실제로 다른 회원을 보고 있을 때만
-          노출한다. */}
-      {isAdmin && selected !== SELF_VALUE && onSelectCycleAny && (
+      {/* 🔧 [사용자 지시] "관리자 본인의 화면에서도 뜨도록" — 처음엔 다른
+          회원을 볼 때만 노출했으나(본인 조회 /status가 cycleAny를 아직
+          지원하지 않았음), 이제 handleStatus에도 cycleAny 분기를 추가해
+          관리자 본인 조회에서도 그대로 쓸 수 있다. */}
+      {isAdmin && onSelectCycleAny && (
         <AdminCycleRangeSelect value={cycleAnyFileId ?? null} onSelect={onSelectCycleAny} />
       )}
       {membersError && (

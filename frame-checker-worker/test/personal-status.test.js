@@ -142,6 +142,82 @@ describe("handleStatus", () => {
     expect(Array.isArray(body.days)).toBe(true);
     expect(body.days.length).toBe(7);
   });
+
+  // 🔧 [사용자 지시] "관리자 본인의 화면에서도 뜨도록" — 관리자 전용
+  // "사이클 범위 선택" 드롭다운(AdminCycleRangeSelect)이 본인 조회
+  // (/status)에도 cycleAny를 붙일 수 있게 됐다. 일반 회원이 붙이면
+  // 조용히 무시되고(cycle과 동일하게 처리), 관리자가 붙이면 현재
+  // 사이클 제약 없이 그 백업 파일을 대상으로 조회해야 한다.
+  it("관리자가 cycleAny를 붙이면 현재 사이클 밖의 과거 백업도 대상으로 조회한다", async () => {
+    const testEnv = makeTestEnv({ GOOGLE_SHEET_FILE_ID: "personal-status-cycleany-admin" });
+    const token = await makeAdminToken();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url) => {
+        const u = String(url);
+        if (u.includes("oauth2.googleapis.com")) return Promise.resolve(oauthTokenResponse());
+        if (u.includes("drive/v3/files")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ files: [{ id: "old-backup-file", name: "공부합시당 캠스터디 260817-260823" }] }))
+          );
+        }
+        if (u.includes("V50")) return Promise.resolve(dataSheetResponse([{ number: 1, name: "가", email: ADMIN_EMAIL }]));
+        if (u.includes("values:batchGet")) {
+          return Promise.resolve(new Response(JSON.stringify({ valueRanges: [[], [[""]]] })));
+        }
+        if (u.includes("U42")) {
+          return Promise.resolve(new Response(JSON.stringify({ values: personalTabRows() })));
+        }
+        if (u.includes("F4%3AM4") || u.includes("F4:M4")) {
+          return Promise.resolve(new Response(JSON.stringify({ values: [] })));
+        }
+        if (/F\d+%3AM\d+|F\d+:M\d+/.test(u)) {
+          return Promise.resolve(new Response(JSON.stringify({ values: [[]] })));
+        }
+        if (u.includes("D25")) return Promise.resolve(new Response(JSON.stringify({ values: [["1"]] })));
+        if (u.includes("A4%3AL18") || u.includes("A4:L18")) {
+          return Promise.resolve(new Response(JSON.stringify({ values: [] })));
+        }
+        if (u.includes("D23%3AD24") || u.includes("D23:D24")) {
+          return Promise.resolve(new Response(JSON.stringify({ values: [["0"], ["0"]] })));
+        }
+        if (u.includes("fields=sheets.properties")) return Promise.resolve(metaResponse(["1", "template"]));
+        throw new Error("unexpected fetch: " + u);
+      })
+    );
+    const req = makeRequest("https://worker/status?cycleAny=old-backup-file", { token });
+
+    const res = await handleStatus(
+      req,
+      testEnv,
+      "https://example.com",
+      new URL("https://worker/status?cycleAny=old-backup-file")
+    );
+    const body = await res.json();
+    expect(res.status, JSON.stringify(body)).toBe(200);
+  });
+
+  it("일반 회원이 cycleAny를 붙여도 무시되고 실시간 원본을 조회한다", async () => {
+    const testEnv = makeTestEnv({ GOOGLE_SHEET_FILE_ID: "personal-status-cycleany-member" });
+    const token = await makeMemberToken();
+    // drive/v3/files를 stub하지 않는다 — cycleAny가 무시된다면
+    // resolveTargetFileIdForAnyBackup(=listBackupFiles 호출)이 아예
+    // 실행되지 않아야 하므로, 호출되면 "unexpected fetch"로 실패한다.
+    stubPersonalStatusFetch({
+      members: [{ number: 1, name: "가", email: "member@test.com" }],
+      personalRows: personalTabRows(),
+    });
+    const req = makeRequest("https://worker/status?cycleAny=old-backup-file", { token });
+
+    const res = await handleStatus(
+      req,
+      testEnv,
+      "https://example.com",
+      new URL("https://worker/status?cycleAny=old-backup-file")
+    );
+    const body = await res.json();
+    expect(res.status, JSON.stringify(body)).toBe(200);
+  });
 });
 
 describe("handleAdminMemberStatus", () => {
