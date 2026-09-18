@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, CircleDollarSign, CalendarDays, Loader2, User, Trophy, Timer, Award, Coins } from "lucide-react";
+import { ChevronDown, CircleDollarSign, CalendarDays, FlaskConical, Loader2, User, Trophy, Timer, Award, Coins } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
@@ -105,6 +105,101 @@ const FINE_BADGE_TONE: Record<FineAction, "ok" | "warn" | "amber" | "primary"> =
   "직권 P": "primary",
 };
 
+// 🧪 [목업 미리보기, 사용자 지시] "'PEN MONEY' 탭의 각 요소도 새로고침
+// 좌측에 목업 버튼을 만들고 적절한 목업을 생성" — 실 운영에서 나올 수
+// 있는 분기(요일별 납부/미납/면제 혼재, 직권 P 처리 이력, 총액, 회원
+// 상세 펼침의 반환예치금/차감원인)를 한 화면에서 모두 볼 수 있는 고정
+// 스냅샷 하나로 구성한다. 여러 회원의 여러 상태가 동시에 존재하는 게
+// 실제 데이터의 자연스러운 형태라 단계 순환(다른 화면의 dummyStage
+// 패턴)보다 이 방식이 더 적합하다.
+const DUMMY_PAID_FINE_RECORDS: FineRecord[] = [
+  { number: "9001", name: "김민준", day: "월", baseStatus: "미납" },
+  { number: "9002", name: "이서연", day: "월", baseStatus: "납부" },
+  { number: "9003", name: "박도윤", day: "화", baseStatus: "면제" },
+  { number: "9004", name: "최지우", day: "화", baseStatus: "미납" },
+  { number: "9001", name: "김민준", day: "금", baseStatus: "미납" },
+];
+
+const DUMMY_ADMIN_FORCED_COUNTS: Record<string, number> = { 월: 0, 화: 0, 수: 0, 목: 0, 금: 1, 토: 0, 일: 0 };
+
+const DUMMY_TOTAL_PAID_AMOUNT = 15000;
+
+// 회원 상세 펼침(DayDetailCard)이 쓰는 최소 필드만 채운다 — StatusResponse
+// 전체를 완성할 필요 없이 day/depositRefundBreakdown만 실제로 읽힌다.
+function dummyStatusDay(day: string, overrides: Partial<StatusResponse["days"][number]> = {}): StatusResponse["days"][number] {
+  return {
+    day,
+    date: null,
+    total: 5000,
+    goal: 0,
+    morning: 0,
+    explain: "일간 목표시간 미달",
+    confirmed: true,
+    complete: false,
+    studyTime: "07:40",
+    logStudyTime: "07:10",
+    bonusStudyTime: "00:30",
+    dailyGoalTime: "10:00",
+    dailyShortfallTime: "02:20",
+    morningShortfallTime: "",
+    isDepositAgainDay: false,
+    paymentStatus: "미납",
+    normalLeaveUsed: 0,
+    reasonLeaveUsed: 0,
+    reasonLeavePending: false,
+    ...overrides,
+  };
+}
+
+function dummyDepositRefundBreakdown(overrides: Partial<StatusResponse["depositRefundBreakdown"]> = {}): StatusResponse["depositRefundBreakdown"] {
+  return {
+    amount: 10000,
+    reason: null,
+    outputPen: 0,
+    timePen: 5000,
+    daysSinceJoin: 45,
+    fineUnpaid: false,
+    fineUnpaidDays: [],
+    depositAgainStatus: null,
+    lateNotice: false,
+    ...overrides,
+  };
+}
+
+// 회원 상세 펼침은 실제로 STATUS_DAYS 인덱스로 그 회원의 7일치 days
+// 배열에서 f.day에 해당하는 칸을 찾는다(위 dayIndex 참고) — 더미도 같은
+// 모양을 지켜야 하므로, 언급되지 않은 요일은 "해당 없음"(total 0,
+// complete)으로 채우고 실제 처리 대상 요일만 의미 있는 값을 넣는다.
+function dummyWeekDays(overrides: Partial<Record<string, Partial<StatusResponse["days"][number]>>>): StatusResponse["days"] {
+  return STATUS_DAYS.map((d) => dummyStatusDay(d, overrides[d] ?? { total: 0, complete: true, paymentStatus: "납부", explain: "" }));
+}
+
+// 회원번호 → (상세 펼침용 7일치 요일 카드, 반환예치금 breakdown). 실제
+// 처리 대상(9001~9004)마다 다른 분기를 보여준다: 미납이 두 요일(월·금)
+// 누적돼 반환액이 깎인 경우(9001), 정상 납부라 영향 없는 경우(9002),
+// 면제라 벌금 자체가 없는 경우(9003), 재납이 발생 중인 경우(9004).
+const DUMMY_MEMBER_DETAIL: Record<string, { days: StatusResponse["days"]; breakdown: StatusResponse["depositRefundBreakdown"] }> = {
+  "9001": {
+    days: dummyWeekDays({
+      월: { total: 5000, paymentStatus: "미납" },
+      금: { total: 5000, paymentStatus: "미납" },
+    }),
+    breakdown: dummyDepositRefundBreakdown({ amount: 5000, timePen: 5000, fineUnpaid: true, fineUnpaidDays: ["월", "금"] }),
+  },
+  "9002": {
+    days: dummyWeekDays({}),
+    breakdown: dummyDepositRefundBreakdown({ amount: 10000 }),
+  },
+  "9003": {
+    days: dummyWeekDays({ 화: { total: 0, complete: true, paymentStatus: "면제", explain: "사유반휴 인정" } }),
+    breakdown: dummyDepositRefundBreakdown({ amount: 10000 }),
+  },
+  "9004": {
+    days: dummyWeekDays({ 화: { total: 5000, isDepositAgainDay: true, paymentStatus: "미납" } }),
+    breakdown: dummyDepositRefundBreakdown({ amount: 5000, timePen: 5000, depositAgainStatus: "미납" }),
+  },
+};
+
 // 시트의 "납부확인" 값은 회원·요일마다 항상 미납/납부/면제 중 하나다 — 이
 // 화면은 그 값이 무엇이든 전원을 요일별로 보여주고(사용자 지적: 미납만
 // 보여선 안 되고 세 상태 모두 보여야 함), 각 행은 실제 그 값을 배지로,
@@ -132,6 +227,11 @@ function PaidFineList({
   // 백엔드가 바뀌어 더 이상 잠글 필요가 없다.
   const readOnly = false;
 
+  // 🧪 [목업 미리보기, 사용자 지시] 실제 데이터를 건드리지 않고 화면
+  // 분기(요일별 납부/미납/면제 혼재, 직권 P 이력, 회원 상세 펼침)를
+  // 확인하기 위한 토글 — 켜져 있는 동안은 API 호출 대신 고정 스냅샷을
+  // 보여준다.
+  const [showingDummy, setShowingDummy] = useState(false);
   const [records, setRecords] = useState<FineRecord[] | null>(null);
   const [totalAmount, setTotalAmount] = useState(0);
   // 🔧 2026-09: "직권 P : N건" 배지 실제 구현 — 요일별 카운트(§GET
@@ -154,6 +254,7 @@ function PaidFineList({
   const loadingRef = useRef(false);
 
   function load() {
+    if (showingDummy) return;
     if (loadingRef.current) return;
     loadingRef.current = true;
     setLoading(true);
@@ -198,6 +299,12 @@ function PaidFineList({
 
   async function handleSetStatus(f: FineRecord, status: FineStatus) {
     const key = fineKey(f);
+    // 🧪 목업 중엔 실제 API를 호출하지 않고 로컬 override만 바꿔 화면
+    // 전환만 보여준다 — 운영 데이터에 어떤 쓰기도 발생하지 않는다.
+    if (showingDummy) {
+      setStatusOverride((prev) => ({ ...prev, [key]: status }));
+      return;
+    }
     setPendingKey(key);
     setError(null);
     try {
@@ -230,12 +337,26 @@ function PaidFineList({
       return;
     }
     setExpandedKey(key);
-    if (!dayDetail[f.number]) {
-      setDayDetail((prev) => ({ ...prev, [f.number]: "loading" }));
-      call<StatusResponse>(`/admin/members/${encodeURIComponent(f.number)}`)
-        .then((data) => setDayDetail((prev) => ({ ...prev, [f.number]: data })))
-        .catch(() => setDayDetail((prev) => ({ ...prev, [f.number]: "error" })));
+    if (dayDetail[f.number]) return;
+    // 🧪 목업 중엔 회원 상세도 API 없이 DUMMY_MEMBER_DETAIL의 고정
+    // 스냅샷으로 즉시 채운다(실제와 동일하게 day/depositRefundBreakdown만
+    // 채운 최소 StatusResponse).
+    if (showingDummy) {
+      const detail = DUMMY_MEMBER_DETAIL[f.number];
+      if (detail) {
+        setDayDetail((prev) => ({
+          ...prev,
+          [f.number]: { days: detail.days, depositRefundBreakdown: detail.breakdown } as StatusResponse,
+        }));
+      } else {
+        setDayDetail((prev) => ({ ...prev, [f.number]: "error" }));
+      }
+      return;
     }
+    setDayDetail((prev) => ({ ...prev, [f.number]: "loading" }));
+    call<StatusResponse>(`/admin/members/${encodeURIComponent(f.number)}`)
+      .then((data) => setDayDetail((prev) => ({ ...prev, [f.number]: data })))
+      .catch(() => setDayDetail((prev) => ({ ...prev, [f.number]: "error" })));
   }
 
   // 로컬에서 바꾼 적이 있으면 그 값, 없으면 서버가 알려준 실제 현재 상태.
@@ -243,11 +364,39 @@ function PaidFineList({
     return statusOverride[fineKey(f)] ?? f.baseStatus;
   }
 
-  const groups = groupByDay(records || []);
+  const effectiveRecords = showingDummy ? DUMMY_PAID_FINE_RECORDS : records;
+  const effectiveTotalAmount = showingDummy ? DUMMY_TOTAL_PAID_AMOUNT : totalAmount;
+  const effectiveAdminForcedCounts = showingDummy ? DUMMY_ADMIN_FORCED_COUNTS : adminForcedCounts;
+  const groups = groupByDay(effectiveRecords || []);
 
   return (
     <Collapsible defaultOpen className="flex flex-col">
-      <SectionHeader icon={CircleDollarSign} title="벌금 납부 처리" loading={loading} onRefresh={load} refreshProgress={refreshProgress} />
+      <SectionHeader
+        icon={CircleDollarSign}
+        title="벌금 납부 처리"
+        loading={loading}
+        onRefresh={load}
+        refreshProgress={refreshProgress}
+        trailing={
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            className={cn("shrink-0", showingDummy && "border-ok/30 bg-ok/15 text-ok hover:bg-ok/25 dark:hover:bg-ok/25")}
+            onClick={() => {
+              setShowingDummy((v) => !v);
+              setExpandedDay(null);
+              setExpandedKey(null);
+              setStatusOverride({});
+            }}
+            aria-pressed={showingDummy}
+            aria-label={showingDummy ? "목업 미리보기 끄기" : "목업 데이터로 미리보기"}
+            title={showingDummy ? "목업 미리보기 끄기" : "목업 데이터로 미리보기"}
+          >
+            <FlaskConical className="size-3.5" strokeWidth={ICON_STROKE.default} />
+          </Button>
+        }
+      />
       <CollapsiblePanel className="flex flex-col gap-4">
       {error && (
         <Alert variant="destructive">
@@ -257,7 +406,7 @@ function PaidFineList({
 
       <InfoCard className="flex items-center justify-between gap-2 bg-card">
         <FieldLabel>납부된 총 벌금액</FieldLabel>
-        <span className="font-mono text-base font-semibold tabular-nums text-ok sm:text-lg">{won(totalAmount)}</span>
+        <span className="font-mono text-base font-semibold tabular-nums text-ok sm:text-lg">{won(effectiveTotalAmount)}</span>
       </InfoCard>
 
       {/* 🔧 [버그 수정, 2026-09] ReasonLeaveReviewList와 동일한 근본
@@ -266,9 +415,9 @@ function PaidFineList({
           있었다(Playwright 실측, ~1초 지속). loading을 빼고 records의
           실제 값만으로 렌더링해 재조회 중엔 이전 화면이 그대로
           유지되게 한다. */}
-      {!records && <AdminListSkeleton />}
+      {!effectiveRecords && <AdminListSkeleton />}
 
-      {records && groups.length === 0 && <AdminEmptyState>처리 대상이 없습니다.</AdminEmptyState>}
+      {effectiveRecords && groups.length === 0 && <AdminEmptyState>처리 대상이 없습니다.</AdminEmptyState>}
 
       {groups.length > 0 && (
         <div className="flex flex-col gap-2 sm:gap-2.5">
@@ -310,7 +459,7 @@ function PaidFineList({
                           센다 — GET /admin/fines/admin-forced-count가 요일별로
                           이미 집계해 내려준다(handleAdminFinesAdminForcedCount). */}
                       <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-primary sm:text-sm">
-                        직권 P : {adminForcedCounts[group.day] || 0}건
+                        직권 P : {effectiveAdminForcedCounts[group.day] || 0}건
                       </span>
                     </span>
                   </span>
@@ -398,6 +547,21 @@ function PaidFineList({
                               <div className="flex items-center gap-2">
                                 {otherActions.map((action) =>
                                   action === "직권 P" ? (
+                                    showingDummy ? (
+                                      // 🧪 목업 중엔 ExitProcessDialog(실제 퇴실
+                                      // 확정 API를 호출하는 컴포넌트)를 열지
+                                      // 않는다 — 버튼은 보여주되 비활성화해
+                                      // 이 액션도 화면에 존재한다는 것만 보여준다.
+                                      <Button
+                                        key={action}
+                                        variant="destructive"
+                                        disabled
+                                        title="목업 중에는 실제 퇴실 처리를 실행할 수 없습니다."
+                                        className="w-full flex-1 sm:h-11"
+                                      >
+                                        퇴실 처리 (직권 P)
+                                      </Button>
+                                    ) : (
                                     // 🔧 §3.5 MemberRosterList의 "퇴실 처리
                                     // (직권 P)"와 동일한 ExitProcessDialog를
                                     // 그대로 재사용 — 이 화면엔 roster 조회로
@@ -419,6 +583,7 @@ function PaidFineList({
                                         퇴실 처리 (직권 P)
                                       </Button>
                                     </ExitProcessDialog>
+                                    )
                                   ) : (
                                     <Button
                                       key={action}
