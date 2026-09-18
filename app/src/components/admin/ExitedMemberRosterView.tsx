@@ -7,7 +7,6 @@ import {
   TrendingDown,
   Eye,
   Search,
-  LayoutDashboard,
   ExternalLink,
 } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
@@ -47,6 +46,18 @@ export type RosterViewState = {
 
 function won(n: number) {
   return `₩${(n || 0).toLocaleString()}`;
+}
+
+// 🔧 [사용자 지시] "'최근 접속일자' 출력도 24시간제로", "퇴실 예약일자,
+// 집행일자도 2026. 8. 23. 처럼 출력해줘" — 최근 접속(epoch ms)은
+// 시:분:초까지 24시간제(hour12: false)로, 퇴실 예약/집행일자("YYYY-MM-DD"
+// 문자열)는 한국어 로케일 날짜 표기("2026. 8. 20.")로 통일한다.
+function formatDateTime24h(ts: number): string {
+  return new Date(ts).toLocaleString("ko-KR", { hour12: false });
+}
+
+function formatKoreanDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString("ko-KR");
 }
 
 // 🔧 2026-09: 백엔드가 kindStr을 "강제 퇴실자"(discountRatio===1인 모든
@@ -689,6 +700,10 @@ export const ExitedMemberRosterView = forwardRef<
                                 (퇴실)")는 살아있는 회원과 달리 다른 회원에게
                                 재배정될 위험이 없다 — handleAdminMemberStatus가
                                 이 접두사를 인식해 백업 탭 스냅샷을 보여준다. */}
+                            {/* 🔧 [사용자 지시] "대시보드, 시트번호를 모두
+                                출력 값을 '바로가기'로 하고 아이콘 모양도
+                                일치시켜줘" — 시트번호 링크와 동일하게
+                                텍스트/아이콘(ExternalLink)을 통일한다. */}
                             <SubRow
                               label="대시보드"
                               value={
@@ -696,8 +711,8 @@ export const ExitedMemberRosterView = forwardRef<
                                   href={`#/?member=${encodeURIComponent(m.number)}`}
                                   className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
                                 >
-                                  {displayName(m.name)}
-                                  <LayoutDashboard className="size-3 shrink-0" strokeWidth={ICON_STROKE.default} />
+                                  바로가기
+                                  <ExternalLink className="size-3 shrink-0" strokeWidth={ICON_STROKE.default} />
                                 </a>
                               }
                             />
@@ -721,13 +736,19 @@ export const ExitedMemberRosterView = forwardRef<
                             />
                             <SubRow
                               label="최근 접속일자"
-                              value={result.lastLoginAt ? new Date(result.lastLoginAt).toLocaleString("ko-KR") : "-"}
+                              value={result.lastLoginAt ? formatDateTime24h(result.lastLoginAt) : "-"}
                             />
                             <SubRow label="최근 접속 IP" value={result.lastLoginIp || "-"} />
                             {/* 🔧 [사용자 지시] "'퇴실 예약일자', '퇴실
                                 집행일자'는 '최근 접속 IP' 밑으로 내려줘". */}
-                            <SubRow label="퇴실 예약일자" value={result.exitRequestDate || "-"} />
-                            <SubRow label="퇴실 집행일자" value={result.processedDate || "-"} />
+                            <SubRow
+                              label="퇴실 예약일자"
+                              value={result.exitRequestDate ? formatKoreanDate(result.exitRequestDate) : "-"}
+                            />
+                            <SubRow
+                              label="퇴실 집행일자"
+                              value={result.processedDate ? formatKoreanDate(result.processedDate) : "-"}
+                            />
                           </div>
                         </InfoCard>
 
@@ -767,11 +788,19 @@ export const ExitedMemberRosterView = forwardRef<
                             차감 원인
                           </span>
                           <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
+                            {/* 🔧 [사용자 지시] "차감 원인에서 '페널티'
+                                항목 0회인건 표시하지마" — 송출/주간/직권 P
+                                가 전부 0회면 rate도 항상 0%이므로, penalty
+                                항목만 rate===0일 때 걸러낸다(다른 항목의
+                                0%는 그대로 유지 — "해당 없음"을 보여주는
+                                것도 의미가 있으므로). */}
                             {mergePenaltyLabel(
                               buildDepositCauseItems(result.breakdown, result.breakdown.lateNotice ? 50 : 0),
                               result.breakdown,
                               result.kind
-                            ).map((item) => (
+                            )
+                              .filter((item) => !(item.key === "penalty" && item.rate === 0))
+                              .map((item) => (
                               <SubRow
                                 key={item.key}
                                 label={item.label}
@@ -787,6 +816,8 @@ export const ExitedMemberRosterView = forwardRef<
                             하나의 카드로 합쳤다. "유형" 라벨은 "퇴실유형"으로
                             이름을 바꾼다. "처리일자"는 "상태 정보" 카드의
                             "퇴실 집행일자"(같은 값 processedDate)와 중복이라
+                            제거했다(사용자 지시). "반환 예치금"도 위쪽
+                            "반환 예치금" 카드(₩0 강조 표시)와 중복이라
                             제거했다(사용자 지시). */}
                         <InfoCard className="flex flex-col gap-1.5 bg-card">
                           <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
@@ -794,10 +825,19 @@ export const ExitedMemberRosterView = forwardRef<
                             처리 결과
                           </span>
                           <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
-                            <SubRow label="반환 예치금" value={won(result.refundAmount)} />
                             <SubRow label="귀속 예치금" value={won(result.heldAmount)} />
                             <SubRow label="납부된 벌금" value={won(result.fineAlreadyPayment)} />
-                            <SubRow label="퇴실유형" value={exitTypeLabel(result.kindStr, result.reasons)} />
+                            {/* 🔧 [사용자 지시] "'퇴실유형'의 '강제 퇴실자'가
+                                여전히 무채색으로 표시돼. 빨간색으로 해줘" —
+                                kindStr은 "강제 퇴실자"/"정산 퇴실자" 둘뿐이라
+                                (백엔드가 discountRatio===1인 모든 경우를
+                                "강제 퇴실자"로 통일), 강제 퇴실자일 때만
+                                강조한다. */}
+                            <SubRow
+                              label="퇴실유형"
+                              value={exitTypeLabel(result.kindStr, result.reasons)}
+                              valueClassName={result.kindStr === "강제 퇴실자" ? "text-destructive" : undefined}
+                            />
                             {/* 🔧 2026-09: 처음엔 admin_forced(직권 P)에서만
                                 조건부로 보였으나, 사용자 지시로 모든 퇴실
                                 유형에 항상 표시하도록 변경 — forced/settle은
