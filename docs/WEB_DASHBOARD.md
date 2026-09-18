@@ -14,6 +14,22 @@
 > `app/src/pages/RosterPage.tsx`, `app/src/components/dashboard/*`,
 > `app/src/components/layout/{AppShell,ThemeToggleButton,PeriodAlarmToggleButton}.tsx`,
 > `app/src/App.tsx`, `app/src/index.css`, `frame-checker-worker/src/index.js`.
+>
+> 🔧 **[2026-09-17]** 2026-09-17 "구조 개선 8~21차"로 이 문서가 다루는
+> 핸들러가 `index.js`에서 도메인별 파일로 분리됐다(로직 변경 없는 순수
+> 재배치, 함수 이름은 그대로 유지). 개인 대시보드(`handleStatus`/
+> `handleAdminMemberStatus`/`buildPersonalStatus`) →
+> `frame-checker-worker/src/personal-status.js`; 랭킹/로스터/정산
+> (`handleRosterStatus`/`buildRosterStatus`) →
+> `frame-checker-worker/src/roster-status.js`; 사이클 목록
+> (`handleCycleList`) → `frame-checker-worker/src/cycle.js`; 회원
+> 관리/상세(`handleAdminMembers`) →
+> `frame-checker-worker/src/members.js`; 사유반휴/일반반휴
+> (`handleGetLeaveApply`/`handleSetLeaveApply`/`handleAdminLeaveApply`/
+> `handleGetReasonLeaveProof`/`handleSetReasonLeaveProof`/
+> `handleCancelReasonLeaveProof`) → `frame-checker-worker/src/leave.js`.
+> `handleGetGoalSchedule`/`handleSetGoalSchedule`만 `index.js`에 그대로
+> 남아있다.
 
 ## 1. 범위 정의 — "대시보드"란
 
@@ -45,7 +61,6 @@ DashboardPage (app/src/pages/DashboardPage.tsx)
 ├─ [me]  StatusPage (pages/StatusPage.tsx)
 │         ├─ Select: "내 대시보드" | 다른 회원 (관리자 전용, /admin/members)
 │         ├─ CycleSwitcher (components/dashboard/CycleSwitcher.tsx)  — 지난 주 조회
-│         ├─ NotificationDialog (components/dashboard/NotificationDialog.tsx)  — ⚠️ 더미 데이터, 실제 API 없음
 │         └─ StatusView (components/dashboard/StatusView.tsx)
 │             ├─ SummaryTile × 6  (components/dashboard/shared.tsx)
 │             │   ├─ 목표시간        → GoalTypeScheduleDialog (edit, 본인만)
@@ -306,7 +321,8 @@ URL 쿼리 `cycle`로 관리해 두 탭에 전달), 실시간(현재) 값과 "�
 > ("송출 P 대상 처리" — `docs/WEB_ADMIN.md` §3.1a, "PEN · Money 탭" 전체 —
 > §4 도입부)과 "내 송출 P 제보 확인"(`docs/WEB_REPORT.md` §3.4)에도 재사용되고
 > 있다 — 이 화면들은 시트가 아니라 **봇 manifest(캡처 기록)**를 사이클별로
-> 필터링하는 새 헬퍼(`filterItemsByCycle`, `frame-checker-worker/src/index.js`)를
+> 필터링하는 새 헬퍼(`filterItemsByCycle`, 🔧 [2026-09-17] 구조 개선으로
+> `frame-checker-worker/src/report-review.js`로 이동)를
 > 쓴다는 점이 아래 본문의 시트 백업 재사용 방식(`resolveTargetFileId`)과 다르니
 > 혼동하지 말 것 — 둘 다 같은 `CycleSwitcher` 컴포넌트와 같은 `GET /cycles`
 > 백업 목록을 공유하지만, "그 fileId로 무엇을 조회하느냐"는 화면마다 다르다.
@@ -441,7 +457,8 @@ URL 쿼리 `cycle`로 관리해 두 탭에 전달), 실시간(현재) 값과 "�
 
 ## 9. 핵심 계산 로직 — 어디서 무엇을 계산하는가
 
-전부 `buildPersonalStatus`(index.js, 약 2220행 근처) 안에서 계산된다. 이 함수는
+전부 `buildPersonalStatus`(🔧 [2026-09-17] 구조 개선으로
+`frame-checker-worker/src/personal-status.js`로 이동) 안에서 계산된다. 이 함수는
 먼저 `getPersonalStatusBundle(env, accessToken, fileId, memberNumber)`을 호출한다 —
 개인 탭 `A1:U42`(`ROW_REPORT_SHEET_ROW + 1`) 원본 행 + 송출P 슬롯
 (`_computeOutputPenSlots`) + 제보상점(`_computeReportScore`) 셋을

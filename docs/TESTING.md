@@ -34,6 +34,54 @@ npm test      # 전체 테스트 실행
 npm run test:watch  # watch 모드
 ```
 
+**로컬 개발 서버(`wrangler dev` + `vite dev`)** — 2026-09-17에 정비했다.
+`src/index.js`를 `wrangler.toml`의 `main`으로 직접 쓰면 이 환경의
+wrangler dev(및 로컬 workerd)가 "Incorrect type for map entry
+'<이름>': not of type 'function or ExportedHandler'"로 기동에
+실패한다 — 진입 모듈이 named export를 하나라도 가지면 재현되는
+이 환경 자체의 버그(wrangler 4.109.0~4.133.0, workerd
+2026-07~2026-09 빌드 전부 재현 확인, 버전 문제 아님)이고,
+`index.js`는 다른 도메인 파일들이 공유하는 유틸을 100개 이상
+export해 이 버그를 그대로 트리거한다. 해결책으로 `src/worker-entry.js`
+(default export와 `wrangler.toml`의 `durable_objects.bindings`가
+요구하는 DO 클래스 8개만 `index.js`에서 재노출하는 얇은 래퍼)를
+신설해 `main`으로 지정했다 — `index.js`의 실제 로직은 전혀 건드리지
+않아 `wrangler deploy`/`npm test` 동작에는 차이가 없다(둘 다 검증됨).
+
+```bash
+cd frame-checker-worker
+npx wrangler dev   # http://localhost:8787 — "Ready on ..." 뜰 때까지 대기
+```
+
+다만 로컬 `wrangler dev`에는 `SESSION_SECRET` 등 프로덕션 시크릿
+14개(`wrangler secret list`로 이름만 확인 가능, 값은 조회 불가)가
+전혀 없어, 인증이 필요한 요청이 오면 `verifySession`이 빈 HMAC 키로
+서명 검증을 시도하다 500 예외를 던지고, 그 예외가 CORS 헤더를 붙이기
+전에 터져서 브라우저에는 "CORS 정책 위반"/"Failed to fetch"로 보인다.
+시크릿을 로컬에 복제하는 대신(보안상 프로덕션 값을 알 수 없기도 함)
+프론트엔드(`app/`)는 로컬 개발에서도 항상 프로덕션 워커
+(`https://frame-checker-worker.comstralo.workers.dev`, `app/src/lib/api/client.ts`
+의 `WORKER_BASE`)를 호출하도록 유지한다(사용자 결정) — `wrangler dev`
+는 API 엔드포인트 자체의 동작을 확인하거나 curl로 스모크 테스트할
+때만 쓰고, 화면(UI) 작업은 `npm run dev`(Vite, `app/`)만으로
+충분하다. 로컬 workerd의 CORS는 `resolveOrigin`(index.js)이 이미
+`http://localhost:*` Origin을 echo하도록 되어 있어 별도 설정이
+필요 없다.
+
+```bash
+cd app
+npm run dev   # http://localhost:5173/gongcam/ — 항상 프로덕션 워커를 호출
+```
+
+Sentry(`app/src/lib/sentry.ts`)도 이때 함께 손봤다 — 로컬 `vite dev`
+중 HMR(Hot Module Reload)로 나는 일회성 에러(모듈 교체 과도기에
+Provider가 잠깐 언마운트되며 나는 `useContext` 에러 등)가 그대로
+프로덕션 Sentry 프로젝트로 전송돼 실제 운영 이슈처럼 이메일 알림이
+오는 문제가 있었다. `Sentry.init`에 `environment`(dev/prod 구분)와
+`enabled`(로컬 dev에서는 아예 전송 안 함)를 추가했다 — 빌드
+산출물에서는 `environment: "production", enabled: true`로 고정되어
+프로덕션 동작에는 변화가 없다(빌드 후 grep으로 확인).
+
 ## 파일 구조
 
 - `frame-checker-worker/package.json` — devDependencies(`vitest`,
@@ -151,8 +199,9 @@ fetch(Google Sheets/Drive API)와 Durable Object에 의존하는 사이클
 workerd 런타임 안에서도 그대로 통하는지 `listBackupFiles`로
 스파이크 검증했고(통과), 이 전략을 나머지 함수로 그대로 확장했다.
 
-이번 조사로 `currentCycleBackups`(`index.js:8491`)와
-`compareWeekOfDesc`(`index.js:8449`)가 완전한 순수 함수임을 새로
+이번 조사로 `currentCycleBackups`(`index.js:8491`, 🔧 [2026-09-17]
+현재는 9차에서 이미 옮겨진 `frame-checker-worker/src/cycle.js`)와
+`compareWeekOfDesc`(`index.js:8449`, 동일)가 완전한 순수 함수임을 새로
 발견해 `export`를 추가하고 `test/cycle-pure.test.js`에 소급
 편입했다 — 특히 `currentCycleBackups`는 §"1~2단계" 이전에 실제로
 고쳤던 버그(`sheet_reset()`이 D25 갱신 전에 백업을 먼저 뜨는 순서

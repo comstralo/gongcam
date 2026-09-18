@@ -193,7 +193,8 @@ if __name__ == "__main__":
   추가 — 시트번호(문자열) → exitDate("YYYY-MM-DD") 캐시.
 - **`bot/exit_sync.py`**(신규): `start_exit_requests_sync(ctx)`가 데몬 스레드를
   하나 띄워 60초 간격으로 `GET {WORKER_BASE}/bot/exit-requests`
-  (`X-Bot-Secret` 헤더, `frame-checker-worker/src/index.js`의
+  (`X-Bot-Secret` 헤더, 🔧 [2026-09-17] 구조 개선으로
+  `frame-checker-worker/src/exit-request.js`로 이동한
   `handleBotExitRequests`)를 조회해 `ctx.exit_requests`를 갱신한다.
   `bot/roster_sync.py`(참여자 명단 동기화)와 동일한 폴백 원칙 — `BOT_SECRET`
   환경변수가 없으면 스레드 자체를 시작하지 않고 조용히 넘어가며(`ctx.exit_requests`

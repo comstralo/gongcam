@@ -16,6 +16,35 @@
 > `app/src/pages/AdminPage.tsx`, `app/src/components/admin/*`,
 > `frame-checker-worker/src/index.js`.
 >
+> 🔧 **[2026-09-17]** 2026-09-17 "구조 개선 7~21차"로 이 문서가 다루는
+> 관리자 핸들러 대부분이 `index.js`에서 도메인별 파일로 분리됐다(로직
+> 변경 없는 순수 재배치, 함수 이름은 그대로 유지). 주요 대응:
+> 회원 관리/CRUD/명단(`handleAdminCreateMember`/`handleAdminMembersRoster`/
+> `handleAdminOpenSlots`/`handleAdminSetPartiStatus`/`handleAdminMemberReorder*`)
+> → `frame-checker-worker/src/members.js`; 퇴실/재납 후보 판정·블랙리스트
+> (`handleAdminExitedMembers`/`handleAdminExitCandidates`/
+> `handleAdminBlacklist`/`handleAdminExitBlacklist`) →
+> `frame-checker-worker/src/exit-candidates.js`; 퇴실/재납 확정 실행
+> (`handleAdminExitPreview`/`handleAdminExitConfirm`, `computeExitResult`
+> 포함) → `frame-checker-worker/src/exit-confirm.js`; 벌금/납부
+> (`handleAdminFineStatus`/`handleAdminFinesUnpaid`/`handleAdminFinesAdminForcedCount`)
+> → `frame-checker-worker/src/fines.js`; 사유반휴 승인
+> (`handleAdminLeaveProofDecide`/`handleAdminLeaveProofList`) →
+> `frame-checker-worker/src/leave.js`; 캡처 검토/투표
+> (`handleAdminCapturesList`/`handleAdminCaptureVote`) →
+> `frame-checker-worker/src/report-review.js`; 벌점 승인/취소
+> (`handleAdminCaptureDecide`/`handleAdminCaptureCancel`) →
+> `frame-checker-worker/src/report-penalty.js`; 회원 상세 대시보드
+> (`handleAdminMemberStatus`) → `frame-checker-worker/src/personal-status.js`;
+> 상금 정산(`handleAdminPrizeSettle`) →
+> `frame-checker-worker/src/roster-status.js`; 관리자 위임 OAuth
+> (`handleAdminOAuthAuthorize`/`handleAdminOAuthCallback`) →
+> `frame-checker-worker/src/auth.js`; 봇 상태/명령
+> (`handleAdminBotStatus`/`handleAdminBotCommand`) →
+> `frame-checker-worker/src/bot.js`. `computeExitResult`가 실사용하는
+> `isUnguardedAdminForcedCycleCombo`는
+> `frame-checker-worker/src/cycle.js`에 있다.
+>
 > 이 문서는 지금까지 나온 문서 중 가장 넓은 표면적을 다룬다 — "관리자" 탭은 사실상
 > 다른 세 문서(대시보드/제보/설정)에서 회원이 만든 요청·신청·제보를 관리자가
 > 검토·확정하는 최종 처리 지점이라, 코드 자체가 다른 세 도메인의 backend 로직을
@@ -192,7 +221,9 @@ components/admin/shared.tsx — 공용 프리미티브(§6): SectionCard/Section
 > 직후 교차 검증하며 발견한 별개 버그 — 시트 쓰기(`cancelOutputPenalty`
 > 등)는 정확히 `sourceFileId`에서 이뤄지도록 고쳤지만, 바로 다음
 > 캐시 무효화(`invalidateMemberCache`/`invalidateMemberSlotCache`)
-> 호출 6곳(`index.js:998` 참고)이 `fileId` 인자를 생략한 채 남아있었다
+> 호출 6곳(`invalidateMemberCache`/`invalidateMemberSlotCache` 정의는
+🔧 [2026-09-17] 구조 개선으로 `frame-checker-worker/src/cache.js`로
+이동)이 `fileId` 인자를 생략한 채 남아있었다
 > — 인자를 생략하면 이 두 함수는 항상 `env.GOOGLE_SHEET_FILE_ID`
 > (실시간 원본)를 지운다. `sourceFileId`가 지난 사이클 백업이면 시트는
 > 정확히 갱신되는데 그 백업 파일의 캐시(`exitStatus:{fileId}` 등)는
@@ -749,7 +780,8 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
   보여줘 두 빈 상태를 구분한다.
 
 > 🔧 2026-09: **`kindStr`이 "강제 퇴실자"/"직권 퇴실자"를 "강제 퇴실자"
-> 하나로 통일했다**(`computeExitResult`, index.js) — `forced`(자동 감지된
+> 하나로 통일했다**(`computeExitResult`, 🔧 [2026-09-17] 구조 개선으로
+> `frame-checker-worker/src/exit-confirm.js`로 이동) — `forced`(자동 감지된
 > 강제 조건)와 `admin_forced`(관리자가 직접 입력한 사유)는 트리거 경로만
 > 다를 뿐 결과(`discountRatio === 1`, 0% 반환)가 항상 같아 "직권 P든
 > 자동 감지든 결국 관리자가 확정 버튼을 눌러야만 발생하는 처리라는 점에서
@@ -934,7 +966,9 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
 > 하지만 이건 "UI가 우연히 막고 있을 뿐 서버 검증은 없는" 상태였다
 > (사용자 지적) — 향후 UI가 두 조건을 동시에 쓰도록 바뀌거나 API를
 > 직접 호출하면 조용히 재현된다. `computeExitResult`
-> (`frame-checker-worker/src/index.js`)에 `isUnguardedAdminForcedCycleCombo`
+> (🔧 [2026-09-17] 구조 개선으로 `frame-checker-worker/src/exit-confirm.js`
+> 로 이동)에 `isUnguardedAdminForcedCycleCombo`(현재
+> `frame-checker-worker/src/cycle.js`, `index.js`가 재export)
 > 헬퍼를 추가해, `kind === "admin_forced"`이고 `cycleFileId`가 있으면서
 > `requiresFineUnpaidRecheck`(고정 사유 여부)가 거짓인 조합 자체를
 > `err.status = 400`과 함께 즉시 거부한다 — `handleAdminExitPreview`/
@@ -988,7 +1022,9 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
   표시) 5개 카드로 구성. **`preview.fromBackup`이 true면 "데이터 기준: 지난 주
   백업 시트" 서브로우가 추가된다** — `sheet_reset`(매주 월요일 새벽) 이후에
   정산 처리가 이루어지는 경우 원본 대신 자동 백업 파일에서 계산했다는 뜻(이번
-  세션에 구현된 로직, `computeExitResult`/`resolveExitSourceFileId`, index.js).
+  세션에 구현된 로직, `computeExitResult`(🔧 [2026-09-17]
+  `frame-checker-worker/src/exit-confirm.js`)/`resolveExitSourceFileId`
+  (`frame-checker-worker/src/cycle.js`, `index.js`가 재export)).
   🔧 2026-09: "반환 예치금" 표시값이 5,000원 이상이면 `text-ok`(초록),
   0원이면 `text-destructive`(빨강)로 강조된다(`preview.refundAmount >= 5000`
   / `=== 0`, `admin_forced`/`settle` 두 분기 공통, `ExitedMemberList`도

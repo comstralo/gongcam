@@ -13,6 +13,16 @@
 > `app/src/components/layout/{AppShell,ThemeToggleButton,PeriodAlarmToggleButton}.tsx`,
 > `app/src/lib/periodAlarm/*`, `app/src/hooks/{usePushSubscription,useTheme}.ts`,
 > `app/src/lib/push/*`, `app/public/sw.js`, `frame-checker-worker/src/index.js`.
+>
+> 🔧 **[2026-09-17]** 2026-09-17 "구조 개선 8·10차"로 이 문서가 다루는
+> 핸들러가 `index.js`에서 두 파일로 분리됐다(로직 변경 없는 순수
+> 재배치, 함수 이름은 그대로 유지). 퇴실/재납 신청/동의/취소
+> (`handleSetExitRequest`/`handleAgreeExitRequest`/`handleCancelExitRequest`)
+> → `frame-checker-worker/src/exit-request.js`; 알림 설정/상태 메시지/
+> PUSH 구독(`handleGetNotifyPrefs`/`handleSetNotifyPrefs`/
+> `handleGetStatusMessage`/`handleSetStatusMessage`/`handlePushSubscribe`/
+> `handleListPushDevices`/`handlePushDeviceToggle`/`handlePushDeviceRename`/
+> `handlePushDeviceRemove`) → `frame-checker-worker/src/notify.js`.
 
 ## 1. 범위 정의 — "설정" 탭이란
 

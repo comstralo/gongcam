@@ -1,12 +1,22 @@
 # 캐싱 정책 지도 (CACHING_POLICY.md)
 
-> 이 문서는 Cloudflare Worker 백엔드(`frame-checker-worker/src/index.js`)가
+> 이 문서는 Cloudflare Worker 백엔드(`frame-checker-worker/src/`)가
 > Google Sheets를 DB로 쓰면서 걸어둔 2단 캐시(인메모리 `_sheetCache` + KV
 > `env.REPORTS_KV`)의 전체 구조와, "시트/KV 쓰기 지점 ↔ 캐시 무효화 ↔ TTL"이
 > 실제로 정합하게 맞물려 있는지를 코드 전수조사로 확인한 결과입니다.
 > `docs/WEB_ADMIN.md`, `docs/WEB_DASHBOARD.md`와 같은 목적·형식으로 작성했으며,
 > 코드가 바뀌면(특히 `writeSheetValues` 호출 지점이나 `_cachedCompute` TTL을
 > 건드리면) 이 문서도 함께 갱신해야 합니다.
+>
+> 🔧 **[2026-09-17]** 2026-09-17 "구조 개선 17~21차"로 백엔드가
+> `index.js` 단일 파일에서 22개 이상의 도메인 파일로 분리됐다(전체
+> 목록은 `docs/TESTING.md`의 "현재 유효한 잔류 근거 요약" 표 참고).
+> 이 문서 본문 곳곳의 "index.js:NNNN 부근" 형태 줄번호 인용은 대부분
+> 그 이전 시점(2026-09-09~09-12) 기준 스냅샷이라 실제 줄번호와
+> 더 이상 일치하지 않는다 — 발견된 것은 정확한 현재 파일명으로 정정
+> 표시를 추가했지만, 함수 이름 자체(리팩터링이 이름은 바꾸지 않는
+> "순수 재배치"였음)는 대부분 그대로 유효하다. 새로 이 문서를 읽을
+> 때는 줄번호보다 함수명으로 grep하는 편이 안전하다.
 >
 > 최초 조사 시점: 2026-09-09. 이후 2026-09-11까지 지속 갱신(§14~§25).
 > Cloudflare KV 무료 티어 쓰기/삭제 하루 1,000회 한도를 예민하게 관리해야
@@ -30,12 +40,14 @@
   확인) 또는 명시적 `.delete()`로만 사라집니다.
 
 핵심 헬퍼: `_cacheGet`/`_cacheGetAsync`/`_cacheSet`/`_cacheSetAsync`/
-`_cachedCompute`(index.js:445-560 부근). `_cachedCompute(env, key, ttlMs,
+`_cachedCompute`(🔧 [2026-09-17] 구조 개선으로 `frame-checker-worker/src/cache.js`
+로 이동, `index.js`는 이제 재export만 함). `_cachedCompute(env, key, ttlMs,
 computeFn)` 형태로 각 파생 계산(주로 여러 셀을 모아 가공한 값)을 감쌉니다.
 
 무효화는 두 가지 방식이 함께 쓰입니다.
 
-1. **`writeSheetValues`의 내장 정밀 무효화** (index.js:400-430): 쓰는
+1. **`writeSheetValues`의 내장 정밀 무효화**(`index.js`, 여전히 이 파일에
+   있음): 쓰는
    range의 시트명이 숫자(회원 개인 탭, 예: `"7!C10"`)이면 그 회원 한 명의
    `personalStatusBundle:{fileId}:{memberNumber}` 캐시만 인메모리+KV 양쪽에서
    즉시 지웁니다(`invalidatePersonalStatusCache`). 개인 탭에만 쓰는 대부분의
@@ -93,9 +105,9 @@ computeFn)` 형태로 각 파생 계산(주로 여러 셀을 모아 가공한 �
 | 4079 | `cancelReportMerit` | 송출 P R~V열 | 제보상점 슬롯 취소 | `invalidateMemberCache`(4122/4432/4480) |
 | 4704 | `handleSetLeaveApply` | 개인 탭 19/20행 | 반휴 사용 여부 | 개인 탭 내장 무효화 |
 | 5168 | `handleAdminLeaveProofDecide` | 개인 탭 20행 | 사유반휴 승인 반영 | 개인 탭 내장 무효화 |
-| 5278 | `handleSetGoalSchedule` | 집계!L{row} | 목표시간 예약 | 없음 — `buildRosterStatus`가 무캐시 직접조회라 안전 |
+| 5278 | `handleSetGoalSchedule` | 집계!L{row} | 목표시간 예약 | 없음 — `buildRosterStatus`가 이 셀(집계!L열)을 아예 읽지 않아 안전(§16 캐시 도입 이후에도 유효, 재검증 완료) |
 | 5692 | `handleAdminFineStatus` | 개인 탭 31행 | 벌금 납부 상태 | `invalidateMemberCache`(5695) |
-| 5713 | `handleAdminPrizeSettle` | 집계!P6 | 상금 정산 집행 | 없음 — 무캐시 직접조회라 안전 |
+| 5713 | `handleAdminPrizeSettle` | 집계!P6 | 상금 정산 집행 | 🔧 **[갱신, 2026-09-17]** 아래 "결론" 정정 참고 — 지금은 `invalidateMemberCache(env, ["rosterOnly"], fileId)`(쓰기 전/후 각 1회)로 실제 무효화됨(`roster-status.js`의 `handleAdminPrizeSettle`) |
 | 6297 | `handleAdminSetPartiStatus` | 개인 탭 L3 | 참여상태 | `invalidateMemberCache`(6298) |
 | 6534/6565/6568 | 감사·백업 관련 | 감사 시트/백업 탭 | 아카이브 | 없음 — 캐시된 파생값 없음 |
 | 6640/6658 | `performExitReset` | 개인 탭 C42/B2, 데이터!D~V | 퇴실 초기화 | `invalidateMemberCache`(6664) |
@@ -106,11 +118,19 @@ computeFn)` 형태로 각 파생 계산(주로 여러 셀을 모아 가공한 �
 | 7839 | 수식 일회성 마이그레이션 | 집계!D20 | — | 없음 — 무캐시 직접조회라 안전, 일회성 유틸 |
 
 **결론**: 여러 회원을 아우르는 파생 캐시를 건드리는 쓰기는 전부
-`invalidateMemberCache`와 정확히 짝이 맞습니다. `MEMBER_CACHE_PREFIXES`에
-포함되지 않은 두 지점(`handleSetGoalSchedule`, `handleAdminPrizeSettle`)도
-그 값을 읽는 `buildRosterStatus`가 애초에 캐시를 쓰지 않기 때문에 안전합니다
-— 다만 향후 `buildRosterStatus`에 캐시를 도입하면 이 두 지점이 즉시
-위험군으로 바뀐다는 점은 암묵적 결합이라 유의가 필요합니다.
+`invalidateMemberCache`와 정확히 짝이 맞습니다. 이 표는 24곳 전수조사
+당시(§16 이전, `buildRosterStatus`가 아직 무캐시였던 시점)의 스냅샷을
+그대로 보존한 것이라 "안전" 판정 근거가 그때 기준이었다.
+
+🔧 **[정정, 2026-09-17]** §16(2026-09-10)에서 실제로 `buildRosterStatus`
+에 캐시(`rosterStatus:`)가 도입되면서 이 결론 중 **`handleAdminPrizeSettle`
+쪽은 그대로 두면 안 되는 상태가 됐고, 실제로 §16 도입과 함께 이미
+`invalidateMemberCache(["rosterOnly"])` 호출이 짝지어졌다**(위 표 정정
+참고) — "암묵적 결합이 위험군으로 바뀐다"고 예견했던 바로 그 상황이
+실제로 일어났고, 그 시점에 이미 조치까지 끝났다는 뜻이다. 반면
+`handleSetGoalSchedule`(집계!L열, 목표시간 예약)은 재검증 결과
+`buildRosterStatus`가 그 셀을 아예 읽지 않아 지금도 안전하며 별도
+무효화가 필요 없다 — 이 지점만 원래 결론이 그대로 유효하다.
 
 퇴실 신청 관련 KV(`EXIT_REQUEST_KV_PREFIX`, 시트가 아니라 KV 자체에 상태
 저장)도 `getAllExitRelevantStatus`(`exitStatus:` 캐시)의 계산 입력이지만,
@@ -277,9 +297,12 @@ TTL을 봇의 실제 쓰기 리듬에 맞춰 **10분**으로 낮췄다(§3 표�
 수 있다면 막는 게 낫다고 판단했다.
 
 **대응**: 새 헬퍼 `invalidateMemberSlotCache(env, memberNumber)`
-(`index.js:878-895` 부근)를 추가해, 번호가 비워지거나 재배정되는 세 지점
-— `performExitReset`(퇴실), `moveMemberSlot`(번호이동, from/to 둘 다),
-`handleAdminCreateMember`(신규 등록 시점의 방어적 재확인) — 에서 그 번호
+(🔧 [2026-09-17] 구조 개선으로 `frame-checker-worker/src/cache.js`로
+이동)를 추가해, 번호가 비워지거나 재배정되는 세 지점 —
+`performExitReset`(퇴실, 현재 `exit-confirm.js`),
+`moveMemberSlot`(번호이동, from/to 둘 다, 현재 `members.js`),
+`handleAdminCreateMember`(신규 등록 시점의 방어적 재확인, 현재
+`members.js`) — 에서 그 번호
 하나에 한해 `outputPenSlots:`/`reportScore:` KV까지 명시적으로 지운다.
 이 세 함수는 제보 승인/취소처럼 자주 일어나는 액션이 아니라 "번호 1개당
 1회"만 실행되는 저빈도 관리자 조작이라, `invalidateMemberCache`가 이 두
@@ -337,7 +360,8 @@ TTL을 봇의 실제 쓰기 리듬에 맞춰 **10분**으로 낮췄다(§3 표�
 관리자가 벌금 미납자 여러 명을 이 화면에서 벗어나지 않고 연달아 "납부"로
 처리하며 그때그때 합계를 확인하는 것은 벌금 처리의 표준 워크플로우라 —
 이건 §9가 다룬 저확률 경쟁 조건이 아니라 **매번, 확실하게 재현되는** 문제였다.
-서버 쪽(`handleAdminFineStatus`, `index.js:5708-5734`)은 처리 직후
+서버 쪽(`handleAdminFineStatus`, 🔧 [2026-09-17] 구조 개선으로
+`frame-checker-worker/src/fines.js`로 이동)은 처리 직후
 `invalidateMemberCache`로 `weeklyPaidFine:` 캐시를 정확히 무효화하고
 있었으므로(§2에서 이미 확인) 캐싱 정책 자체의 결함이 아니라, **프론트가
 서버 액션 성공 후 관련 파생값을 다시 받아오지 않은 순수 프론트 버그**였다.
@@ -469,7 +493,7 @@ isolate 분산과 KV 히트율에 달려 있어 정적 코드 조사만으로는
 비해 무시할 수준).
 
 - **새 엔드포인트**: `POST /bot/invalidate-cache`(`handleBotInvalidateCache`,
-  index.js:6682 부근)가 `X-Bot-Secret` 인증 후 `{groups: [...]}` 또는
+  여전히 `index.js`에 있음)가 `X-Bot-Secret` 인증 후 `{groups: [...]}` 또는
   `{memberNumbers: [...]}`를 받아 `invalidateMemberCache(env, groups)`
   또는 회원별 `invalidatePersonalStatusCache`(`personalStatusBundle:` 키)를
   호출한다.
@@ -595,16 +619,26 @@ isolate 분산과 KV 히트율에 달려 있어 정적 코드 조사만으로는
 | `StatusPage` / `MyStatusContext`("내 대시보드"·"설정") | `personalStatusBundle:` 10분(현재 시트) 등 §12.1·§21 | 30분(§14) — 대시보드/설정 화면일 때만(B) + `document.hidden`(A) + 5분 유휴(G, 절전 오버레이) 모두 적용 |
 | `MemberRosterList`("참여 스터디원 목록") | `dataSheetRows:` 2시간(2026-09-11 상향, §26) / `meta:` 10분(2026-09-11, 구 5분) / `members:` 2시간(§17.2) | **20분**(2026-09-11, 구 30분 — "봇 상태 제외 전부 20분 통일" 지시, §27. `meta:` 기준 배율 2:1로 §12.1 원칙(3배 이상)에는 못 미치지만, 통일 지시에 따른 의도적 절충으로 기록) |
 
-`AdminMoneyTab`의 `PrizeRecipientList`(`/roster-status`)는 `buildRosterStatus`
-가 `_cachedCompute` 없이 매번 직접 시트를 조회하는 무캐시 경로라(§3
-"관련 문서" 참고) 폴링을 걸 캐시 자체가 없어 대상에서 제외했다.
+`AdminMoneyTab`의 `PrizeRecipientList`(`/roster-status`)도 `buildRosterStatus`
+를 그대로 호출한다.
+
+🔧 **[정정, 2026-09-17]** 이 문단은 §16(2026-09-10) 캐시 도입 이전
+시점 서술이 그대로 남아있던 오류였다 — `buildRosterStatus`는 지금
+`rosterStatus:`(10분/2시간, 위 143행 표 참고)로 캐싱되고 있어 "무캐시
+경로"가 아니다. 다만 `PrizeRecipientList`가 여전히 폴링 목록에서
+제외된 이유는 무캐시라서가 아니라, "상금 정산 집행" 액션이
+`handleAdminPrizeSettle`에서 즉시 `invalidateMemberCache(["rosterOnly"])`
+로 캐시를 지우고 최신값을 다시 계산해 반환하므로, 액션 응답 자체가
+곧 최신 상태라 별도 폴링이 필요 없기 때문이다(위 §2 표 `handleAdminPrizeSettle`
+행 참고).
 `ReasonLeaveReviewList`(사유 반휴 신청 처리)는 11종 캐시가 아니라 KV
 기반(`leaveHistory:`)이라 이번 TTL 기준 폴링 설계와 무관해 손대지 않았다.
 `ExitedMemberList`(퇴실 스터디원 목록)는 현재 실제 API 대신 더미 데이터를
 표시 중인 미완성 상태(사용자 확인, 별도 과제로 보류)라 제외했다.
 
 **`BotStatusSection`("도움봇 오퍼레이터", 스크린샷 포함)은 별도로 1분
-고정 주기 폴링을 추가했다** — `handleAdminBotStatus`(index.js:3071-3080)는
+고정 주기 폴링을 추가했다** — `handleAdminBotStatus`(🔧 [2026-09-17]
+구조 개선으로 `frame-checker-worker/src/bot.js`로 이동)는
 KV 캐시가 아니라 매 요청마다 `proxyToBotDashboard(env, "/status")`로 봇에
 직접 프록시하는 무캐시 경로라 위 "TTL의 3배" 원칙 자체가 적용되지 않는다.
 대신 봇이 요청마다 Selenium(`ctx.driver.get_screenshot_as_base64()`,
@@ -1465,7 +1499,8 @@ Worker 캐시 무효화 알림 없이 참여상태/벌금을 직접 쓴다"는 g
 
 ## 29. "화각 불량 제보 처리" 부스터디장 투표 조회 순차→병렬화 (2026-09-11)
 
-`handleAdminCapturesList`(`GET /admin/captures`, index.js:3616 부근)가
+`handleAdminCapturesList`(`GET /admin/captures`, 🔧 [2026-09-17] 구조
+개선으로 `frame-checker-worker/src/report-review.js`로 이동)가
 "다른 관리자 의견 반영" 섹션에 표시할 부스터디장 투표(`reportVote:` KV,
 §ROADMAP 참고)를 항목마다 조회하는데, 바깥 루프(항목 배열)는 이미
 `Promise.all`로 병렬화되어 있었지만 그 **안쪽**(항목 하나당 부스터디장
@@ -1586,7 +1621,8 @@ ACCOUNT 탭에 이어 "PEN·Money" 탭(`ReportReviewList`/`ReasonLeaveReviewList
    `/roster-status`를 한 번 더 조회해 비교"하는 방식을 시도했으나, 그
    조회 자체가 아직 무효화되지 않은 낡은 캐시를 받을 수 있어(제보 승인이
    `rosterStatus:`를 안 지우므로) 신뢰할 수 없다고 판단해 기각했다.
-   대신 `handleAdminPrizeSettle`(index.js:6233 부근)이 **서버에서** 집행
+   대신 `handleAdminPrizeSettle`(🔧 [2026-09-17] 구조 개선으로
+   `frame-checker-worker/src/roster-status.js`로 이동)이 **서버에서** 집행
    직전에 `rosterOnly` 그룹을 먼저 무효화하고 `buildRosterStatus`를
    강제로 재계산해, 프론트가 보낸 `expectedCollectMoney`(화면에 표시된
    총 모금액)와 "진짜 최신" 값을 대조한다 — 다르면 409를 반환해 집행을
@@ -1724,7 +1760,8 @@ read-your-write는 보장되므로 "이 판정 시점만큼은" 최신값을 보
 
 ## 36. 사유반휴 승인 — 동시 승인 시 사용량 소실 위험 (2026-09-11)
 
-`handleAdminLeaveProofDecide`(index.js:5534 부근, 승인 분기)가 "회원+요일
+`handleAdminLeaveProofDecide`(🔧 [2026-09-17] 구조 개선으로
+`frame-checker-worker/src/leave.js`로 이동, 승인 분기)가 "회원+요일
 셀의 현재 사용 횟수(prevCount) 읽기 → 잔여량(left) 검증 → nextCount 계산
 → 쓰기"를 락 없이 수행하고 있었다. 2차 점검에서 이 경쟁 조건이 실제로
 성립하는 전제("같은 회원·같은 요일에 대기 신청이 2건 이상 존재할 수
@@ -1750,6 +1787,19 @@ pending 항목 2건이 관리자 목록에 그대로 쌓일 수 있음을 확인
 않아 다른 작업과 무관하게 독립적으로 직렬화된다.
 
 ## 37. 퇴실신청 인덱스 — 동시 신청/취소 시 다른 회원 항목 소실 위험 (2026-09-11)
+
+> 🔧 **[§47로 무효화됨, 2026-09-12 — 문서 반영은 2026-09-17]** 이
+> 섹션이 다루는 KV 단일 맵 + `withMemberLock` 전역 락 구조는 §47
+> ("leaveq:/exitRequest:/... 를 KV에서 DO로 이전")에서 이미 완전히
+> 대체됐다 — 퇴실 신청은 이제 `LeaveQueue` DO가 전담해 경쟁 조건 자체가
+> 구조적으로 불가능하다. 현재 코드에서 이 섹션의 함수들
+> (`_setExitRequestIndexEntry` 등)과 `exitRequestIndex:global` 락은
+> 전부 삭제됐고, 실제 호출부는
+> `frame-checker-worker/src/exit-request.js`(`handleSetExitRequest`/
+> `handleAgreeExitRequest`/`handleCancelExitRequest`/`listExitRequests`
+> 가 `getLeaveQueueStub(env).fetch("https://do/exit/...")`로 통신)로
+> 옮겨갔다. 아래 본문은 당시 KV 기반 설계의 문제 진단을 보여주는
+> 역사적 기록으로 남겨둔다.
 
 `_setExitRequestIndexEntry`/`_removeExitRequestIndexEntry`(index.js:6442
 부근)가 15명 전원의 퇴실 신청 정보를 `exitRequestIndex:current`라는 단일
@@ -1777,7 +1827,8 @@ Sheets API 왕복보다 훨씬 가벼움)이라 직렬화로 인한 체감 지�
 
 ## 38. 부스터디장 임명 — 최대 2명 상한 미검증 (2026-09-11)
 
-`handleAdminSetPartiStatus`(index.js:6934 부근)는 "인원 제한 없이 여러
+`handleAdminSetPartiStatus`(🔧 [2026-09-17] 구조 개선으로
+`frame-checker-worker/src/members.js`로 이동)는 "인원 제한 없이 여러
 명을 동시에 부스터디장으로 둘 수 있다"는 설계로 남아있었는데, 실제로는
 `getCurrentCoReviewers`/"송출 P 대상 처리"(ReportReviewList) 등 코드
 전반이 "부스터디장 최대 2명"을 전제로 짜여 있어(§22) 이 무제한 설계가
@@ -1809,6 +1860,13 @@ KV 로컬 복제본에 반영 안 됐을 수 있었다. 상한 검증 직전에
 방어된다.
 
 ## 39. 반휴 큐 인덱스 — 동시 신청/처리 시 항목 소실 위험 (2026-09-11)
+
+> 🔧 **[§47로 무효화됨, 2026-09-12 — 문서 반영은 2026-09-17]** §37과
+> 동일한 사유 — `LeaveQueue` DO 전환으로 `leaveQueueIndex:global` 락과
+> 이 섹션의 헬퍼 함수들은 삭제됐다. 현재 호출부는
+> `frame-checker-worker/src/leave.js`의 `_readLeaveQueueIndex`(내부적으로
+> `getLeaveQueueStub(env).fetch("https://do/leaveq/list")`)다. 아래
+> 본문은 역사적 기록.
 
 `_addToLeaveQueueIndex`/`_removeFromLeaveQueueIndex`(index.js:733 부근)가
 `LEAVEQ_INDEX_KEY`(§13에서 KV `list()` 할당량 소진을 계기로 도입된 인덱스,
@@ -1871,7 +1929,9 @@ newTrigger` 등록 코드가 없다 — `docs/SHEET_APPSCRIPT.md`가 이미 "시
 **수정**: 다른 Apps Script 함수들과 동일한 패턴으로, 시트 삭제 직후
 `_notifyWorkerCacheInvalidate({ groups: ["roster"] })`를 추가했다 —
 `roster` 그룹은 `meta`/`adminMemberList`를 포함한 9종 전부를 지운다
-(index.js:852). 근본 해결(삭제 필터에 "이번 주기 시작 이전에 생성됐는지"
+(`MEMBER_CACHE_GROUPS`, 🔧 [2026-09-17] 구조 개선으로
+`frame-checker-worker/src/cache.js`로 이동). 근본 해결(삭제 필터에
+"이번 주기 시작 이전에 생성됐는지"
 조건을 추가)은 "퇴실" 백업명에 타임스탬프가 없어(재납은 있음) 변경
 범위가 더 크다고 판단해, 우선 캐시 무효화 추가만 적용했다. **이
 저장소의 `study_sw/assets/appscript.js`는 참고용 사본이라, 실제 반영은
@@ -1881,7 +1941,8 @@ newTrigger` 등록 코드가 없다 — `docs/SHEET_APPSCRIPT.md`가 이미 "시
 
 ## 41. 사유반휴 신청 제출 — 동시 신청 시 중복 pending 방지 (2026-09-11)
 
-`handleSetReasonLeaveProof`(index.js:5261 부근, 학생 본인이 반휴를
+`handleSetReasonLeaveProof`(🔧 [2026-09-17] 구조 개선으로
+`frame-checker-worker/src/leave.js`로 이동, 학생 본인이 반휴를
 신청하는 엔드포인트)의 `left`(잔여량) 검증은 시트 값만 볼 뿐, 이미
 큐/봇에 쌓인 같은 회원+같은 요일의 pending 신청 개수는 전혀 감안하지
 않았다. 같은 학생이 두 기기(휴대폰+PC)에서 거의 동시에 신청하면 둘 다
@@ -1911,6 +1972,19 @@ pending 없음"만 매번 확인하고 각자 추가하는 것이라면 락은 �
 무방비는 아니다.
 
 ## 42. PUSH 구독 인덱스 — 동시 등록 시 기기 누락 방지 (2026-09-11)
+
+> 🔧 **[§48로 무효화됨, 2026-09-12 — 문서 반영은 2026-09-17]** §37/§39와
+> 동일한 사유 — `PushSubscriptionsDO`로 전환되며 이 섹션의
+> `updatePushDeviceIndexEntry`/`removePushDeviceIndexEntry`/
+> `withMemberLock(env, "push:${email}", ...)`는 전부 삭제됐다(DO의
+> 직렬 처리로 경쟁 조건이 구조적으로 불가능해짐). 조회 함수
+> `getPushDeviceIndex`만 이름이 그대로 남아 지금은
+> `frame-checker-worker/src/notify.js:313`에 있고, 내부적으로
+> `getPushSubscriptionsStub(env).fetch("https://do/index?...")`를
+> 호출한다 — 원래 이 섹션이 언급한 "회원별 `subIndex:{email}` KV 키"
+> 방식이 아니다. `putPushDeviceIndex`라는 이름의 함수는 지금도, 과거
+> 커밋에도 존재하지 않는다(이 문서의 다른 표기 오류로 보임). 아래
+> 본문은 역사적 기록.
 
 `getPushDeviceIndex`/`putPushDeviceIndex`(index.js:9196 부근, 회원별
 `subIndex:{email}` KV 키에 기기 목록을 담음)를 쓰는 세 경로 — 첫 구독
@@ -1978,7 +2052,9 @@ Durable Object가 반환하는 `Date.now() - this.updatedAt > 60초`로
 제한과 무관하게 간헐적으로 잠깐 떴다가 사라지는" 증상과 정확히
 일치한다.
 
-**수정**: `ParticipantsRoster`(index.js:8352 부근)의 PUT 핸들러가
+**수정**: `ParticipantsRoster`(🔧 [2026-09-13] 구조 개선 1차로
+`frame-checker-worker/src/durable-objects.js`로 이동, DO 클래스 8개
+전부 동일)의 PUT 핸들러가
 `this.updatedAt` 갱신 직후 DO의 영구 저장소(`this.state.storage.put`)
 에도 함께 기록하고, 생성자에서 `this.state.blockConcurrencyWhile`로
 그 값을 복구하도록 했다 — DO가 재시작돼도 "마지막으로 실제 갱신된
@@ -2017,7 +2093,7 @@ KST YYYY-MM-DD). `wrangler.toml`에 `USAGE_STATS_DO` 바인딩과 `v2`
 
 **이메일 계측 — 핵심 설계 결정**: 처음엔 전역 변수(mutable box)에
 세션 이메일을 담아 `verifySession` 내부에서 채우는 방식을 검토했으나
-**기각**했다 — `verifySession`(index.js:65) 내부에 `await
+**기각**했다 — `verifySession`(`index.js`, 여전히 이 파일에 있음) 내부에 `await
 crypto.subtle.verify` 등 비동기 지점이 있어, 같은 isolate가 요청을
 인터리빙 처리할 때 요청 A가 대기 중 요청 B가 전역을 재할당하면
 이메일이 다른 사람 것으로 뒤섞이거나 유실될 위험이 실재했다(2차 조사로

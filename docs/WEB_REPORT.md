@@ -15,6 +15,23 @@
 > **`ParticipantsRoster` Durable Object**로 이전(§3.3·§4·§7). 대상 커밋 기준
 > `app/src/pages/ReportPage.tsx`, `app/src/components/report/*`,
 > `app/src/hooks/useRosterPolling.ts`, `frame-checker-worker/src/index.js`.
+>
+> 🔧 **[2026-09-17]** 2026-09-17 "구조 개선 12·20차"로 이 문서가 다루는
+> 핸들러가 `index.js`에서 세 파일로 분리됐다(로직 변경 없는 순수
+> 재배치): 접수/쿨다운(`handleReport`/`handleListActiveCooldowns`/
+> `handleReportCaptureDone`/`handleListReports`/`handleRequeueReport`)
+> 은 `frame-checker-worker/src/report-intake.js`, 캡처 검토/목록/투표
+> (`handleAdminCapturesList`/`handleMyCaptures`/`handleMyCaptureDelete`/
+> `handleMyOutputPen`/`handleCaptureTargetRespond`/`handleAdminCaptureFile`/
+> `handleAdminCaptureVote`)는 `frame-checker-worker/src/report-review.js`,
+> 벌점/제보상점 반영(`handleAdminCaptureDecide`/`handleAdminCaptureCancel`/
+> `handleAdminCaptureCancelMerit`/`handleAdminCaptureDelete`/
+> `handleAdminCaptureRevert`/`handleReportStatus`)는
+> `frame-checker-worker/src/report-penalty.js`로 이동했다.
+> PUSH 발송 관련(`handlePushSendToMember`/`handlePushSubscriptionStatus`/
+> `handleListRecentNotices`)은 `frame-checker-worker/src/notify.js`로
+> 이동했다. `handleGetParticipants`/`handlePutParticipants`만
+> `index.js`에 그대로 남아있다. 함수 이름/동작 자체는 바뀌지 않았다.
 
 ## 1. 범위 정의 — "제보" 탭이란
 
