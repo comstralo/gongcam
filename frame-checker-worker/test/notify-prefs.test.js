@@ -135,7 +135,7 @@ describe("handleGetStatusMessage / handleSetStatusMessage", () => {
     expect(res.status).toBe(400);
   });
 
-  it("60자를 넘으면 잘라서 저장한다", async () => {
+  it("40자를 넘으면 잘라서 저장한다", async () => {
     stubOauthFetch();
     const testEnv = makeTestEnv();
     const token = await signSession({ email: "m@test.com", memberNumber: "6", exp: Date.now() / 1000 + 3600 }, TEST_SECRET);
@@ -145,7 +145,7 @@ describe("handleGetStatusMessage / handleSetStatusMessage", () => {
     const res = await handleSetStatusMessage(req, testEnv, "https://example.com");
     const body = await res.json();
     expect(res.status, JSON.stringify(body)).toBe(200);
-    expect(body.message.length).toBe(60);
+    expect(body.message.length).toBe(40);
   });
 
   it("빈 문자열로 저장하면 삭제되어 다시 빈 문자열로 조회된다", async () => {

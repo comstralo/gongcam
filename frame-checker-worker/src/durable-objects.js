@@ -692,14 +692,21 @@ export class MemberSettingsDO {
 
     if (req.method === "GET" && url.pathname === "/status") {
       const memberNumber = url.searchParams.get("memberNumber") || "";
-      const message = this.statusMsgs.get(memberNumber) || "";
-      return new Response(JSON.stringify({ message }), { headers: { "Content-Type": "application/json" } });
+      const stored = this.statusMsgs.get(memberNumber);
+      // 🔧 [사용자 지시] "입력 값 아래에 최종 수정일자를 출력" — 기존엔
+      // 문자열만 저장했으나 {message, updatedAt}로 확장한다. 이전에
+      // 저장된 값은 여전히 문자열이므로 하위 호환으로 처리한다.
+      const message = typeof stored === "string" ? stored : stored?.message || "";
+      const updatedAt = typeof stored === "string" ? null : stored?.updatedAt || null;
+      return new Response(JSON.stringify({ message, updatedAt }), { headers: { "Content-Type": "application/json" } });
     }
     if (req.method === "POST" && url.pathname === "/status") {
       const { memberNumber, message } = await req.json();
-      this.statusMsgs.set(memberNumber, message);
-      await this.state.storage.put(`status:${memberNumber}`, message);
-      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+      const updatedAt = Date.now();
+      const value = { message, updatedAt };
+      this.statusMsgs.set(memberNumber, value);
+      await this.state.storage.put(`status:${memberNumber}`, value);
+      return new Response(JSON.stringify({ ok: true, updatedAt }), { headers: { "Content-Type": "application/json" } });
     }
     if (req.method === "DELETE" && url.pathname === "/status") {
       const memberNumber = url.searchParams.get("memberNumber") || "";

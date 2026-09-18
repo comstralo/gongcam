@@ -1103,11 +1103,13 @@ export type SetNotifyPrefsResponse = {
 // 오해로 인한 제보를 줄이는 용도(사용자 요청).
 export type StatusMessageResponse = {
   message: string;
+  updatedAt: number | null;
 };
 
 export type SetStatusMessageResponse = {
   ok: boolean;
   message: string;
+  updatedAt: number | null;
 };
 
 export type AdminPushSendCategoryResponse = {

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { MessageSquareText, Pencil, Check, Loader2, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { MessageSquareText, Pencil, Check, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { InfoCard } from "@/components/dashboard/shared";
@@ -8,14 +7,16 @@ import { useApi } from "@/hooks/useApi";
 import { ICON_STROKE } from "@/lib/utils";
 import type { StatusMessageResponse, SetStatusMessageResponse } from "@/lib/api/types";
 
-const STATUS_MESSAGE_MAX_LENGTH = 60;
+const STATUS_MESSAGE_MAX_LENGTH = 40;
 
-// "상태 메시지" — 전자기기 사용 목적이 모호해 보여 오해로 제보가 들어오는
-// 경우를 줄이려고, 본인이 미리 사용 목적을 적어두는 자유 텍스트(사용자
-// 요청, 예: "태블릿 : AI 질의용도"). [제보] 대상자 선택 시 이 값이 노출된다.
+// "전자기기 상태 메시지" — 전자기기 사용 목적이 모호해 보여 오해로 제보가
+// 들어오는 경우를 줄이려고, 본인이 미리 사용 목적을 적어두는 자유 텍스트
+// (사용자 요청, 예: "태블릿 : AI 질의용도"). [제보] 대상자 선택 시 이
+// 값이 노출된다.
 export function StatusMessageCard() {
   const { call } = useApi();
   const [message, setMessage] = useState<string | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
@@ -23,7 +24,10 @@ export function StatusMessageCard() {
 
   useEffect(() => {
     call<StatusMessageResponse>("/status-message")
-      .then((data) => setMessage(data.message || ""))
+      .then((data) => {
+        setMessage(data.message || "");
+        setUpdatedAt(data.updatedAt || null);
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "상태 메시지를 불러오지 못했습니다."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -45,6 +49,7 @@ export function StatusMessageCard() {
     call<SetStatusMessageResponse>("/status-message", { method: "POST", body: { message: draft.trim() } })
       .then((data) => {
         setMessage(data.message);
+        setUpdatedAt(data.updatedAt || null);
         setEditing(false);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "상태 메시지 저장에 실패했습니다."))
@@ -61,30 +66,47 @@ export function StatusMessageCard() {
             없애고 제목만 남긴다. */}
         <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
           <MessageSquareText className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-          상태 메시지
+          전자기기 상태 메시지
         </span>
 
         {editing ? (
-          <div className="flex items-center gap-2">
-            <Input
-              autoFocus
-              value={draft}
-              maxLength={STATUS_MESSAGE_MAX_LENGTH}
-              placeholder="예: 태블릿 : AI 질의용도"
-              disabled={saving}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") save();
-                if (e.key === "Escape") cancelEdit();
-              }}
-              className="flex-1 sm:h-11 sm:text-base"
-            />
-            <Button variant="outline" size="icon" disabled={saving} onClick={save} aria-label="저장">
-              <Check className="size-4" strokeWidth={ICON_STROKE.default} />
-            </Button>
-            <Button variant="outline" size="icon" disabled={saving} onClick={cancelEdit} aria-label="취소">
-              <X className="size-4" strokeWidth={ICON_STROKE.default} />
-            </Button>
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2 focus-within:ring-3 focus-within:ring-ring/50">
+              <Input
+                autoFocus
+                value={draft}
+                maxLength={STATUS_MESSAGE_MAX_LENGTH}
+                placeholder="예: 태블릿 : AI 질의용도"
+                disabled={saving}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") save();
+                  if (e.key === "Escape") cancelEdit();
+                }}
+                className="h-auto flex-1 border-none p-0 text-sm outline-none focus-visible:ring-0"
+              />
+              <span className="shrink-0 text-micro-lg tabular-nums text-muted-foreground sm:text-xs">
+                {draft.length}/{STATUS_MESSAGE_MAX_LENGTH}
+              </span>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={save}
+                aria-label="저장"
+                className="shrink-0 text-muted-foreground outline-none hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+              >
+                {saving ? (
+                  <Loader2 className="size-3.5 animate-spin" strokeWidth={ICON_STROKE.default} />
+                ) : (
+                  <Check className="size-3.5" strokeWidth={ICON_STROKE.default} />
+                )}
+              </button>
+            </div>
+            {updatedAt && (
+              <span className="px-1 text-micro-lg text-muted-foreground sm:text-xs">
+                최종 수정일자: {new Date(updatedAt).toLocaleString("ko-KR")}
+              </span>
+            )}
           </div>
         ) : (
           <button

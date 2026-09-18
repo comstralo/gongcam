@@ -123,13 +123,13 @@ export async function handleSetNotifyPrefs(req, env, origin) {
 // 오해로 인한 제보를 줄인다(사용자 요청). notifyPref와 동일하게 시트를
 // 건드리지 않고 KV에 회원번호를 키로 저장한다 — 15개 개인 탭 + template에
 // 새 셀을 추가하는 것보다 리스크가 훨씬 낮다.
-const STATUS_MESSAGE_MAX_LENGTH = 60;
+const STATUS_MESSAGE_MAX_LENGTH = 40;
 
 // 🔧 [KV → DO 이전, 2026-09-12] §49 — MemberSettingsDO로 이전.
 async function loadStatusMessage(env, memberNumber) {
   const res = await getMemberSettingsStub(env).fetch(`https://do/status?memberNumber=${encodeURIComponent(memberNumber)}`);
-  const { message } = await res.json();
-  return message || "";
+  const { message, updatedAt } = await res.json();
+  return { message: message || "", updatedAt: updatedAt || null };
 }
 
 // 본인 상태 메시지 조회 — [설정] 페이지가 현재 값을 입력창에 미리 채우는 데 쓴다.
@@ -142,8 +142,8 @@ export async function handleGetStatusMessage(req, env, origin) {
   try {
     const accessToken = await getServiceAccountAccessToken(env);
     const memberNumber = await resolveMemberNumber(env, accessToken, session);
-    const message = await loadStatusMessage(env, memberNumber);
-    return json({ message }, 200, origin);
+    const { message, updatedAt } = await loadStatusMessage(env, memberNumber);
+    return json({ message, updatedAt }, 200, origin);
   } catch (err) {
     return json({ error: "상태 메시지 조회 실패: " + err.message }, 500, origin);
   }
@@ -166,16 +166,18 @@ export async function handleSetStatusMessage(req, env, origin) {
     const accessToken = await getServiceAccountAccessToken(env);
     const memberNumber = await resolveMemberNumber(env, accessToken, session);
     const stub = getMemberSettingsStub(env);
+    let updatedAt = null;
     if (trimmed) {
-      await stub.fetch("https://do/status", {
+      const res = await stub.fetch("https://do/status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ memberNumber, message: trimmed }),
       });
+      ({ updatedAt } = await res.json());
     } else {
       await stub.fetch(`https://do/status?memberNumber=${encodeURIComponent(memberNumber)}`, { method: "DELETE" });
     }
-    return json({ ok: true, message: trimmed }, 200, origin);
+    return json({ ok: true, message: trimmed, updatedAt }, 200, origin);
   } catch (err) {
     return json({ error: "상태 메시지 저장 실패: " + err.message }, 500, origin);
   }
@@ -199,7 +201,7 @@ export async function handleGetMemberStatusMessage(req, env, origin, url) {
     const members = await listAllMembers(env, accessToken, env.GOOGLE_SHEET_FILE_ID);
     const member = members.find((m) => m.name === nickname);
     if (!member) return json({ message: "" }, 200, origin);
-    const message = await loadStatusMessage(env, member.number);
+    const { message } = await loadStatusMessage(env, member.number);
     return json({ message }, 200, origin);
   } catch (err) {
     return json({ error: "상태 메시지 조회 실패: " + err.message }, 500, origin);

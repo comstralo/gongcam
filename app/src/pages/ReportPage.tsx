@@ -378,7 +378,7 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
                       <div className="flex flex-col gap-1.5">
                         <Label className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                           <Lightbulb className="size-3 shrink-0 text-muted-foreground sm:size-3.5" />
-                          상태 메시지
+                          전자기기 상태 메시지
                         </Label>
                         {/* 🔧 [버그 수정] 대상자 미선택 시 나머지 영역과 동일하게
                             비활성화된 것처럼 보여준다 — 이 카드 자체는 입력
