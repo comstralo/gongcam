@@ -1,5 +1,5 @@
-import { CalendarDays, CheckCircle2, Search, TriangleAlert } from "lucide-react";
-import { useState } from "react";
+import { CalendarDays, CheckCircle2, FlaskConical, Search, TriangleAlert } from "lucide-react";
+import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogTrigger,
@@ -21,7 +21,7 @@ import {
 } from "@/components/dashboard/shared";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/lib/auth/useAuth";
-import { cn } from "@/lib/utils";
+import { cn, ICON_STROKE } from "@/lib/utils";
 import type { ReactNode } from "react";
 import type { DepositRefundBreakdown } from "@/lib/api/types";
 
@@ -31,6 +31,50 @@ function won(n: number) {
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
+}
+
+// 🧪 [목업 미리보기, 사용자 지시] "'퇴실신청' 다이얼로그 제목 옆에 토글
+// 버튼을 만들고, 신청 전 → 신청 후(마지막 참여일 미도래) → 신청 후
+// (도래) 3단계를 확인할 수 있게 해줘" — 관리자 계정에서 API 호출 없이
+// 이 다이얼로그가 실제로 다루는 상태 전환을 확인하기 위한 것. 신청/
+// 취소/동의 버튼을 누르면 실제로 다음 단계로 넘어가 보이도록 순환시킨다.
+type DummyExitStage = "before" | "requested" | "arrived";
+
+function nextDummyStage(current: DummyExitStage): DummyExitStage {
+  if (current === "before") return "requested";
+  if (current === "requested") return "arrived";
+  return "before";
+}
+
+const DUMMY_STAGE_LABEL: Record<DummyExitStage, string> = {
+  before: "목업 · 신청 전",
+  requested: "목업 · 신청 후(미도래)",
+  arrived: "목업 · 신청 후(도래)",
+};
+
+// exitRequestDate는 "YYYY-MM-DD" 문자열만 쓰이므로, 미도래는 오늘로부터
+// 5일 뒤(2주 신청 범위 안), 도래는 어제 날짜로 고정해 "이미 익일이
+// 지남" 조건(exitDatePassedDay)을 항상 만족시킨다.
+function dummyExitRequestDate(stage: DummyExitStage): string | null {
+  if (stage === "before") return null;
+  const offsetDays = stage === "requested" ? 5 : -1;
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + offsetDays);
+  return d.toISOString().slice(0, 10);
+}
+
+function dummyBreakdown(stage: DummyExitStage): DepositRefundBreakdown {
+  return {
+    amount: stage === "requested" ? 5000 : 10000,
+    reason: null,
+    outputPen: 0,
+    timePen: 0,
+    daysSinceJoin: 120,
+    fineUnpaid: false,
+    fineUnpaidDays: [],
+    depositAgainStatus: null,
+    lateNotice: stage === "requested",
+  };
 }
 
 // 🔧 [사용자 지시] "마지막 참여일을 캘린더 2주 범위로만 선택 가능하도록" —
@@ -90,7 +134,29 @@ export function DepositRefundDialog({
   const { isAdmin } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState(exitRequestDate || todayStr());
+  // 🧪 [목업 미리보기] 관리자만 토글 버튼을 볼 수 있다 — 이 다이얼로그
+  // 자체가 회원 본인 확인용이라 관리자 계정엔 실제 신청 상태가 없는
+  // 경우가 대부분이기 때문. showingDummy가 켜지면 아래 exitRequested/
+  // exitRequestDate/breakdown 등은 props 대신 dummyStage 기반 값으로
+  // 대체된다.
+  const [showingDummy, setShowingDummy] = useState(false);
+  const [dummyStage, setDummyStage] = useState<DummyExitStage>("before");
+
+  const effectiveExitRequested = showingDummy ? dummyStage !== "before" : exitRequested;
+  const effectiveExitRequestDate = showingDummy ? dummyExitRequestDate(dummyStage) : exitRequestDate;
+  const effectiveExitAgreedAt = showingDummy ? null : exitAgreedAt;
+  const effectivePrizePending = showingDummy ? false : prizePending;
+  const effectiveBreakdown = showingDummy ? dummyBreakdown(dummyStage) : breakdown;
+
+  const [selectedDate, setSelectedDate] = useState(effectiveExitRequestDate || todayStr());
+
+  // 🧪 목업 단계가 바뀌면(신청 전 ↔ 신청 후) "마지막 참여일" 입력값도
+  // 그 단계에 맞는 날짜로 다시 맞춘다 — useState 초기값은 최초 렌더에만
+  // 적용되므로 이후 dummyStage 전환에는 반응하지 않는다.
+  useEffect(() => {
+    if (showingDummy) setSelectedDate(effectiveExitRequestDate || todayStr());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showingDummy, dummyStage]);
 
   // 🔧 [사용자 지시] "퇴실 신청 → 마지막 참여일 익일에 정산 내역과 동의
   // 버튼 출력. 단, 미납 벌금이 있거나 상금 정산이 처리되지 않았으면
@@ -98,13 +164,20 @@ export function DepositRefundDialog({
   // 상금 미정산이 남아있으면 아직 정확한 반환액을 계산할 수 없어 동의
   // 자체를 막는다.
   const exitDatePassed =
-    exitRequested &&
-    !!exitRequestDate &&
-    exitDatePassedDay(exitRequestDate) &&
-    !breakdown.fineUnpaid &&
-    !prizePending;
+    effectiveExitRequested &&
+    !!effectiveExitRequestDate &&
+    exitDatePassedDay(effectiveExitRequestDate) &&
+    !effectiveBreakdown.fineUnpaid &&
+    !effectivePrizePending;
 
+  // 🧪 목업 미리보기 중에는 실제 회원 상태가 아니므로 API를 호출하지
+  // 않는다 — 대신 dummyStage만 다음 단계로 넘긴다(신청 전 → 신청 후
+  // (미도래) → 신청 후(도래) → 다시 신청 전).
   function handleRequestExit() {
+    if (showingDummy) {
+      setDummyStage((s) => nextDummyStage(s));
+      return;
+    }
     setSubmitting(true);
     setError(null);
     call<{ ok: boolean }>("/exit-request", { method: "POST", body: { exitDate: selectedDate } })
@@ -114,6 +187,10 @@ export function DepositRefundDialog({
   }
 
   function handleCancelExit() {
+    if (showingDummy) {
+      setDummyStage((s) => nextDummyStage(s));
+      return;
+    }
     setSubmitting(true);
     setError(null);
     call<{ ok: boolean }>("/exit-request/cancel", { method: "POST" })
@@ -123,6 +200,10 @@ export function DepositRefundDialog({
   }
 
   function handleAgreeExit() {
+    if (showingDummy) {
+      setDummyStage((s) => nextDummyStage(s));
+      return;
+    }
     setSubmitting(true);
     setError(null);
     call<{ ok: boolean }>("/exit-request/agree", { method: "POST" })
@@ -131,7 +212,7 @@ export function DepositRefundDialog({
       .finally(() => setSubmitting(false));
   }
 
-  const amount = breakdown.amount ?? 0;
+  const amount = effectiveBreakdown.amount ?? 0;
   const isReduced = amount < 10000;
 
   // 🔧 [고지지연 실제 반영] 오늘과 마지막 참여일 사이가 3일 미만이면(임박
@@ -143,8 +224,8 @@ export function DepositRefundDialog({
   // "이 날짜로 신청하면 어떻게 되는지" 미리보기용으로만 프론트에서 같은
   // 규칙을 재계산한다 — 실제 신청 전까지는 이 미리보기 값이 아직 서버
   // amount에는 반영되지 않은 상태임에 유의.
-  const lateNoticeRate = exitRequested
-    ? breakdown.lateNotice
+  const lateNoticeRate = effectiveExitRequested
+    ? effectiveBreakdown.lateNotice
       ? 50
       : 0
     : (() => {
@@ -159,7 +240,11 @@ export function DepositRefundDialog({
   // 항상 "settle"로 고정해 mergePenaltyLabel을 적용한다. 이렇게 하면
   // 관리자 확정 결과(ExitResultCards)와 동일하게 "송출 P : N회" 콜론
   // 형식, 0회 항목 생략, "페널티 (해당 없음)" 문구까지 일치한다.
-  const causeItems = mergePenaltyLabel(buildDepositCauseItems(breakdown, lateNoticeRate), breakdown, "settle");
+  const causeItems = mergePenaltyLabel(
+    buildDepositCauseItems(effectiveBreakdown, lateNoticeRate),
+    effectiveBreakdown,
+    "settle"
+  );
 
   return (
     <Dialog>
@@ -168,11 +253,39 @@ export function DepositRefundDialog({
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-1.5">
-            <Search className="size-4 text-primary sm:size-5" />
-            퇴실신청
+          <DialogTitle className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1.5">
+              <Search className="size-4 text-primary sm:size-5" />
+              퇴실신청
+            </span>
+            {/* 🧪 [사용자 지시] "'퇴실신청' 다이얼로그 제목 옆에 목업 토글
+                버튼을 만들어줘" — 관리자만 이 버튼을 본다(회원 본인
+                계정에는 자기 데이터가 실제로 존재하므로 목업이 필요
+                없음). 누르면 아래 카드들이 신청 전 → 신청 후(미도래) →
+                신청 후(도래) 3단계를 순환한다. */}
+            {isAdmin && (
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                className={cn(
+                  "shrink-0",
+                  showingDummy && "border-ok/30 bg-ok/15 text-ok hover:bg-ok/25 dark:hover:bg-ok/25"
+                )}
+                onClick={() => setShowingDummy((v) => !v)}
+                aria-pressed={showingDummy}
+                aria-label={showingDummy ? "목업 미리보기 끄기" : "목업 데이터로 미리보기"}
+                title={showingDummy ? "목업 미리보기 끄기" : "목업 데이터로 미리보기"}
+              >
+                <FlaskConical className="size-3.5" strokeWidth={ICON_STROKE.default} />
+              </Button>
+            )}
           </DialogTitle>
         </DialogHeader>
+
+        {showingDummy && (
+          <p className="text-micro-lg text-ok sm:text-xs">{DUMMY_STAGE_LABEL[dummyStage]}</p>
+        )}
 
         <div className="flex flex-col gap-3">
           {/* 🔧 2026-09: 이 다이얼로그의 카드 제목들이 dashboard/shared.tsx가
@@ -183,13 +296,13 @@ export function DepositRefundDialog({
               (MeritBreakdownDialog에서 같은 문제를 겪고 사용자 확인 후
               고친 것과 동일한 원인). 새 스타일을 발명하지 않고 이미 있는
               ItemTitle로 통일했다. */}
-          {exitRequested ? (
+          {effectiveExitRequested ? (
             <InfoCard className="flex items-center justify-between gap-2 bg-card">
               <span className="flex items-center gap-1.5">
                 <CalendarDays className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                 <ItemTitle>마지막 참여일</ItemTitle>
               </span>
-              <span className="text-xs sm:text-sm">{exitRequestDate || "-"}</span>
+              <span className="text-xs sm:text-sm">{effectiveExitRequestDate || "-"}</span>
             </InfoCard>
           ) : (
             <InfoCard className="flex flex-col gap-1.5 bg-card">
@@ -246,10 +359,10 @@ export function DepositRefundDialog({
                 <span className="text-destructive/60">•</span>
                 조회 당일 기준입니다. 퇴실일자에는 페널티 등에 의해 달라질 수 있습니다.
               </li>
-              {breakdown.reason && breakdown.reason !== "가입 30일 미만" && (
+              {effectiveBreakdown.reason && effectiveBreakdown.reason !== "가입 30일 미만" && (
                 <li className="flex gap-1.5">
                   <span className="text-destructive/60">•</span>
-                  {breakdown.reason}
+                  {effectiveBreakdown.reason}
                 </li>
               )}
             </ul>
@@ -266,7 +379,7 @@ export function DepositRefundDialog({
           )}
 
           {exitDatePassed ? (
-            exitAgreedAt ? (
+            effectiveExitAgreedAt ? (
               <Alert>
                 <AlertDescription>
                   예치금 정산액에 동의하셨습니다. 관리자 확인 후 처리됩니다.
@@ -293,23 +406,25 @@ export function DepositRefundDialog({
                 </Button>
               </div>
             )
-          ) : exitRequested ? (
+          ) : effectiveExitRequested ? (
             <>
               {/* 🔧 [사용자 지시] "미납 벌금이 있거나 상금 정산이 처리되지
                   않았으면 내역과 동의 버튼을 보여주지 않음" — 마지막
                   참여일 익일이 지났는데도 동의 버튼이 안 보이면 회원이
                   이유를 알 수 있게 사유를 안내한다. */}
-              {exitRequestDate && exitDatePassedDay(exitRequestDate) && (breakdown.fineUnpaid || prizePending) && (
-                <Alert variant="destructive">
-                  <AlertDescription>
-                    {breakdown.fineUnpaid && prizePending
-                      ? "벌금 미납분과 상금 정산이 아직 처리되지 않아 예치금 정산액을 확인할 수 없습니다."
-                      : breakdown.fineUnpaid
-                        ? "벌금 미납분이 남아있어 예치금 정산액을 확인할 수 없습니다."
-                        : "이번 주 상금 정산이 아직 처리되지 않아 예치금 정산액을 확인할 수 없습니다."}
-                  </AlertDescription>
-                </Alert>
-              )}
+              {effectiveExitRequestDate &&
+                exitDatePassedDay(effectiveExitRequestDate) &&
+                (effectiveBreakdown.fineUnpaid || effectivePrizePending) && (
+                  <Alert variant="destructive">
+                    <AlertDescription>
+                      {effectiveBreakdown.fineUnpaid && effectivePrizePending
+                        ? "벌금 미납분과 상금 정산이 아직 처리되지 않아 예치금 정산액을 확인할 수 없습니다."
+                        : effectiveBreakdown.fineUnpaid
+                          ? "벌금 미납분이 남아있어 예치금 정산액을 확인할 수 없습니다."
+                          : "이번 주 상금 정산이 아직 처리되지 않아 예치금 정산액을 확인할 수 없습니다."}
+                    </AlertDescription>
+                  </Alert>
+                )}
               <Button variant="outline" className="w-full sm:h-12 sm:text-base" disabled={submitting} onClick={handleCancelExit}>
                 퇴실 신청 취소
               </Button>
