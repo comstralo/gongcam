@@ -1,4 +1,4 @@
-import { CalendarDays, CheckCircle2, FlaskConical, Search, TriangleAlert } from "lucide-react";
+import { CalendarDays, FlaskConical, Search, SkipForward, TriangleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   Dialog,
@@ -38,23 +38,36 @@ function todayStr() {
 // (도래) 3단계를 확인할 수 있게 해줘" — 관리자 계정에서 API 호출 없이
 // 이 다이얼로그가 실제로 다루는 상태 전환을 확인하기 위한 것. 신청/
 // 취소/동의 버튼을 누르면 실제로 다음 단계로 넘어가 보이도록 순환시킨다.
-type DummyExitStage = "before" | "requested" | "arrived";
+// 🔧 [사용자 지시] "당일이 됐을 때, 벌금 미납이나 상금 미정산자면
+// 오버레이에... '동의합니다' 버튼을 비활성화 처리해줘" — 이 두 케이스도
+// 실제로 눈으로 확인할 수 있도록 도래 단계를 셋으로 나눴다(정상/벌금
+// 미납/상금 미정산).
+type DummyExitStage = "before" | "requested" | "arrivedOk" | "arrivedFineUnpaid" | "arrivedPrizePending";
+
+const DUMMY_STAGE_ORDER: DummyExitStage[] = [
+  "before",
+  "requested",
+  "arrivedOk",
+  "arrivedFineUnpaid",
+  "arrivedPrizePending",
+];
 
 function nextDummyStage(current: DummyExitStage): DummyExitStage {
-  if (current === "before") return "requested";
-  if (current === "requested") return "arrived";
-  return "before";
+  const idx = DUMMY_STAGE_ORDER.indexOf(current);
+  return DUMMY_STAGE_ORDER[(idx + 1) % DUMMY_STAGE_ORDER.length];
 }
 
 const DUMMY_STAGE_LABEL: Record<DummyExitStage, string> = {
   before: "목업 · 신청 전",
   requested: "목업 · 신청 후(미도래)",
-  arrived: "목업 · 신청 후(도래)",
+  arrivedOk: "목업 · 신청 후(도래, 정상)",
+  arrivedFineUnpaid: "목업 · 신청 후(도래, 벌금 미납)",
+  arrivedPrizePending: "목업 · 신청 후(도래, 상금 미정산)",
 };
 
 // exitRequestDate는 "YYYY-MM-DD" 문자열만 쓰이므로, 미도래는 오늘로부터
-// 5일 뒤(2주 신청 범위 안), 도래는 어제 날짜로 고정해 "이미 익일이
-// 지남" 조건(exitDatePassedDay)을 항상 만족시킨다.
+// 5일 뒤(2주 신청 범위 안), 도래 3종은 모두 어제 날짜로 고정해 "이미
+// 익일이 지남" 조건(exitDatePassedDay)을 항상 만족시킨다.
 function dummyExitRequestDate(stage: DummyExitStage): string | null {
   if (stage === "before") return null;
   const offsetDays = stage === "requested" ? 5 : -1;
@@ -70,11 +83,15 @@ function dummyBreakdown(stage: DummyExitStage): DepositRefundBreakdown {
     outputPen: 0,
     timePen: 0,
     daysSinceJoin: 120,
-    fineUnpaid: false,
-    fineUnpaidDays: [],
+    fineUnpaid: stage === "arrivedFineUnpaid",
+    fineUnpaidDays: stage === "arrivedFineUnpaid" ? ["월"] : [],
     depositAgainStatus: null,
     lateNotice: stage === "requested",
   };
+}
+
+function dummyPrizePending(stage: DummyExitStage): boolean {
+  return stage === "arrivedPrizePending";
 }
 
 // 🔧 [사용자 지시] "마지막 참여일을 캘린더 2주 범위로만 선택 가능하도록" —
@@ -142,10 +159,17 @@ export function DepositRefundDialog({
   const [showingDummy, setShowingDummy] = useState(false);
   const [dummyStage, setDummyStage] = useState<DummyExitStage>("before");
 
+  // 🔧 [사용자 지시] "지금 진행중인 퇴실신청의 목업은 관리자 계정
+  // 시점이 아닌 일반 계정 시점에서 구현해주길 바래" — 목업을 켜면
+  // 관리자가 실제로 확인하려는 것은 "일반 회원이 보는 화면"이므로,
+  // 이 화면 안에서는 isAdmin을 항상 false로 취급한다(오버레이·마스킹·
+  // 취소 버튼 숨김이 전부 이 값을 기준으로 동작).
+  const effectiveIsAdmin = showingDummy ? false : isAdmin;
+
   const effectiveExitRequested = showingDummy ? dummyStage !== "before" : exitRequested;
   const effectiveExitRequestDate = showingDummy ? dummyExitRequestDate(dummyStage) : exitRequestDate;
   const effectiveExitAgreedAt = showingDummy ? null : exitAgreedAt;
-  const effectivePrizePending = showingDummy ? false : prizePending;
+  const effectivePrizePending = showingDummy ? dummyPrizePending(dummyStage) : prizePending;
   const effectiveBreakdown = showingDummy ? dummyBreakdown(dummyStage) : breakdown;
 
   const [selectedDate, setSelectedDate] = useState(effectiveExitRequestDate || todayStr());
@@ -163,20 +187,19 @@ export function DepositRefundDialog({
   const lastAttendDayPassed = !!effectiveExitRequestDate && exitDatePassedDay(effectiveExitRequestDate);
 
   // 🔧 [사용자 지시] "퇴실 신청 → 마지막 참여일 익일에 정산 내역과 동의
-  // 버튼 출력. 단, 미납 벌금이 있거나 상금 정산이 처리되지 않았으면
-  // 내역과 동의 버튼을 보여주지 않음" — 익일이 됐어도 벌금 미납이나
-  // 상금 미정산이 남아있으면 아직 정확한 반환액을 계산할 수 없어 동의
-  // 자체를 막는다.
-  const exitDatePassed =
-    effectiveExitRequested && lastAttendDayPassed && !effectiveBreakdown.fineUnpaid && !effectivePrizePending;
+  // 버튼 출력" — 익일이 지나면 "동의합니다"/"퇴실 신청 취소" 영역
+  // 자체는 항상 보여준다. 벌금 미납/상금 미정산 여부는(사용자 지시:
+  // "동의합니다 버튼을 비활성화 처리해줘") 버튼을 아예 숨기지 않고
+  // canAgree로 비활성화만 시킨다 — 서버(handleAgreeExitRequest)도 같은
+  // 조건을 다시 검증해 API 직접 호출까지 막는다.
+  const exitDatePassed = effectiveExitRequested && lastAttendDayPassed;
+  const canAgree = !effectiveBreakdown.fineUnpaid && !effectivePrizePending;
 
   // 🔧 [사용자 지시] "'퇴실 신청 취소'는 마지막 참여일까지는 본인이
   // 자발적으로 가능하고, 익일이 되면 취소하지 못하게 처리해줘(관리자는
-  // 취소 가능)" — 이 다이얼로그는 회원 본인용이라, 관리자가 자기 계정
-  // 설정에서 목업으로 열어본 것이 아닌 한(showingDummy는 항상 회원
-  // 시점 기준이므로 여기서 isAdmin은 "이 회원이 관리자 본인인지"를
-  // 뜻한다) 익일이 지나면 취소 버튼을 막는다.
-  const canCancelExit = isAdmin || !lastAttendDayPassed;
+  // 취소 가능)" — 목업 중에는 effectiveIsAdmin이 항상 false이므로 관리자가
+  // 목업으로 볼 때도 일반 회원과 동일하게 취소가 막힌다.
+  const canCancelExit = effectiveIsAdmin || !lastAttendDayPassed;
 
   // 🧪 목업 미리보기 중에는 실제 회원 상태가 아니므로 API를 호출하지
   // 않는다 — 대신 dummyStage만 다음 단계로 넘긴다(신청 전 → 신청 후
@@ -254,6 +277,28 @@ export function DepositRefundDialog({
     "settle"
   );
 
+  // 🔧 [사용자 지시] "접수중인 상태에서는 일반 회원이면 반환 예치금과
+  // 차감 원인이 보이지 않아야 하는데... 두 영역을 덮는 오버레이로
+  // 처리해서 '마지막 참여일 다음 날부터...' 메시지를 보여줘. 당일이
+  // 됐을 때 벌금 미납/상금 미정산자면 각각 다른 문구를 보여주고 동의
+  // 버튼을 비활성화" — 세 조건을 우선순위대로 판정한다: (1) 아직
+  // 신청조차 안 했으면 카드 자체가 이 문구 대상이 아니다(신청 폼만
+  // 보여줌), (2) 신청은 했지만 익일 전(접수중), (3) 익일이 지났는데
+  // 벌금 미납, (4) 익일이 지났는데 상금 미정산(벌금 미납이 없을 때만
+  // 확인 — 둘 다 걸리면 벌금 미납 문구를 우선한다). 관리자는 이 오버레이
+  // 없이 항상 실제 값을 본다.
+  const refundOverlayMessage = effectiveIsAdmin
+    ? null
+    : !effectiveExitRequested
+      ? null
+      : !lastAttendDayPassed
+        ? "마지막 참여일 다음 날부터 반환 예치금을 확인할 수 있습니다."
+        : effectiveBreakdown.fineUnpaid
+          ? "미납 벌금을 먼저 납부해 주세요. 이후 퇴실 절차가 진행됩니다."
+          : effectivePrizePending
+            ? "지난 주 상금 대상자입니다. 정산을 기다려 주세요. 이후 퇴실 절차가 진행됩니다."
+            : null;
+
   return (
     <Dialog>
       <DialogTrigger className="w-full rounded-xl text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
@@ -270,23 +315,43 @@ export function DepositRefundDialog({
                 버튼을 만들어줘" — 관리자만 이 버튼을 본다(회원 본인
                 계정에는 자기 데이터가 실제로 존재하므로 목업이 필요
                 없음). 누르면 아래 카드들이 신청 전 → 신청 후(미도래) →
-                신청 후(도래) 3단계를 순환한다. */}
+                신청 후(도래, 정상/벌금 미납/상금 미정산) 5단계를 순환한다.
+                🔧 [사용자 지시] "목업 토글 버튼이 활성화 되면 좌측에 재생
+                아이콘 모양의 버튼을 만들어서 누를 때마다 각 단계별 목업
+                화면으로 전환되도록" — 기존에도 신청/취소/동의 버튼을
+                누르면 다음 단계로 넘어갔지만, 이 버튼은 그 흐름과 무관하게
+                항상 바로 다음 단계로 건너뛸 수 있게 한다. */}
             {isAdmin && (
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-sm"
-                className={cn(
-                  "shrink-0",
-                  showingDummy && "border-ok/30 bg-ok/15 text-ok hover:bg-ok/25 dark:hover:bg-ok/25"
+              <span className="flex items-center gap-1">
+                {showingDummy && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon-sm"
+                    className="shrink-0 border-ok/30 bg-ok/15 text-ok hover:bg-ok/25 dark:hover:bg-ok/25"
+                    onClick={() => setDummyStage((s) => nextDummyStage(s))}
+                    aria-label="다음 목업 단계로 전환"
+                    title="다음 목업 단계로 전환"
+                  >
+                    <SkipForward className="size-3.5" strokeWidth={ICON_STROKE.default} />
+                  </Button>
                 )}
-                onClick={() => setShowingDummy((v) => !v)}
-                aria-pressed={showingDummy}
-                aria-label={showingDummy ? "목업 미리보기 끄기" : "목업 데이터로 미리보기"}
-                title={showingDummy ? "목업 미리보기 끄기" : "목업 데이터로 미리보기"}
-              >
-                <FlaskConical className="size-3.5" strokeWidth={ICON_STROKE.default} />
-              </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon-sm"
+                  className={cn(
+                    "shrink-0",
+                    showingDummy && "border-ok/30 bg-ok/15 text-ok hover:bg-ok/25 dark:hover:bg-ok/25"
+                  )}
+                  onClick={() => setShowingDummy((v) => !v)}
+                  aria-pressed={showingDummy}
+                  aria-label={showingDummy ? "목업 미리보기 끄기" : "목업 데이터로 미리보기"}
+                  title={showingDummy ? "목업 미리보기 끄기" : "목업 데이터로 미리보기"}
+                >
+                  <FlaskConical className="size-3.5" strokeWidth={ICON_STROKE.default} />
+                </Button>
+              </span>
             )}
           </DialogTitle>
         </DialogHeader>
@@ -337,25 +402,31 @@ export function DepositRefundDialog({
               ExitResultCards(관리자용, admin/shared.tsx)와 각자 복붙해
               구현하고 있었다(사용자 지적: "예치금 반환, 차감 원인 쪽이
               재활용 가능해 보인다") — RefundAmountCard/DepositCauseCard
-              (dashboard/shared.tsx)로 공통화했다. 값 표시 정책은 이 모달
-              고유의 것이라(회원에게는 "-"로 가림, 관리자만 실제 금액+2단계
-              색상) valueContent/valueClassName으로 그대로 넘긴다. */}
-          <RefundAmountCard
-            valueContent={isAdmin ? won(amount) : "-"}
-            valueClassName={cn(
-              "text-sm sm:text-base",
-              isAdmin && isReduced ? "text-destructive" : isAdmin ? "text-ok" : "text-muted-foreground"
+              (dashboard/shared.tsx)로 공통화했다.
+              🔧 [사용자 지시] "접수중인 상태에서는 일반 회원이면 반환
+              예치금과 차감 원인이 보이지 않아야 하는데 지금은 출력되고
+              있거든? 두 영역을 덮는 오버레이로 처리해서 '...' 라는
+              메시지를 보여줘" — 두 카드를 감싸는 relative wrapper에
+              refundOverlayMessage가 있을 때만 불투명 오버레이를 얹는다.
+              관리자(effectiveIsAdmin)는 오버레이 없이 항상 실제 값을
+              본다. */}
+          <div className="relative">
+            <div className="flex flex-col gap-3">
+              <RefundAmountCard
+                valueContent={refundOverlayMessage ? "-" : won(amount)}
+                valueClassName={cn(
+                  "text-sm sm:text-base",
+                  !refundOverlayMessage && (isReduced ? "text-destructive" : "text-ok")
+                )}
+              />
+              <DepositCauseCard items={causeItems} maskValues={!!refundOverlayMessage} />
+            </div>
+            {refundOverlayMessage && (
+              <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-muted/95 p-3 text-center backdrop-blur-[1px]">
+                <p className="text-xs font-medium text-muted-foreground sm:text-sm">{refundOverlayMessage}</p>
+              </div>
             )}
-            footnote={
-              !isAdmin && (
-                <span className="text-micro-lg text-muted-foreground sm:text-xs">
-                  마지막 참여일 다음 날 확인하실 수 있습니다.
-                </span>
-              )
-            }
-          />
-
-          {isAdmin && <DepositCauseCard items={causeItems} />}
+          </div>
 
           <InfoCard className="flex flex-col gap-1 border-destructive/30 bg-destructive/5">
             <div className="flex items-center gap-1.5 text-destructive">
@@ -396,11 +467,11 @@ export function DepositRefundDialog({
             ) : (
               // 🔧 [사용자 지시] "퇴실 신청 취소는 마지막 참여일까지는
               // 본인이 자발적으로 가능하고, 익일이 되면 취소하지
-              // 못하게(관리자는 취소 가능)" — 이 블록은 exitDatePassed가
-              // true인 상태(마지막 참여일 익일이 이미 지남)라 회원
-              // 본인에게는 canCancelExit가 항상 false다. "동의합니다"만
-              // 단독으로 보여주고(canCancelExit=false), 관리자는 계속
-              // 두 버튼을 함께 본다.
+              // 못하게(관리자는 취소 가능)" — 회원 본인에게는 canCancelExit가
+              // 항상 false라 "동의합니다"만 단독으로 보인다. 관리자는 계속
+              // 두 버튼을 함께 본다. "동의합니다"는 벌금 미납/상금
+              // 미정산이면(canAgree=false, 위 오버레이가 이유를 설명)
+              // 숨기지 않고 비활성화만 한다(사용자 지시).
               <div className={cn("grid gap-2", canCancelExit ? "grid-cols-2" : "grid-cols-1")}>
                 {canCancelExit && (
                   <Button
@@ -413,50 +484,22 @@ export function DepositRefundDialog({
                   </Button>
                 )}
                 <Button
-                  variant="destructive"
-                  className="w-full sm:h-12 sm:text-base"
-                  disabled={submitting}
+                  variant="outline"
+                  className="w-full border-transparent bg-ok/10 text-ok hover:bg-ok/20 sm:h-12 sm:text-base dark:bg-ok/20 dark:hover:bg-ok/30"
+                  disabled={submitting || !canAgree}
+                  title={!canAgree ? "미납 벌금 또는 상금 정산이 남아있어 아직 동의할 수 없습니다." : undefined}
                   onClick={handleAgreeExit}
                 >
-                  <CheckCircle2 className="size-3.5 shrink-0" />
-                  동의합니다
+                  위 결정에 동의합니다.
                 </Button>
               </div>
             )
           ) : effectiveExitRequested ? (
-            <>
-              {/* 🔧 [사용자 지시] "미납 벌금이 있거나 상금 정산이 처리되지
-                  않았으면 내역과 동의 버튼을 보여주지 않음" — 마지막
-                  참여일 익일이 지났는데도 동의 버튼이 안 보이면 회원이
-                  이유를 알 수 있게 사유를 안내한다. */}
-              {lastAttendDayPassed && (effectiveBreakdown.fineUnpaid || effectivePrizePending) && (
-                <Alert variant="destructive">
-                  <AlertDescription>
-                    {effectiveBreakdown.fineUnpaid && effectivePrizePending
-                      ? "벌금 미납분과 상금 정산이 아직 처리되지 않아 예치금 정산액을 확인할 수 없습니다."
-                      : effectiveBreakdown.fineUnpaid
-                        ? "벌금 미납분이 남아있어 예치금 정산액을 확인할 수 없습니다."
-                        : "이번 주 상금 정산이 아직 처리되지 않아 예치금 정산액을 확인할 수 없습니다."}
-                  </AlertDescription>
-                </Alert>
-              )}
-              {/* 🔧 [사용자 지시] "퇴실 신청 취소는 마지막 참여일까지는
-                  본인이 자발적으로 가능하고, 익일이 되면 취소하지
-                  못하게(관리자는 취소 가능)" — 위 벌금/상금 안내와
-                  달리, 이 경우는 회원 본인에게는 버튼조차 보여주지
-                  않는다(관리자만 계속 볼 수 있음).*/}
-              {canCancelExit ? (
-                <Button variant="outline" className="w-full sm:h-12 sm:text-base" disabled={submitting} onClick={handleCancelExit}>
-                  퇴실 신청 취소
-                </Button>
-              ) : (
-                <Alert variant="destructive">
-                  <AlertDescription>
-                    마지막 참여일이 지나 더 이상 본인이 신청을 취소할 수 없습니다. 관리자에게 문의해주세요.
-                  </AlertDescription>
-                </Alert>
-              )}
-            </>
+            canCancelExit ? (
+              <Button variant="outline" className="w-full sm:h-12 sm:text-base" disabled={submitting} onClick={handleCancelExit}>
+                퇴실 신청 취소
+              </Button>
+            ) : null
           ) : (
             <Button
               variant="destructive"

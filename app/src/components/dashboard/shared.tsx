@@ -335,6 +335,7 @@ export function won(n: number) {
 export function DepositCauseCard({
   items,
   size = "default",
+  maskValues = false,
 }: {
   items: DepositCauseItem[];
   /** "default"(text-xs sm:text-sm, 관리자 확정 결과 화면)와 "compact"
@@ -343,6 +344,10 @@ export function DepositCauseCard({
    * 스캔하므로 문자열 조합으로 동적 생성하면 실제로는 스타일이 적용되지
    * 않는다 — 그래서 크기 값을 자유 문자열로 받지 않고 두 variant로 고정한다. */
   size?: "default" | "compact";
+  /** true면 항목 라벨은 그대로 두고 값(rate)만 "-"로 가린다 — 오버레이로
+   * 카드를 덮은 상태에서도 개발자도구로 DOM 값을 미리 확인하지 못하게
+   * 한다(DepositRefundDialog가 "접수중"/"벌금 미납" 등에서 사용). */
+  maskValues?: boolean;
 }) {
   return (
     <InfoCard className="flex flex-col gap-1.5 bg-card">
@@ -360,8 +365,8 @@ export function DepositCauseCard({
           <SubRow
             key={item.key}
             label={item.label}
-            value={`${item.rate}%`}
-            valueClassName={cn("font-sans", item.rate > 0 && "text-destructive")}
+            value={maskValues ? "-" : `${item.rate}%`}
+            valueClassName={cn("font-sans", !maskValues && item.rate > 0 && "text-destructive")}
           />
         ))}
       </div>
