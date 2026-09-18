@@ -616,6 +616,18 @@ export type ExitedMemberResult = {
   // (GET /admin/blacklist). 이 기능 도입 이전 처리된 퇴실자는 빈 문자열.
   googleAccount: string;
   gooroomeeAccount: string;
+  // 🔧 [사용자 지시] "'참여 스터디원 목록'의 상태 정보를 '퇴실 스터디원
+  // 목록'에도" — 확정 처리 시점에 함께 캡처해둔 값들. 이 필드들을 추가
+  // (2026-09)하기 이전에 처리된 퇴실자는 없으므로 옵셔널.
+  examKind?: string;
+  // 퇴실자의 원래 회원번호 탭은 이미 삭제·재사용되므로, 대신 확정 시점에
+  // 생성된 백업 탭({이름} (퇴실))의 실제 gid를 시트번호로 쓴다.
+  sheetGid?: number | null;
+  // 위 sheetGid가 속한 spreadsheetId — 퇴실 확정이 지난 주 백업 파일
+  // 기준으로 이루어졌을 수 있어(사이클 경계를 넘긴 정산), 회원마다 다른
+  // 파일일 수 있다. "참여 스터디원 목록"처럼 전역 spreadsheetId를 쓸 수
+  // 없는 이유이기도 하다.
+  backupFileId?: string;
 };
 
 export type ExitedMemberEntry = {

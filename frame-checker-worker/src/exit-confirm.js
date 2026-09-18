@@ -511,8 +511,13 @@ async function performExitReset(env, accessToken, fileId, member, resultMsg, kin
   // 이 "데이터" 한 탭(D=이메일,E=준비시험,F~V=송출P/주간P/사유반휴/제보상점
   // 슬롯)으로 합쳐졌다. 퇴실 시 D~V 전체를 초기화한다. (위 감사 스냅샷이
   // 이 초기화 직전 값을 이미 별도로 보존했다.)
-  const authRows = await getSheetValues(env, accessToken, fileId, `데이터!D${rowNumber}:D${rowNumber}`);
+  // 🔧 [사용자 지시] "'참여 스터디원 목록'의 상태 정보를 '퇴실 스터디원
+  // 목록'에도 반환 예치금 위에" — E열(준비 중인 시험)도 D열(계정)과
+  // 함께 초기화 직전에 읽어둔다. 이 값 자체는 초기화(524행)로 사라지므로
+  // 지금 안 읽으면 영영 복원할 수 없다.
+  const authRows = await getSheetValues(env, accessToken, fileId, `데이터!D${rowNumber}:E${rowNumber}`);
   const memberEmailRaw = (authRows[0] && authRows[0][0]) || "";
+  const examKind = (authRows[0] && authRows[0][1]) || "";
   // 🔧 [회귀 버그 수정, 2026-09] D열은 "구글계정,구루미계정" 콤보 원본
   // 그대로다(parseGoogleEmail 주석 참고) — revokeSheetAccess는 Drive
   // 권한 목록의 순수 이메일과 정확 일치 비교를 하므로, 콤마 섞인 원본을
@@ -535,7 +540,18 @@ async function performExitReset(env, accessToken, fileId, member, resultMsg, kin
   // exitResult 결과에 함께 담아, "신규 스터디원 등록" 화면이
   // 블랙리스트 등록된 계정 재입력을 감지할 수 있게 한다(사용자 지시) —
   // 초기화 직전에만 D열 원본을 읽을 수 있으므로 여기서 뽑아 반환해야 한다.
-  return { googleAccount: memberEmail, gooroomeeAccount: parseGooroomeeAccount(memberEmailRaw) };
+  // 🔧 [사용자 지시] "'퇴실 스터디원 목록'에도 상태 정보(준비 중인
+  // 시험/시트번호)를" — examKind는 위에서 읽어둔 값, sheetGid/
+  // backupFileId는 이 함수 안에서 이미 계산해둔 백업 탭({이름} (퇴실))
+  // 자체의 실제 gid/spreadsheetId다(퇴실자 원래 번호 탭은 이미 삭제·재사용
+  // 되어 의미가 없으므로, 대신 백업 탭 링크를 시트번호로 쓴다).
+  return {
+    googleAccount: memberEmail,
+    gooroomeeAccount: parseGooroomeeAccount(memberEmailRaw),
+    examKind,
+    sheetGid: backupSheetId,
+    backupFileId: backupTargetFileId,
+  };
 }
 
 // 앱스크립트 _set_sheet_init()의 "재납자" 분기를 재현한다: 이름(B2)과
@@ -719,6 +735,13 @@ export async function handleAdminExitConfirm(req, env, origin) {
               // 있어 곧바로 대조 대상이 된다.
               googleAccount: exitAccounts?.googleAccount || "",
               gooroomeeAccount: exitAccounts?.gooroomeeAccount || "",
+              // 🔧 [사용자 지시] "'퇴실 스터디원 목록'에도 상태 정보를" —
+              // "참여 스터디원 목록"의 상태 정보 카드와 동일한 항목(준비
+              // 중인 시험/시트번호)을 퇴실자 카드에도 보여주기 위해 함께
+              // 저장한다.
+              examKind: exitAccounts?.examKind || "",
+              sheetGid: exitAccounts?.sheetGid ?? null,
+              backupFileId: exitAccounts?.backupFileId || "",
             },
           }),
         })

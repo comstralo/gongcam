@@ -1,5 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
-import { UserX, User, ChevronDown, PiggyBank, TrendingDown, Eye, ClipboardList, Search, ShieldOff, ShieldAlert } from "lucide-react";
+import {
+  UserX,
+  User,
+  ChevronDown,
+  Hash,
+  PiggyBank,
+  TrendingDown,
+  Eye,
+  ClipboardList,
+  Search,
+  ShieldOff,
+  ShieldAlert,
+  LayoutDashboard,
+  ExternalLink,
+} from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
@@ -102,6 +116,10 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
       blacklist: false,
       googleAccount: "jaehee.kim@gmail.com",
       gooroomeeAccount: "jaehee.kim@gmail.com",
+      // 🔧 [사용자 지시] "상태 정보" 카드 렌더링 확인용 — 값이 채워진 케이스.
+      examKind: "9급 공무원",
+      sheetGid: 987654321,
+      backupFileId: "dummy-backup-file-id",
     },
   },
   {
@@ -402,6 +420,61 @@ export function ExitedMemberList() {
 
                       {result && (
                         <>
+                          {/* 🔧 [사용자 지시] "'참여 스터디원 목록'의 상태
+                              정보를 '퇴실 스터디원 목록'에도 반환 예치금
+                              위에" — MemberRosterList의 상태 정보 카드에서
+                              퇴실자에게도 의미가 있는 항목(준비 중인 시험/
+                              계정/대시보드/시트번호)만 발췌한다. 퇴실 예약
+                              일자·최근 접속은 이미 퇴실한 회원에게 개념상
+                              의미가 없어 제외. 이 필드들을 저장하기 시작한
+                              시점(2026-09) 이전에 처리된 퇴실자는 값이 없어
+                              "-"로 표시된다. */}
+                          <InfoCard className="flex flex-col gap-1.5 bg-card">
+                            <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
+                              <Hash className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
+                              상태 정보
+                            </span>
+                            <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
+                              <SubRow label="준비 중인 시험" value={result.examKind || "-"} />
+                              <SubRow label="구글 계정" value={result.googleAccount || "-"} />
+                              <SubRow label="구루미 계정" value={result.gooroomeeAccount || "-"} />
+                              {/* 🔧 퇴실자의 원래 회원번호(m.number, "exited:{이름}
+                                  (퇴실)")는 살아있는 회원과 달리 다른 회원에게
+                                  재배정될 위험이 없다 — handleAdminMemberStatus가
+                                  이 접두사를 인식해 백업 탭 스냅샷을 보여준다. */}
+                              <SubRow
+                                label="대시보드"
+                                value={
+                                  <a
+                                    href={`#/?member=${encodeURIComponent(m.number)}`}
+                                    className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
+                                  >
+                                    {displayName(m.name)}
+                                    <LayoutDashboard className="size-3 shrink-0" strokeWidth={ICON_STROKE.default} />
+                                  </a>
+                                }
+                              />
+                              <SubRow
+                                label="시트번호"
+                                value={
+                                  result.backupFileId && result.sheetGid !== undefined && result.sheetGid !== null ? (
+                                    <a
+                                      href={`https://docs.google.com/spreadsheets/d/${result.backupFileId}/edit#gid=${result.sheetGid}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
+                                    >
+                                      바로가기
+                                      <ExternalLink className="size-3 shrink-0" strokeWidth={ICON_STROKE.default} />
+                                    </a>
+                                  ) : (
+                                    "-"
+                                  )
+                                }
+                              />
+                            </div>
+                          </InfoCard>
+
                           {/* 🔧 [사용자 지시] "현재 페이지(관리자)의 위계도
                               맞춰줘" — 이 소제목만 다른 소제목(차감 원인 등,
                               text-sm sm:text-base)보다 한 단계 작았다. */}

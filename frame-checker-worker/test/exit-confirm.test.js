@@ -278,7 +278,7 @@ describe("handleAdminExitConfirm", () => {
           writeCalls.push(JSON.parse(init.body));
           return Promise.resolve(new Response(JSON.stringify({ ok: true })));
         }
-        if (u.includes("D4%3AD4") || u.includes("D4:D4") || u.includes("B4%3AB2000") || u.includes("B4:B2000")) {
+        if (u.includes("D4%3AE4") || u.includes("D4:E4") || u.includes("B4%3AB2000") || u.includes("B4:B2000")) {
           return Promise.resolve(new Response(JSON.stringify({ values: [] })));
         }
         throw new Error("unexpected fetch: " + u);
@@ -296,5 +296,99 @@ describe("handleAdminExitConfirm", () => {
     expect(res.status, JSON.stringify(body)).toBe(200);
     expect(body.ok).toBe(true);
     expect(body.number).toBe("1");
+  });
+
+  // 🔧 [사용자 지시] "'참여 스터디원 목록'의 상태 정보를 '퇴실 스터디원
+  // 목록'에도" — 확정 처리 시점에 examKind(데이터 탭 E열)/sheetGid(백업
+  // 탭 자체의 gid)/backupFileId(백업 탭이 생성된 spreadsheetId)가
+  // MemberSettingsDO에 실제로 저장되는지 검증한다. 위 테스트와 거의
+  // 동일한 mock이지만 D:E열에 실제 값을 채워 examKind가 보존되는지까지
+  // 확인한다.
+  it("확정 처리 시 examKind/sheetGid/backupFileId를 MemberSettingsDO에 저장한다", async () => {
+    const testEnv = makeTestEnv({ GOOGLE_SHEET_FILE_ID: "exit-confirm-confirm-status-info" });
+    const token = await makeAdminToken();
+    const rows = personalTabRows();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url, init) => {
+        const u = String(url);
+        if (u.includes("oauth2.googleapis.com")) return Promise.resolve(oauthTokenResponse());
+        if (u.includes("V50")) return Promise.resolve(dataSheetResponse([{ number: 1, name: "가", email: "a@b.com" }]));
+        if (u.includes("values:batchGet")) {
+          return Promise.resolve(new Response(JSON.stringify({ valueRanges: [[], []] })));
+        }
+        if (u.includes("U42")) return Promise.resolve(new Response(JSON.stringify({ values: rows })));
+        if (u.includes("'") && /F\d+%3AM\d+/.test(u)) {
+          return Promise.resolve(new Response(JSON.stringify({ values: [[0, 0, 0, "1", 0, "1", 0, 0]] })));
+        }
+        if (u.includes("F4%3AM4") || u.includes("F4:M4")) {
+          return Promise.resolve(new Response(JSON.stringify({ values: [] })));
+        }
+        if (u.includes("D25")) return Promise.resolve(new Response(JSON.stringify({ values: [["1"]] })));
+        if (u.includes("A4%3AL18") || u.includes("A4:L18")) {
+          return Promise.resolve(new Response(JSON.stringify({ values: [] })));
+        }
+        if (u.includes("D23%3AD24") || u.includes("D23:D24")) {
+          return Promise.resolve(new Response(JSON.stringify({ values: [["0"], ["0"]] })));
+        }
+        if (u.includes("fields=sheets.properties")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                sheets: [
+                  { properties: { sheetId: 1, title: "1" } },
+                  { properties: { sheetId: 99, title: "template" } },
+                ],
+              })
+            )
+          );
+        }
+        if (u.includes(":copyTo")) return Promise.resolve(new Response(JSON.stringify({ sheetId: 777 })));
+        if (u.includes("fields=sheets(properties.sheetId")) {
+          return Promise.resolve(new Response(JSON.stringify({ sheets: [{ properties: { sheetId: 777 }, protectedRanges: [] }] })));
+        }
+        if (u.includes("/permissions") && !init) {
+          return Promise.resolve(new Response(JSON.stringify({ permissions: [] })));
+        }
+        if (/:batchUpdate$/.test(u)) {
+          return Promise.resolve(new Response(JSON.stringify({ ok: true })));
+        }
+        if (u.includes("values:batchUpdate")) {
+          return Promise.resolve(new Response(JSON.stringify({ ok: true })));
+        }
+        // D열(이메일)은 빈 값으로 둔다 — revokeSheetAccess(exit-confirm.js)가
+        // email이 falsy면 즉시 return해 getAdminAccessToken(관리자 위임
+        // OAuth, 이 테스트 스위트에서 별도로 mock하지 않는 경로)을 타지
+        // 않는다. E열(준비중인시험)만 채워 examKind 캡처만 검증한다.
+        if (u.includes("D4%3AE4") || u.includes("D4:E4")) {
+          return Promise.resolve(new Response(JSON.stringify({ values: [["", "9급 공무원"]] })));
+        }
+        if (u.includes("B4%3AB2000") || u.includes("B4:B2000")) {
+          return Promise.resolve(new Response(JSON.stringify({ values: [] })));
+        }
+        throw new Error("unexpected fetch: " + u);
+      })
+    );
+
+    const req = makeRequest("https://worker/admin/exit/confirm", {
+      token,
+      method: "POST",
+      body: { number: "1", kind: "forced" },
+    });
+
+    const res = await handleAdminExitConfirm(req, testEnv, "https://example.com");
+    const body = await res.json();
+    expect(res.status, JSON.stringify(body)).toBe(200);
+
+    const { getMemberSettingsStub } = await import("../src/index.js");
+    const listRes = await getMemberSettingsStub(testEnv).fetch("https://do/exit/list");
+    const { items } = await listRes.json();
+    const saved = items["가 (퇴실)"];
+    expect(saved).toBeTruthy();
+    expect(saved.examKind).toBe("9급 공무원");
+    expect(saved.sheetGid).toBe(777);
+    // 이번 케이스는 지난 주 백업으로 넘어가지 않은 정상 흐름이라
+    // backupFileId는 라이브 시트(fileId) 그대로여야 한다.
+    expect(saved.backupFileId).toBe("exit-confirm-confirm-status-info");
   });
 });
