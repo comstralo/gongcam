@@ -97,7 +97,7 @@ export function StudyTimeDialog({
   const periodLabels = isPeriodType ? PERIOD_NUMBER_LABELS : PERIOD_TIME_LABELS;
   return (
     <Dialog>
-      <DialogTrigger className="w-full rounded-xl text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+      <DialogTrigger className="w-full rounded-xl text-left outline-none focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/50">
         {children}
       </DialogTrigger>
       <DialogContent>

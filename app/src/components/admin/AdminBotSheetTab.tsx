@@ -536,7 +536,7 @@ function BotStatusSection({ visible }: { visible: boolean }) {
             // 캡처 미리보기(CapturePreview)와 동일한 Dialog 확대 패턴을
             // 재사용한다.
             <Dialog>
-              <DialogTrigger className="block w-full overflow-hidden rounded-lg border border-border outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+              <DialogTrigger className="block w-full overflow-hidden rounded-lg border border-border outline-none focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/50">
                 <img
                   src={`data:image/png;base64,${status.screenshot}`}
                   alt="도움봇 화면"

@@ -494,7 +494,7 @@ export function CapturePreview({
   }
   return (
     <Dialog>
-      <DialogTrigger className="block w-full overflow-hidden rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+      <DialogTrigger className="block w-full overflow-hidden rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/50">
         <img
           src={blobUrl}
           alt="제보 캡처"
@@ -543,7 +543,7 @@ export function PenaltyHistoryDetailDialog({
 }) {
   return (
     <Dialog>
-      <DialogTrigger className="rounded text-micro-lg tabular-nums text-muted-foreground underline decoration-dotted underline-offset-2 outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 sm:text-xs">
+      <DialogTrigger className="rounded text-micro-lg tabular-nums text-muted-foreground underline decoration-dotted underline-offset-2 outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/50 sm:text-xs">
         {children}
       </DialogTrigger>
       <DialogContent>
