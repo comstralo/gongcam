@@ -372,7 +372,7 @@ export function DepositRefundDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex flex-col gap-3">
+        <div className="flex min-w-0 flex-col gap-3">
           {/* 🔧 2026-09: 이 다이얼로그의 카드 제목들이 dashboard/shared.tsx가
               이미 정의해둔 "카드 1차 텍스트" 컴포넌트 ItemTitle(text-sm
               font-bold sm:text-base)보다 작았다 — 정작 그 밑의 SubRow는
@@ -492,7 +492,7 @@ export function DepositRefundDialog({
               // 두 버튼을 함께 본다. "동의합니다"는 벌금 미납/상금
               // 미정산이면(canAgree=false, 위 오버레이가 이유를 설명)
               // 숨기지 않고 비활성화만 한다(사용자 지시).
-              <div className={cn("grid gap-2", canCancelExit ? "grid-cols-2" : "grid-cols-1")}>
+              <div className={cn("grid min-w-0 gap-2", canCancelExit ? "grid-cols-2" : "grid-cols-1")}>
                 {canCancelExit && (
                   <Button
                     variant="outline"
