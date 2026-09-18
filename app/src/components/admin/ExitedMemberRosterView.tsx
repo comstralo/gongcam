@@ -8,8 +8,6 @@ import {
   Eye,
   ClipboardList,
   Search,
-  ShieldOff,
-  ShieldAlert,
   LayoutDashboard,
   ExternalLink,
 } from "lucide-react";
@@ -536,14 +534,19 @@ export const ExitedMemberRosterView = forwardRef<
   // 값이 재조회로 덮어써질 수 있으므로 쓰지 않는다.
   function toggleBlacklist(m: ExitedMemberEntry) {
     if (!m.result) return;
-    // 🧪 목업 미리보기 중에는 실제 회원이 아니므로 API를 호출하지 않는다
-    // — 이 가드가 없으면 더미 이름으로 실제 MemberSettingsDO에 블랙리스트
-    // 값을 써버리는 실질적 데이터 오염이 발생한다(사용자 지시로 최우선 추가).
+    const nextBlacklist = !m.result.blacklist;
+    // 🧪 목업 미리보기 중에는 더미 이름으로 실제 MemberSettingsDO에 값을
+    // 써버리면 안 되므로 API를 호출하지 않는다 — 대신 로컬 state만 그대로
+    // 토글해 버튼이 눌리는 걸 눈으로 확인할 수 있게 한다(사용자 지시:
+    // "목업에서도 버튼 클릭이 가능하도록").
     if (showingDummy) {
-      setError("목업 미리보기 중입니다 — 실제 데이터에는 영향을 주지 않습니다.");
+      setMembers(
+        (prev) =>
+          prev?.map((x) => (x.number === m.number && x.result ? { ...x, result: { ...x.result, blacklist: nextBlacklist } } : x)) ??
+          prev
+      );
       return;
     }
-    const nextBlacklist = !m.result.blacklist;
     setTogglingNumber(m.number);
     setError(null);
     call<SetExitBlacklistResponse>("/admin/exit/blacklist", {
@@ -783,15 +786,10 @@ export const ExitedMemberRosterView = forwardRef<
                         <Button
                           variant="outline"
                           className="w-full sm:h-11 sm:text-base"
-                          disabled={showingDummy || togglingNumber === m.number}
+                          disabled={togglingNumber === m.number}
                           onClick={() => toggleBlacklist(m)}
                         >
-                          {result.blacklist ? (
-                            <ShieldOff className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
-                          ) : (
-                            <ShieldAlert className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
-                          )}
-                          {result.blacklist ? "블랙리스트 등록 해제" : "블랙리스트로 등록"}
+                          {result.blacklist ? "블랙리스트 등록 해제" : "블랙리스트 등록"}
                         </Button>
                       </>
                     )}
