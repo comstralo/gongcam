@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, RotateCw } from "lucide-react";
+import { TintedPill } from "@/components/dashboard/shared";
 import { useApi } from "@/hooks/useApi";
 import { cn } from "@/lib/utils";
-import type { CycleListResponse, CycleWeek } from "@/lib/api/types";
+import type { CycleGroup, CycleListResponse, CycleWeek } from "@/lib/api/types";
 
 // weekOf/weekTo는 백업 파일명에서 온 "YYMMDD" 형식이다.
 function formatDate(raw: string) {
@@ -58,6 +59,15 @@ export function CycleSwitcher({
   // 동일한 원칙. true면 서버에 includeForced=1을 함께 보내 각 슬롯의 forced
   // (페널티 2회 이상) 후보 존재 여부를 받아 점(dot)으로 표시한다.
   includeForced = false,
+  // 🔧 [사용자 지시] "드롭다운은 그룹만 남기고 주차 이동은 기존
+  // CycleSwitcher 하나로 합친다" — 관리자 전용 "사이클 범위 선택"
+  // 드롭다운(AdminCycleRangeSelect)에서 과거 사이클을 고르면, 이 그룹을
+  // 넘겨받아 자체 /cycles 조회(현재 사이클 전용) 대신 이 그룹의 weeks
+  // 안에서만 화살표 이동을 보여준다. undefined면 기존과 동일하게 현재
+  // 사이클을 조회한다. 이 모드에선 hasUnpaid/hasForced 정보가 없어(그
+  // 드롭다운의 목적은 열람이지 미납 확인이 아님) 미처리 글로우는 자연히
+  // 꺼진다.
+  overrideGroup,
 }: {
   selectedFileId: string | null;
   // week: 선택된 주차의 전체 정보(weekOf/weekTo 등) — "현재"를 고르면 null.
@@ -66,9 +76,10 @@ export function CycleSwitcher({
   memberNumber?: string;
   includeUnpaid?: boolean;
   includeForced?: boolean;
+  overrideGroup?: CycleGroup | null;
 }) {
   const { call } = useApi();
-  const [weeks, setWeeks] = useState<CycleWeek[] | null>(null);
+  const [fetchedWeeks, setFetchedWeeks] = useState<CycleWeek[] | null>(null);
   const [currentHasUnpaid, setCurrentHasUnpaid] = useState(false);
   const [currentHasForced, setCurrentHasForced] = useState(false);
   // 🔧 [버그 수정, 2026-09] 예전엔 이번 주가 사이클 몇 번째 주인지를
@@ -77,7 +88,7 @@ export function CycleSwitcher({
   // 막 시작된 직후엔 weeks.length가 "방금 끝난 이전 사이클"의 개수를 담고
   // 있어 "3주차"처럼 잘못 표시됐다. 서버가 집계!D25를 직접 읽어 내려주는
   // currentWeekNumber를 그대로 쓴다(0이면 아직 응답 전).
-  const [currentWeekNumber, setCurrentWeekNumber] = useState(0);
+  const [fetchedCurrentWeekNumber, setFetchedCurrentWeekNumber] = useState(0);
   // 🔧 [실패 시 무피드백 수정] 원래 실패를 그냥 삼켜서(catch(()=>{})) weeks가
   // 계속 null로 남아 토글 전체가 에러 표시 없이 조용히 사라졌다 — 사용자가
   // "지난 주 보기" 기능이 원래 있었는지조차 알 수 없었다. 실패 시 작은
@@ -86,6 +97,9 @@ export function CycleSwitcher({
   const [retryToken, setRetryToken] = useState(0);
 
   useEffect(() => {
+    // overrideGroup 모드에서는 자체 조회가 필요 없다 — 넘겨받은 그룹의
+    // weeks를 그대로 쓴다.
+    if (overrideGroup) return;
     let cancelled = false;
     setError(false);
     const params = new URLSearchParams();
@@ -96,8 +110,8 @@ export function CycleSwitcher({
     call<CycleListResponse>(`/cycles${query ? `?${query}` : ""}`)
       .then((data) => {
         if (cancelled) return;
-        setWeeks(data.weeks || []);
-        setCurrentWeekNumber(data.currentWeekNumber || 0);
+        setFetchedWeeks(data.weeks || []);
+        setFetchedCurrentWeekNumber(data.currentWeekNumber || 0);
         setCurrentHasUnpaid(data.currentHasUnpaid ?? false);
         setCurrentHasForced(data.currentHasForced ?? false);
       })
@@ -108,7 +122,23 @@ export function CycleSwitcher({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [memberNumber, includeUnpaid, includeForced, retryToken]);
+  }, [memberNumber, includeUnpaid, includeForced, retryToken, overrideGroup]);
+
+  // overrideGroup이 있으면 그 그룹의 weeks/주차 번호를 쓰고, 없으면 기존
+  // /cycles 조회 결과를 쓴다. overrideGroup 모드에서는 미납/forced 정보가
+  // 없으므로 currentHasUnpaid/currentHasForced는 항상 false로 둔다(위
+  // effect가 건너뛰어 state가 그대로 초기값에 머문다 — 자연히 꺼짐).
+  const weeks = overrideGroup ? overrideGroup.weeks : fetchedWeeks;
+  // overrideGroup이 완결된 과거 사이클(isCurrent=false)이면 "이번 주"
+  // 슬롯 자체가 없다 — 그 사이클은 이미 끝나 실시간 주차가 존재하지
+  // 않는다. isCurrent=true(진행 중 사이클을 override로 받은 경우)이거나
+  // override가 아예 없으면(기존 동작) 기존처럼 마지막에 "이번 주"를 붙인다.
+  const hasCurrentSlot = overrideGroup ? overrideGroup.isCurrent : true;
+  const currentWeekNumber = overrideGroup
+    ? overrideGroup.isCurrent
+      ? overrideGroup.currentWeekNumber || 0
+      : overrideGroup.weeks.length
+    : fetchedCurrentWeekNumber;
 
   // 🔧 [버그 수정] 훅은 조건부 return보다 항상 먼저 호출돼야 한다(React
   // 훅 규칙) — weeks/maxWeeks가 아직 없을 때도 슬롯 계산이 빈 배열
@@ -117,13 +147,14 @@ export function CycleSwitcher({
   const oldestFirst = weeks ? [...weeks].reverse() : [];
   // "이번 주" 앞에 와야 할 슬롯 수는 currentWeekNumber - 1(예: 2주차 진행
   // 중이면 1개) — weeks.length가 그보다 적으면(백업 조회 실패 등 드문 경우)
-  // 남는 자리를 빈 슬롯으로 채운다.
-  const missingCount = Math.max(0, currentWeekNumber - 1 - oldestFirst.length);
+  // 남는 자리를 빈 슬롯으로 채운다. 완결된 과거 사이클(hasCurrentSlot=false)
+  // 이면 "이번 주"를 뺀 전체가 과거 슬롯이므로 보정이 필요 없다.
+  const missingCount = hasCurrentSlot ? Math.max(0, currentWeekNumber - 1 - oldestFirst.length) : 0;
   const pastSlots: (CycleWeek | null)[] = [...Array(missingCount).fill(null), ...oldestFirst];
   // "이번 주"(fileId: null)를 항상 마지막 슬롯으로 붙인다 — 트랙 길이는
   // maxWeeks(항상 3칸)가 아니라 currentWeekNumber로 고정한다: 사이클이 아직
   // 안 끝난 시점에 이번 주 이후 슬롯(미래 주차)은 존재하지 않기 때문이다.
-  const slots: (CycleWeek | null)[] = currentWeekNumber > 0 ? [...pastSlots, null] : [];
+  const slots: (CycleWeek | null)[] = currentWeekNumber > 0 ? (hasCurrentSlot ? [...pastSlots, null] : pastSlots) : [];
   const currentWeekIndex = slots.length - 1;
   const selectedIndex =
     selectedFileId === null ? currentWeekIndex : slots.findIndex((w) => w?.fileId === selectedFileId);
@@ -160,7 +191,10 @@ export function CycleSwitcher({
 
   function goTo(index: number) {
     const target = slots[index];
-    if (index === currentWeekIndex) {
+    // hasCurrentSlot=false(완결된 과거 사이클을 override로 받은 경우)면
+    // currentWeekIndex는 "이번 주"가 아니라 그 사이클의 마지막 완결
+    // 주차다 — fileId=null("이번 주")로 잘못 취급하지 않도록 게이팅한다.
+    if (hasCurrentSlot && index === currentWeekIndex) {
       onSelect(null, null);
     } else if (target) {
       onSelect(target.fileId, target);
@@ -174,7 +208,7 @@ export function CycleSwitcher({
   // "데이터 없음" 슬롯까지도 이동은 허용하고 그 자리에서만 선택을 안 바꿨는데,
   // 그 슬롯으로 이동 자체가 안 되도록 막는다(그 방향 화살표를 비활성화).
   function hasDataAt(index: number): boolean {
-    if (index === currentWeekIndex) return true;
+    if (hasCurrentSlot && index === currentWeekIndex) return true;
     return !!slots[index]?.hasData;
   }
 
@@ -190,15 +224,21 @@ export function CycleSwitcher({
   // 판단하는 헬퍼. "이번 주" 슬롯(currentWeekIndex)은 weeks 배열에 없어
   // currentHasUnpaid/currentHasForced를 대신 본다.
   function hasPendingAt(index: number): boolean {
-    if (index === currentWeekIndex) return currentHasUnpaid || currentHasForced;
+    if (hasCurrentSlot && index === currentWeekIndex) return currentHasUnpaid || currentHasForced;
     const slot = slots[index];
     return !!slot && (!!slot.hasUnpaid || !!slot.hasForced);
   }
 
   const browsedSlot = slots[browseIndex];
-  const browsedIsCurrentWeek = browseIndex === currentWeekIndex;
+  const browsedIsCurrentWeek = hasCurrentSlot && browseIndex === currentWeekIndex;
   const browsedHasData = hasDataAt(browseIndex);
-  const browsedHasPending = hasPendingAt(browseIndex);
+  // 🔧 [사용자 지시] "현재 주차에서는 글로우 이펙트 제거 — 어차피 확인
+  // 가능한데 중복 글로우 같다" — 지금 보고 있는 슬롯이 이미 "현재"(진행
+  // 중, 화면에 그대로 떠 있어 언제든 확인 가능)라면, 그 슬롯 자체를
+  // 강조하는 글로우는 불필요한 중복이다. 다른 방향(화살표)의 유도
+  // 글로우는 그대로 유지 — "안 보이는 곳에 미처리가 있다"는 신호는
+  // 여전히 유효하다.
+  const browsedHasPending = !browsedIsCurrentWeek && hasPendingAt(browseIndex);
   // 왼쪽(과거, 더 작은 인덱스)/오른쪽(더 큰 인덱스) 방향 중 지금 보고 있는
   // 슬롯을 제외한 어딘가에 미처리가 있으면 그 방향 화살표를 글로우한다 —
   // "지금 안 보이지만 다른 방향에 확인할 게 있다"는 유도 신호.
@@ -256,10 +296,10 @@ export function CycleSwitcher({
             {browsedIsCurrentWeek ? "현재" : "과거"}
           </span>
         )}
-        {/* 🔧 [사용자 지시] "3주차"와 날짜의 색을 서로 바꾼다 — 주차 숫자는
-            보조 정보로 muted, 실제 날짜 구간이 더 중요한 정보이므로
-            기본 전경색으로. */}
-        <span className="text-sm font-medium text-muted-foreground sm:text-base">{browseIndex + 1}주차</span>
+        {/* 🔧 [사용자 지시] "N주차도 뱃지화, 초록색으로" — plain text에서
+            TintedPill(ok=초록)로 바꿔 "현재"/"과거" 뱃지와 동일한 형태로
+            통일한다. */}
+        <TintedPill tone="ok">{browseIndex + 1}주차</TintedPill>
         <span className="text-sm font-medium sm:text-base">
           {browsedIsCurrentWeek
             ? `${thisWeek.start} ~ ${thisWeek.end}`

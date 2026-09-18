@@ -13,7 +13,7 @@ import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { usePollingRefresh } from "@/hooks/usePollingRefresh";
 import { useAuth } from "@/lib/auth/useAuth";
 import { useMyStatus } from "@/lib/status/useMyStatus";
-import type { AdminMember, AdminMembersResponse, StatusResponse } from "@/lib/api/types";
+import type { AdminMember, AdminMembersResponse, CycleGroup, StatusResponse } from "@/lib/api/types";
 
 // 회원번호로 "본인"을 표시하는 특수값 — 실제 회원번호와 겹치지 않도록 접두사를 둔다.
 const SELF_VALUE = "__self__";
@@ -56,6 +56,13 @@ export function StatusPage({
   const [otherLoading, setOtherLoading] = useState(false);
   const [otherLoadedAt, setOtherLoadedAt] = useState<number | null>(null);
 
+  // 🔧 [사용자 지시] "드롭다운은 '내 대시보드' 드롭다운 좌측으로, 토글은
+  // 기존 것을 재활용" — AdminCycleRangeSelect가 고른 사이클(그룹) 자체를
+  // 들고 있다가 CycleSwitcher의 overrideGroup으로 넘긴다. 그룹을 바꾸면
+  // 항상 그 사이클의 최신 주차로 진입한다(CycleSwitcher를 그 그룹
+  // 범위로 다시 마운트하는 효과 — key로 그룹을 구분).
+  const [overrideGroup, setOverrideGroup] = useState<CycleGroup | null>(null);
+
   const isViewingCycle = !!cycleFileId || !!cycleAnyFileId;
   // "내 대시보드 · 현재 사이클" 조회는 앱 전역 캐시(MyStatusContext)를 그대로
   // 쓴다. 그 외(다른 회원 선택, 과거 사이클 조회)는 파라미터가 붙는 별도
@@ -88,6 +95,24 @@ export function StatusPage({
         setSelected((prev) => (prev === SELF_VALUE || list.some((m) => m.number === prev) ? prev : SELF_VALUE));
       })
       .catch((err) => setMembersError(err instanceof Error ? err.message : "회원 목록을 불러오지 못했습니다."));
+  }
+
+  // 🔧 [사용자 지시] "미지정을 누르면 기존같이 꼬리물기처럼 동작" —
+  // group이 null이면 "미지정"을 고른 것이므로 override를 완전히 해제해
+  // CycleSwitcher가 다시 자체 /cycles 조회(현재 사이클 내 꼬리물기)로
+  // 돌아가게 한다. group이 있으면(진행 중 그룹을 명시적으로 고른
+  // 경우 포함) 그 그룹의 최신 주차로 진입한다 — 진행 중 그룹이면 마지막
+  // 슬롯이 "이번 주"(fileId 없음)이므로 완결된 주차가 있으면 그중
+  // 최신 것을, 없으면(1주차) null을 쓴다. 완결된 과거 그룹이면
+  // weeks[0](최신순 배열의 첫 항목)이 그 사이클의 마지막 주차다.
+  function selectGroup(group: CycleGroup | null) {
+    setOverrideGroup(group);
+    if (!group) {
+      onSelectCycleAny?.(null);
+      return;
+    }
+    const latestFileId = group.weeks[0]?.fileId ?? null;
+    onSelectCycleAny?.(latestFileId);
   }
 
   // 🔧 [사용자 지시] "드롭다운의 폴링은 클릭할 때마다 발생하게 할 수
@@ -191,64 +216,73 @@ export function StatusPage({
               // "다른 회원이 없다"로 오해할 수 있었다. 이 짧은 로딩 구간엔
               // 트리거 자체를 비활성화한다 — 이 앱의 다른 Select들
               // (NewMemberForm, SimpleNoticeSection 등)과 동일한 컨벤션.
-              <Select
-                value={selected}
-                onValueChange={(v) => {
-                  setSelected(v ?? SELF_VALUE);
-                  // 링크로 들어온 member 쿼리를 드롭다운으로 직접 바꾸고 나면
-                  // 더는 그 초기값과 무관해지므로 URL에서 지워 새로고침해도
-                  // 방금 고른 값이 조용히 되돌아가지 않게 한다.
-                  if (searchParams.has("member")) {
-                    const next = new URLSearchParams(searchParams);
-                    next.delete("member");
-                    setSearchParams(next, { replace: true });
-                  }
-                }}
-                disabled={!members}
-                onOpenChange={(open) => {
-                  if (open) loadMembers();
-                }}
-              >
-                {/* 🔧 [사용자 지시] "'화각 불량 제보'의 헤더 배경 높이랑 '내
-                    대시보드'의 높이랑 다른거 아니야?" — 이 드롭다운(h-8/
-                    sm:h-9, 32px/36px)이 옆의 새로고침 버튼(icon-sm, size-7
-                    고정 28px)보다 커서 헤더 전체 높이가 그만큼 늘어나
-                    있었다. 새로고침 버튼과 같은 높이(h-7=28px)로 맞춘다. */}
-                <SelectTrigger className="w-fit shrink-0 bg-card data-[size=default]:h-7 sm:text-sm">
-                  <SelectValue>
-                    {selected === SELF_VALUE ? "내 대시보드" : members?.find((m) => m.number === selected)?.name}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={SELF_VALUE} className="sm:text-base">
-                    내 대시보드
-                  </SelectItem>
-                  {members?.map((m) => (
-                    <SelectItem key={m.number} value={m.number} className="sm:text-base">
-                      {m.name}
+              <div className="flex items-center gap-1.5">
+                {/* 🔧 [사용자 지시] "드롭다운은 '내 대시보드' 드롭다운
+                    좌측으로, UI가 번잡하지 않게" — 사이클 범위 선택을
+                    회원 선택 드롭다운 바로 옆(왼쪽)에 둔다. */}
+                <AdminCycleRangeSelect
+                  activeFileId={cycleAnyFileId ?? null}
+                  overriding={overrideGroup !== null}
+                  onSelectGroup={selectGroup}
+                />
+                <Select
+                  value={selected}
+                  onValueChange={(v) => {
+                    setSelected(v ?? SELF_VALUE);
+                    // 링크로 들어온 member 쿼리를 드롭다운으로 직접 바꾸고 나면
+                    // 더는 그 초기값과 무관해지므로 URL에서 지워 새로고침해도
+                    // 방금 고른 값이 조용히 되돌아가지 않게 한다.
+                    if (searchParams.has("member")) {
+                      const next = new URLSearchParams(searchParams);
+                      next.delete("member");
+                      setSearchParams(next, { replace: true });
+                    }
+                  }}
+                  disabled={!members}
+                  onOpenChange={(open) => {
+                    if (open) loadMembers();
+                  }}
+                >
+                  {/* 🔧 [사용자 지시] "'화각 불량 제보'의 헤더 배경 높이랑 '내
+                      대시보드'의 높이랑 다른거 아니야?" — 이 드롭다운(h-8/
+                      sm:h-9, 32px/36px)이 옆의 새로고침 버튼(icon-sm, size-7
+                      고정 28px)보다 커서 헤더 전체 높이가 그만큼 늘어나
+                      있었다. 새로고침 버튼과 같은 높이(h-7=28px)로 맞춘다. */}
+                  <SelectTrigger className="w-fit shrink-0 bg-card data-[size=default]:h-7 sm:text-sm">
+                    <SelectValue>
+                      {selected === SELF_VALUE ? "내 대시보드" : members?.find((m) => m.number === selected)?.name}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={SELF_VALUE} className="sm:text-base">
+                      내 대시보드
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    {members?.map((m) => (
+                      <SelectItem key={m.number} value={m.number} className="sm:text-base">
+                        {m.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             ) : undefined
           }
         />
         <CollapsiblePanel className="flex flex-col gap-5">
       {onSelectCycle && (
         <CycleSwitcher
-          selectedFileId={cycleFileId ?? null}
-          onSelect={onSelectCycle}
+          selectedFileId={overrideGroup ? (cycleAnyFileId ?? null) : (cycleFileId ?? null)}
+          // 🔧 [사용자 지시] "토글은 기존 것을 재활용" — overrideGroup이
+          // 있으면(관리자가 사이클 범위를 골랐으면) 자체 /cycles 조회 대신
+          // 그 그룹 범위 안에서만 이동하고, 이동 결과는 onSelectCycleAny로
+          // 보낸다. 없으면 기존과 동일하게 현재 사이클을 조회하고
+          // onSelectCycle로 보낸다.
+          onSelect={overrideGroup ? (fileId) => onSelectCycleAny?.(fileId) : onSelectCycle}
           memberNumber={selected === SELF_VALUE ? "self" : selected}
           includeUnpaid
           includeForced
+          overrideGroup={overrideGroup}
         />
-      )}
-      {/* 🔧 [사용자 지시] "관리자 본인의 화면에서도 뜨도록" — 처음엔 다른
-          회원을 볼 때만 노출했으나(본인 조회 /status가 cycleAny를 아직
-          지원하지 않았음), 이제 handleStatus에도 cycleAny 분기를 추가해
-          관리자 본인 조회에서도 그대로 쓸 수 있다. */}
-      {isAdmin && onSelectCycleAny && (
-        <AdminCycleRangeSelect value={cycleAnyFileId ?? null} onSelect={onSelectCycleAny} />
       )}
       {membersError && (
         <Alert variant="destructive">

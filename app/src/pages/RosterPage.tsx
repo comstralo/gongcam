@@ -12,7 +12,7 @@ import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { usePollingRefresh } from "@/hooks/usePollingRefresh";
 import { useAuth } from "@/lib/auth/useAuth";
 import { ICON_STROKE, cn } from "@/lib/utils";
-import type { RosterMember, RosterStatusResponse, SettlementItem } from "@/lib/api/types";
+import type { CycleGroup, RosterMember, RosterStatusResponse, SettlementItem } from "@/lib/api/types";
 
 type RosterMoney = {
   collectMoney: number;
@@ -51,6 +51,23 @@ export function RosterPage({
   const [settlementSettled, setSettlementSettled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // 🔧 [사용자 지시] "토글은 기존 것을 재활용" — StatusPage와 동일하게,
+  // AdminCycleRangeSelect가 고른 그룹을 CycleSwitcher의 overrideGroup으로
+  // 넘긴다.
+  const [overrideGroup, setOverrideGroup] = useState<CycleGroup | null>(null);
+
+  // 🔧 [사용자 지시] "미지정을 누르면 기존같이 꼬리물기처럼 동작" —
+  // StatusPage.selectGroup과 동일한 원칙: group이 null이면 override를
+  // 완전히 해제한다.
+  function selectGroup(group: CycleGroup | null) {
+    setOverrideGroup(group);
+    if (!group) {
+      onSelectCycleAny?.(null);
+      return;
+    }
+    const latestFileId = group.weeks[0]?.fileId ?? null;
+    onSelectCycleAny?.(latestFileId);
+  }
 
   function load() {
     setLoading(true);
@@ -96,10 +113,25 @@ export function RosterPage({
     // 각자 SectionCard(자체 테두리+배경)로 감싸여 있어, 바깥 Card는
     // 이중 테두리·이중 배경만 만들 뿐 시각적으로 불필요했다.
     <div className="flex w-full flex-col gap-4">
-      {onSelectCycle && <CycleSwitcher selectedFileId={cycleFileId ?? null} onSelect={onSelectCycle} />}
-      {isAdmin && onSelectCycleAny && (
-        <AdminCycleRangeSelect value={cycleAnyFileId ?? null} onSelect={onSelectCycleAny} />
-      )}
+      {/* 🔧 [사용자 지시] "드롭다운은 좌측으로, 토글은 기존 것을 재활용,
+          UI가 번잡하지 않게" — 이 화면엔 헤더에 별도 드롭다운이 없어
+          CycleSwitcher와 같은 줄 왼쪽에 나란히 둔다. */}
+      <div className="flex w-full items-center justify-center gap-2">
+        {isAdmin && onSelectCycleAny && (
+          <AdminCycleRangeSelect
+            activeFileId={cycleAnyFileId ?? null}
+            overriding={overrideGroup !== null}
+            onSelectGroup={selectGroup}
+          />
+        )}
+        {onSelectCycle && (
+          <CycleSwitcher
+            selectedFileId={overrideGroup ? (cycleAnyFileId ?? null) : (cycleFileId ?? null)}
+            onSelect={overrideGroup ? (fileId) => onSelectCycleAny?.(fileId) : onSelectCycle}
+            overrideGroup={overrideGroup}
+          />
+        )}
+      </div>
 
       <SectionCard>
         <Collapsible defaultOpen className="flex flex-col">
