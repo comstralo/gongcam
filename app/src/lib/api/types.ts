@@ -649,7 +649,7 @@ export type SetExitBlacklistResponse = {
   blacklist: boolean;
 };
 
-// GET /admin/blacklist — "신규 스터디원 등록"이 입력 중인 계정을 대조하는 데
+// GET /admin/blacklist — "스터디원 등록"이 입력 중인 계정을 대조하는 데
 // 쓰는 가벼운 목록. 블랙리스트로 등록된 퇴실자만 담긴다(ExitedMemberResult의
 // 부분집합).
 export type BlacklistEntry = {
