@@ -84,6 +84,8 @@ export function ExitProcessDialog({
   cycleFileId,
   children,
   mockPreview,
+  onCancelRequest,
+  cancelingRequest,
 }: {
   candidate: ExitProcessCandidate;
   // 🔧 [사용자 지시, 2026-09-10] "예치금 재납은 지난주 시트 기준으로도
@@ -120,6 +122,14 @@ export function ExitProcessDialog({
   // 대해 "실제로 확정 처리하면 이런 값이 나온다"를 안전하게 미리 보기
   // 위한 것. 확정 버튼을 눌러도 서버에 아무 요청도 가지 않는다.
   mockPreview?: (kind: ExitKind, forcedReason: string) => ExitPreviewResponse;
+  // 🔧 [사용자 지시] "'신청 취소' 버튼을 '정산 퇴실' 모달 내부에 '확정
+  // 처리' 우측에 배치" — 신청 취소 자체는 이 다이얼로그가 모르는 회원
+  // 목록 상태(exitRequested)/API(/exit-request/cancel)에 걸려 있어
+  // 호출부(MemberRosterList)가 소유한 로직을 그대로 넘겨받는다. settle
+  // 다이얼로그에서만 넘겨주므로 있으면(퇴실 신청이 걸린 회원) 버튼을
+  // 함께 그린다.
+  onCancelRequest?: () => void;
+  cancelingRequest?: boolean;
 }) {
   const { call } = useApi();
   const [open, setOpen] = useState(false);
@@ -525,14 +535,26 @@ export function ExitProcessDialog({
               )}
 
               {preview && (
-                <Button
-                  className="w-full sm:h-12 sm:text-base"
-                  variant="destructive"
-                  disabled={confirming || !preview.exitProcess?.agreedAt}
-                  onClick={handleConfirm}
-                >
-                  {confirming ? "처리 중..." : "확정 처리"}
-                </Button>
+                <div className={cn("grid gap-2", onCancelRequest ? "grid-cols-2" : "grid-cols-1")}>
+                  <Button
+                    className="w-full sm:h-12 sm:text-base"
+                    variant="destructive"
+                    disabled={confirming || !preview.exitProcess?.agreedAt}
+                    onClick={handleConfirm}
+                  >
+                    {confirming ? "처리 중..." : "확정 처리"}
+                  </Button>
+                  {onCancelRequest && (
+                    <Button
+                      variant="outline"
+                      className="w-full sm:h-12 sm:text-base"
+                      disabled={cancelingRequest}
+                      onClick={onCancelRequest}
+                    >
+                      신청 취소
+                    </Button>
+                  )}
+                </div>
               )}
             </>
           ) : (

@@ -657,7 +657,7 @@ const ActiveMemberRosterView = forwardRef<
                         신청만으로 관리자가 바로 확정 처리할 수 있으면 회원이
                         실제 반환액을 확인하기도 전에 처리가 끝나버릴 수
                         있다(사용자 지시로 동의 단계 추가). */}
-                    <div className={cn("grid gap-2", m.exitRequested ? "grid-cols-4" : "grid-cols-3")}>
+                    <div className="grid grid-cols-3 gap-2">
                       <Button
                         variant="outline"
                         className="w-full sm:h-12 sm:text-base"
@@ -677,12 +677,19 @@ const ActiveMemberRosterView = forwardRef<
                           직권 P 퇴실
                         </Button>
                       </ExitProcessDialog>
+                      {/* 🔧 [사용자 지시] "'신청 취소' 버튼은 '정산 퇴실'
+                          모달 내부에 '확정 처리' 우측에 배치" — 기존엔
+                          이 4열 그리드에 별도 버튼으로 있었으나, 다이얼로그
+                          안으로 옮겨 신청 취소 로직(exitRequested 여부,
+                          cancelExitRequest)을 그대로 넘긴다. */}
                       <ExitProcessDialog
                         candidate={m}
                         lockKind="settle"
                         onConfirmed={() => load()}
                         triggerClassName="w-full"
                         mockPreview={showingDummy ? (kind, reason) => buildMockExitPreview(m, kind, reason) : undefined}
+                        onCancelRequest={m.exitRequested ? () => cancelExitRequest(m.number) : undefined}
+                        cancelingRequest={showingDummy || cancelingNumber === m.number}
                       >
                         <Button
                           variant="destructive"
@@ -691,16 +698,6 @@ const ActiveMemberRosterView = forwardRef<
                           정산 퇴실
                         </Button>
                       </ExitProcessDialog>
-                      {m.exitRequested && (
-                        <Button
-                          variant="outline"
-                          className="w-full sm:h-12 sm:text-base"
-                          disabled={showingDummy || cancelingNumber === m.number}
-                          onClick={() => cancelExitRequest(m.number)}
-                        >
-                          신청 취소
-                        </Button>
-                      )}
                     </div>
                   </div>
                 </CollapsiblePanel>
