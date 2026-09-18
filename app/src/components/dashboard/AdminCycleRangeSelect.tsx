@@ -34,7 +34,14 @@ function slotsOf(group: CycleGroup): (CycleWeek | null)[] {
 }
 
 function groupLabel(group: CycleGroup): string {
-  const start = group.startWeekOf ? formatDate(group.startWeekOf) : "?";
+  // 진행 중 사이클이 아직 1주차라 완결된 백업이 하나도 없으면
+  // startWeekOf가 null로 온다 — 이번 주 자체가 사이클의 시작이므로
+  // thisWeekRange().start를 그대로 시작일로 쓴다("?" 표시 방지).
+  const start = group.startWeekOf
+    ? formatDate(group.startWeekOf)
+    : group.isCurrent
+      ? thisWeekRange().start
+      : "?";
   const end = group.isCurrent ? thisWeekRange().end : group.endWeekOf ? formatDate(group.endWeekOf) : "?";
   return `${start} ~ ${end}`;
 }
