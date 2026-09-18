@@ -60,32 +60,11 @@ function formatKoreanDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("ko-KR");
 }
 
-// 🔧 2026-09: 백엔드가 kindStr을 "강제 퇴실자"(discountRatio===1인 모든
-// 경우 — 자동 감지된 강제 조건이든 관리자의 직권 사유든)로 통일했다.
-// reasons[].label은 "페널티 누적 2회 이상 (송출 P 1회 / 주간 P 1회) ➡️
-// 0% 반환"처럼 화살표·반환율까지 포함한 긴 문장이라, "강제 퇴실자
-// (사유)" 한 줄로 합칠 때는 code 기준으로 짧은 키워드만 뽑는다(사용자
-// 지시: "강제 퇴실자 (예치금 미납)"/"강제 퇴실자 (벌금 미납)" 형태).
-// admin_reason(직권 P, 관리자가 자유 입력한 사유)만 label에서 접두사
-// ("직권 사유: ")를 떼고 그대로 쓴다 — 그 값 자체가 이미 짧은 키워드가
-// 아니라 관리자가 쓴 문장이기 때문이다.
-const REASON_SHORT_LABEL: Record<string, string> = {
-  under_30_days: "가입 30일 미만",
-  fine_unpaid: "벌금 미납",
-  deposit_again_unpaid: "예치금 미납",
-  penalty_2_or_more: "페널티 2회 이상",
-};
-
-function shortReasonLabel(reason: { code: string; label: string }): string {
-  if (reason.code === "admin_reason") return reason.label.replace(/^직권 사유:\s*/, "");
-  return REASON_SHORT_LABEL[reason.code] ?? reason.label;
-}
-
-// "강제 퇴실자"/"정산 퇴실자" 등 유형에, 해당하는 사유를 괄호로 이어붙인다.
-// 사유가 여러 개(예: 벌금 미납 + 페널티 2회 이상 동시 해당)면 쉼표로 나열.
-function exitTypeLabel(kindStr: string, reasons: { code: string; label: string }[]): string {
-  if (reasons.length === 0) return kindStr;
-  return `${kindStr} (${reasons.map(shortReasonLabel).join(", ")})`;
+// 🔧 [사용자 지시] "퇴실유형은 '강제 퇴실자', '정산 퇴실자'로만 출력해줘.
+// () 내용은 지우자" — 예전엔 사유(reasons)를 괄호로 붙였으나, 이제
+// kindStr 자체를 그대로 반환한다(사유 목록은 더 이상 표시하지 않음).
+function exitTypeLabel(kindStr: string): string {
+  return kindStr;
 }
 
 // 🔧 2026-09: "차감 원인" 카드(buildDepositCauseItems)는 회원 대시보드/
@@ -106,6 +85,12 @@ function exitTypeLabel(kindStr: string, reasons: { code: string; label: string }
 // 안전하게 조립) — rate는 그 항목이 이미 계산해둔 값(송출/주간 페널티
 // 합산 기준)과 admin_forced 여부 중 더 큰 차감률을 쓴다(직권 P는 항상
 // 100%=전액 차감이므로 admin_forced면 무조건 100%).
+// 🔧 [사용자 지시] "페널티에 0회인건 출력에서 제외해달라고 했는데
+// 여전히 출력되고 있어" — 이전엔 rate===0(전부 0회)일 때만 항목 자체를
+// 숨겼는데, 실제 요구는 "송출/주간/직권 P 중 0회인 개별 값은 라벨
+// 문자열에서 빼라"는 것이었다(예: 직권 P만 0이면 "송출 P : 1회 + 주간
+// P : 1회"만 남고 "직권 P : 0회"는 아예 안 보여야 함). 0회가 아닌
+// 항목만 걸러 "+"로 이어붙인다.
 function mergePenaltyLabel(
   items: DepositCauseItem[],
   breakdown: DepositRefundBreakdown,
@@ -114,9 +99,17 @@ function mergePenaltyLabel(
   const isAdminForced = kind === "admin_forced";
   return items.map((item) => {
     if (item.key !== "penalty") return item;
+    const parts = [
+      { label: "송출 P", count: breakdown.outputPen ?? 0 },
+      { label: "주간 P", count: breakdown.timePen ?? 0 },
+      { label: "직권 P", count: isAdminForced ? 1 : 0 },
+    ].filter((p) => p.count > 0);
     return {
       ...item,
-      label: `페널티 (송출 P : ${breakdown.outputPen ?? 0}회 + 주간 P : ${breakdown.timePen ?? 0}회 + 직권 P : ${isAdminForced ? 1 : 0}회)`,
+      label:
+        parts.length > 0
+          ? `페널티 (${parts.map((p) => `${p.label} : ${p.count}회`).join(" + ")})`
+          : "페널티 (0회)",
       rate: isAdminForced ? 100 : item.rate,
     };
   });
@@ -835,7 +828,7 @@ export const ExitedMemberRosterView = forwardRef<
                                 강조한다. */}
                             <SubRow
                               label="퇴실유형"
-                              value={exitTypeLabel(result.kindStr, result.reasons)}
+                              value={exitTypeLabel(result.kindStr)}
                               valueClassName={result.kindStr === "강제 퇴실자" ? "text-destructive" : undefined}
                             />
                             {/* 🔧 2026-09: 처음엔 admin_forced(직권 P)에서만
