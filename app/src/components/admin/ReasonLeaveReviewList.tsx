@@ -337,6 +337,7 @@ export function ReasonLeaveReviewList({
                                   <TintedPill tone="warn">대기</TintedPill>
                                 )}
                                 <CollapsibleTrigger
+                                  className="size-7 shrink-0"
                                   render={
                                     <Button
                                       variant="outline"
@@ -344,6 +345,7 @@ export function ReasonLeaveReviewList({
                                       aria-label={isMemberExpanded ? "상세 접기" : "상세 펼치기"}
                                     />
                                   }
+                                  hideChevron
                                 >
                                   {/* 🔧 [사용자 지시] 제보 화면 기준 통일 — 색 지정이 없으면 outline
                                       버튼의 기본 전경색을 물려받아 날짜 그룹 헤더의 chevron
