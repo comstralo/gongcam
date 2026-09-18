@@ -29,7 +29,7 @@ export function InstallAppCard() {
   // beforeinstallprompt 재발생을 억제한 뒤로 카드가 통째로 사라져 "기능이
   // 없어졌다"는 오해를 샀다(사용자 지적) — 항상 카드는 보여주고, 지원하지
   // 않거나 이미 설치된 경우엔 버튼만 비활성화해 상태를 그대로 드러낸다.
-  const label = installed ? "설치됨" : canInstall ? "설치하기" : "지원 안 함";
+  const label = installed ? "설치됨" : canInstall ? "설치하기" : "미지원";
 
   return (
     // 🔧 [사용자 지시] "'설정'에서 황토색 배경 부분들 다 걷어내 흰색으로" —

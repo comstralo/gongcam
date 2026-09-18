@@ -90,7 +90,7 @@ export function StatusMessageCard() {
           <button
             type="button"
             onClick={startEdit}
-            className="flex items-center justify-between gap-2 rounded-lg border bg-muted/50 px-3 py-2 text-left outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
+            className="flex items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-left outline-none hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50"
           >
             {message === null ? (
               <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />

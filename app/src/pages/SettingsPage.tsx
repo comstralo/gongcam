@@ -1,4 +1,4 @@
-import { BellRing, DoorOpen, UserCog } from "lucide-react";
+import { DoorOpen, Settings, UserCog } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
 import { SectionHeader, SectionCard } from "@/components/admin/shared";
@@ -33,8 +33,6 @@ export function SettingsPage({ visible = true }: { visible?: boolean }) {
           <SectionHeader icon={UserCog} title="계정 관리" />
           <CollapsiblePanel className="flex flex-col gap-4">
             <SessionCard name={status?.name} />
-            <InstallAppCard />
-            <StatusMessageCard />
 
             {status?.depositRefundBreakdown ? (
               <DepositRefundDialog
@@ -91,9 +89,11 @@ export function SettingsPage({ visible = true }: { visible?: boolean }) {
 
       <SectionCard>
         <Collapsible defaultOpen className="flex flex-col">
-          <SectionHeader icon={BellRing} title="알림 설정" />
+          <SectionHeader icon={Settings} title="앱 설정" />
           <CollapsiblePanel className="flex flex-col gap-4">
+            <StatusMessageCard />
             <NotifyPrefsCard name={status?.name} />
+            <InstallAppCard />
           </CollapsiblePanel>
         </Collapsible>
       </SectionCard>
