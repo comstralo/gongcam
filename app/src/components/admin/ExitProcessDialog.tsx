@@ -414,12 +414,23 @@ export function ExitProcessDialog({
                   <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
                     <SubRow
                       label="신청 일자"
-                      value={preview.exitProcess.requestedAt ? new Date(preview.exitProcess.requestedAt).toLocaleString("ko-KR") : "-"}
+                      value={
+                        preview.exitProcess.requestedAt
+                          ? new Date(preview.exitProcess.requestedAt).toLocaleString("ko-KR", { hour12: false })
+                          : "-"
+                      }
                     />
-                    <SubRow label="예약 일자" value={preview.exitProcess.exitDate || "-"} />
+                    <SubRow
+                      label="예약 일자"
+                      value={preview.exitProcess.exitDate ? new Date(preview.exitProcess.exitDate).toLocaleDateString("ko-KR") : "-"}
+                    />
                     <SubRow
                       label="동의 일자"
-                      value={preview.exitProcess.agreedAt ? new Date(preview.exitProcess.agreedAt).toLocaleString("ko-KR") : "미동의"}
+                      value={
+                        preview.exitProcess.agreedAt
+                          ? new Date(preview.exitProcess.agreedAt).toLocaleString("ko-KR", { hour12: false })
+                          : "미동의"
+                      }
                       valueClassName={!preview.exitProcess.agreedAt ? "text-destructive" : undefined}
                     />
                     {preview.fromBackup && (
