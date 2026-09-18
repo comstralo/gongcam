@@ -34,7 +34,12 @@ export function displayExitedName(name: string): string {
 // 🔧 [사용자 지시] "'최근 접속 일자'에서 시간부를 00:00:00 형식으로" —
 // toLocaleString의 "hour12: false"만으로는 로케일 기본 표기("7시 13분
 // 20초")가 유지돼 시:분:초를 직접 2자리로 패딩한다.
-function formatLastLoginDateTime(ts: number): string {
+// 🔧 [사용자 지시] "24시간제로 표현할 때 시 분 초가 아닌 : 방식으로
+// 출력" — toLocaleString(ko-KR, {hour12:false})만으로는 로케일 기본
+// 표기("16시 33분 38초")가 그대로 남아 시:분:초를 직접 2자리로 패딩한다.
+// admin/shared.tsx뿐 아니라 ExitProcessDialog(퇴실 프로세스 카드)도
+// 신청/동의 일자에 동일한 형식을 써야 해서 공유 함수로 뽑았다.
+export function formatDateTime24h(ts: number): string {
   const d = new Date(ts);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.toLocaleDateString("ko-KR")} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
@@ -116,7 +121,7 @@ export function MemberStatusInfoCard({
             )
           }
         />
-        <SubRow label="최근 접속 일자" value={lastLoginAt ? formatLastLoginDateTime(lastLoginAt) : "-"} />
+        <SubRow label="최근 접속 일자" value={lastLoginAt ? formatDateTime24h(lastLoginAt) : "-"} />
         <SubRow label="최근 접속 IP" value={lastLoginIp || "-"} />
         <SubRow label="퇴실 예약 일자" value={exitRequestDateValue} />
         {exitProcessedDateValue !== undefined && <SubRow label="퇴실 집행 일자" value={exitProcessedDateValue} />}

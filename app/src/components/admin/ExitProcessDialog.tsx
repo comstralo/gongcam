@@ -7,7 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { InfoCard, SubRow } from "@/components/dashboard/shared";
-import { FieldValue, ExitResultCards } from "@/components/admin/shared";
+import { FieldValue, ExitResultCards, formatDateTime24h } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
@@ -414,11 +414,7 @@ export function ExitProcessDialog({
                   <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
                     <SubRow
                       label="신청 일자"
-                      value={
-                        preview.exitProcess.requestedAt
-                          ? new Date(preview.exitProcess.requestedAt).toLocaleString("ko-KR", { hour12: false })
-                          : "-"
-                      }
+                      value={preview.exitProcess.requestedAt ? formatDateTime24h(preview.exitProcess.requestedAt) : "-"}
                     />
                     <SubRow
                       label="예약 일자"
@@ -426,11 +422,7 @@ export function ExitProcessDialog({
                     />
                     <SubRow
                       label="동의 일자"
-                      value={
-                        preview.exitProcess.agreedAt
-                          ? new Date(preview.exitProcess.agreedAt).toLocaleString("ko-KR", { hour12: false })
-                          : "미동의"
-                      }
+                      value={preview.exitProcess.agreedAt ? formatDateTime24h(preview.exitProcess.agreedAt) : "미동의"}
                       valueClassName={!preview.exitProcess.agreedAt ? "text-destructive" : undefined}
                     />
                     {preview.fromBackup && (
