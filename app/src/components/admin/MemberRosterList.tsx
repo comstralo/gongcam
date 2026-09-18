@@ -14,6 +14,10 @@ import { usePollingRefresh } from "@/hooks/usePollingRefresh";
 import { ICON_STROKE, cn } from "@/lib/utils";
 import type {
   AdminMembersRosterResponse,
+  DepositRefundBreakdown,
+  ExitCheckItem,
+  ExitKind,
+  ExitPreviewResponse,
   MemberRosterEntry,
   NotifyCategory,
   SetPartiStatusResponse,
@@ -193,6 +197,166 @@ const DUMMY_MEMBERS: MemberRosterEntry[] = [
     sheetGid: null,
   },
 ];
+
+// 🧪 [목업 미리보기 전용] 회원별로 서로 다른 예치금 반환 계산 재료
+// (frame-checker-worker/src/deposit.js의 depositBreakdown과 동일한 형태)
+// 를 심어, "직권 P 퇴실"/"정산 퇴실" 다이얼로그를 열었을 때 각 분기가
+// 실제로 어떤 값을 보여주는지 회원마다 다르게 확인할 수 있게 한다.
+const DUMMY_BREAKDOWNS: Record<string, DepositRefundBreakdown> = {
+  // 재희: 페널티 0회, 지연 없음 — 정산 퇴실 시 100% 반환(가장 무난한 케이스).
+  "1": {
+    amount: 0,
+    reason: null,
+    outputPen: 0,
+    timePen: 0,
+    daysSinceJoin: 256,
+    fineUnpaid: false,
+    fineUnpaidDays: [],
+    depositAgainStatus: null,
+    lateNotice: false,
+  },
+  // 서준: 페널티 1회 — 정산 퇴실 시 50% 반환.
+  "2": {
+    amount: 5000,
+    reason: "페널티 1회",
+    outputPen: 1,
+    timePen: 0,
+    daysSinceJoin: 216,
+    fineUnpaid: false,
+    fineUnpaidDays: [],
+    depositAgainStatus: null,
+    lateNotice: false,
+  },
+  // 아름: 페널티 2회 이상 — 강제퇴실 조건 충족(0% 반환, "직권 P 퇴실"에서도
+  // 동일하게 discountRatio=1이지만 "정산 퇴실" 미리보기에서 페널티 100%
+  // 차감으로 나타나는 차이를 확인할 수 있다).
+  "3": {
+    amount: 0,
+    reason: "페널티 2회 이상",
+    outputPen: 1,
+    timePen: 1,
+    daysSinceJoin: 197,
+    fineUnpaid: false,
+    fineUnpaidDays: [],
+    depositAgainStatus: null,
+    lateNotice: false,
+  },
+  // 지민: 페널티 0회지만 퇴실 통보 지연 — 정산 퇴실 시 50% 반환(지연만으로
+  // 차감되는 케이스, 페널티 케이스와 사유가 다름을 비교할 수 있다).
+  "4": {
+    amount: 5000,
+    reason: "퇴실 통보 지연",
+    outputPen: 0,
+    timePen: 0,
+    daysSinceJoin: 151,
+    fineUnpaid: false,
+    fineUnpaidDays: [],
+    depositAgainStatus: null,
+    lateNotice: true,
+  },
+  // 도윤: 벌금 미납 + 가입 30일 미만 — 강제퇴실 조건 2개가 동시에 걸리는
+  // 케이스(차감 원인 카드에 두 항목이 함께 100%로 표시됨).
+  "5": {
+    amount: 0,
+    reason: "벌금 미납",
+    outputPen: 0,
+    timePen: 0,
+    daysSinceJoin: 12,
+    fineUnpaid: true,
+    fineUnpaidDays: ["화", "목"],
+    depositAgainStatus: null,
+    lateNotice: false,
+  },
+};
+
+const EXIT_DEPOSIT_VALUE = 10000;
+
+// frame-checker-worker/src/deposit.js의 forcedExitChecks와 동일한 4개
+// 조건 판정 — allChecks(체크리스트 전체)를 만드는 데 쓴다.
+function mockForcedExitChecks(b: DepositRefundBreakdown): ExitCheckItem[] {
+  const totalPen = b.outputPen + b.timePen;
+  return [
+    { code: "under_30_days", label: "가입 30일 미만", met: b.daysSinceJoin >= 0 && b.daysSinceJoin < 30 },
+    { code: "fine_unpaid", label: "벌금 시한 내 미납", met: b.fineUnpaid },
+    { code: "deposit_again_unpaid", label: "예치금 시한 내 미납", met: b.depositAgainStatus === "미납" },
+    {
+      code: "penalty_2_or_more",
+      label: `페널티 누적 2회 이상 (송출 P ${b.outputPen}회 / 주간 P ${b.timePen}회)`,
+      met: totalPen >= 2,
+    },
+  ];
+}
+
+// frame-checker-worker/src/deposit.js의 calcExitProcess(+ calcForcedOutDeposit/
+// calcAdminForcedExit/calcSettleReturnDeposit)를 그대로 미러링한 순수 함수 —
+// 서버를 타지 않고 목업 breakdown만으로 동일한 결과 구조를 계산한다.
+function buildMockExitPreview(member: MemberRosterEntry, kind: ExitKind, forcedReason: string): ExitPreviewResponse {
+  const breakdown = DUMMY_BREAKDOWNS[member.number] ?? DUMMY_BREAKDOWNS["1"];
+  const allChecks = mockForcedExitChecks(breakdown);
+
+  let discountRatio: number;
+  let resultStr: string[];
+  let reasons: { code: string; label: string }[];
+
+  if (kind === "admin_forced") {
+    const reasonLabel = forcedReason || "(사유 미입력)";
+    discountRatio = 1;
+    resultStr = [`즉시 직권퇴실자 (사유 : ${reasonLabel}) ➡️ 0% 반환`];
+    reasons = [{ code: "admin_reason", label: `직권 사유: ${reasonLabel}` }];
+  } else {
+    // settle(정산 퇴실) — 강제퇴실 조건 충족 여부와 무관하게, 이 다이얼로그는
+    // 항상 settle 계산식(페널티/지연 기준 0·50·100%)만 보여준다 — 실제
+    // handleAdminExitConfirm도 lockKind로 고정된 kind만 계산하기 때문.
+    const totalPen = breakdown.outputPen + breakdown.timePen;
+    const lateNotice = !!breakdown.lateNotice;
+    discountRatio = totalPen === 0 ? (lateNotice ? 0.5 : 0) : lateNotice ? 1 : 0.5;
+    const returnPct = Math.round((1 - discountRatio) * 100);
+    resultStr = [
+      `송출 P (${breakdown.outputPen}회) / 주간 P (${breakdown.timePen}회)` +
+        (lateNotice ? " + 퇴실 통보 지연" : "") +
+        ` ➡️ ${returnPct}% 반환`,
+    ];
+    reasons = [{ code: "settle_return_rate", label: `${returnPct}% 반환` }];
+  }
+
+  const heldAmount = EXIT_DEPOSIT_VALUE * discountRatio;
+  const refundAmount = EXIT_DEPOSIT_VALUE - heldAmount;
+  const fineAlreadyPayment = 0;
+  const fineOuter = 128000;
+  const depositOuter = 640000;
+  const processedDate = new Date().toISOString().slice(0, 10);
+
+  return {
+    ok: true,
+    discountRatio,
+    resultStr,
+    reasons,
+    allChecks,
+    resultMsg:
+      `🧑 이름 : ${member.name}\n📝 유형 : ${kind === "admin_forced" ? "강제 퇴실자" : "정산 퇴실자"}\n` +
+      `📝 원인 : \n${resultStr.map((s, i) => `${String.fromCharCode(9312 + i)} ${s}`).join("\n")}\n` +
+      `💰 귀속예치 : ₩${heldAmount.toLocaleString()}\n💰 반환예치 : ₩${refundAmount.toLocaleString()}`,
+    newFineOuter: fineOuter,
+    newDepositOuter: depositOuter + heldAmount,
+    kindStr: kind === "admin_forced" ? "강제 퇴실자" : "정산 퇴실자",
+    name: member.name,
+    heldAmount,
+    refundAmount,
+    fineAlreadyPayment,
+    processedDate,
+    fineOuter,
+    depositOuter,
+    breakdown,
+    exitProcess: member.exitRequested
+      ? {
+          requestedAt: member.exitRequestedAt,
+          exitDate: member.exitRequestDate,
+          agreedAt: member.exitAgreedAt,
+        }
+      : null,
+    fromBackup: false,
+  };
+}
 
 export function MemberRosterList({ visible = true }: { visible?: boolean }) {
   const { call } = useApi();
@@ -522,8 +686,14 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
                         >
                           {m.partiStatus === "부스터디장" ? "임명 해제" : "부스터디장 임명"}
                         </Button>
-                        <ExitProcessDialog candidate={m} lockKind="admin_forced" onConfirmed={() => load()} triggerClassName="w-full">
-                          <Button variant="destructive" className="w-full sm:h-12 sm:text-base" disabled={showingDummy}>
+                        <ExitProcessDialog
+                          candidate={m}
+                          lockKind="admin_forced"
+                          onConfirmed={() => load()}
+                          triggerClassName="w-full"
+                          mockPreview={showingDummy ? (kind, reason) => buildMockExitPreview(m, kind, reason) : undefined}
+                        >
+                          <Button variant="destructive" className="w-full sm:h-12 sm:text-base">
                             직권 P 퇴실
                           </Button>
                         </ExitProcessDialog>
@@ -532,11 +702,11 @@ export function MemberRosterList({ visible = true }: { visible?: boolean }) {
                           lockKind="settle"
                           onConfirmed={() => load()}
                           triggerClassName="w-full"
+                          mockPreview={showingDummy ? (kind, reason) => buildMockExitPreview(m, kind, reason) : undefined}
                         >
                           <Button
                             variant="destructive"
                             className="w-full sm:h-12 sm:text-base"
-                            disabled={showingDummy}
                           >
                             정산 퇴실
                           </Button>

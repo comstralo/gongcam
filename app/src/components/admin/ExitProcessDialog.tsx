@@ -83,6 +83,7 @@ export function ExitProcessDialog({
   lockForcedReason,
   cycleFileId,
   children,
+  mockPreview,
 }: {
   candidate: ExitProcessCandidate;
   // 🔧 [사용자 지시, 2026-09-10] "예치금 재납은 지난주 시트 기준으로도
@@ -113,6 +114,12 @@ export function ExitProcessDialog({
   // ReactElement가 필요하다 — 호출부 5곳 전부 항상 <Button>...</Button>
   // 하나만 넘기므로(위 주석 참고) ReactNode보다 좁혀 타입으로도 강제한다.
   children: ReactElement;
+  // 🧪 [목업 미리보기 전용] 있으면 미리보기/확정 둘 다 실제
+  // /admin/exit/preview·/admin/exit/confirm을 호출하지 않고 이 함수가
+  // 즉시 계산한 결과를 그대로 쓴다 — 목업 회원(실제 시트에 없는 번호)에
+  // 대해 "실제로 확정 처리하면 이런 값이 나온다"를 안전하게 미리 보기
+  // 위한 것. 확정 버튼을 눌러도 서버에 아무 요청도 가지 않는다.
+  mockPreview?: (kind: ExitKind, forcedReason: string) => ExitPreviewResponse;
 }) {
   const { call } = useApi();
   const [open, setOpen] = useState(false);
@@ -142,6 +149,14 @@ export function ExitProcessDialog({
   const [error, setError] = useState<string | null>(null);
 
   async function handlePreview() {
+    // 🧪 목업 모드 — 실제 서버 호출 없이 즉시 계산된 결과로 대체한다.
+    if (mockPreview) {
+      setPreviewing(true);
+      setError(null);
+      setPreview(mockPreview(lockKind, forcedReason));
+      setPreviewing(false);
+      return;
+    }
     setPreviewing(true);
     setError(null);
     setPreview(null);
@@ -195,6 +210,16 @@ export function ExitProcessDialog({
   }, [open, isAdminForcedOnly, forcedReason]);
 
   async function handleConfirm() {
+    // 🧪 목업 모드 — 서버에 아무 요청도 보내지 않고 "확정됨" 화면만
+    // 보여준다. onConfirmed는 실제 목록을 재조회하려는 목적이라 목업
+    // 회원에겐 의미가 없어 호출하지 않는다.
+    if (mockPreview) {
+      setConfirming(true);
+      setError(null);
+      setConfirmed(true);
+      setConfirming(false);
+      return;
+    }
     setConfirming(true);
     setError(null);
     try {
