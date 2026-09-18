@@ -15,6 +15,7 @@ import {
   exitDateSettled,
   findMemberNumberByEmail,
   buildPersonalStatus,
+  resolveExitSourceFileId,
 } from "./index.js";
 import { invalidateMemberCache, invalidatePersonalStatusCache } from "./cache.js";
 
@@ -85,9 +86,25 @@ export async function handleAgreeExitRequest(req, env, origin) {
     // 버튼 자체를 숨기지만(DepositRefundDialog), API를 직접 호출하는
     // 경로까지 막기 위해 서버에서도 다시 확인한다. buildPersonalStatus가
     // fineUnpaid/prizePending을 함께 계산해두므로 그대로 재사용한다.
+    // 🔧 [버그 수정] 마지막 참여일이 일요일이고, 회원이 그 다음 주
+    // 월요일 새벽 sheet_reset(06:00 KST) 이후에야 동의를 시도하면, 원본
+    // 시트(env.GOOGLE_SHEET_FILE_ID)는 이미 새 사이클로 넘어가 지난 주
+    // 순위/집계!P6이 사라진 상태다(순위가 "-"가 되어 항상 순위권 밖으로
+    // 오판 → 상금이 실제로는 미지급인데도 동의를 허용해버리는 위험).
+    // exit-confirm.js의 computeExitResult가 확정 처리 경로에서 이미 쓰는
+    // resolveExitSourceFileId(kind: "settle")를 그대로 재사용해, 리셋을
+    // 넘겼으면 그 주의 백업 파일에서 조회하도록 한다.
     const member = await findMemberNumberByEmail(env, accessToken, env.GOOGLE_SHEET_FILE_ID, session.email);
     if (!member) return json({ error: "데이터 시트 명단에서 계정을 찾을 수 없습니다." }, 403, origin);
-    const status = await buildPersonalStatus(env, accessToken, env.GOOGLE_SHEET_FILE_ID, member.number, member.name);
+    const { sourceFileId } = await resolveExitSourceFileId(
+      env,
+      accessToken,
+      env.GOOGLE_SHEET_FILE_ID,
+      memberNumber,
+      "settle",
+      null
+    );
+    const status = await buildPersonalStatus(env, accessToken, sourceFileId, member.number, member.name);
     if (status.depositRefundBreakdown.fineUnpaid) {
       return json({ error: "벌금 미납분이 남아있어 동의할 수 없습니다." }, 400, origin);
     }

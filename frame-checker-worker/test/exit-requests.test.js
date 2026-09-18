@@ -3,7 +3,7 @@
 // 케이스마다 다르게 줘서 _cachedCompute 캐시 오염을 피한다.
 import { env } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { signSession } from "../src/index.js";
+import { signSession, weekOfForDate } from "../src/index.js";
 import {
   handleSetExitRequest,
   handleAgreeExitRequest,
@@ -81,12 +81,27 @@ function metaResponse(sheetTitles) {
   return new Response(JSON.stringify({ sheets: sheetTitles.map((title, i) => ({ properties: { sheetId: i, title } })) }));
 }
 
-function stubAgreeExitFetch({ member, personalRows = personalTabRows() }) {
+// exitDate가 이미 sheet_reset(그 주 다음 월요일 06:00 KST)을 넘겼으면
+// handleAgreeExitRequest(exit-request.js)가 resolveExitSourceFileId를 통해
+// 그 주의 백업 파일을 찾으려 한다(§버그 수정: 회원 동의 API도 확정 처리
+// 경로와 동일하게 리셋 이후엔 원본이 아니라 백업을 봐야 한다) — Drive
+// 파일 목록 조회에 그 주의 백업 파일을 하나 채워 넣는다. weekOfForDate로
+// 실제 로직과 동일하게 계산해 테스트가 특정 날짜에 종속되지 않게 한다.
+function driveBackupResponse(exitDate) {
+  const weekOf = weekOfForDate(exitDate);
+  const weekTo = String(Number(weekOf) + 6).padStart(6, "0");
+  return new Response(
+    JSON.stringify({ files: [{ id: `backup-${weekOf}`, name: `공부합시당 캠스터디 ${weekOf}-${weekTo}` }] })
+  );
+}
+
+function stubAgreeExitFetch({ member, personalRows = personalTabRows(), exitDate }) {
   vi.stubGlobal(
     "fetch",
     vi.fn((url) => {
       const u = String(url);
       if (u.includes("oauth2.googleapis.com")) return Promise.resolve(oauthTokenResponse());
+      if (u.includes("drive/v3/files")) return Promise.resolve(driveBackupResponse(exitDate));
       if (u.includes("V50")) return Promise.resolve(dataSheetResponse([member]));
       if (u.includes("values:batchGet")) {
         return Promise.resolve(new Response(JSON.stringify({ valueRanges: [[], []] })));
@@ -200,14 +215,15 @@ describe("handleAgreeExitRequest", () => {
     stubOauthFetch();
     const testEnv = makeTestEnv({ GOOGLE_SHEET_FILE_ID: "exit-req-agree-ok" });
     const token = await makeMemberToken({ memberNumber: "5" });
+    const exitDate = "2026-08-17";
     const setReq = makeRequest("https://worker/exit-request", {
       token,
       method: "POST",
-      body: { exitDate: "2020-01-01" },
+      body: { exitDate },
     });
     await handleSetExitRequest(setReq, testEnv, "https://example.com");
 
-    stubAgreeExitFetch({ member: { number: 5, name: "가", email: MEMBER_EMAIL } });
+    stubAgreeExitFetch({ member: { number: 5, name: "가", email: MEMBER_EMAIL }, exitDate });
     const req = makeRequest("https://worker/exit-request/agree", { token, method: "POST" });
     const res = await handleAgreeExitRequest(req, testEnv, "https://example.com");
     const body = await res.json();
@@ -220,16 +236,17 @@ describe("handleAgreeExitRequest", () => {
     stubOauthFetch();
     const testEnv = makeTestEnv({ GOOGLE_SHEET_FILE_ID: "exit-req-agree-fine-unpaid" });
     const token = await makeMemberToken({ memberNumber: "6" });
+    const exitDate = "2026-08-17";
     const setReq = makeRequest("https://worker/exit-request", {
       token,
       method: "POST",
-      body: { exitDate: "2020-01-01" },
+      body: { exitDate },
     });
     await handleSetExitRequest(setReq, testEnv, "https://example.com");
 
     const personalRows = personalTabRows();
     personalRows[32] = ["", "", 1]; // ROW_FINE_NO_STATUS col2=1(미납)
-    stubAgreeExitFetch({ member: { number: 6, name: "나", email: MEMBER_EMAIL }, personalRows });
+    stubAgreeExitFetch({ member: { number: 6, name: "나", email: MEMBER_EMAIL }, personalRows, exitDate });
     const req = makeRequest("https://worker/exit-request/agree", { token, method: "POST" });
     const res = await handleAgreeExitRequest(req, testEnv, "https://example.com");
     expect(res.status).toBe(400);
@@ -239,6 +256,84 @@ describe("handleAgreeExitRequest", () => {
     const getRes = await stub.fetch("https://do/exit/get?memberNumber=6");
     const { entry } = await getRes.json();
     expect(entry.agreedAt).toBeNull();
+  });
+
+  // 🔧 [버그 수정 회귀 테스트] 마지막 참여일이 일요일이고, 그 다음 주
+  // sheet_reset(월요일 06:00 KST)이 이미 지난 뒤 회원이 동의를 시도하면
+  // 원본 시트가 아니라 그 주의 백업 파일에서 순위/집계!P6을 읽어야
+  // 한다(exit-confirm.js의 확정 처리 경로와 동일한 resolveExitSourceFileId
+  // 재사용) — 원본에는 순위 데이터가 없고(리셋으로 사라짐) 백업에만
+  // "3등, 상금 미정산"이 남아있는 상황을 재현해, 원본을 봤다면
+  // prizePending=false(오판)로 통과했겠지만 백업을 봐서 정확히
+  // 차단되는지 확인한다.
+  it("일요일 마지막 참여일 + 리셋 이후 동의 시도 시 원본이 아니라 백업의 순위/상금정산 상태로 판정한다", async () => {
+    stubOauthFetch();
+    const testEnv = makeTestEnv({ GOOGLE_SHEET_FILE_ID: "exit-req-agree-sunday-reset" });
+    const token = await makeMemberToken({ memberNumber: "7" });
+    const exitDate = "2026-08-16"; // 일요일
+    const setReq = makeRequest("https://worker/exit-request", {
+      token,
+      method: "POST",
+      body: { exitDate },
+    });
+    await handleSetExitRequest(setReq, testEnv, "https://example.com");
+
+    const weekOf = weekOfForDate(exitDate);
+    const backupFileId = `backup-${weekOf}`;
+    const member = { number: 7, name: "다", email: MEMBER_EMAIL };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url) => {
+        const u = String(url);
+        if (u.includes("oauth2.googleapis.com")) return Promise.resolve(oauthTokenResponse());
+        if (u.includes("drive/v3/files")) return Promise.resolve(driveBackupResponse(exitDate));
+        if (u.includes("V50")) return Promise.resolve(dataSheetResponse([member]));
+        if (u.includes("values:batchGet")) {
+          return Promise.resolve(new Response(JSON.stringify({ valueRanges: [[], []] })));
+        }
+        if (u.includes("U42")) {
+          return Promise.resolve(new Response(JSON.stringify({ values: personalTabRows() })));
+        }
+        if (u.includes("F4%3AM4") || u.includes("F4:M4")) {
+          return Promise.resolve(new Response(JSON.stringify({ values: [] })));
+        }
+        if (/F\d+%3AM\d+|F\d+:M\d+/.test(u)) {
+          return Promise.resolve(new Response(JSON.stringify({ values: [[]] })));
+        }
+        if (u.includes("D25")) {
+          return Promise.resolve(new Response(JSON.stringify({ values: [["1"]] })));
+        }
+        if (u.includes("A4%3AL18") || u.includes("A4:L18")) {
+          // 원본(GOOGLE_SHEET_FILE_ID)은 리셋으로 이미 새 사이클이라 순위
+          // 데이터 없음 — 원본을 봤다면 rank="-"가 되어 prizePending이
+          // 항상 false로 오판된다.
+          if (u.includes(backupFileId)) {
+            const rows = Array.from({ length: 15 }, () => []);
+            rows[3] = ["", "7", "다", "0", "0", "3"]; // 회원번호7, 순위 3등
+            return Promise.resolve(new Response(JSON.stringify({ values: rows })));
+          }
+          return Promise.resolve(new Response(JSON.stringify({ values: [] })));
+        }
+        if (u.includes("D23%3AD24") || u.includes("D23:D24")) {
+          return Promise.resolve(new Response(JSON.stringify({ values: [["0"], ["0"]] })));
+        }
+        if (u.includes("fields=sheets.properties")) {
+          return Promise.resolve(metaResponse(["1", "template"]));
+        }
+        if (u.includes("집계!P6")) {
+          // 백업(=그 주 실제 상태)에는 상금 정산 미집행이 남아있어야
+          // prizePending=true가 나온다 — 값을 비워 "완료"가 아님을 표현.
+          return Promise.resolve(new Response(JSON.stringify({ values: [] })));
+        }
+        throw new Error("unexpected fetch: " + u);
+      })
+    );
+
+    const req = makeRequest("https://worker/exit-request/agree", { token, method: "POST" });
+    const res = await handleAgreeExitRequest(req, testEnv, "https://example.com");
+    const body = await res.json();
+    expect(res.status, JSON.stringify(body)).toBe(400);
+    expect(body.error).toContain("상금 정산");
   });
 });
 
