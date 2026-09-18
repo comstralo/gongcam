@@ -1,15 +1,16 @@
 import { useEffect, useState } from "react";
-import { MessageSquareText, Pencil, Check, Loader2 } from "lucide-react";
+import { MessageSquareText, Pencil, Check, X, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { InfoCard } from "@/components/dashboard/shared";
+import { formatDateTime24h } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { ICON_STROKE } from "@/lib/utils";
 import type { StatusMessageResponse, SetStatusMessageResponse } from "@/lib/api/types";
 
 const STATUS_MESSAGE_MAX_LENGTH = 40;
 
-// "전자기기 상태 메시지" — 전자기기 사용 목적이 모호해 보여 오해로 제보가
+// "전자기기 메시지" — 전자기기 사용 목적이 모호해 보여 오해로 제보가
 // 들어오는 경우를 줄이려고, 본인이 미리 사용 목적을 적어두는 자유 텍스트
 // (사용자 요청, 예: "태블릿 : AI 질의용도"). [제보] 대상자 선택 시 이
 // 값이 노출된다.
@@ -66,63 +67,72 @@ export function StatusMessageCard() {
             없애고 제목만 남긴다. */}
         <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
           <MessageSquareText className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-          전자기기 상태 메시지
+          전자기기 메시지
         </span>
 
         {editing ? (
+          <div className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2 focus-within:ring-3 focus-within:ring-ring/50">
+            <Input
+              autoFocus
+              value={draft}
+              maxLength={STATUS_MESSAGE_MAX_LENGTH}
+              placeholder="예: 태블릿 : AI 질의용도"
+              disabled={saving}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") save();
+                if (e.key === "Escape") cancelEdit();
+              }}
+              className="h-auto flex-1 border-none p-0 text-sm outline-none focus-visible:ring-0"
+            />
+            <span className="shrink-0 text-micro-lg tabular-nums text-muted-foreground sm:text-xs">
+              {draft.length}/{STATUS_MESSAGE_MAX_LENGTH}
+            </span>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={cancelEdit}
+              aria-label="취소"
+              className="shrink-0 text-muted-foreground outline-none hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+            >
+              <X className="size-3.5" strokeWidth={ICON_STROKE.default} />
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={save}
+              aria-label="저장"
+              className="shrink-0 text-muted-foreground outline-none hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+            >
+              {saving ? (
+                <Loader2 className="size-3.5 animate-spin" strokeWidth={ICON_STROKE.default} />
+              ) : (
+                <Check className="size-3.5" strokeWidth={ICON_STROKE.default} />
+              )}
+            </button>
+          </div>
+        ) : (
           <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2 focus-within:ring-3 focus-within:ring-ring/50">
-              <Input
-                autoFocus
-                value={draft}
-                maxLength={STATUS_MESSAGE_MAX_LENGTH}
-                placeholder="예: 태블릿 : AI 질의용도"
-                disabled={saving}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") save();
-                  if (e.key === "Escape") cancelEdit();
-                }}
-                className="h-auto flex-1 border-none p-0 text-sm outline-none focus-visible:ring-0"
-              />
-              <span className="shrink-0 text-micro-lg tabular-nums text-muted-foreground sm:text-xs">
-                {draft.length}/{STATUS_MESSAGE_MAX_LENGTH}
-              </span>
-              <button
-                type="button"
-                disabled={saving}
-                onClick={save}
-                aria-label="저장"
-                className="shrink-0 text-muted-foreground outline-none hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-              >
-                {saving ? (
-                  <Loader2 className="size-3.5 animate-spin" strokeWidth={ICON_STROKE.default} />
-                ) : (
-                  <Check className="size-3.5" strokeWidth={ICON_STROKE.default} />
-                )}
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={startEdit}
+              className="flex items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-left outline-none hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              {message === null ? (
+                <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
+              ) : (
+                <span className={message ? "truncate text-sm" : "truncate text-sm text-muted-foreground"}>
+                  {message || "설정된 상태 메시지가 없습니다."}
+                </span>
+              )}
+              <Pencil className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={ICON_STROKE.default} />
+            </button>
             {updatedAt && (
-              <span className="px-1 text-micro-lg text-muted-foreground sm:text-xs">
-                최종 수정일자: {new Date(updatedAt).toLocaleString("ko-KR")}
+              <span className="px-1 text-micro-lg leading-relaxed text-muted-foreground sm:text-xs">
+                최종 수정일자 : {formatDateTime24h(updatedAt)}
               </span>
             )}
           </div>
-        ) : (
-          <button
-            type="button"
-            onClick={startEdit}
-            className="flex items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-left outline-none hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50"
-          >
-            {message === null ? (
-              <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
-            ) : (
-              <span className={message ? "truncate text-sm" : "truncate text-sm text-muted-foreground"}>
-                {message || "설정된 상태 메시지가 없습니다."}
-              </span>
-            )}
-            <Pencil className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={ICON_STROKE.default} />
-          </button>
         )}
       </InfoCard>
 

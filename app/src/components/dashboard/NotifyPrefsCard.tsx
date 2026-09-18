@@ -222,7 +222,7 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
             />
           </span>
           {state === "off" && (
-            <Button size="sm" className="shrink-0 text-xs sm:text-sm" onClick={enable}>
+            <Button variant="outline" size="sm" className="shrink-0 text-xs sm:text-sm" onClick={enable}>
               알림 켜기
             </Button>
           )}
