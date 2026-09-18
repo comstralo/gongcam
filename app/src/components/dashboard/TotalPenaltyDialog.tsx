@@ -53,7 +53,7 @@ export function TotalPenaltyDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
-          <InfoCard className="flex items-center justify-between gap-2">
+          <InfoCard className="flex items-center justify-between gap-2 bg-card">
             <span className="flex items-center gap-1.5">
               <ShieldAlert className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
               <ItemTitle>총 페널티</ItemTitle>
@@ -68,7 +68,7 @@ export function TotalPenaltyDialog({
             </span>
           </InfoCard>
 
-          <InfoCard className="flex flex-col gap-3">
+          <InfoCard className="flex flex-col gap-3 bg-card">
             <PenaltyHistorySection
               icon={Radio}
               title="송출 P 원인"

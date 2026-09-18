@@ -297,12 +297,9 @@ export function ExitProcessDialog({
             </Alert>
           ) : isAdminForcedOnly ? (
             <>
-              <InfoCard className="flex flex-col gap-1.5">
-                <Label
-                  htmlFor="forced-reason"
-                  className="flex items-center gap-1.25 text-sm font-semibold text-muted-foreground sm:text-base"
-                >
-                  <MessageSquareWarning className="size-3.5 shrink-0 sm:size-4" />
+              <InfoCard className="flex flex-col gap-1.5 bg-card">
+                <Label htmlFor="forced-reason" className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
+                  <MessageSquareWarning className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                   직권 퇴실 사유
                 </Label>
                 <Input
@@ -334,7 +331,7 @@ export function ExitProcessDialog({
                   agreedAt과 무관하게 forcedReason만 있으면 바로 활성화된다
                   (아래 버튼 참고). */}
               {preview && (
-                <InfoCard className="flex items-center justify-between gap-2">
+                <InfoCard className="flex items-center justify-between gap-2 bg-card">
                   <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
                     <PiggyBank className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                     반환 예치금
@@ -356,7 +353,7 @@ export function ExitProcessDialog({
                   기준(text-xs sm:text-sm)보다 한 단계 작았다. SubRow만
                   감싸는 컨테이너에 자손 선택자로 한 번에 적용한다. */}
               {preview && preview.breakdown && (
-                <InfoCard className="flex flex-col gap-1.5">
+                <InfoCard className="flex flex-col gap-1.5 bg-card">
                   <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
                     <TrendingDown className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                     차감 원인
@@ -375,7 +372,7 @@ export function ExitProcessDialog({
               )}
 
               {preview && (
-                <InfoCard className="flex flex-col gap-1.5">
+                <InfoCard className="flex flex-col gap-1.5 bg-card">
                   <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                     <Eye className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                     처리 결과
@@ -390,7 +387,7 @@ export function ExitProcessDialog({
               )}
 
               {preview && (
-                <InfoCard className="flex flex-col gap-1.5">
+                <InfoCard className="flex flex-col gap-1.5 bg-card">
                   <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                     <ArrowRightLeft className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                     시트 변동사항
@@ -427,7 +424,7 @@ export function ExitProcessDialog({
               {previewing && !preview && <ExitPreviewSkeleton rows={3} />}
 
               {preview && (
-                <InfoCard className="flex items-center justify-between gap-2">
+                <InfoCard className="flex items-center justify-between gap-2 bg-card">
                   <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
                     <PiggyBank className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                     반환 예치금
@@ -449,7 +446,7 @@ export function ExitProcessDialog({
                   선택 중인 날짜가 아니라 서버가 이미 판정한 breakdown.
                   lateNotice를 그대로 신뢰한다. */}
               {preview && preview.breakdown && (
-                <InfoCard className="flex flex-col gap-1.5">
+                <InfoCard className="flex flex-col gap-1.5 bg-card">
                   <span className="flex items-center gap-1.5 text-sm font-semibold sm:text-base">
                     <TrendingDown className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                     차감 원인
@@ -468,7 +465,7 @@ export function ExitProcessDialog({
               )}
 
               {preview && (
-                <InfoCard className="flex flex-col gap-1.5">
+                <InfoCard className="flex flex-col gap-1.5 bg-card">
                   <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                     <Eye className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                     처리 결과
@@ -483,7 +480,7 @@ export function ExitProcessDialog({
               )}
 
               {preview && (
-                <InfoCard className="flex flex-col gap-1.5">
+                <InfoCard className="flex flex-col gap-1.5 bg-card">
                   <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                     <ArrowRightLeft className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                     시트 변동사항
@@ -496,7 +493,7 @@ export function ExitProcessDialog({
               )}
 
               {preview && preview.exitProcess && (
-                <InfoCard className="flex flex-col gap-1.5">
+                <InfoCard className="flex flex-col gap-1.5 bg-card">
                   <span className="flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                     <ClipboardList className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                     퇴실 프로세스
@@ -565,7 +562,7 @@ export function ExitProcessDialog({
                   여기 있던 "kind === admin_forced일 때 사유 입력란을
                   보여주는" 블록은 처리 유형 자유 선택 드롭다운과 마찬가지로
                   절대 렌더링될 수 없는 죽은 코드였다 — 함께 제거했다. */}
-              <InfoCard className="flex flex-col gap-2">
+              <InfoCard className="flex flex-col gap-2 bg-card">
                 <Label className="text-sm font-semibold text-muted-foreground sm:text-base">처리 유형</Label>
                 <FieldValue className="text-sm sm:text-base">{KIND_LABEL[lockKind]}</FieldValue>
 
@@ -584,7 +581,7 @@ export function ExitProcessDialog({
               </Button>
 
               {preview && (
-                <InfoCard className="flex flex-col gap-2">
+                <InfoCard className="flex flex-col gap-2 bg-card">
                   <span className="text-sm font-semibold sm:text-base">{preview.kindStr} 처리 결과</span>
                   {preview.allChecks.length > 0 && <ForcedExitChecklist checks={preview.allChecks} />}
                   <pre className="whitespace-pre-wrap font-mono text-xs text-muted-foreground sm:text-sm">

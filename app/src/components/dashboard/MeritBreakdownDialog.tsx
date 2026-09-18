@@ -70,7 +70,7 @@ export function MeritBreakdownDialog({
               공용 SubRow 컴포넌트의 기본값 자체는 다른 화면에 영향 없도록
               바꾸지 않고, 이 다이얼로그에서만 labelClassName/valueClassName
               으로 크기를 조정한다. */}
-          <InfoCard className="flex items-center justify-between gap-2">
+          <InfoCard className="flex items-center justify-between gap-2 bg-card">
             <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
               <Award className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
               주간 총 상점
@@ -90,7 +90,7 @@ export function MeritBreakdownDialog({
             </span>
           </InfoCard>
 
-          <InfoCard className="flex flex-col gap-1.5">
+          <InfoCard className="flex flex-col gap-1.5 bg-card">
             <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
               <TrendingUp className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
               상점 적립 원인
@@ -126,7 +126,7 @@ export function MeritBreakdownDialog({
             </div>
           </InfoCard>
 
-          <InfoCard className="flex flex-col gap-1.5">
+          <InfoCard className="flex flex-col gap-1.5 bg-card">
             <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
               <TrendingDown className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
               상점 차감 원인
@@ -152,7 +152,7 @@ export function MeritBreakdownDialog({
           </InfoCard>
 
           {breakdown.isZero && breakdown.zeroConditions?.length > 0 && (
-            <InfoCard className="flex flex-col gap-1.5">
+            <InfoCard className="flex flex-col gap-1.5 bg-card">
               <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
                 <TrendingDown className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                 상점 제외 원인
@@ -178,7 +178,7 @@ export function MeritBreakdownDialog({
             </InfoCard>
           )}
 
-          <InfoCard className="flex flex-col gap-1.5">
+          <InfoCard className="flex flex-col gap-1.5 bg-card">
             <span className="flex items-center gap-1.5 text-sm font-bold sm:text-base">
               <Gauge className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
               상점 배율

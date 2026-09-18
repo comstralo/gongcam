@@ -152,7 +152,7 @@ export function DepositRefundDialog({
               고친 것과 동일한 원인). 새 스타일을 발명하지 않고 이미 있는
               ItemTitle로 통일했다. */}
           {exitRequested ? (
-            <InfoCard className="flex items-center justify-between gap-2">
+            <InfoCard className="flex items-center justify-between gap-2 bg-card">
               <span className="flex items-center gap-1.5">
                 <CalendarDays className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                 <ItemTitle>마지막 참여일</ItemTitle>
@@ -160,7 +160,7 @@ export function DepositRefundDialog({
               <span className="text-xs sm:text-sm">{exitRequestDate || "-"}</span>
             </InfoCard>
           ) : (
-            <InfoCard className="flex flex-col gap-1.5">
+            <InfoCard className="flex flex-col gap-1.5 bg-card">
               <Label
                 htmlFor="exit-request-date"
                 className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base"
@@ -179,7 +179,7 @@ export function DepositRefundDialog({
             </InfoCard>
           )}
 
-          <InfoCard className="flex flex-col gap-1.5">
+          <InfoCard className="flex flex-col gap-1.5 bg-card">
             <div className="flex items-center justify-between gap-2">
               <span className="flex items-center gap-1.5">
                 <PiggyBank className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
@@ -203,7 +203,7 @@ export function DepositRefundDialog({
           </InfoCard>
 
           {isAdmin && (
-            <InfoCard className="flex flex-col gap-1.5">
+            <InfoCard className="flex flex-col gap-1.5 bg-card">
               <span className="flex items-center gap-1.5">
                 <TrendingDown className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                 <ItemTitle>차감 원인</ItemTitle>

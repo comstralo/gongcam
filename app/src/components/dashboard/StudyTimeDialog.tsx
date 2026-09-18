@@ -109,7 +109,7 @@ export function StudyTimeDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
-          <InfoCard className="flex items-center justify-between gap-2">
+          <InfoCard className="flex items-center justify-between gap-2 bg-card">
             <span className="flex items-center gap-1.5">
               <Timer className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
               <ItemTitle>주간 학습시간</ItemTitle>
@@ -126,7 +126,7 @@ export function StudyTimeDialog({
 
             return (
               <Collapsible key={d.day}>
-                <InfoCard className="flex flex-col gap-1.5">
+                <InfoCard className="flex flex-col gap-1.5 bg-card">
                   {/* 🔧 2026-09 재정정(2차): "월요일"을 요약보다 작게 되돌린
                       이전 판단이 틀렸다(사용자 지적) — 구조를 다시 보면
                       "주간 학습시간"(요약 카드) + 요일 7개(형제 카드)는

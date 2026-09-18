@@ -453,9 +453,9 @@ export function PenaltyHistoryDetailDialog({
 
         <div className="flex flex-col gap-3">
           {entry.captureId && (
-            <InfoCard className="flex flex-col gap-1.5">
+            <InfoCard className="flex flex-col gap-1.5 bg-card">
               <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
-                <ImageIcon className="size-3.5 shrink-0 text-primary sm:size-4" />
+                <ImageIcon className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
                 스크린샷 · 영상
               </span>
               {token ? (
@@ -468,9 +468,9 @@ export function PenaltyHistoryDetailDialog({
             </InfoCard>
           )}
 
-          <InfoCard className="flex flex-col gap-1.5">
+          <InfoCard className="flex flex-col gap-1.5 bg-card">
             <span className="flex items-center gap-1.5 text-xs font-semibold sm:text-sm">
-              <FileText className="size-3.5 shrink-0 text-primary sm:size-4" />
+              <FileText className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
               제보 정보
             </span>
             <SubRow label="사유" value={entry.reason || "-"} />

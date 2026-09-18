@@ -390,7 +390,7 @@ export function HalfDayLeaveDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
-          <InfoCard className="flex items-center justify-between gap-2">
+          <InfoCard className="flex items-center justify-between gap-2 bg-card">
             <span className="flex items-center gap-1.5">
               <BedDouble className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
               <ItemTitle>반휴권 잔여량</ItemTitle>
@@ -402,7 +402,7 @@ export function HalfDayLeaveDialog({
             </span>
           </InfoCard>
 
-          <InfoCard className="flex flex-col gap-1.5">
+          <InfoCard className="flex flex-col gap-1.5 bg-card">
             <span className="flex items-center gap-1.5">
               <CalendarCheck className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
               <ItemTitle>일반 반휴</ItemTitle>
@@ -416,7 +416,7 @@ export function HalfDayLeaveDialog({
             />
           </InfoCard>
 
-          <InfoCard className="flex flex-col gap-2">
+          <InfoCard className="flex flex-col gap-2 bg-card">
             <span className="flex items-center gap-1.5">
               <FileText className="size-3.5 shrink-0 text-muted-foreground sm:size-4" />
               <ItemTitle>사유 반휴</ItemTitle>
