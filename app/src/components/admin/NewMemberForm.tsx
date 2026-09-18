@@ -129,7 +129,7 @@ export function NewMemberForm() {
 
   async function handleSubmit() {
     if (!number || !name.trim() || !email.trim()) {
-      setMessage({ text: "시트번호, 이름, 이메일은 필수입니다.", type: "error" });
+      setMessage({ text: "시트 번호, 이름, 이메일은 필수입니다.", type: "error" });
       return;
     }
     // 시트 D열에 "구글계정,구루미계정" 형태로 콤마 구분해 함께 저장하므로,
@@ -223,7 +223,7 @@ export function NewMemberForm() {
         <div className="flex flex-col gap-1.5">
           <Label className="inline-flex items-center gap-1.25 text-sm font-medium text-foreground sm:text-base">
             <ListChecks className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-            참여유형
+            참여 유형
           </Label>
           <Select value={participationType} onValueChange={(v) => setParticipationType(v ?? "8|교시제")}>
             <SelectTrigger className="w-full py-1 text-base data-[size=default]:h-8 sm:data-[size=default]:h-12 md:text-base">
@@ -242,7 +242,7 @@ export function NewMemberForm() {
         <div className="flex flex-col gap-1.5">
           <Label className="inline-flex items-center gap-1.25 text-sm font-medium text-foreground sm:text-base">
             <Hash className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-            시트번호
+            시트 번호
           </Label>
           <Select value={number} onValueChange={(v) => setNumber(v ?? "")} disabled={!slots || noSlots}>
             <SelectTrigger className="w-full py-1 text-base data-[size=default]:h-8 sm:data-[size=default]:h-12 md:text-base">
@@ -333,7 +333,7 @@ export function NewMemberForm() {
             className="inline-flex items-center gap-1.25 text-sm font-medium text-foreground sm:text-base"
           >
             <GraduationCap className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-            준비 중인 시험
+            준비 시험
           </Label>
           <Input
             id="new-member-exam"
@@ -350,7 +350,7 @@ export function NewMemberForm() {
             className="inline-flex items-center gap-1.25 text-sm font-medium text-foreground sm:text-base"
           >
             <CalendarDays className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
-            첫 참여일 설정
+            첫 참여일
           </Label>
           <Input
             id="new-member-join-date"
