@@ -186,7 +186,24 @@ export function calcAdminForcedExit(forcedReason) {
 // 있어 — 회원이 미리 본 예상액과 관리자 확정액이 어긋나는 실제 버그였다
 // (더미 데이터 오류가 아니라 처리 로직 자체의 문제, 2026-09 사용자 지적으로
 // 발견). depositBreakdown.lateNotice를 반영해 두 계산을 다시 일치시킨다.
+// 🔧 [안전망 보강] depositRefundBreakdown().amount는 참여상태 미확인/
+// 가입 30일 미만/벌금 미납/예치금 재납 관련 사유(reason)가 있으면
+// 페널티·고지지연 계산과 무관하게 amount를 0으로 강제하는데, 이 함수는
+// reason을 아예 받지 않아 그 사유를 반영하지 않았다 — 정상 플로우에서는
+// 그런 회원이 애초에 강제퇴실로 처리돼 settle까지 오지 않지만(forcedExitChecks/
+// 정산 퇴실 동의 단계의 fineUnpaid 차단 등 여러 겹으로 막혀 있음), 관리자가
+// kind를 임의로 settle로 지정해 확정을 시도하는 경로까지 막기 위한
+// 안전망으로 여기서도 동일하게 reason이 있으면 0% 반환(discountRatio=1)을
+// 강제한다(사용자 지시: "회원 쪽 예상액과 관리자 쪽 확정액이 어긋날 수
+// 있는 지점이니 관리자 쪽도 검증을 추가해달라").
 export function calcSettleReturnDeposit(depositBreakdown) {
+  if (depositBreakdown.reason) {
+    return {
+      resultStr: [`${depositBreakdown.reason} ➡️ 0% 반환`],
+      discountRatio: 1,
+      reasons: [{ code: "settle_return_rate", label: "0% 반환" }],
+    };
+  }
   const totalPen = depositBreakdown.outputPen + depositBreakdown.timePen;
   const lateNotice = !!depositBreakdown.lateNotice;
   // 페널티 0회: 고지지연 있으면 50% 차감, 없으면 0% 차감(100% 반환).

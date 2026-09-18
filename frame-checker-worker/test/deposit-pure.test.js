@@ -136,6 +136,21 @@ describe("calcSettleReturnDeposit", () => {
     const result = calcSettleReturnDeposit({ outputPen: 0, timePen: 0, lateNotice: false });
     expect(result.resultStr[0]).not.toContain("퇴실 통보 지연");
   });
+
+  // 🔧 [안전망 보강] depositRefundBreakdown().amount는 reason(참여상태
+  // 미확인/가입 30일 미만/벌금 미납/예치금 재납 관련)이 있으면 페널티·
+  // 고지지연과 무관하게 0원을 강제한다 — 관리자가 kind를 임의로 settle로
+  // 지정해도 회원 쪽 예상액과 어긋나지 않도록, reason이 있으면 이 함수도
+  // discountRatio=1(0% 반환)을 강제해야 한다.
+  it.each([["참여상태 미확인"], ["가입 30일 미만"], ["벌금 시한 내 미납"], ["예치금 재납 시한 미납"], ["예치금 재납 대상자"]])(
+    "reason=%s가 있으면 페널티/고지지연과 무관하게 discountRatio 1(0%% 반환)을 강제한다",
+    (reason) => {
+      const result = calcSettleReturnDeposit({ outputPen: 0, timePen: 0, lateNotice: false, reason });
+      expect(result.discountRatio).toBe(1);
+      expect(result.reasons).toEqual([{ code: "settle_return_rate", label: "0% 반환" }]);
+      expect(result.resultStr[0]).toContain(reason);
+    }
+  );
 });
 
 describe("calcAgainDeposit", () => {

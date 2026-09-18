@@ -208,7 +208,6 @@ export function DepositRefundDialog({
               고유의 것이라(회원에게는 "-"로 가림, 관리자만 실제 금액+2단계
               색상) valueContent/valueClassName으로 그대로 넘긴다. */}
           <RefundAmountCard
-            title="예치금 반환 예상액"
             valueContent={isAdmin ? won(amount) : "-"}
             valueClassName={cn(
               "text-xs sm:text-sm",
