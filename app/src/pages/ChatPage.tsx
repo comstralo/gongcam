@@ -36,6 +36,23 @@ import { useTheme } from "@/hooks/useTheme";
 import { ICON_STROKE, cn } from "@/lib/utils";
 import type { AdminMembersResponse, ChatTokenResponse } from "@/lib/api/types";
 
+// 🔧 [버그 수정, 2026-09-19 사용자 지시: "꾹 눌러서 메뉴를 띄웠을 때,
+// 이미지 영역을 터치해서 취소하려고 하면 이미지가 열려버린다"] —
+// 롱프레스로 메뉴를 여는 그 손가락을 뗄 때, 브라우저가 이 터치를 이어서
+// 이미지 위에 진짜 click 이벤트를 발생시켜(실측: CDP 터치 이벤트로
+// 재현, 합성 PointerEvent로는 재현 안 됨) 확대 모달이 열리고, 그 클릭이
+// Stream의 DialogPortalDestination(document에 capture:true로 걸리는
+// "바깥 클릭 시 다이얼로그 닫기" 리스너, 소스 확인)까지 트리거해 메뉴도
+// 함께 닫혀버렸다. Stream의 이 리스너는 다이얼로그가 실제로 열릴 때(즉
+// 사용자가 롱프레스하는 시점)에야 등록되는 반면, 이 플래그를 지켜보는
+// 우리 리스너는 ChatPage가 마운트되는 앱 초기 렌더 시점에 이미 등록돼
+// 있어 캡처 단계에서 항상 Stream보다 먼저 실행된다(캡처는 document의
+// 리스너부터 등록 순서대로 실행) — 이 순서를 이용해 원치 않는 클릭
+// 자체를 Stream이 보기 전에 여기서 완전히 삼킨다. 메시지마다 새로
+// 렌더링되는 SwipeableMessage 안의 지역 상태로는 이 전역 순서를 보장할
+// 수 없어 모듈 스코프 변수로 둔다.
+let blockNextClick = false;
+
 // 🔧 [사용자 지시, 2026-09-19] "지난 메시지도 '오후 5:56'처럼 시간이
 // 표시되도록" — Stream 기본 MessageTimestamp는 dayjs의 로케일 인식
 // 포맷(LT)을 쓰는데, i18n 설정과 무관하게 실측 결과 24시간제("18:00")로
@@ -403,18 +420,29 @@ function SwipeableMessage() {
     // (마우스 좌클릭 또는 터치)만 드래그 시작으로 인정한다.
     if (e.button !== 0 && e.pointerType === "mouse") return;
     // 🔧 [버그 수정, 2026-09-19 사용자 지시: "모바일에선 여전히 이미지가
-    // 열리거나 답장 원본 메시지로 이동해버린다"] — PC 클릭 케이스는
-    // endDrag에서 "메뉴가 열려 있으면 body에 합성 클릭을 쏜다"로
-    // 고쳤지만, 그건 메뉴를 연 그 메시지를 다시 누르는 경우만 처리했다.
-    // 모바일은 화면 대부분이 메시지로 덮여 있어, 메뉴를 닫으려는 탭이
-    // (메뉴를 연 것과) 다른 메시지 위에 떨어지는 경우가 훨씬 흔하다 —
-    // 그 메시지는 완전히 새로운 pointerdown/up 사이클이라 이전 수정이
-    // 적용되지 않고, 그 메시지 자체의 클릭(이미지 확대, 인용 카드
-    // 점프)이 그대로 실행돼버렸다. 이미 다른 메시지의 액션 메뉴가 열려
-    // 있으면 이 pointerdown 자체를 "메뉴를 닫으려는 탭"으로 간주해
-    // 드래그/롱프레스/클릭 로직을 전혀 시작하지 않고, 메뉴만 닫는다.
+    // 열리거나 답장 원본 메시지로 이동해버린다" → "꾹 눌러서 메뉴를
+    // 띄웠을 때, 이미지 영역을 터치해서 취소하려고 하면 이미지가
+    // 열려버린다"] — document/wrapper capture 리스너로 click을
+    // stopPropagation하는 방식은 실측 결과 실패했다(Stream의
+    // DialogPortal.mjs가 document에 직접 건 캡처 리스너가 실제로는
+    // 우리보다 먼저 등록돼 있어 늦었고, preventDefault는 이미 등록된
+    // 다른 리스너의 실행 자체를 막지 못한다 — 브라우저 이벤트 스펙).
+    // 등록 순서 경쟁에 의존하지 않는 유일한 확실한 방법은 애초에
+    // 브라우저가 click DOM 이벤트 자체를 만들지 않게 하는 것 — 이는
+    // 원본 TouchEvent(React의 PointerEvent가 아님)의 preventDefault()
+    // 만 보장한다(W3C 스펙: touchend의 preventDefault는 그로부터
+    // 파생되는 click 생성 자체를 억제). 이 요소에 네이티브 touchend
+    // 리스너를 캡처 단계로 걸어 다음 touchend 하나만 확실히 삼킨다.
     if (document.querySelector(".str-chat__message-actions-box--open")) {
+      e.preventDefault();
       document.body.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      e.currentTarget.addEventListener(
+        "touchend",
+        (touchEvent: Event) => {
+          touchEvent.preventDefault();
+        },
+        { capture: true, once: true, passive: false }
+      );
       return;
     }
     // SVG 아이콘(예: 답장 화살표) 위를 눌렀을 때 e.target이 SVGElement일 수
@@ -453,6 +481,38 @@ function SwipeableMessage() {
     longPressTimerRef.current = setTimeout(() => {
       longPressFiredRef.current = true;
       openMessageActionsMenu(wrapperEl);
+      // 🔧 [버그 수정, 2026-09-19 사용자 지시: "꾹 눌러서 메뉴를 띄웠을
+      // 때, 이미지 영역을 터치해서 취소하려고 하면 이미지가 열려버린다"]
+      // — 실측(CDP 실제 터치 이벤트)해보니 문제는 "메뉴를 취소하려는
+      // 두 번째 터치"가 아니라 롱프레스로 메뉴를 "여는" 바로 이 첫
+      // 번째 터치 자체였다: 타이머가 발동해 메뉴를 연 뒤 손가락을
+      // 떼면, 브라우저가 이 터치를 이어서 이미지 위에 진짜 click을
+      // 발생시켜 확대 모달이 열리고, 그 IMG 클릭이 Stream의 document
+      // 캡처 리스너("바깥 클릭 시 다이얼로그 닫기", DialogPortal.mjs)
+      // 까지 트리거해 메뉴도 함께 닫혔다.
+      //
+      // document에 우리 리스너를 먼저 등록해 stopPropagation으로
+      // Stream의 리스너 실행 자체를 막으려는 시도(blockNextClick +
+      // ChatPage의 전역 capture 리스너)는 실측 결과 실패했다 —
+      // preventDefault는 클릭의 "기본 동작"만 막을 뿐 이미 등록된 다른
+      // 리스너의 실행 자체는 막지 못하고(브라우저 이벤트 스펙), Stream
+      // 리스너가 실제로는 우리보다 먼저 등록되어 있어(실측: 이벤트
+      // 리스너 등록 로그로 확인) stopPropagation도 늦었다. 등록 순서
+      // 경쟁에 의존하지 않는 유일한 확실한 방법은 애초에 브라우저가
+      // click DOM 이벤트 자체를 만들지 않게 하는 것 — 이는 원본
+      // TouchEvent(React의 PointerEvent가 아님)의 preventDefault()만
+      // 보장한다(W3C 터치 이벤트 스펙: touchend에서 preventDefault를
+      // 부르면 그로부터 파생되는 마우스/클릭 이벤트가 생성되지 않음).
+      // 이 wrapperEl에 네이티브 touchend 리스너를 캡처 단계로 걸어
+      // 다음 touchend 하나만 확실히 삼킨다(리스너는 { once: true }로
+      // 자동 정리).
+      wrapperEl.addEventListener(
+        "touchend",
+        (touchEvent: Event) => {
+          touchEvent.preventDefault();
+        },
+        { capture: true, once: true, passive: false }
+      );
     }, LONG_PRESS_MS);
   }
 
@@ -583,7 +643,13 @@ function SwipeableMessage() {
         : Infinity;
     if (longPressFiredRef.current) {
       // 이미 롱프레스로 액션 메뉴를 열었으므로, 손을 떼는 동작에서
-      // 추가로 클릭/스와이프가 겹쳐 발생하지 않게 한다.
+      // 추가로 클릭/스와이프가 겹쳐 발생하지 않게 한다. 실제 방어(이미지
+      // 확대가 함께 열리는 문제)는 handlePointerDown의 타이머 콜백이
+      // 등록해둔 네이티브 touchend 캡처 리스너가 담당한다 — 자세한
+      // 경위는 그쪽 주석 참고. 여기서도 preventDefault를 걸어두되(무해한
+      // 안전망), blockNextClick 기반 방어는 실측 결과 등록 순서 경쟁에서
+      // 져 효과가 없었다.
+      e.preventDefault();
     } else if (Math.abs(dragX) >= SWIPE_THRESHOLD) {
       messageComposer.setQuotedMessage(message);
       const textarea = document.querySelector<HTMLTextAreaElement>(".str-chat__textarea__textarea");
@@ -873,6 +939,29 @@ export function ChatPage({ visible }: { visible: boolean }) {
     }
     document.addEventListener("click", handleModalBackgroundClick);
     return () => document.removeEventListener("click", handleModalBackgroundClick);
+  }, []);
+
+  // 🔧 [버그 수정, 2026-09-19 사용자 지시: "꾹 눌러서 메뉴를 띄웠을 때,
+  // 이미지 영역을 터치해서 취소하려고 하면 이미지가 열려버린다"] —
+  // SwipeableMessage(모듈 상단의 blockNextClick 플래그 정의 참고)가
+  // 롱프레스로 액션 메뉴를 여는 시점에 이 플래그를 세팅해두면, 뒤이어
+  // 브라우저가 이미지 위에 발생시키는 진짜 click을 여기서 Stream의
+  // document 캡처 리스너(DialogPortal.mjs, "바깥 클릭 시 다이얼로그
+  // 닫기")가 보기 "전에" 가로채 완전히 삼킨다. 캡처 단계에서 같은
+  // document에 여러 리스너가 있으면 등록된 순서대로 실행되는데, 이
+  // ChatPage는 앱이 처음 렌더될 때 마운트되는 반면 Stream의 리스너는
+  // 다이얼로그가 실제로 열릴 때(=사용자가 롱프레스하는 시점)에야
+  // 등록되므로, 이 리스너가 항상 먼저 등록되어 항상 먼저 실행된다.
+  useEffect(() => {
+    function handleGlobalClickCapture(e: MouseEvent) {
+      if (blockNextClick) {
+        blockNextClick = false;
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }
+    document.addEventListener("click", handleGlobalClickCapture, { capture: true });
+    return () => document.removeEventListener("click", handleGlobalClickCapture, { capture: true });
   }, []);
 
   useEffect(() => {
