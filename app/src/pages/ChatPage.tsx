@@ -402,6 +402,21 @@ function SwipeableMessage() {
     // 텍스트 선택/버튼 클릭 등 일반 상호작용을 방해하지 않도록, 주 버튼
     // (마우스 좌클릭 또는 터치)만 드래그 시작으로 인정한다.
     if (e.button !== 0 && e.pointerType === "mouse") return;
+    // 🔧 [버그 수정, 2026-09-19 사용자 지시: "모바일에선 여전히 이미지가
+    // 열리거나 답장 원본 메시지로 이동해버린다"] — PC 클릭 케이스는
+    // endDrag에서 "메뉴가 열려 있으면 body에 합성 클릭을 쏜다"로
+    // 고쳤지만, 그건 메뉴를 연 그 메시지를 다시 누르는 경우만 처리했다.
+    // 모바일은 화면 대부분이 메시지로 덮여 있어, 메뉴를 닫으려는 탭이
+    // (메뉴를 연 것과) 다른 메시지 위에 떨어지는 경우가 훨씬 흔하다 —
+    // 그 메시지는 완전히 새로운 pointerdown/up 사이클이라 이전 수정이
+    // 적용되지 않고, 그 메시지 자체의 클릭(이미지 확대, 인용 카드
+    // 점프)이 그대로 실행돼버렸다. 이미 다른 메시지의 액션 메뉴가 열려
+    // 있으면 이 pointerdown 자체를 "메뉴를 닫으려는 탭"으로 간주해
+    // 드래그/롱프레스/클릭 로직을 전혀 시작하지 않고, 메뉴만 닫는다.
+    if (document.querySelector(".str-chat__message-actions-box--open")) {
+      document.body.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      return;
+    }
     // SVG 아이콘(예: 답장 화살표) 위를 눌렀을 때 e.target이 SVGElement일 수
     // 있는데, 일부 환경에서 SVGElement에는 HTMLElement.click()이 없어
     // "targetToClick.click is not a function"으로 클릭 합성이 실패했다
@@ -537,6 +552,18 @@ function SwipeableMessage() {
     if (startXRef.current === null) return;
     const delta = e.clientX - startXRef.current;
     if (Math.abs(delta) < MOVE_DEAD_ZONE) return;
+    // 🔧 [버그 수정, 2026-09-19 사용자 지시: "모바일에서 스크롤 할 때
+    // 답장 제스처가 민감해서 그냥 넘기는데 메시지가 좌측으로 살짝살짝
+    // 이동하려는 듯한 움직임이 있다"] — 세로 스크롤 중에도 손가락이
+    // 완벽한 직선으로만 움직이지 않아 가로 성분이 섞이는데, 기존
+    // 로직은 X 이동량만 보고 5px만 넘으면 곧바로 dragX를 세팅해
+    // 스크롤 의도인 제스처에도 버블이 반응해버렸다. Y 이동량과 비교해
+    // 실제로 가로쪽 움직임이 더 클 때만(세로보다 가로가 더 뚜렷한
+    // 제스처일 때만) 스와이프로 인정한다 — 세로 스크롤은 touch-pan-y로
+    // 이미 브라우저에 위임하고 있어(className) 여기서 막을 필요는
+    // 없고, 우리 쪽 시각 효과(translateX)만 반응하지 않게 한다.
+    const deltaY = pointerDownPosRef.current !== null ? e.clientY - pointerDownPosRef.current.y : 0;
+    if (Math.abs(delta) < Math.abs(deltaY)) return;
     // 데드존을 넘어선 이동은 스와이프 의도이므로 롱프레스는 취소한다
     // (누른 채 손이 미끄러진 경우 메뉴가 뜨면 스와이프와 충돌해 어색함).
     clearLongPressTimer();
