@@ -1,7 +1,9 @@
 # 공부합시당 캠스터디 — "도움봇" 구조 문서
 
 > ⚠️ **2026-09 확인: 이 문서의 상당 부분이 낡았다.** `study_manager_260418.py`가
-> 설명 당시엔 2619줄 단일 스크립트였지만, 지금은 109줄짜리 진입점 + `study_sw/bot/`
+> 설명 당시엔 2619줄 단일 스크립트였지만, 지금은 149줄짜리(🔧 [2026-09-19 정정]
+> "109줄"은 이전 스냅샷 값 — 이후 exit_sync 연동/SIGHUP 핸들러/inflight
+> 스냅샷 복구 등이 추가됨) 진입점 + `study_sw/bot/`
 > 패키지(`context.py`, `lifecycle.py`, `dashboard_server.py`, `tunnel.py`,
 > `roster_sync.py`, `report_intake.py`, `scheduling.py`, `sheets.py`,
 > `gooroomee_room.py`, `tracking.py`, `usage_tracker.py`, `exit_sync.py`,
@@ -131,7 +133,15 @@ if __name__ == "__main__":
 
 - `https://api.telegram.org/bot{token}/sendDocument` — 제보/관리감독 캡처 이미지 전송
 - `https://api.telegram.org/bot{token}/sendMessage` — 긴급 오류 메시지 전송
-- **`frame-checker-worker.comstralo.workers.dev` 관련 호출은 현재 코드에 없음.** `PARTICIPANTS_SYNC_INTEGRATION.md`(별도 안내 문서)에 이 Worker로 실시간 참여자 명단을 PUT 전송하는 통합 방안이 제안되어 있으나, `study_manager_260418.py`에는 아직 적용되지 않은 상태다(`grep` 결과 `requests.post`만 2건 존재, 모두 텔레그램용).
+- 🔧 **[2026-09-19 정정, 이 절 자체가 §9·§10과 모순]** ~~`frame-checker-worker.comstralo.workers.dev`
+  관련 호출은 현재 코드에 없음~~ — 이 서술은 위 §1 경고문이 이미 밝힌 대로
+  옛(리팩터링 이전) 단일 스크립트 시점 기준이다. 실제로는 `study_sw/bot/`
+  패키지가 Worker와 다수 직접 통신한다: `bot/exit_sync.py`(`GET
+  /bot/exit-requests`), `bot/report_intake.py`(`GET`/`POST /reports/...`),
+  `bot/scheduling.py`(`GET`), `bot/tracking.py`(`POST
+  /reports/capture-done`), `bot/tunnel.py`(`POST`),
+  `bot/usage_tracker.py`(`POST`) 등 — 상세는 §9(퇴실 동기화)·§10(제보 캡처
+  파이프라인) 참고.
 
 ### 메신저 연동
 

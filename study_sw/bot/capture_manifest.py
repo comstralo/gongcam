@@ -8,6 +8,13 @@ MANIFEST_PATH = "runtime/captures/manifest.json"
 ARCHIVE_DIR = "runtime/captures/archive"
 ARCHIVE_MANIFEST_PATH = os.path.join(ARCHIVE_DIR, "manifest.json")
 ARCHIVE_FILES_DIR = os.path.join(ARCHIVE_DIR, "report")
+# 🔧 [논리적 삭제, 사용자 지시] "반려된 건"과 "화각 점검 삭제"는 실제
+# 파일을 지우지 않고 별도 폴더로 옮긴다 — archive(3주 지난 확정 건 보관)와
+# 는 목적이 다른 별도 디렉터리다(archive는 조회를 위한 장기 보관, trash는
+# "삭제된 것처럼 보이되 복구 가능한" 상태).
+TRASH_DIR = "runtime/captures/trash"
+TRASH_MANIFEST_PATH = os.path.join(TRASH_DIR, "manifest.json")
+TRASH_FILES_DIR = os.path.join(TRASH_DIR, "report")
 _manifest_lock = threading.Lock()
 
 
@@ -81,7 +88,13 @@ def get_capture(capture_id):
         # 한다 — 3주 지난 캡처를 archive로 옮긴 것이 "더 이상 조회 불가"를
         # 의미하지는 않는다(사용자 결정: 삭제가 아니라 이동).
         archive_data = _load(ARCHIVE_MANIFEST_PATH)
-    return archive_data.get(capture_id)
+        item = archive_data.get(capture_id)
+        if item is not None:
+            return item
+        # 🔧 [논리적 삭제] 반려/화각 점검 삭제로 trash에 옮겨진 건도 동일한
+        # 이유로 조회 가능해야 한다(사용자 결정: 삭제가 아니라 이동).
+        trash_data = _load(TRASH_MANIFEST_PATH)
+    return trash_data.get(capture_id)
 
 
 # penalty/merit: 이 결정으로 시트에 실제 반영된 값(있으면) — 각각
@@ -98,6 +111,25 @@ def get_capture(capture_id):
 # 계산되는 값이라, 유예를 확정한 뒤 다른 건이 그 슬롯을 실제로 채우면
 # 이미 확정된 유예 건의 표시 차수까지 밀려 보이는 문제가 있었다(사용자
 # 재현). 유예 순간의 값을 여기 고정해 두고 이후 계속 그대로 보여준다.
+# 🔧 [논리적 삭제, 사용자 지시: "반려된 건은 스크린샷/영상에 오버레이 +
+# 실제 파일은 삭제하지 말고 폴더 이동"] "반려"(rejected/rejected_recognized)
+# 로 결정되면, manifest 엔트리는 그대로 두고(반려 사실·처리현황은 계속
+# 조회 가능해야 함) 파일만 trash로 옮긴다 — move_to_trash(엔트리 자체를
+# 지우는 화각 점검 삭제용)와는 다른, "파일만 이동" 동작이 필요해 별도
+# 헬퍼로 둔다. 반려 취소(revert_decision)가 파일을 원래 위치로 복원한다.
+def _move_file_to_trash(filename):
+    if not filename:
+        return
+    os.makedirs(TRASH_FILES_DIR, exist_ok=True)
+    src = os.path.join("runtime/captures/report", filename)
+    dst = os.path.join(TRASH_FILES_DIR, filename)
+    try:
+        if os.path.exists(src):
+            os.replace(src, dst)
+    except OSError:
+        pass
+
+
 def set_decision(capture_id, decision, penalty=None, merit=None, time_deduction=None, deferred_occurrence=None):
     with _manifest_lock:
         data = _load()
@@ -109,7 +141,10 @@ def set_decision(capture_id, decision, penalty=None, merit=None, time_deduction=
         data[capture_id]["merit"] = merit
         data[capture_id]["timeDeduction"] = time_deduction
         data[capture_id]["deferredOccurrence"] = deferred_occurrence
+        filename = data[capture_id].get("filename") if decision in ("rejected", "rejected_recognized") else None
         _save(data)
+    if filename:
+        _move_file_to_trash(filename)
     return True
 
 
@@ -140,11 +175,20 @@ def revert_decision(capture_id):
     with _manifest_lock:
         data = _load()
         target_path = MANIFEST_PATH
+        was_rejected = False
         if capture_id not in data:
             data = _load(ARCHIVE_MANIFEST_PATH)
             target_path = ARCHIVE_MANIFEST_PATH
             if capture_id not in data:
                 return False
+        else:
+            # 🔧 [논리적 삭제, 사용자 지시: "반려취소 시 원래 폴더로 복원"]
+            # "반려"(rejected/rejected_recognized) 결정 시 set_decision이
+            # manifest 엔트리는 원본에 그대로 두고 파일만 trash로 옮긴다
+            # (위 _move_file_to_trash) — 취소 시 그 반대로, 파일이 trash에
+            # 있으면 원본(runtime/captures/report)으로 되돌린다.
+            was_rejected = data[capture_id].get("reviewStatus") in ("rejected", "rejected_recognized")
+        filename = data[capture_id].get("filename") if was_rejected else None
         data[capture_id]["reviewStatus"] = "pending"
         data[capture_id].pop("decidedAt", None)
         data[capture_id].pop("penalty", None)
@@ -152,6 +196,15 @@ def revert_decision(capture_id):
         data[capture_id].pop("timeDeduction", None)
         data[capture_id].pop("deferredOccurrence", None)
         _save(data, target_path)
+    if filename:
+        os.makedirs("runtime/captures/report", exist_ok=True)
+        src = os.path.join(TRASH_FILES_DIR, filename)
+        dst = os.path.join("runtime/captures/report", filename)
+        try:
+            if os.path.exists(src):
+                os.replace(src, dst)
+        except OSError:
+            pass
     return True
 
 
@@ -186,36 +239,122 @@ def set_target_response(capture_id, response, auto=False):
     return True
 
 
-# 🔧 [버그 수정] 원래는 원본 manifest만 확인했고, 이미지도 항상
-# runtime/captures/report/에서만 지우려 했다 — archive_old_captures로
-# 옮겨진 캡처를 관리자가 뒤늦게 "폐기"하면 capture_id가 원본에 없어
-# 조용히 실패했고, 설령 manifest 쪽만 archive를 봤더라도 실제 이미지
-# 파일은 ARCHIVE_FILES_DIR로 함께 옮겨져 있어 원래 경로에서는 못 찾았을
-# 것이다. 원본에 없으면 archive manifest/파일 위치를 폴백으로 사용한다.
-def delete_capture(capture_id):
-    with _manifest_lock:
-        data = _load()
-        target_path = MANIFEST_PATH
-        files_dir = "runtime/captures/report"
+# 🔧 [논리적 삭제, 사용자 지시] "삭제처리 되었습니다" — 이전에는 manifest
+# 엔트리와 실제 파일을 완전히 지웠으나, 이제는 archive_old_captures와
+# 동일한 "이동" 원칙으로 trash manifest/폴더로 옮긴다(사용자 결정: "서버에서
+# 해당 자료를 실제로 삭제하지 말고, 폴더를 이동시켜서 논리적으로 삭제된
+# 것처럼 처리"). 원본/archive 어디에 있든(archive_old_captures로 이미
+# 옮겨진 지난 확정 건도 화각 점검 삭제 대상일 수 있음) 찾아 옮긴다.
+# entry에 "trashedFrom"(원래 있던 manifest 경로)을 남겨, 필요 시
+# 되돌릴 근거를 만든다 — 이번 구현 범위에서 화각 점검 삭제는 되돌릴 일이
+# 없지만(사용자가 명시적으로 요청한 건 반려 취소 복원뿐), 기록은 남겨둔다.
+def _move_to_trash_locked(capture_id):
+    """호출자가 이미 _manifest_lock을 잡고 있다는 전제. 반환: entry 또는 None."""
+    data = _load()
+    source_path = MANIFEST_PATH
+    files_dir = "runtime/captures/report"
+    entry = data.get(capture_id)
+    if entry is None:
+        data = _load(ARCHIVE_MANIFEST_PATH)
+        source_path = ARCHIVE_MANIFEST_PATH
+        files_dir = ARCHIVE_FILES_DIR
         entry = data.get(capture_id)
         if entry is None:
-            data = _load(ARCHIVE_MANIFEST_PATH)
-            target_path = ARCHIVE_MANIFEST_PATH
-            files_dir = ARCHIVE_FILES_DIR
-            entry = data.get(capture_id)
-            if entry is None:
-                return False
-        del data[capture_id]
-        _save(data, target_path)
+            return None
+    del data[capture_id]
+    _save(data, source_path)
+    trash_data = _load(TRASH_MANIFEST_PATH)
+    trash_entry = dict(entry)
+    trash_entry["trashedFrom"] = source_path
+    trash_data[capture_id] = trash_entry
+    _save(trash_data, TRASH_MANIFEST_PATH)
     filename = entry.get("filename")
     if filename:
-        path = os.path.join(files_dir, filename)
+        os.makedirs(TRASH_FILES_DIR, exist_ok=True)
+        src = os.path.join(files_dir, filename)
+        dst = os.path.join(TRASH_FILES_DIR, filename)
         try:
-            if os.path.exists(path):
-                os.remove(path)
+            if os.path.exists(src):
+                os.replace(src, dst)
         except OSError:
             pass
+    return entry
+
+
+def move_to_trash(capture_id):
+    with _manifest_lock:
+        entry = _move_to_trash_locked(capture_id)
+    return entry is not None
+
+
+# 🔧 [논리적 삭제, 사용자 지시: "화각 점검에서도 삭제를 누르면 동일한
+# 처리를 해줘"] 관리자 "폐기"(delete_capture, 아래)는 목록에서도 완전히
+# 사라져야 하는 별도 기능이라 그대로 두고, "내 화각 점검" 셀프 삭제는
+# manifest 엔트리를 지우지 않고 deleted 플래그만 남긴 채 파일만 trash로
+# 옮긴다(set_decision의 반려 처리와 동일한 패턴) — 목록엔 계속 남아있고,
+# 프론트가 "삭제처리 되었습니다" 오버레이로 표시한다.
+def mark_self_check_deleted(capture_id):
+    with _manifest_lock:
+        data = _load()
+        if capture_id not in data:
+            return False
+        data[capture_id]["deleted"] = True
+        data[capture_id]["deletedAt"] = int(time.time() * 1000)
+        # 🔧 [10일 경과 자동 논리적 삭제] mark_expired_captures(자동)와 같은
+        # deleted 플래그를 쓰므로, 프론트가 서로 다른 오버레이 문구("삭제처리
+        # 되었습니다" vs "10일 초과로 삭제처리 되었습니다")를 고를 수 있게
+        # 사유를 함께 남긴다.
+        data[capture_id]["deletedReason"] = "manual"
+        filename = data[capture_id].get("filename")
+        _save(data)
+    if filename:
+        _move_file_to_trash(filename)
     return True
+
+
+# 관리자 "폐기" 전용 — 목록에서도 완전히 사라져야 한다(handleAdminCaptureDelete
+# 주석: "웹 서비스에서도 보이지 않게 됨", 사용자 확정 — 화각 점검 셀프
+# 삭제와는 다른 기능이라 별도로 유지한다).
+def delete_capture(capture_id):
+    with _manifest_lock:
+        entry = _move_to_trash_locked(capture_id)
+    return entry is not None
+
+
+# 🔧 [10일 경과 자동 논리적 삭제, 사용자 지시] "'내 제보 확인'에서 접수
+# 시점으로부터 10일이 지난 값은 모두 오버레이로 덮어쓰고 논리적 삭제
+# 처리" — 매일 정기 작업(scheduling.py)이 호출한다. mark_self_check_deleted
+# 와 완전히 동일한 원칙(엔트리는 목록에 남기고 deleted 플래그만 세운 뒤
+# 파일만 trash로 이동)을 원본 manifest 전체(내 화각 점검 selfCheck +
+# 수신/발신 제보 모두, 사용자 확정 — "둘 다 적용")에 배치로 적용한다.
+# cutoff_ms(그 시각보다 이전에 발생한 건)는 archive_old_captures와 동일하게
+# 호출자가 계산해 넘긴다 — "접수 시점"은 item.ts(캡처 발생 시각, record_capture
+# 가 기록하는 필드)를 기준으로 한다(사용자 확정). 이미 deleted인 건은
+# 건너뛴다(파일이 이미 trash에 있으므로 다시 옮길 대상이 아님). 반환값은
+# 새로 삭제 처리한 건수(로그용).
+def mark_expired_captures(cutoff_ms):
+    with _manifest_lock:
+        data = _load()
+        to_mark = [
+            cid
+            for cid, entry in data.items()
+            if entry.get("ts", cutoff_ms) < cutoff_ms and not entry.get("deleted")
+        ]
+        if not to_mark:
+            return 0
+        now = int(time.time() * 1000)
+        filenames = []
+        for cid in to_mark:
+            data[cid]["deleted"] = True
+            data[cid]["deletedAt"] = now
+            data[cid]["deletedReason"] = "expired"
+            filename = data[cid].get("filename")
+            if filename:
+                filenames.append(filename)
+        _save(data)
+    for filename in filenames:
+        _move_file_to_trash(filename)
+    return len(to_mark)
 
 
 # 매주 월요일 정기 작업(scheduling.py)이 호출한다. cutoff_ms(그 시각보다

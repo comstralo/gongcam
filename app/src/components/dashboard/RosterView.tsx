@@ -3,6 +3,7 @@ import { Timer, Award, ChevronDown, ChevronUp, User } from "lucide-react";
 import { ICON_STROKE } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { InfoCard, DividedValue } from "@/components/dashboard/shared";
+import { AdminEmptyState } from "@/components/admin/shared";
 import type { RosterMember } from "@/lib/api/types";
 
 const COLLAPSED_COUNT = 7;
@@ -98,8 +99,12 @@ export function RosterViewSkeleton() {
 export function RosterView({ members }: { members: RosterMember[] }) {
   const [expanded, setExpanded] = useState(false);
 
+  // 🔧 [사용자 지시, 2026-09-19] "'내 화각 불량 제보' 빈 상태가 '화각 불량
+  // 제보 처리'와 다른" 문제를 전수조사한 결과 여기도 관리자 목록 7곳이
+  // 이미 통일해 쓰는 AdminEmptyState(InfoCard+py-8)와 다른 임시 <p>
+  // (py-6, 카드 없음)를 쓰고 있었다 — 동일하게 맞춘다.
   if (members.length === 0) {
-    return <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">참여 중인 멤버가 없습니다.</p>;
+    return <AdminEmptyState>참여 중인 멤버가 없습니다.</AdminEmptyState>;
   }
 
   const sorted = sortMembers(members);

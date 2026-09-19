@@ -50,6 +50,21 @@
 > 검토·확정하는 최종 처리 지점이라, 코드 자체가 다른 세 도메인의 backend 로직을
 > 광범위하게 재사용한다. 겹치는 부분은 이 문서에서 반복 설명하지 않고 해당 절을
 > 그대로 인용한다.
+>
+> 🔧 **[2026-09-19 정정, 중요]** 재조사 결과 §3.5/§3.5.1이 서술하는
+> "참여 스터디원 목록"(`MemberRosterList`)과 "퇴실 스터디원 목록"
+> (`ExitedMemberList`)이 **이미 하나로 합쳐졌다** — 지금은 `MemberRosterList`
+> 하나가 "스터디원 목록"이라는 제목으로 `SectionHeader`의 참여자/퇴실자
+> `Select` 드롭다운으로 두 뷰(`ActiveMemberRosterView`/`ExitedMemberRosterView`,
+> 후자는 별도 파일)를 전환하는 셸 컴포넌트가 됐다. `NewMemberForm`("스터디원
+> 등록", "신규" 접두사도 빠짐)도 이제 `<Collapsible open disabled>`로 항상
+> 펼쳐진 채 접을 수 없다. 또한 §3.5.1/§7이 "미해결"이라 단정했던 **퇴실
+> 스터디원 목록의 더미 데이터 방치 버그는 이미 해결됐다** — `ExitedMemberRosterView`
+> 는 기본적으로 `GET /admin/members/exited`를 실제로 호출하며, 더미는 PEN·Money
+> 탭과 동일한 "목업 미리보기 토글"(`showingDummy`, 참여자 뷰와 공유)로
+> 재구현됐다. 아래 §3.4/§3.5/§3.5.1은 옛 구조 그대로 남아있으니 컴포넌트
+> 이름·"미해결" 문구를 그대로 믿지 말 것 — 실제 파일은
+> `app/src/components/admin/{MemberRosterList,ExitedMemberRosterView}.tsx`.
 
 ## 1. 범위 정의 — "관리자" 탭이란
 
@@ -96,10 +111,16 @@
 ```
 AdminPage (app/src/pages/AdminPage.tsx)
 ├─ [account] AdminMemberPenaltyTab (components/admin/AdminMemberPenaltyTab.tsx) — 🔧 2026-09 이름 변경/신설
-│   ├─ NewMemberForm           — "신규 스터디원 등록" (기본 접힘) (§3.4)
-│   ├─ MemberRosterList        — "참여 스터디원 목록" (§3.5)
-│   │   └─ (MemberRosterList 전용) ExitProcessDialog (§3.6)
-│   └─ ExitedMemberList        — "퇴실 스터디원 목록" (§3.5.1, 신설)
+│   ├─ 🔧 [2026-09-19 정정] 아래 두 항목이 실제 순서·구조 — §3.4/§3.5/§3.5.1
+│   │   본문은 옛 3-섹션 구조를 아직 그대로 서술하고 있으니 유의
+│   ├─ MemberRosterList        — "스터디원 목록"("참여" 접두사 빠짐, §3.5) — 셸
+│   │   컴포넌트. SectionHeader의 참여자/퇴실자 Select로 아래 두 뷰를 전환:
+│   │   ├─ ActiveMemberRosterView (같은 파일 내부) — 참여자 뷰
+│   │   │   └─ ExitProcessDialog (§3.6)
+│   │   └─ ExitedMemberRosterView (별도 파일, 🔧 옛 이름 ExitedMemberList) — 퇴실자 뷰
+│   │       └─ ExitProcessDialog (§3.6, 참여자 뷰와 공용)
+│   └─ NewMemberForm           — "스터디원 등록"("신규" 접두사 빠짐, §3.4) —
+│       `<Collapsible open disabled>`로 항상 펼침·접기 불가
 ├─ [money] AdminMoneyTab (components/admin/AdminMoneyTab.tsx) — 🔧 2026-09 순서/이름 변경
 │   ├─ ReportReviewList        — "화각 불량 제보 처리" (§3.1, 2026-09 개명)
 │   ├─ ReasonLeaveReviewList   — "사유 반휴 신청 처리" (§3.3, 2026-09 "대상" 제거)
@@ -441,6 +462,34 @@ components/admin/shared.tsx — 공용 프리미티브(§6): SectionCard/Section
   `occurrence`/`col` 등 세부 정보를 로컬에서 잃으므로, 이 경우 "취소" 버튼
   자체를 숨기고 "이미 처리된 제보입니다"로만 표시한다.
 
+> 🔧 **[2026-09-18 신설] 목업 미리보기 토글.** 헤더(§6의 `SectionHeader`)의
+> 새로고침 버튼 좌측에 플라스크 아이콘 토글(`showingDummy` state)을
+> 추가했다 — 실 서버 데이터를 건드리지 않고 이 화면이 다룰 수 있는 모든
+> 분기(대상자 응답 대기 중, 이의제기 + 부스터디장 합의 투표 진행 중,
+> 확정 적용, 반려)를 한 화면에서 확인하기 위한 것. 켜져 있는 동안
+> `load()`/`decide()`/`revertReject()`/`cancel()`/`deleteCapture()`/
+> `submitVote()`는 모두 실제 API 호출을 건너뛰고 로컬 state(`items`/
+> `applied`/`rejected`)만 바꾼다 — `items` 자체를 `DUMMY_CAPTURE_ITEMS`
+> (고정 스냅샷 4건)로 채워두는 방식이라, 취소/반려취소/폐기 같은
+> "되돌리기" 액션도 실제와 동일한 코드 경로로 로컬에서 재현된다. 끌
+> 때는 `items`를 `null`로 비우고 `load(true)`(가드 우회 강제 재조회)를
+> 호출해 실제 데이터로 되돌린다 — 그러지 않으면 더미 id로
+> `CapturePreview`가 실제 파일을 fetch하려다 502 에러가 났다(실제로
+> 겪은 버그, 커밋 로그 참고). 더미 항목의 `nickname`은 처음엔 "스마트폰"/
+> "노트북(태블릿)" 같은 기기 이름으로 잘못 채웠다가(사용자 지적: "운영
+> 데이터를 전혀 고려하지 않고 추측대로 생성") 이 필드가 실제로는
+> 제보 **대상자 회원 이름**(`report-intake.js`의 "대상자는 항상 본인 —
+> member.name")임을 확인하고 실제 회원명 패턴(성 없는 2음절: 지민/도윤/
+> 민준/하준)으로 교체했다. `reason`도 존재하지 않던 "화면 미확인" 대신
+> `ReportPage.tsx`의 실제 `REASON_OPTIONS` 프리셋 문구로 바꿨다. 회원
+> 상세 카드의 펼치기 토글도 이 작업 중 두 가지 기존 버그가 함께
+> 드러나 고쳐졌다(목업과 무관하게 실서비스에도 있던 버그): (1)
+> `CollapsibleTrigger`에 `hideChevron`을 안 줘서 수동으로 넣은
+> `ChevronDown`과 컴포넌트가 자동으로 더 넣는 chevron이 겹쳐 뱃지·버튼이
+> 찌그러졌던 것, (2) 우측 끝 chevron 아이콘 영역만 클릭 가능하던 것을
+> 요일 그룹 헤더(1차 토글)와 동일하게 카드 헤더 행 전체(이름·시간·
+> 뱃지)를 `CollapsibleTrigger`로 확장해 어디를 눌러도 펼쳐지게 했다.
+
 ### 3.2 예치금 재납 처리 (`PenaltyCandidateList`) — PEN · Money 탭
 
 > 🔧 2026-09: 화면 제목이 "예치금 재납 대상자" → "예치금 재납 대상 처리" →
@@ -515,6 +564,18 @@ components/admin/shared.tsx — 공용 프리미티브(§6): SectionCard/Section
 > §4.1 참고 — 두 조건(미납/forced) 모두 같은 `CycleSwitcher` UI를
 > 공유한다.
 
+> 🔧 **[2026-09-18 신설] 목업 미리보기 토글.** §3.1과 동일한
+> `showingDummy` 패턴 — `DUMMY_EXIT_CANDIDATES`(요일 확인 1건 + "요일
+> 미확인" 1건, 각각 송출P/주간P 이력 포함)로 두 그룹을 동시에 보여준다.
+> "강제퇴실자 처리"/"재납자 처리" 버튼은 실제로는 `ExitProcessDialog`
+> (§3.6, 실제 확정 API를 호출하는 별도 다이얼로그)를 여는데, 목업
+> 중에는 이 다이얼로그 자체를 열지 않고 비활성화된 버튼으로 대체해
+> 운영 데이터에 어떤 쓰기도 발생하지 않게 막았다. `ExitCandidate.reasons`
+> 더미 값은 처음엔 "페널티 누적 2회"로 축약했다가, 실제
+> `deposit.js`가 만드는 라벨 형식("페널티 누적 2회 이상 (송출 P N회 /
+> 주간 P N회)")과 다르다는 걸 재조사로 확인하고 맞췄다. 회원 상세
+> 토글의 중복 chevron·클릭 범위 버그 수정은 §3.1과 동일.
+
 ### 3.3 사유 반휴 신청 처리 (`ReasonLeaveReviewList`) — PEN · Money 탭
 
 > 🔧 2026-09: 화면 제목이 "사유 반휴 신청" → "사유 반휴 신청 대상 처리" →
@@ -549,6 +610,14 @@ components/admin/shared.tsx — 공용 프리미티브(§6): SectionCard/Section
 > `_appendLeaveHistory` 호출은 시트/큐 반영이 이미 성공한 뒤에만, 그리고
 > `.catch(() => null)`로 감싸 실행한다 — 로그 기록만 실패해도 관리자에게
 > "처리 실패"로 잘못 보여 재시도 시 중복 반영되는 사고를 막기 위함이다.
+
+> 🔧 **[2026-09-18 신설] 목업 미리보기 토글.** §3.1과 동일한 패턴 —
+> `DUMMY_LEAVE_PROOF_ITEMS` 3건으로 대기(봇 대기중 뱃지 포함)/승인/반려
+> 세 상태를 동시에 보여준다. 더미 항목은 실제 파일이 없어
+> `CapturePreview`가 항상 실패하므로, 목업 중엔 이 컴포넌트 대신 정적
+> 플레이스홀더("목업 이미지 (실제 파일 없음)")로 대체한다. `decide()`는
+> 목업 중 실제 `/admin/leave-proof/decide` 호출 대신 로컬 state만
+> 바꾼다.
 
 ### 3.4 신규 스터디원 등록 (`NewMemberForm`) — Account 탭
 
@@ -698,38 +767,28 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
 > 지시: "무조건 계산은 어디서나 일치해야 해"). §3.6에서 이 설계가 어떻게
 > `ExitProcessDialog`의 `lockKind` prop으로 구현됐는지 정리한다.
 
-### 3.5.1 퇴실 스터디원 목록 (`ExitedMemberList`) — Account 탭, 2026-09 신설
+### 3.5.1 퇴실 스터디원 목록 (`ExitedMemberRosterView`, 🔧 옛 이름 `ExitedMemberList`) — Account 탭, 2026-09 신설
 
-> ⚠️ **[2026-09-09 발견, 미해결] 이 화면은 현재 프론트가 완전한 더미
-> 데이터를 보여준다 — 배포된 상태 그대로다.** `ExitedMemberList.tsx`의
-> `load()`는 `GET /admin/members/exited`를 전혀 호출하지 않고,
-> `setTimeout` 300ms 뒤 하드코딩된 `DUMMY_EXITED_MEMBERS`(강제/직권/정산
-> 유형별 가짜 이름·금액)를 그대로 화면에 얹는다. 코드 내 주석
-> (75~77행)에 "🧪 [임시 더미 미리보기] 실제 서비스 화면에서 렌더링을
-> 확인하기 위한 임시 조치 — 확인 끝나면 반드시 원래
-> `/admin/members/exited` 호출로 되돌릴 것"이라고 명시되어 있어, 렌더링
-> 확인용으로 잠깐 넣었다가 되돌리지 못한 것으로 보인다. 아래 본문은
-> 원래 의도한 설계(백엔드는 실제로 이렇게 구현되어 있다)를 그대로
-> 서술하지만, **관리자가 실제로 보는 화면은 이 설계와 무관한 가짜
-> 회원(김재희/이서준/윤아름 등 예시 이름)이다.** 단, "블랙리스트 등록/
-> 해제" 토글(맨 아래 문단)만은 `POST /admin/exit/blacklist`를 실제로
-> 호출하는 진짜 액션이다 — 목록이 가짜인 채로 진짜 쓰기 액션이 노출되어
-> 있어, 관리자가 화면에 뜬 가짜 회원 중 하나를 실제 API로 블랙리스트
-> 등록해버릴 수 있는 상태다. 되돌리는 방법은 `load()`의 `setTimeout` +
-> `DUMMY_EXITED_MEMBERS` 블록을 제거하고 원래대로
-> `call<AdminExitedMembersResponse>("/admin/members/exited")`를 호출하도록
-> 고치는 것 — 백엔드(`handleAdminExitedMembers`)는 아래 서술대로 이미
-> 완성되어 있어 프론트 쪽 한 함수만 되돌리면 된다.
+> ✅ **[2026-09-09 발견 → 2026-09-19 해결 확인]** 이 경고는 원래 "프론트가
+> `GET /admin/members/exited`를 호출하지 않고 완전한 더미만 보여준다"고
+> 단정했으나, 재조사 결과 **이미 해결되어 있다.** 지금
+> `ExitedMemberRosterView.tsx`의 `load()`는 기본적으로(목업 미리보기가
+> 꺼져 있으면) `call<AdminExitedMembersResponse>("/admin/members/exited")`를
+> 실제로 호출한다. 더미 데이터(`DUMMY_EXITED_MEMBERS`)는 임시 방치가
+> 아니라, PEN·Money 탭 5개 섹션(§3.1/§3.2/§3.3/§4.1/§4.2)과 동일한
+> **"목업 미리보기 토글"**(`showingDummy`)로 정식 재구현됐다 — 이 토글은
+> 같은 파일의 `MemberRosterList`(참여자 뷰)가 갖는 목업 토글과 공유되어,
+> 참여자/퇴실자 두 뷰가 동시에 켜지고 꺼진다. 아래 본문(설계 서술)은
+> 여전히 유효하며, 이제 실제 화면 동작과도 일치한다.
 
 `docs/WEB_DASHBOARD.md` §6.1이 다루는 "관리자 대시보드 다른 회원 보기"와는
 목적이 다르다 — 그쪽은 퇴실자의 **요일별 학습 기록**(개인 탭 셀 값)을
 조회하는 화면이고, 이 화면은 **퇴실 확정 처리 결과 자체**(반환 예치금/차감
-원인/처리 결과/퇴실유형)를 조회하는 화면이다. `MemberRosterList`("참여
-스터디원 목록") 바로 아래, 같은 아코디언 패턴(요일별이 아니라 회원별 하나씩
-펼치는 카드)으로 배치된다.
+원인/처리 결과/퇴실유형)를 조회하는 화면이다. 🔧 [2026-09-19 정정] 지금은
+별개 섹션이 아니라 `MemberRosterList`("스터디원 목록") 안의 참여자/퇴실자
+Select로 전환되는 한 뷰다(§2).
 
-- **(설계상 의도, 위 경고 참고 — 프론트가 아직 이 경로를 안 씀)
-  `GET /admin/members/exited`** → `handleAdminExitedMembers`가
+- **`GET /admin/members/exited`** → `handleAdminExitedMembers`가
   `listExitedMemberEntries`(§`docs/WEB_DASHBOARD.md` §6.1의 것과 동일 —
   원본 스프레드시트의 `"{이름} (퇴실)"` 백업 탭을 정규식으로 스캔)로 목록을
   구하고, 각 항목에 `EXIT_RESULT_KV_PREFIX + 백업탭이름` 키로 저장된 처리
@@ -759,9 +818,10 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
   `result: null`로 내려간다 — 프론트는 이 경우 "처리 결과를 조회할 수
   없습니다(이 기능 도입 이전 처리)"로 안내한다. 소급 적용은 하지 않는다.
 - **화면 구성**: 회원별 아코디언을 펼치면 `ExitProcessDialog`의 `admin_forced`/
-  `settle` 미리보기 카드와 동일한 시각 언어(반환 예치금 카드 — 10,000원이면
-  `text-ok`, 0원이면 `text-destructive`, 볼드 없음; 차감 원인 카드 —
-  `buildDepositCauseItems` 재사용; 처리 결과 카드)를 그대로 쓰되, "퇴실유형"
+  `settle` 미리보기 카드와 완전히 동일한 공용 컴포넌트(`ExitResultCards`,
+  `admin/shared.tsx`)를 그대로 재사용한다 — 반환 예치금 카드는 §3.6에서
+  서술한 3단계(10,000원 이상=초록/5,000원=주황/0원=빨강, 볼드 없음), 차감
+  원인 카드(`buildDepositCauseItems` 재사용), 처리 결과 카드에 더해 "퇴실유형"
   카드를 추가로 보여준다. 다만 이건 **"지금 계산"이 아니라 "그때 이미
   확정된 값"을 그대로 보여주는 조회 전용**이라, 미리보기/확정 같은 별도
   API 호출이 없다 — 목록 응답 하나에 결과가 함께 실려온다. 아코디언
@@ -786,7 +846,7 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
 > 다를 뿐 결과(`discountRatio === 1`, 0% 반환)가 항상 같아 "직권 P든
 > 자동 감지든 결국 관리자가 확정 버튼을 눌러야만 발생하는 처리라는 점에서
 > 본질이 같다"는 판단에 따른 것(사용자 지시). **실제
-> 사유는 `kindStr`이 아니라 `reasons`에 그대로 남아 있다** — `ExitedMemberList`
+> 사유는 `kindStr`이 아니라 `reasons`에 그대로 남아 있다** — `ExitedMemberRosterView`
 > 가 `exitTypeLabel(kindStr, reasons)`로 `code` 기준 짧은 라벨(`under_30_days`
 > →"가입 30일 미만", `fine_unpaid`→"벌금 미납", `deposit_again_unpaid`
 > →"예치금 미납", `penalty_2_or_more`→"페널티 2회 이상", `admin_reason`→
@@ -830,7 +890,7 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
 > (`isBlacklisted = kind === "admin_forced" && blacklist === true`) —
 > 다른 유형에서는 애초에 의미 없는 개념이므로 API를 직접 호출해도
 > 강제로 걸리지 않는다. 저장은 §위 KV 결과(`EXIT_RESULT_KV_PREFIX`)에
-> `blacklist` 필드로 함께 들어가며, `ExitedMemberList`의 "퇴실유형"
+> `blacklist` 필드로 함께 들어가며, `ExitedMemberRosterView`의 "퇴실유형"
 > 카드가 이 값을 **모든 퇴실 유형에 항상** "블랙리스트: Y/N" 행으로
 > 보여준다(🔧 2026-09: 처음엔 `kind === "admin_forced"`일 때만 조건부로
 > 표시했으나, 사용자 지시로 항상 표시하도록 바꿨다 — `forced`/`settle`은
@@ -853,7 +913,7 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
 > `EXIT_RESULT_KV_PREFIX`에 값 자체가 없어(§위 "처리 결과를 조회할 수
 > 없습니다" 안내) 404로 거부된다 — 저장된 결과가 없으면 블랙리스트를
 > 뒤늦게 켤 근거(누가, 언제, 왜 퇴실시켰는지)도 없기 때문. 성공하면
-> `ExitedMemberList`는 목록을 다시 불러오지 않고(현재 목록 로딩 자체가
+> `ExitedMemberRosterView`는 목록을 다시 불러오지 않고(현재 목록 로딩 자체가
 > 더미 데이터라 다시 부르면 방금 바꾼 값이 사라짐, §아래 "임시 더미
 > 미리보기" 주석 참고) 로컬 상태만 서버가 승인한 값으로 갱신한다 — 이
 > 화면 전체가 "그때 이미 확정된 값을 그대로 보여주는 조회 전용"이라는
@@ -883,7 +943,7 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
 > 이미 정확했다). 남은 4항목은 각 항목의 최대 차감률이 낮은 순(고지지연
 > 최대 50% → 벌금 미납/30일 미만 참여자/페널티 각 최대 100%)으로
 > 재배치했다 — 이 순서가 회원 대시보드(`DepositRefundDialog`)/
-> `ExitProcessDialog`/`ExitedMemberList` 전체 공통이다. **"퇴실 스터디원
+> `ExitProcessDialog`/`ExitedMemberRosterView` 전체 공통이다. **"퇴실 스터디원
 > 목록"은 "페널티 (직권 P N회)" 항목**(`insertAdminForcedCauseItem`)을
 > 배열 맨 끝(같은 최대 100% 그룹의 "페널티" 항목 바로 뒤)에 항상 추가로
 > 붙인다 — 🔧 2026-09: 처음엔 `kind === "admin_forced"`일 때만 조건부로
@@ -1025,12 +1085,15 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
   세션에 구현된 로직, `computeExitResult`(🔧 [2026-09-17]
   `frame-checker-worker/src/exit-confirm.js`)/`resolveExitSourceFileId`
   (`frame-checker-worker/src/cycle.js`, `index.js`가 재export)).
-  🔧 2026-09: "반환 예치금" 표시값이 5,000원 이상이면 `text-ok`(초록),
-  0원이면 `text-destructive`(빨강)로 강조된다(`preview.refundAmount >= 5000`
-  / `=== 0`, `admin_forced`/`settle` 두 분기 공통, `ExitedMemberList`도
-  동일 — 원래는 정확히 10,000원일 때만 초록이었으나 사용자 지시로 기준을
-  5,000원으로 낮췄다). 숫자 자체는 굵기를 강조하지 않는다(`font-semibold`
-  제거, 사용자 지시). 그리고 **"확정 처리" 버튼은
+  🔧 [2026-09-19 정정] "반환 예치금" 표시값 강조 기준은 ~~5,000원 이상 초록/
+  0원 빨강~~이 아니라 **10,000원 이상=`text-ok`(초록) / 정확히 5,000원=
+  `text-amber-600`(주황, 중간 단계) / 0원=`text-destructive`(빨강)** 3단계
+  체계다(`refundAmount >= 10000` / `=== 5000` / `=== 0`) — 한때 "5,000원
+  이상이면 초록"으로 낮췄던 적이 있었으나 그 뒤 다시 10,000원 기준으로
+  되돌아가고 5,000원 주황 단계가 새로 추가됐다. 이 로직은 이제 공용
+  `ExitResultCards`(`admin/shared.tsx`, 아래 §6, `ExitProcessDialog`와
+  `ExitedMemberRosterView`가 함께 재사용)에 있다. 숫자 자체는 굵기를
+  강조하지 않는다(`font-semibold` 제거, 사용자 지시). 그리고 **"확정 처리" 버튼은
   `preview.exitProcess?.agreedAt`이 없으면 비활성화된다** — "예치금 정산액
   동의일자: 미동의"가 붉은 글씨로만 표시되고 버튼은 그대로 눌리던 예전
   동작을 사용자 지적으로 고쳤다. 트리거 버튼(`MemberRosterList`의 "퇴실
@@ -1170,11 +1233,34 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
 > "이번 주"를 조회하면 그 P6은 애초에 다른 파일(과거 백업)에만
 > 쓰이므로 항상 미집행으로 보이는 게 맞는 동작이다(사용자 확인).
 >
-> `AdminMoneyTab.tsx:684-691`의 "지난 사이클이면 실제 처리는 이번
-> 주로 돌아가서 하세요"라는 전역 경고는 벌금/예치금재납/제보/반휴
-> 4개 섹션에는 여전히 맞는 말이라(참여상태 변경은 이미 이원화되어
-> 있음) 그대로 둔다 — 상금 섹션만 정반대 규칙을 따르지만 별도
-> 안내는 추가하지 않았다(버튼 자체의 비활성화 라벨로 충분).
+> `AdminMoneyTab.tsx`(🔧 [2026-09-19 정정] 코드가 계속 늘어나 정확한
+> 줄번호는 매번 밀린다 — 현재는 891~898행 근처)의 "지난 사이클이면
+> 실제 처리는 이번 주로 돌아가서 하세요"라는 전역 경고는 벌금/예치금재납/
+> 제보/반휴 4개 섹션에는 여전히 맞는 말이라(참여상태 변경은 이미
+> 이원화되어 있음) 그대로 둔다 — 상금 섹션만 정반대 규칙을 따르지만
+> 별도 안내는 추가하지 않았다(버튼 자체의 비활성화 라벨로 충분).
+>
+> 🔧 **[2026-09-19 추가, 기존에 문서 누락] 낙관적 동시성 가드.**
+> `handleAdminPrizeSettle`(`roster-status.js`)은 `cycle`뿐 아니라 body의
+> `expectedCollectMoney`/`expectedSettlementNumbers`도 함께 받아, 처리
+> 시점에 `buildRosterStatus`를 서버에서 다시 계산해 "방금 화면에 보이던
+> 값"과 다르면 **409로 거부**한다("정산 대상 정보가 방금 바뀌었습니다").
+> 프론트(`AdminMoneyTab.tsx`)도 두 필드를 함께 전송한다 — 정산 대상이
+> 폴링 사이에 바뀐 경우(예: 다른 관리자가 먼저 처리했거나 원본 데이터가
+> 바뀐 경우) 이중 집행·오집행을 막기 위한 방어다.
+
+> 🔧 **[2026-09-18 신설] 목업 미리보기 토글.** `DUMMY_SETTLEMENT`/
+> `DUMMY_SETTLEMENT_ITEMS`(1~3등, `DUMMY_COLLECT_MONEY` 60,000원을
+> 3명으로 나눠 각 20,000원 — `roster-status.js`의
+> `Math.floor(collectMoney / settlementMembers.length)`와 정합)로 순위
+> 배지·타이머·상점·분배금을 함께 보여준다. `timer` 필드는 처음에
+> "50:00:00"(콜론 3단)으로 잘못 넣었다가, `RosterView.tsx`의
+> `achievedTime()`이 실제로는 `"달성 / 목표"`(슬래시 구분, 예:
+> `"48:20 / 50:00"`) 형식을 기대한다는 걸 확인하고 고쳤다. "상금 정산
+> 집행" 버튼은 목업 중 실제 `POST /admin/prize/settle`을 호출하지 않고
+> 로컬 `settlementSettled` state만 true로 바꾼다 — `effectiveCanSettle`도
+> 목업 중엔 항상 true로 둬 "지난 사이클을 선택하면 집행할 수 있습니다"
+> 비활성화 분기까지 실제로 눌러볼 수 있게 했다.
 
 ### 4.1 벌금 납부 처리 (`PaidFineList`)
 
@@ -1338,6 +1424,21 @@ P)"(`lockKind="admin_forced"`, 항상 활성), "퇴실 처리 (정산)"(`lockKin
 > (`hasUnpaid`/`hasForced`, `includeUnpaid`/`includeForced` 파라미터)
 > 는 전혀 바뀌지 않았다 — `CycleSwitcher.tsx`의 렌더링 로직만 재설계.
 
+> 🔧 **[2026-09-18 신설] 목업 미리보기 토글.** §3.1과 동일한 패턴 —
+> `DUMMY_PAID_FINE_RECORDS`(1~4번 회원, 월/화/금 요일에 미납·납부·면제
+> 혼재)와 `DUMMY_ADMIN_FORCED_COUNTS`(금요일 1건)로 4가지 상태를 동시에
+> 보여준다. 회원 상세 펼침(`DayDetailCard`)이 쓰는 `StatusDay.explain`
+> 필드는 화면에 실제로 렌더링되지는 않지만(죽은 필드), 값의 형식만은
+> `personal-status.js`의 `explainDay()`가 만드는 금액 포함 자동 서술문
+> ("목표시간 벌금 ₩5,000만 부과되어 ₩5,000 확정" 형태)에 맞춰 채웠다 —
+> "일간 목표시간 미달" 같은 짧은 라벨은 이 함수가 절대 반환하지 않는
+> 형식이었다. "퇴실 처리 (직권 P)" 버튼은 §3.2와 동일하게 목업 중
+> `ExitProcessDialog`를 열지 않고 비활성화 버튼으로 대체한다. 회원
+> 번호는 "9001"~"9004" 같은 4자리로 잘못 채웠다가, `members.js`의
+> "시트번호는 1~15 사이여야 합니다" 검증을 확인하고 1~15 범위로
+> 교체했다 — 이 프로젝트의 기존 목업 관례(`MemberRosterList.tsx`의
+> `DUMMY_MEMBERS`)도 동일하게 1~15 정수를 쓴다.
+
 ---
 
 ## 5. Bot · Sheet 탭 (`AdminBotSheetTab`)
@@ -1464,7 +1565,12 @@ Cloudflare Tunnel로 노출한 로컬 상태 서버를 그때그때 프록시한
 공유한다:
 
 - **텍스트 위계**: `ItemTitle` > `FieldLabel`/`FieldValue` — 섹션 제목
-  (`SectionHeader`, font-bold)보다 한 단계 낮은 굵기 체계.
+  (`SectionHeader`, font-semibold)보다 한 단계 낮은 굵기 체계. 🔧
+  [2026-09-19] 시스템 전역에서 `font-bold`를 `font-semibold`로 전수
+  치환했다(사용자 지시 — 볼드가 과도하게 두꺼워 보인다는 판단) —
+  `SectionHeader`/`DialogTitle`/`ItemTitle` 등 굵기 위계 자체는 그대로
+  유지한 채 최상단 굵기 값만 한 단계 낮춘 것이라, 문서가 서술하는
+  상대적 위계 구조는 변하지 않는다.
 - **`SectionCard`/`SectionHeader`**: 접이식 섹션 하나를 감싸는 카드 + 제목/
   새로고침 버튼 헤더. `onRefresh`가 없으면 버튼 자리를 빈 공간(size-7)으로
   유지해 다른 섹션과 chevron 위치를 맞춘다.
@@ -1514,13 +1620,11 @@ Cloudflare Tunnel로 노출한 로컬 상태 서버를 그때그때 프록시한
   §3.2가 "[정리 완료] 제거"라고 적은 것이 최신 상태이고, 이 항목이 한동안
   낡은 채로 남아 모순됐다. 코드 전체(worker+app) `grep`으로 재확인: 이
   이름의 상수·fallback 로직은 더 이상 존재하지 않는다.
-- **[2026-09-09 발견, 미해결] "퇴실 스터디원 목록"(§3.5.1)은 프론트가
-  `DUMMY_EXITED_MEMBERS`로 완전히 더미 렌더링 중이다** — 백엔드
-  (`GET /admin/members/exited`)는 완성되어 있으나 프론트 `load()`가 아직
-  그 경로를 호출하지 않는다. 상세는 §3.5.1 상단 경고 참고. "퇴실자 명단이
-  이상하다/처리 결과가 안 맞는다"는 리포트가 오면 API 로직을 의심하기
-  전에 먼저 이 더미 여부부터 확인할 것 — 지금 화면에 보이는 회원은 전부
-  가짜다.
+- **[2026-09-09 발견 → 2026-09-19 해결됨] "퇴실 스터디원 목록"(§3.5.1,
+  지금은 `MemberRosterList`의 퇴실자 뷰)의 더미 방치 버그는 해결됐다** —
+  이제 기본 상태에서 `GET /admin/members/exited`를 실제로 호출하며,
+  더미는 관리자가 명시적으로 켜는 "목업 미리보기 토글"로만 나타난다.
+  상세는 §3.5.1 상단 참고.
 - **[2026-09-09 발견, 미해결] "알림" 하단 탭(`NotificationsPage`)도
   완전한 더미다** — `DUMMY_NOTIFICATIONS`(`app/src/lib/notifications/
   notifications.ts`) 3건을 고정으로 보여줄 뿐 실제 알림 API가 없다. 이
@@ -1572,7 +1676,7 @@ Cloudflare Tunnel로 노출한 로컬 상태 서버를 그때그때 프록시한
   확인하는 습관이 필요하다 — 코드가 공유 함수로 추출되어 있지 않다.
 - **"블랙리스트" 등록(§3.5.1)은 순수 정보 표시일 뿐 아무것도 강제하지
   않는다.** `blacklist: true`는 `EXIT_RESULT_KV_PREFIX` 결과에 저장되고
-  `ExitedMemberList`에 뱃지/행으로 보일 뿐, "신규 스터디원 등록"
+  `ExitedMemberRosterView`에 뱃지/행으로 보일 뿐, "신규 스터디원 등록"
   (`NewMemberForm`, §3.4)은 이 값을 전혀 조회하지 않는다 — 같은 이름·
   이메일로 블랙리스트 등록자를 재등록해도 시스템이 걸러내지 않는다.
   "블랙리스트 등록했는데 왜 재가입이 막히지 않냐"는 문의가 오면 이게

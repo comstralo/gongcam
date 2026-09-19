@@ -633,8 +633,14 @@ isolate 분산과 KV 히트율에 달려 있어 정적 코드 조사만으로는
 행 참고).
 `ReasonLeaveReviewList`(사유 반휴 신청 처리)는 11종 캐시가 아니라 KV
 기반(`leaveHistory:`)이라 이번 TTL 기준 폴링 설계와 무관해 손대지 않았다.
-`ExitedMemberList`(퇴실 스터디원 목록)는 현재 실제 API 대신 더미 데이터를
-표시 중인 미완성 상태(사용자 확인, 별도 과제로 보류)라 제외했다.
+🔧 [2026-09-19 정정] `ExitedMemberRosterView`(퇴실 스터디원 목록, 옛 이름
+`ExitedMemberList` — `docs/WEB_ADMIN.md` §3.5.1)는 ~~현재 실제 API 대신
+더미 데이터를 표시 중인 미완성 상태~~라던 서술이 더 이상 사실이 아니다 —
+실제 `/admin/members/exited` 호출로 이미 복원됐다(더미는 관리자가 켜는
+목업 미리보기 토글로만 나타남). 다만 이 화면은 `usePollingRefresh` 없이
+`useRefreshOnVisible`만 쓰는 의도된 설계라 아래 20분/30분 폴링 통일
+대상에서는 계속 제외한다 — `handleAdminExitedMembers` 자체가 캐싱을
+전혀 거치지 않는 경로이기도 하다.
 
 **`BotStatusSection`("도움봇 오퍼레이터", 스크린샷 포함)은 별도로 1분
 고정 주기 폴링을 추가했다** — `handleAdminBotStatus`(🔧 [2026-09-17]
@@ -2413,5 +2419,8 @@ confirm에도 중복 배치한 것은 이 코드베이스가 이미 지켜온 "�
 - `docs/WEB_DASHBOARD.md` — `buildPersonalStatus`/`getPersonalStatusBundle`이
   조립하는 개인 대시보드 데이터의 원본.
 - `docs/WEB_REPORT.md` §3.1/§4.1/§7 — `ParticipantsRoster` DO의 원래
-  용도(실시간 접속 명단)·PUSH 알림에 새로 얹은 용도·"진행 중인 제보"가
-  아직 KV 라이브 인덱스로 남아있는 이유.
+  용도(실시간 접속 명단)·PUSH 알림에 새로 얹은 용도. 🔧 [2026-09-19 정정]
+  "'진행 중인 제보'가 아직 KV 라이브 인덱스로 남아있다"는 서술은 낡았다 —
+  §46(위 본문)이 이미 이 문서 안에서 `report:` 안전망 큐를 `ReportQueue`
+  DO(영속)로 이전 완료했다고 결론짓고 있으므로, "진행 중인 제보"는 KV가
+  아니라 `ParticipantsRoster` DO로 이전 완료된 상태다.

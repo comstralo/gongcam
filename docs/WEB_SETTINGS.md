@@ -1,7 +1,7 @@
 # 설정 기능 구조 지도 (WEB_SETTINGS.md)
 
 > 이 문서는 웹 서비스(`app/`, Cloudflare Worker `frame-checker-worker/`)의 **설정**
-> 기능(하단 내비게이션의 "/settings" 경로, "계정 관리"/"알림 설정" 두 섹션)을
+> 기능(하단 내비게이션의 "/settings" 경로, "계정 관리"/"앱 설정" 두 섹션)을
 > 프론트~백엔드~KV까지 실제 코드를 읽어 조사한 결과입니다. `docs/WEB_DASHBOARD.md`,
 > `docs/WEB_REPORT.md`와 같은 목적·형식으로 작성했으며, 구현 명령을 내릴 때 이
 > 문서를 참조점으로 삼습니다. 코드가 바뀌면 이 문서도 함께 갱신해야 합니다.
@@ -23,6 +23,13 @@
 > `handleGetStatusMessage`/`handleSetStatusMessage`/`handlePushSubscribe`/
 > `handleListPushDevices`/`handlePushDeviceToggle`/`handlePushDeviceRename`/
 > `handlePushDeviceRemove`) → `frame-checker-worker/src/notify.js`.
+>
+> 🔧 **[2026-09-19 갱신]** "알림 설정" 섹션이 **"앱 설정"으로 개명**되고
+> 구성이 재편됐다(§1·§3·§4 갱신). `InstallAppCard`(PWA 설치)와
+> `StatusMessageCard`(상태 메시지)가 "계정 관리"에서 이 섹션으로 옮겨와
+> `NotifyPrefsCard`와 함께 셋이 한 섹션에 모였다. `StatusMessageCard`는
+> 전면 재작성됐다(§3.3). 대상 파일: `SettingsPage.tsx`,
+> `StatusMessageCard.tsx`, `frame-checker-worker/src/{durable-objects,notify}.js`.
 
 ## 1. 범위 정의 — "설정" 탭이란
 
@@ -31,10 +38,12 @@
 한 화면에 세로로 나열된다.
 
 - **계정 관리**(`UserCog` 아이콘) — `SessionCard`(로그인 정보 + 로그아웃) +
-  `InstallAppCard`(PWA 설치 안내) + `StatusMessageCard`(상태 메시지) +
   퇴실신청 카드(`DepositRefundDialog`).
-- **알림 설정**(`BellRing` 아이콘) — `NotifyPrefsCard`(웹 푸시 구독 on/off,
-  카테고리별 알림 선호도, 기기별 관리) 하나만.
+- **앱 설정**(`Settings` 아이콘, 🔧 2026-09-19 "알림 설정"에서 개명) —
+  `StatusMessageCard`(전자기기 메시지) → `NotifyPrefsCard`(웹 푸시 구독
+  on/off, 카테고리별 알림 선호도, 기기별 관리) → `InstallAppCard`(PWA
+  설치 안내) 순서로 나열. 뒤의 두 카드는 원래 "계정 관리"에 있다가
+  2026-09-19에 이 섹션으로 옮겨왔다.
 
 > 🔧 **2026-09-10: 다크모드·교시 종소리가 설정 화면에서 앱 헤더로 이동**
 > — 원래 "화면 설정"(다크모드 스위치, `ThemeToggleCard`)과 "알림 설정" 첫
@@ -73,18 +82,18 @@ SettingsPage (app/src/pages/SettingsPage.tsx)
 ├─ useMyStatus() — 전역 /status 캐시 재사용 (WEB_DASHBOARD.md §3.2와 동일 인스턴스)
 ├─ "계정 관리"
 │   ├─ SessionCard (components/session/SessionCard.tsx) — 이름/이메일 표시 + 로그아웃
-│   ├─ InstallAppCard (components/dashboard/InstallAppCard.tsx) — PWA 설치 안내 (API 없음)
-│   ├─ StatusMessageCard (components/dashboard/StatusMessageCard.tsx) — 상태 메시지 (/status-message)
 │   └─ DepositRefundDialog (components/dashboard/DepositRefundDialog.tsx) — "퇴실신청" 카드
 │       (status.depositRefundBreakdown이 없으면 다이얼로그 없이 안내 카드만 표시)
-└─ "알림 설정"
-    └─ NotifyPrefsCard (components/dashboard/NotifyPrefsCard.tsx)
-        ├─ usePushSubscription() (hooks/usePushSubscription.ts)
-        │   ├─ lib/push/registerSW.ts → public/sw.js (서비스워커)
-        │   ├─ lib/push/vapid.ts (VAPID 공개키, base64url 변환)
-        │   └─ lib/push/endpointHash.ts (sha256Hex, 서버와 동일 해시로 "이 기기" 식별)
-        ├─ 카테고리별 알림 on/off (5종)
-        └─ "알림 받는 기기" 목록 (기기별 on/off · 이름변경 · 삭제)
+└─ "앱 설정" (🔧 2026-09-19 "알림 설정"에서 개명 + 아래 3개 카드로 재편)
+    ├─ StatusMessageCard (components/dashboard/StatusMessageCard.tsx) — 전자기기 메시지 (/status-message)
+    ├─ NotifyPrefsCard (components/dashboard/NotifyPrefsCard.tsx)
+    │   ├─ usePushSubscription() (hooks/usePushSubscription.ts)
+    │   │   ├─ lib/push/registerSW.ts → public/sw.js (서비스워커)
+    │   │   ├─ lib/push/vapid.ts (VAPID 공개키, base64url 변환)
+    │   │   └─ lib/push/endpointHash.ts (sha256Hex, 서버와 동일 해시로 "이 기기" 식별)
+    │   ├─ 카테고리별 알림 on/off (5종)
+    │   └─ "알림 받는 기기" 목록 (기기별 on/off · 이름변경 · 삭제)
+    └─ InstallAppCard (components/dashboard/InstallAppCard.tsx) — PWA 설치 안내 (API 없음)
 
 # 🔧 2026-09-10 이동됨 — 앱 헤더(AppShell)로:
 #   ThemeToggleButton         (components/layout/ThemeToggleButton.tsx)   — useTheme()
@@ -105,6 +114,17 @@ SettingsPage (app/src/pages/SettingsPage.tsx)
 무효화된다는 뜻).
 
 ### 3.2 퇴실신청 (`DepositRefundDialog`)
+
+> 🔧 **2026-09-19**: `SessionCard` 다음이 원래 `InstallAppCard`→
+> `StatusMessageCard`→퇴실신청 순이었으나, 앞의 두 카드가 "앱 설정"
+> 섹션으로 옮겨가면서 이 섹션에는 `SessionCard`와 퇴실신청 카드만
+> 남았다.
+>
+> 🔧 **[2026-09-19 정정]** 위에서 "퇴실신청 카드 자체는 변경 없음"이라고
+> 적었던 것은 오류였다 — 실제로는 **하루 전(2026-09-18, 커밋 `68af8c0`
+> "정산 퇴실 절차를 명확한 단계로 재정의")에 상태 머신 자체가 크게
+> 바뀌어 있었는데 그 사실을 놓쳤다.** 아래 "버튼 3단 분기" 절 전체를
+> 그 최신 코드 기준으로 다시 썼다.
 
 `status.depositRefundBreakdown`이 있을 때만(=시트에서 정상적으로 계산된 값이 있을
 때만) 실제 다이얼로그로 감싼 카드를 보여주고, 없으면 클릭 불가한 안내 카드만
@@ -145,31 +165,50 @@ SettingsPage (app/src/pages/SettingsPage.tsx)
 - **주의사항**: 조회 당일 기준 안내 + (있다면) `breakdown.reason`(단, "가입 30일
   미만"은 이미 별도 UI가 없어 중복 표시하지 않도록 제외됨).
 
-#### 버튼 3단 분기 (퇴실 프로세스 상태 머신)
+#### 버튼 3단 분기 (퇴실 프로세스 상태 머신) — 🔧 [2026-09-19 전면 재작성]
 
 `DepositRefundDialog`는 신청/동의 상태에 따라 하단 버튼을 완전히 다른 조합으로
-그린다 — 이 상태 머신이 이 카드의 핵심이다:
+그린다 — 이 상태 머신이 이 카드의 핵심이다. 2026-09-18 "정산 퇴실 절차 명확화"
+(사용자 지시)로 아래처럼 재정의됐다:
 
 | 상태 | 조건 | 보여주는 것 |
 |---|---|---|
-| 신청 전 | `!exitRequested` | "퇴실 신청하기" 버튼 → `POST /exit-request {exitDate}` |
-| 신청함, 아직 정산 시점 전 | `exitRequested && !exitDatePassed` | "퇴실 신청 취소" 버튼만 → `POST /exit-request/cancel` |
-| 정산 시점 지남, 미동의 | `exitDatePassed && !exitAgreedAt` | "퇴실 신청 취소" + "동의합니다"(2열 그리드) → 후자는 `POST /exit-request/agree` |
-| 정산 시점 지남, 동의 완료 | `exitDatePassed && exitAgreedAt` | 안내 Alert만("예치금 정산액에 동의하셨습니다. 관리자 확인 후 처리됩니다.") — 버튼 없음 |
+| 신청 전 | `!exitRequested` | "퇴실 신청" 버튼(destructive) → `POST /exit-request {exitDate}` |
+| 신청함, 마지막 참여일 익일 전 | `exitRequested && !lastAttendDayPassed` | "퇴실 신청 취소" 버튼만(본인 가능) → `POST /exit-request/cancel` |
+| 익일 지남, 미동의 | `lastAttendDayPassed && !exitAgreedAt` | 반환액/차감원인 카드를 오버레이 문구로 덮은 채(아래 참고), "퇴실 신청 취소"(`canCancelExit`일 때만) + "위 결정에 동의합니다."(`canAgree`가 false면 비활성화만, 숨기지 않음) |
+| 익일 지남, 동의 완료 | `exitAgreedAt` 있음 | 안내 Alert만("예치금 정산액에 동의하셨습니다. 관리자 확인 후 처리됩니다.") — 버튼 없음 |
 
-`exitDatePassed = exitRequested && exitDateSettled(exitRequestDate)`.
-**`exitDateSettled()`**: exitDate 당일이 KST로 지났다고 바로 동의를 허용하지 않고,
-**exitDate 다음날 오전 2시 KST 이후**부터 허용한다 — 앱스크립트 `daily_calc()`가
-"그날 다음날 자정~오전 1시 사이"에 실행돼야 그날치 벌금 미납/페널티 판정이 최종
-반영되기 때문에, 그 집계가 끝나기 전에 회원이 아직 확정 안 된 값에 동의해버리는
-것을 막기 위한 여유 시간이다. 이 함수는 **백엔드(`exitDateSettled`, index.js)와
-프론트가 각각 독립적으로 동일한 로직을 구현**하고 있다 — 서버는 `/exit-request/agree`
-호출 시 이 조건을 다시 검증해 프론트를 우회한 직접 API 호출도 막는다(§5).
+- **`lastAttendDayPassed`**: 예전엔 "exitDate 다음날 **오전 2시** KST 이후"라는
+  모호한 기준이었으나, 2026-09-18에 **"익일(자정) 이후"로 단순화**됐다(사용자
+  지시) — 함수 이름도 프론트(`exitDatePassedDay`, `DepositRefundDialog.tsx`)와
+  백엔드(`exitDateSettled`, **`frame-checker-worker/src/exit-timing.js`**로
+  이미 분리됨, `index.js`는 re-export만 한다)가 각각 독립 구현한다(§5에서
+  서버가 `/exit-request/agree` 호출 시 다시 검증). 벌금 미납/상금 미정산
+  판정은 이 시각 조건과 분리된 별도 축(`canAgree`)이 됐다 — 아래 참고.
+- **`canAgree = !fineUnpaid && !prizePending`**: "동의합니다" 버튼은 벌금
+  미납이거나(`breakdown.fineUnpaid`) 지난주 상금 정산이 아직 집행되지
+  않았으면(`prizePending`, `StatusResponse.prizePending`, §6에 추가) 숨기지
+  않고 **비활성화**만 한다(title 툴팁으로 이유 안내).
+- **`canCancelExit = isAdmin || !lastAttendDayPassed`**: 익일이 지나면 회원
+  본인은 더 이상 취소할 수 없고 관리자만 취소 가능 — 익일 전까지는 본인이
+  자유롭게 취소 가능.
+- **오버레이 문구(`refundOverlayMessage`, 신설)**: 익일이 지나기 전까지는
+  반환 예상액/차감 원인 카드 자체를 "마지막 참여일 다음 날부터 확인할 수
+  있습니다" 문구로 덮어 가린다. 익일이 지났는데 벌금 미납이면 "미납 벌금을
+  먼저 납부해 주세요...", 상금 미정산이면 "지난 주 상금 대상자입니다. 정산을
+  기다려 주세요..."로 바뀐다(벌금 미납이 상금 미정산보다 우선). 관리자는 이
+  오버레이 없이 항상 실제 값을 본다.
+- **🔧 [2026-09-18 신설] 48시간 자동 동의 크론**: 회원이 익일이 지나고도
+  48시간 동안 "동의합니다"를 누르지 않으면, 5분 주기 cron(`scheduled`,
+  `index.js`)의 `autoAgreeExpiredExitRequests`(`exit-request.js`)가 자동으로
+  동의 처리한다 — "90분 자동 위반인정"(`docs/WEB_REPORT.md` §3.4)과 같은
+  시간 기반 자동 처리 패턴. 벌금 미납/상금 미정산으로 막힌 신청은 건너뛰고
+  다음 크론 실행 때 조건이 풀리면 그때 자동 동의된다(무기한 재시도).
 
 이 화면 자체는 "동의합니다"를 누른 뒤 안내 문구만 보여줄 뿐, **실제 반환액 확정·시트
-처리는 하지 않는다** — 동의가 기록되면 그걸 신호로 관리자 쪽 "정산" 처리 버튼이
-활성화되는 다음 단계로 넘어갈 뿐이다. 관리자 확인·확정 처리는
-`AdminPage`(`ExitProcessDialog`) 몫이며 이 문서 범위 밖이다.
+처리는 하지 않는다** — 동의가 기록되면(수동이든 위 자동 동의 크론이든) 그걸 신호로
+관리자 쪽 "정산" 처리 버튼이 활성화되는 다음 단계로 넘어갈 뿐이다. 관리자 확인·확정
+처리는 `AdminPage`(`ExitProcessDialog`) 몫이며 이 문서 범위 밖이다.
 
 #### 고지지연 미리보기 (`lateNoticeRate`)
 
@@ -181,18 +220,21 @@ SettingsPage (app/src/pages/SettingsPage.tsx)
 
 ---
 
-## 4. 알림 설정 섹션
+## 4. 앱 설정 섹션 (🔧 2026-09-19 "알림 설정"에서 개명)
 
-### 4.1 교시 종소리·다크모드 — 앱 헤더 토글 버튼 (🔧 2026-09-10 설정 화면에서 이동)
+### 4.0 교시 종소리·다크모드 — 앱 헤더 토글 버튼 (🔧 2026-09-10 설정 화면에서 이동)
 
 두 토글 모두 `AppShell`(모든 메인 페이지 상단 헤더)의 우측 상단에
 공통으로 뜬다 — 설정 화면 안이 아니다.
 
 **교시 종소리 (`PeriodAlarmToggleButton`)**: pill 형태 버튼. 켜짐일 땐
 primary 톤, 꺼짐일 땐 무채색으로 상태가 색으로 구분되고, 옆에 짧은
-남은시간 텍스트("N교시 MM:SS" / "휴식 MM:SS" / "1교시 전 MM:SS")를 함께
-표시해 설정에 다시 들어가지 않아도 현재 교시 상태를 바로 볼 수 있다.
-클릭할 때마다 켬/끔 토글.
+남은시간 텍스트를 함께 표시해 설정에 다시 들어가지 않아도 현재 교시
+상태를 바로 볼 수 있다. 🔧 [2026-09-19 정정] 실제 문구 형식은
+"{N}교시 · MM:SS 남음" / "휴식 · MM:SS 남음" / "1교시 · MM:SS 남음"
+(교시 시작 전, "1교시 전"이 아니라 그냥 "1교시") — 가운뎃점(·) 구분자와
+"남음" 접미사가 붙는다(2026-09-11 "교시 알림 표시 개선"으로 바뀐 형식,
+이 문서가 그동안 반영하지 못했다). 클릭할 때마다 켬/끔 토글.
 
 - **`PeriodAlarmProvider`는 `App.tsx` 최상단(`HashRouter` 바깥)에서 한 번만
   마운트**된다 — 로그인 페이지 포함 전 구간에서 `usePeriodAlarm`이 안전.
@@ -225,9 +267,45 @@ primary 톤, 꺼짐일 땐 무채색으로 상태가 색으로 구분되고, 옆
 "다크모드 팔레트" 참고 — 2026-09-10에 primary 계열 색상의 "형광 느낌"을
 완화(명도만 낮춤)했다.
 
+### 4.1 `StatusMessageCard` — 전자기기 메시지 (🔧 2026-09-19 신설, 이 섹션으로 이동)
+
+원래 "상태 메시지"였다가 "전자기기 상태 메시지"를 거쳐 최종 **"전자기기
+메시지"**로 명칭이 정착했다(사용자 지시로 "상태"를 뺌). 전자기기 사용
+목적이 모호해 보여 오해로 제보가 들어오는 경우를 줄이려고, 본인이 미리
+사용 목적을 자유 텍스트로 적어두는 카드다(예: `"태블릿 : AI 질의용도"`).
+[제보] 화면에서 대상자를 선택하면 이 값이 노출된다.
+
+- **평시/편집 UI를 통일**했다 — 원래는 평시 표시와 편집 폼의 UI가 크게
+  달랐으나(사용자 지적: "수정 전이랑 후랑 UI가 너무 다르다"), 지금은
+  둘 다 같은 `rounded-lg border` 박스 형태를 공유하고 우측 아이콘만
+  연필(`Pencil`, 평시 → 클릭 시 편집 진입)↔체크(`Check`, 편집 중 →
+  저장)로 바뀐다. 편집 중에는 좌측에 취소 버튼(`X`)도 함께 뜬다.
+- **입력 최대 길이 40자**(공백 포함, `STATUS_MESSAGE_MAX_LENGTH`) —
+  입력창 우측에 `{현재 글자수}/40` 카운터를 상시 표시.
+  `Enter`로 저장, `Escape`로 취소.
+- **최종 수정일자**: 평시(편집 중이 아닐 때) 상태에서만, 박스 아래에
+  작은 텍스트(`text-micro-lg`, 볼드 아님 — 주의사항 하위 항목과 같은
+  위계)로 `formatDateTime24h()`(`components/admin/shared.tsx`가 이미
+  쓰던 24시간제 포맷, `00:00:00` 초 단위까지 표시) 결과를 보여준다.
+  값이 없으면(과거 데이터 등 `updatedAt`이 없는 경우) 아예 표시하지
+  않는다.
+- **백엔드**: `MemberSettingsDO`의 `/status` 저장 값이 기존 순수
+  문자열에서 `{message, updatedAt}` 객체로 확장됐다(`durable-objects.js`,
+  `notify.js`의 `loadStatusMessage()`/`handleSetStatusMessage`) — 과거에
+  문자열로 저장된 값도 여전히 읽을 수 있도록 하위 호환 처리. 응답 타입
+  `StatusMessageResponse`/`SetStatusMessageResponse`(`lib/api/types.ts`)에
+  `updatedAt: number | null` 필드가 추가됐다.
+
 ### 4.2 `NotifyPrefsCard` — 웹 푸시 구독 + 기기 관리 + 카테고리 선호도
 
 세 가지가 한 카드에 묶여 있다:
+
+카드 제목은 🔧 2026-09-19 "푸시 알림"→**"PUSH 알림"**으로 바뀌었다(사용자
+지시). "알림 켜기" 버튼은 `variant="outline"`을 명시한다 — 로그아웃(`SessionCard`)·
+신청하기(`DepositRefundDialog`) 등 다른 outline 버튼과 외형은 완전히 같고
+색만 다르다고 오인될 여지가 있어 사용자가 직접 확인을 요청했던 부분이다;
+실제로는 variant 자체가 outline으로 통일되어 있어 착시가 아니라 의도된
+공유 스타일임을 코드로 확인했다.
 
 **① 구독 on/off** (`usePushSubscription`): `state`가 `checking`/`on`/`off`/
 `unsupported` 중 하나. `off`일 때만 "알림 켜기" 버튼이 보인다.
@@ -290,6 +368,18 @@ primary 톤, 꺼짐일 땐 무채색으로 상태가 색으로 구분되고, 옆
 > /admin/push/send-category`를 호출해 본인에게 수동 테스트 발송해볼 수 있을
 > 뿐이다(꺼둔 카테고리면 `blocked: true`로 차단됨을 확인 가능).
 
+### 4.3 `InstallAppCard` — PWA 설치 안내 (🔧 2026-09-19 이 섹션 맨 아래로 이동)
+
+API 호출이 전혀 없는 순수 프론트 카드. `useInstallPrompt()`가 판정하는
+세 상태에 따라 버튼 라벨이 갈린다: 이미 설치됨 → "설치됨", 설치 가능 →
+"설치하기", 그 외(대부분 iOS Safari 등 `beforeinstallprompt` 미지원 환경) →
+**"미지원"**(🔧 2026-09-19: "지원 안 함"에서 표현만 축약, 의미 변화 없음).
+iOS Safari처럼 코드로 설치를 트리거할 수 없는 환경에서는 버튼 대신
+다이얼로그를 열어 "공유 → 홈 화면에 추가" 수동 절차를 안내한다. 설치
+불가/이미 설치된 상태에서도 카드 자체는 항상 보여준다 — 한때 카드를
+숨겼다가 "기능이 없어졌다"는 오해를 산 적이 있어(주석에 명시), 버튼만
+비활성화해 상태를 그대로 드러내는 쪽으로 되돌렸다.
+
 ---
 
 ## 5. 백엔드 라우트 — 엔드포인트 → 핸들러 매핑
@@ -303,8 +393,8 @@ primary 톤, 꺼짐일 땐 무채색으로 상태가 색으로 구분되고, 옆
 | POST | `/exit-request` | `handleSetExitRequest` | 새 신청마다 `agreedAt`을 `null`로 초기화. `invalidatePersonalStatusCache` + `invalidateMemberCache(["exitRequest"])` |
 | POST | `/exit-request/agree` | `handleAgreeExitRequest` | `exitDateSettled()` 재검증(서버측 방어) |
 | POST | `/exit-request/cancel` | `handleCancelExitRequest` | 본인 또는(body에 `number` 지정 시) 관리자. KV `delete` + 인덱스 갱신 |
-| GET | `/status-message` | `handleGetStatusMessage` | `STATUS_MESSAGE_KV_PREFIX` 직접 저장소(`_cachedCompute` 아님) |
-| POST | `/status-message` | `handleSetStatusMessage` | 빈 문자열이면 KV `delete` |
+| GET | `/status-message` | `handleGetStatusMessage` | `MemberSettingsDO`의 `/status`(🔧 2026-09-12 KV에서 DO로 이전). 🔧 2026-09-19: 응답에 `updatedAt` 추가 |
+| POST | `/status-message` | `handleSetStatusMessage` | 빈 문자열이면 DO에 `DELETE /status`. 🔧 2026-09-19: 저장값이 문자열→`{message, updatedAt}` 객체로 확장(과거 문자열 값도 하위 호환 읽기), 응답에 `updatedAt` 추가, 최대 길이 40자(`STATUS_MESSAGE_MAX_LENGTH`) |
 | POST | `/push/subscribe` | `handlePushSubscribe` | `deviceId`/`deviceLabel`을 응답에 실어 즉시 신뢰 가능하게 함 |
 | GET | `/push/devices` | `handleListPushDevices` | 🔧 2026-09-11: `subIndex:{이메일}` 인덱스 조회로 변경 — `list()` 안 씀 |
 | POST | `/push/devices/toggle` | `handlePushDeviceToggle` | 받은 `id`를 그대로 씀 — `sub:` 값과 `subIndex:` 둘 다 갱신 |
@@ -320,10 +410,16 @@ primary 톤, 꺼짐일 땐 무채색으로 상태가 색으로 구분되고, 옆
 
 전체 필드 정의는 `app/src/lib/api/types.ts`가 원본. `StatusResponse`의
 `depositRefundBreakdown`/`exitRequested`/`exitRequestDate`/`exitAgreedAt`은
-`docs/WEB_DASHBOARD.md` §8에 이미 정리되어 있어 여기서는 생략한다.
+`docs/WEB_DASHBOARD.md` §8에 이미 정리되어 있어 여기서는 생략한다. 🔧
+[2026-09-19 추가, 기존에 누락] 같은 `StatusResponse`의 `prizePending:
+boolean`도 §3.2의 "동의합니다" 버튼 활성화 조건(`canAgree`)에 직접 쓰이는
+필드다 — 지난주 상금 정산 대상자인데 아직 관리자가 집행하지 않았으면
+true.
 
 | 타입 | 필드 | 비고 |
 |---|---|---|
+| `StatusMessageResponse` | `message`, `updatedAt: number \| null` | 🔧 2026-09-19: `updatedAt` 추가 |
+| `SetStatusMessageResponse` | `ok`, `message`, `updatedAt: number \| null` | 🔧 2026-09-19: `updatedAt` 추가 |
 | `PushDevice` / `ListPushDevicesResponse` | `id`, `deviceLabel`, `enabled`, `savedAt` / `devices[]` | |
 | `PushDeviceToggleResponse` / `RemoveResponse` | `ok: true` | |
 | `PushDeviceRenameResponse` | `ok: true`, `deviceLabel` | 서버가 trim한 최종 값을 되돌려줌 |

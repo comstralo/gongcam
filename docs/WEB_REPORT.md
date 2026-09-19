@@ -32,6 +32,16 @@
 > `handleListRecentNotices`)은 `frame-checker-worker/src/notify.js`로
 > 이동했다. `handleGetParticipants`/`handlePutParticipants`만
 > `index.js`에 그대로 남아있다. 함수 이름/동작 자체는 바뀌지 않았다.
+>
+> 🔧 **[2026-09-19 갱신]** 코드 재조사로 다음이 반영되지 않은 채 누락되어
+> 있던 것을 발견해 정정했다: (1) §3.2·§9의 안전망 큐(`report:{id}`)가
+> 실제로는 2026-09-12에 KV에서 **`ReportQueue` Durable Object**로
+> 이전됐다(§4.1과 같은 날 이뤄진 별개의 DO 이전이나, 지금까지 §7에
+> 반영되지 않았다), (2) "다른 관리자 의견 반영" 투표 저장소도 같은 날
+> **`ReportVote` DO**로 이전됐다(`report-review.js`, `wrangler.toml`),
+> (3) 제보 대상자를 고르면 그 사람의 "전자기기 상태 메시지"를 보여주는
+> 기능(`GET /member-status-message`)이 §2/§5/§8 어디에도 없었다 — 이번에
+> 추가.
 
 ## 1. 범위 정의 — "제보" 탭이란
 
@@ -77,6 +87,8 @@ ReportPage (app/src/pages/ReportPage.tsx)
 ├─ Tabs: "capture"(기본) | "notice" | "mycheck"  — URL 쿼리(tab)와 동기화, 최초 마운트 이후 로컬 state
 ├─ [capture] "화각 불량 제보"
 │   ├─ 대상자 Select (members, 실시간 접속 명단)
+│   ├─ 🔧 [2026-09-19 추가, 기존에 문서 누락] 전자기기 상태 메시지 InfoCard
+│   │   → 대상자 선택 시 GET /member-status-message?nickname= 조회(§5)
 │   ├─ 원인 Select (REASON_OPTIONS: 고정 5개 + "기타(직접 기재)" — §3.2 참고)
 │   ├─ "스크린샷 제보" / "영상 제보" 버튼 → POST /report
 │   ├─ "내 화각 점검" 버튼 → POST /report ({selfCheck: true}, 본인 대상 셀프 캡처)
@@ -159,19 +171,26 @@ ReportPage (app/src/pages/ReportPage.tsx)
    봇에 함께 전달해, 봇이 `report_id`를 섞어 매 요청마다 다른 `thread_id`를
    만들도록 고쳤다(`docs/HELPERBOT.md` §5 참고). 일반 제보는 20분 쿨다운으로
    이미 중복이 걸러지므로 기존 방식 그대로다.
-3. `report:{uuid}` KV(**TTL 12시간**, 2026-09-11 6시간에서 상향 — 봇이 오래
-   꺼져 있어도 안전망 폴링이 나중에 집어갈 수 있는 유예를 늘림)에 제보
-   원본을 저장한다. 🔧 2026-09-11: "진행 중인 제보" 표시용 기록은 더
-   이상 KV 인덱스가 아니라 같은 DO 호출(`recordReportCooldown`)이 쿨다운
-   판정과 함께 겸한다 — `id`/`mode`/`startedAt`/`capturedAt: null`도 이때
+3. 🔧 **[2026-09-19 정정]** 원래 여기 "`report:{uuid}` KV(TTL 12시간)에 제보
+   원본을 저장한다"고 적혀 있었으나, 실제로는 **2026-09-12에 `ReportQueue`
+   Durable Object로 이전**됐다(`report-intake.js` 214행 이하 "🔧 [KV → DO
+   이전, 2026-09-12]" 주석, `getReportQueueStub(env).fetch("https://do/put")`)
+   — KV put/delete/list 세 연산이 이 지점에서 전부 사라졌다. DO에는 KV
+   `expirationTtl` 같은 자동 만료가 없어, TTL 12시간 개념은 DO 내부 로직이
+   저장 시각을 직접 비교해 흉내 낸다. "진행 중인 제보" 표시용 기록은 이와는
+   별개로 `ParticipantsRoster` DO의 `recordReportCooldown`이 쿨다운 판정과
+   함께 겸한다(§7) — `id`/`mode`/`startedAt`/`capturedAt: null`도 이때
    함께 기록되어 §3.3의 촬영 진행 카운트다운과 20분 쿨다운 재시작에 쓰인다.
 4. **봇에게 즉시 통지**: `proxyToBotDashboard(env, "/reports/new", POST)`로 로컬
    봇의 상태 서버(Cloudflare Tunnel 경유)에 바로 알린다. 이건 지연 없이 캡처를
    시작시키기 위한 최적 경로일 뿐 — 실패해도(봇이 그 순간 꺼져 있어도) 예외를
    던지지 않고 조용히 넘어간다.
 5. **폴링 안전망**: `GET /reports`(→ `handleListReports`, `X-Bot-Secret` 인증,
-   프론트에서는 호출하지 않음)가 `report:*` KV를 통째로 읽어 반환하며 **읽은 즉시
-   전부 삭제**한다 — at-most-once 소비 큐다. 봇 쪽의 `report_intake.py`가
+   프론트에서는 호출하지 않음)가 🔧 **[2026-09-19 정정]** ~~`report:*` KV를
+   통째로 읽어 반환하며 읽은 즉시 전부 삭제~~ 실제로는 `ReportQueue` DO의
+   `/do/drain`을 호출해 큐를 비운다(`getReportQueueStub(env).fetch("https://do/drain")`)
+   — KV가 아니라 DO 상태를 읽는 것으로 바뀌었을 뿐, "호출 즉시 전부 비우는
+   at-most-once 소비 큐"라는 동작 자체는 그대로다. 봇 쪽의 `report_intake.py`가
    `POLL_INTERVAL_SEC = 600`(10분)으로 이 엔드포인트를 폴링해, 4번의 즉시
    푸시가 실패했을 때(봇이 그 순간 오프라인)를 놓치지 않기 위한 안전망
    역할을 한다. 폴링에서도 처리 못 한 항목은 `POST /reports/requeue`
@@ -420,15 +439,24 @@ manifest를 실시간 프록시 조회하므로("TTL이 지나야 갱신"이라�
 | POST | `/push/send-to-member` | `handlePushSendToMember` | |
 | GET | `/push/subscription-status` | `handlePushSubscriptionStatus` | 전 회원 구독 여부 배치 조회 |
 | GET | `/push/recent-notices` | `handleListRecentNotices` | "최근 전송된 알림" |
+| GET | `/member-status-message` | `handleGetMemberStatusMessage` | 🔧 [2026-09-19 추가, 기존에 문서 누락] `?nickname=`으로 대상자의 전자기기 상태 메시지 조회(`notify.js`) — nickname은 회원 등록 이름(`m.name`)과 매칭한다 |
+
+🔧 **[2026-09-19 추가]** `GET /report-status`(`handleReportStatus`, `report-penalty.js`)도
+"제보" 메뉴에 라우팅되어 있으나(`index.js`), `app/src/` 어디에서도 호출하는 프론트
+코드를 찾지 못했다 — 봇 대시보드(`/report-status`, `docs/HELPERBOT.md`)를 그대로
+프록시하는 용도로 보이며 현재는 미사용 상태로 추정된다.
 
 이 문서 범위 밖이지만 §6에서 함께 다루는 관리자 전용 라우트(상세는 `docs/WEB_ADMIN.md`):
 
 | 메서드 | 경로 | 핸들러 | 비고 |
 |---|---|---|---|
-| GET | `/admin/captures` | `handleAdminCapturesList` | 봇의 `/captures`를 프록시(`?cycle=` 지원, 없으면 대기+최근 24h 결정만 필터) |
+| GET | `/admin/captures` | `handleAdminCapturesList` | 봇의 `/captures`를 프록시. 🔧 [2026-09-19 정정] ~~`?cycle=` 지원, 없으면 대기+최근 24h 결정만 필터~~ 이 24시간 필터는 이미 폐지됐다 — `?cycle=` 없으면 현재 진행 중인 이번 주(월~일, KST) 전체를 `reviewStatus` 무관하게 노출한다(`report-review.js` 293행 이하) |
 | GET | `/admin/captures/file` | `handleAdminCaptureFile` | 스크린샷/영상 원본. 로그인만 되어 있으면 열람 가능(ID 추측 불가 전제) |
+| POST | `/admin/captures/vote` | `handleAdminCaptureVote` | 🔧 [2026-09-19 추가, 기존에 문서 누락] "다른 관리자 의견 반영" 투표 제출 |
 | POST | `/admin/captures/decide` | `handleAdminCaptureDecide` | 4가지 결정(승인/반려_인정/유예/반려) 중 승인·반려_인정·유예 시 `applyOutputPenalty`+`applyReportMerit` 호출 |
 | POST | `/admin/captures/cancel-penalty` | `handleAdminCaptureCancel` | 오적용된 슬롯 되돌림 |
+| POST | `/admin/captures/cancel-merit` | `handleAdminCaptureCancelMerit` | 🔧 [2026-09-19 추가, 기존에 문서 누락] 제보상점만 되돌림(§6-7) |
+| POST | `/admin/captures/revert` | `handleAdminCaptureRevert` | 🔧 [2026-09-19 추가, 기존에 문서 누락] "유예 취소"(독립 시간차감만 되돌림, §6-7의 `cancelTimeDeduction`) |
 | POST | `/admin/captures/delete` | `handleAdminCaptureDelete` | 캡처 기록 완전 삭제(+적용된 페널티면 함께 취소) |
 
 ---
@@ -503,6 +531,12 @@ manifest를 실시간 프록시 조회하므로("TTL이 지나야 갱신"이라�
 
 ## 7. 라이브 인덱스 패턴 — KV에서 `ParticipantsRoster` DO로 이전 (2026-09-11)
 
+> 🔧 [2026-09-19 추가] 같은 2026-09-12에 안전망 큐(`report:{id}`, §3.2)는
+> `ReportQueue` DO로, "다른 관리자 의견 반영" 투표(`docs/WEB_ADMIN.md` §3.1)는
+> `ReportVote` DO로 각각 별도 이전됐다 — 이 절이 다루는 `ParticipantsRoster`
+> DO 이전과는 다른 DO 인스턴스이지만 같은 날 같은 이유(KV list()/쓰기 한도
+> 회피)로 이뤄진 자매 이전이다.
+>
 > 🔧 "최근 전송된 알림"(§4.1)과 "진행 중인 제보"(§3.3) 둘 다 더 이상 KV를
 > 쓰지 않는다 — 예전엔 여기 있던 `_appendToLiveIndex`/`_readLiveIndex`/
 > `_markCaptureDoneInLiveIndex`(+ CAS 유사 재시도 로직, `LIVE_INDEX_MAX_RETRIES`)
@@ -554,6 +588,7 @@ DO 자체의 한도(무료 플랜 기준 하루 요청 10만 회, 실행시간 1
 | `PushSubscriptionStatusItem` / `...Response` | `name`, `subscribed` / `items[]` | `/push/subscription-status` |
 | `PushSendToMemberResponse` | `ok: true` | `/push/send-to-member` |
 | `RecentNoticeItem` / `RecentNoticesResponse` | `nickname`, `message`, `senderName`, `ts` / `items[]` | `/push/recent-notices` |
+| `StatusMessageResponse` | `message`, `updatedAt: number \| null` | 🔧 [2026-09-19 추가] `/member-status-message`. 원본 정의는 `docs/WEB_SETTINGS.md` §4.1 참고 |
 
 ---
 

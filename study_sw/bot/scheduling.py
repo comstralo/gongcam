@@ -57,6 +57,24 @@ def run_cycle_capture_archiving(ctx):
         ctx.logger.warning(f"run_cycle_capture_archiving() : ⚠️ 캡처 정리 건너뜀 - {e}")
 
 
+# 🔧 [10일 경과 자동 논리적 삭제, 사용자 지시] "'내 제보 확인'에서 접수
+# 시점으로부터 10일이 지난 값은 모두 오버레이로 덮어쓰고 논리적 삭제
+# 처리". 사이클 경계 조회가 필요한 archive_old_captures와 달리 "접수
+# 시점으로부터 며칠"이라는 단순 기준이라, Worker에 별도로 물어볼 필요
+# 없이 로컬 시각만으로 cutoff를 계산한다.
+CAPTURE_EXPIRE_DAYS = 10
+
+
+def run_capture_expiry_cleanup(ctx):
+    try:
+        cutoff_dt = datetime.now(KST) - timedelta(days=CAPTURE_EXPIRE_DAYS)
+        cutoff_ms = int(cutoff_dt.timestamp() * 1000)
+        marked = capture_manifest.mark_expired_captures(cutoff_ms)
+        ctx.logger.info(f"run_capture_expiry_cleanup() : 🗑️ 접수 10일 경과 캡처 {marked}건을 논리적 삭제 처리했습니다.")
+    except Exception as e:
+        ctx.logger.warning(f"run_capture_expiry_cleanup() : ⚠️ 캡처 만료 정리 건너뜀 - {e}")
+
+
 # [MAIN] 함수 스케줄링 등록
 def schedule_reserve(ctx):
 
@@ -110,6 +128,14 @@ def schedule_reserve(ctx):
     schedule.every().monday.at("07:10").do(run_cycle_capture_archiving, ctx)
     print(
         "schedule_reserve() :  ⏰  [캡처 정리] [월요일 07:10] 지난 사이클 캡처 아카이빙 스케줄링 등록.  ⏰"
+    )
+
+    # 접수 10일 경과 캡처는 매일 정리한다 — 3주 사이클 경계와 무관한 단순
+    # "N일 지났는지" 기준이라 매주가 아니라 매일 돌아도 안전하고, 그래야
+    # "10일 지나면" 요구를 하루 단위로 정확히 지킬 수 있다.
+    schedule.every().day.at("07:12").do(run_capture_expiry_cleanup, ctx)
+    print(
+        "schedule_reserve() :  ⏰  [캡처 정리] [매일 07:12] 접수 10일 경과 캡처 논리적 삭제 스케줄링 등록.  ⏰"
     )
 
 

@@ -334,6 +334,11 @@ import {
   handleAdminOAuthCallback,
 } from "./auth.js";
 
+// 🔧 [Stream Chat 도입, 2026-09-19] "관리자-회원 1:1 문의방" 채팅 기능 —
+// 이 프로젝트 세션을 통과한 사용자에게 Stream Chat용 토큰을 발급하는
+// 다리 역할만 한다(docs/TESTING.md 참고 예정).
+import { handleChatToken, handleChatEnsureUser, handleChatConfigureUploads } from "./chat.js";
+
 // 🔧 [구조 개선 15차, 2026-09-17] 개인 대시보드/랭킹 클러스터를
 // src/personal-status.js로 옮겼다(docs/TESTING.md 참고). buildPersonalStatus는
 // exit.js가 이미 `from "./index.js"`로 import하고 있어, 재export가
@@ -1754,6 +1759,17 @@ export default {
       }
       if (url.pathname === "/dev/login" && req.method === "POST") {
         return await handleDevLogin(req, env, origin);
+      }
+
+      // --- Chat (chat.js) ---
+      if (url.pathname === "/chat/token" && req.method === "POST") {
+        return await handleChatToken(req, env, origin);
+      }
+      if (url.pathname === "/chat/ensure-user" && req.method === "POST") {
+        return await handleChatEnsureUser(req, env, origin);
+      }
+      if (url.pathname === "/chat/configure-uploads" && req.method === "POST") {
+        return await handleChatConfigureUploads(req, env, origin);
       }
 
       // --- Report/Capture 접수·쿨다운 (report-intake.js) ---

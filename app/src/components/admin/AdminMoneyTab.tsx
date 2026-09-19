@@ -3,8 +3,8 @@ import { ChevronDown, CircleDollarSign, CalendarDays, FlaskConical, Loader2, Use
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
-import { InfoCard, DayDetailCard, TintedPill, ItemTitle, DividedValue } from "@/components/dashboard/shared";
-import { SectionHeader, FieldLabel, SectionCard, AdminListSkeleton, AdminEmptyState } from "@/components/admin/shared";
+import { InfoCard, DayDetailCard, TintedPill, ItemTitle, DividedValue, STATUS_DAYS, thisWeekDateLabel } from "@/components/dashboard/shared";
+import { SectionHeader, FieldLabel, SectionCard, AdminListSkeleton, AdminEmptyState, DayGroupHeader } from "@/components/admin/shared";
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
 import { ReportReviewList } from "@/components/admin/ReportReviewList";
 import { PenaltyCandidateList } from "@/components/admin/PenaltyCandidateList";
@@ -33,8 +33,6 @@ import type {
   CycleWeek,
 } from "@/lib/api/types";
 
-const STATUS_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
-
 // 세 API(paid/unpaid/exempt)가 공통으로 내려주는 최소 필드 — 어느 목록에서
 // 왔는지와 무관하게 하나의 행으로 합쳐 다룬다.
 type FineRecord = { number: string; name: string; day: string; baseStatus: FineStatus };
@@ -45,31 +43,6 @@ function fineKey(f: Pick<FineRecord, "number" | "day">) {
 
 function won(n: number) {
   return "₩" + (n || 0).toLocaleString();
-}
-
-// 기준 주(월~일)의 각 요일 실제 날짜를 "8월 19일" 형태로 계산한다.
-// weekOf("YYMMDD", 백업 파일명의 그 주 월요일)를 주면 그 주 기준, 없으면
-// 오늘이 속한 이번 주 기준 — 사이클 토글로 지난 주를 선택했을 때도 실제
-// 그 주의 날짜를 보여주기 위함(사용자 확인: 이전 세션에서 동일한 요일
-// 그룹핑 버그를 이미 두 차례 겪었다 — "요일 이름 + 오늘 기준 역산" 조합은
-// 여러 주가 섞이는 화면에 부적합).
-function thisWeekDateLabel(dayKr: string, weekOf?: string | null): string {
-  const dayIndex = STATUS_DAYS.indexOf(dayKr); // 월=0 ... 일=6
-  if (dayIndex === -1) return "";
-  let monday: Date;
-  if (weekOf) {
-    const m = /^(\d{2})(\d{2})(\d{2})$/.exec(weekOf);
-    if (!m) return "";
-    monday = new Date(2000 + parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
-  } else {
-    const now = new Date();
-    const todayIndex = (now.getDay() + 6) % 7; // JS getDay()는 일=0 → 월=0으로 보정
-    monday = new Date(now);
-    monday.setDate(now.getDate() - todayIndex);
-  }
-  const target = new Date(monday);
-  target.setDate(monday.getDate() + dayIndex);
-  return `${target.getMonth() + 1}월 ${target.getDate()}일`;
 }
 
 // weekOf("YYMMDD", 그 주 월요일)를 경고 배너용 짧은 라벨("8월 19일")로 바꾼다.
@@ -122,8 +95,6 @@ const DUMMY_PAID_FINE_RECORDS: FineRecord[] = [
 ];
 
 const DUMMY_ADMIN_FORCED_COUNTS: Record<string, number> = { 월: 0, 화: 0, 수: 0, 목: 0, 금: 1, 토: 0, 일: 0 };
-
-const DUMMY_TOTAL_PAID_AMOUNT = 15000;
 
 // 회원 상세 펼침(DayDetailCard)이 쓰는 최소 필드만 채운다 — StatusResponse
 // 전체를 완성할 필요 없이 day/depositRefundBreakdown만 실제로 읽힌다.
@@ -255,7 +226,6 @@ function PaidFineList({
   // 보여준다.
   const [showingDummy, setShowingDummy] = useState(false);
   const [records, setRecords] = useState<FineRecord[] | null>(null);
-  const [totalAmount, setTotalAmount] = useState(0);
   // 🔧 2026-09: "직권 P : N건" 배지 실제 구현 — 요일별 카운트(§GET
   // /admin/fines/admin-forced-count). 모든 요일 0으로 초기화해두면 응답
   // 오기 전에도 배지가 "0건"으로 자연스럽게 보인다(자리표시자와 동일한
@@ -298,7 +268,6 @@ function PaidFineList({
           ...(exemptData.exempt || []).map((f) => ({ ...f, baseStatus: "면제" as const })),
         ];
         setRecords(merged);
-        setTotalAmount(paidData.totalAmount || 0);
         setAdminForcedCounts(adminForcedData.counts || {});
         setStatusOverride({});
       })
@@ -335,16 +304,6 @@ function PaidFineList({
         body: { number: f.number, day: f.day, status, cycle: cycleFileId },
       });
       setStatusOverride((prev) => ({ ...prev, [key]: status }));
-      // 🔧 [총 벌금액 미갱신 수정] 위 statusOverride는 개별 뱃지만 바꿀 뿐
-      // "납부된 총 벌금액"(totalAmount)은 갱신하지 않아, 이 탭을 벗어나지
-      // 않고 여러 건을 연달아 처리하면 합계가 첫 로드 시점 값에 그대로
-      // 고정돼 있었다 — records를 통째로 다시 받는 load()는 statusOverride를
-      // 초기화해 방금 바꾼 뱃지 표시가 사라지므로, totalAmount만 가볍게
-      // 다시 받아온다.
-      const cycleParam = cycleFileId ? `?cycle=${encodeURIComponent(cycleFileId)}` : "";
-      call<AdminFinesPaidResponse>(`/admin/fines/paid${cycleParam}`)
-        .then((paidData) => setTotalAmount(paidData.totalAmount || 0))
-        .catch(() => {});
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "납부 상태 변경에 실패했습니다.");
     } finally {
@@ -387,7 +346,6 @@ function PaidFineList({
   }
 
   const effectiveRecords = showingDummy ? DUMMY_PAID_FINE_RECORDS : records;
-  const effectiveTotalAmount = showingDummy ? DUMMY_TOTAL_PAID_AMOUNT : totalAmount;
   const effectiveAdminForcedCounts = showingDummy ? DUMMY_ADMIN_FORCED_COUNTS : adminForcedCounts;
   const groups = groupByDay(effectiveRecords || []);
 
@@ -426,11 +384,6 @@ function PaidFineList({
         </Alert>
       )}
 
-      <InfoCard className="flex items-center justify-between gap-2 bg-card">
-        <FieldLabel>납부된 총 벌금액</FieldLabel>
-        <span className="font-mono text-base font-semibold tabular-nums text-ok sm:text-lg">{won(effectiveTotalAmount)}</span>
-      </InfoCard>
-
       {/* 🔧 [버그 수정, 2026-09] ReasonLeaveReviewList와 동일한 근본
           수정 — 세 조건이 loading에 게이팅돼 있어 재조회 시작 직후
           (loading=true, records=[]) 전부 거짓이 되는 진짜 공백이
@@ -451,48 +404,46 @@ function PaidFineList({
             const unpaidCount = group.members.filter((f) => effectiveStatus(f) === "미납").length;
             const exemptCount = group.members.filter((f) => effectiveStatus(f) === "면제").length;
             return (
-              // 🔧 [사용자 지시] "제보 쪽 토글의 전환 애니메이션처럼 부드럽게"
-              // — 날짜/회원 펼치기가 조건부 렌더링으로 즉시 나타났다 사라져
-              // "뚝뚝 끊기는" 느낌이 있었다. MyOutputPenSection에 적용한
-              // base-ui Collapsible(높이 전환)을 여기도 적용한다.
-              <Collapsible key={group.day} open={isDayExpanded} onOpenChange={(open) => setExpandedDay(open ? group.day : null)}>
-              <InfoCard className="flex flex-col gap-2.5 bg-card">
-                <CollapsibleTrigger className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded" hideChevron>
+              // 🔧 [리팩토링, 2026-09-19] 4개 파일에 복붙되어 있던 요일별
+              // 그룹 헤더 바깥 골격(Collapsible+InfoCard+Trigger+Chevron+Panel)
+              // 을 DayGroupHeader로 공용화(admin/shared.tsx).
+              <DayGroupHeader
+                key={group.day}
+                isExpanded={isDayExpanded}
+                onOpenChange={(open) => setExpandedDay(open ? group.day : null)}
+                header={
                   <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                    <span className="inline-flex shrink-0 items-center gap-1.25 text-sm font-semibold text-muted-foreground sm:text-base">
-                      <CalendarDays className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
+                    {/* 🔧 [사용자 지시, 2026-09-19] "날짜 제목: 아이콘은 무채색,
+                        텍스트는 검정색으로" — ReportReviewList의 날짜 그룹
+                        헤더(아이콘에만 text-muted-foreground)와 동일하게 맞춘다. */}
+                    <span className="inline-flex shrink-0 items-center gap-1.25 text-sm font-semibold sm:text-base">
+                      <CalendarDays className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                       {thisWeekDateLabel(group.day, cycleWeekOf)} {group.day}요일
                     </span>
                     {/* 🔧 [사용자 지시] "'화각 불량 제보'에서 설정한 디자인을 기준으로
                         비슷한 모양의 다른 화면에도 적용" — 제보 화면의 "총 N건" 뱃지와
                         동일한 크기(text-xs sm:text-sm)로 통일한다. */}
                     <span className="ml-auto flex flex-wrap items-center justify-end gap-1">
-                      <span className="rounded-full bg-ok/15 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-ok sm:text-sm">
+                      <TintedPill tone="ok" className="whitespace-nowrap">
                         납부 : {paidCount}건
-                      </span>
-                      <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-destructive sm:text-sm">
+                      </TintedPill>
+                      <TintedPill tone="warn" className="whitespace-nowrap">
                         미납 : {unpaidCount}건
-                      </span>
-                      <span className="rounded-full bg-amber-600/15 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-amber-600 sm:text-sm dark:bg-amber-400/15 dark:text-amber-400">
+                      </TintedPill>
+                      <TintedPill tone="amber" className="whitespace-nowrap">
                         면제 : {exemptCount}건
-                      </span>
+                      </TintedPill>
                       {/* 🔧 2026-09: "벌금을 납부하지 않아서 '퇴실 처리
                           (직권 P)'가 눌려서 퇴실 처리된 사용자"(사용자 정의)를
                           센다 — GET /admin/fines/admin-forced-count가 요일별로
                           이미 집계해 내려준다(handleAdminFinesAdminForcedCount). */}
-                      <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-primary sm:text-sm">
+                      <TintedPill tone="primary" className="whitespace-nowrap">
                         직권 P : {effectiveAdminForcedCounts[group.day] || 0}건
-                      </span>
+                      </TintedPill>
                     </span>
                   </span>
-                  <ChevronDown
-                    className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", isDayExpanded && "rotate-180")}
-                    strokeWidth={ICON_STROKE.default}
-                  />
-                </CollapsibleTrigger>
-
-                <CollapsiblePanel className="flex flex-col">
-                  <div className="flex flex-col gap-2.5 pt-2.5">
+                }
+              >
                     {group.members.map((f) => {
                       const key = fineKey(f);
                       const isPending = pendingKey === key;
@@ -625,10 +576,7 @@ function PaidFineList({
                         </Collapsible>
                       );
                     })}
-                  </div>
-                </CollapsiblePanel>
-              </InfoCard>
-              </Collapsible>
+              </DayGroupHeader>
             );
           })}
         </div>

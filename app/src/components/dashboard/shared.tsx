@@ -14,6 +14,36 @@ import {
 import { cn, ICON_STROKE } from "@/lib/utils";
 import type { StatusDay, DepositRefundBreakdown, ExitKind } from "@/lib/api/types";
 
+// 🔧 [리팩토링, 2026-09-19] 월~일 요일 배열이 6개 파일(AdminMoneyTab/
+// ReasonLeaveReviewList/PenaltyCandidateList/ReportReviewList/StatusView/
+// MyOutputPenSection)에 완전히 동일한 값으로 각자 로컬 상수 정의되어
+// 있었다 — 단순 데이터 상수라 통합 리스크가 없어 공용화한다.
+export const STATUS_DAYS: string[] = ["월", "화", "수", "목", "금", "토", "일"];
+
+// 이번 주(또는 weekOf로 지정한 주)의 특정 요일 실제 날짜를 "9월 14일"
+// 형태로 계산한다. weekOf("YYMMDD", 그 주 월요일)를 주면 그 주 기준,
+// 없으면 오늘이 속한 주 기준. 🔧 [리팩토링, 2026-09-19] AdminMoneyTab/
+// ReasonLeaveReviewList/PenaltyCandidateList 3개 파일에 글자 하나
+// 다르지 않게 복붙되어 있던 순수 함수를 공용화한다.
+export function thisWeekDateLabel(dayKr: string, weekOf?: string | null): string {
+  const dayIndex = STATUS_DAYS.indexOf(dayKr);
+  if (dayIndex === -1) return "";
+  let monday: Date;
+  if (weekOf) {
+    const m = /^(\d{2})(\d{2})(\d{2})$/.exec(weekOf);
+    if (!m) return "";
+    monday = new Date(2000 + parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+  } else {
+    const now = new Date();
+    const todayIndex = (now.getDay() + 6) % 7; // JS getDay()는 일=0 → 월=0으로 보정
+    monday = new Date(now);
+    monday.setDate(now.getDate() - todayIndex);
+  }
+  const target = new Date(monday);
+  target.setDate(monday.getDate() + dayIndex);
+  return `${target.getMonth() + 1}월 ${target.getDate()}일`;
+}
+
 // 하루(요일)에 일반반휴+사유반휴를 합쳐 신청할 수 있는 최대 장수. 각 종류의
 // 요일별 시트 셀이 0/1만 가능해(종류당 1장) 두 종류를 합친 구조적 상한도
 // 자연히 이 값과 같다 — HalfDayLeaveDialog/LeaveApplyButton이 함께 쓴다.
@@ -27,7 +57,7 @@ export function ItemTitle({ children, className }: { children: ReactNode; classN
   return <span className={cn("text-sm font-semibold sm:text-base", className)}>{children}</span>;
 }
 
-type PillTone = "ok" | "warn" | "muted" | "primary" | "amber" | "purple" | "blue";
+export type PillTone = "ok" | "warn" | "muted" | "primary" | "amber" | "purple" | "blue" | "yellow" | "rose";
 
 const PILL_TONE_CLASSES: Record<PillTone, string> = {
   ok: "bg-ok/15 text-ok",
@@ -39,6 +69,17 @@ const PILL_TONE_CLASSES: Record<PillTone, string> = {
   // (purple)/부스터디장(blue)을 기존 톤(primary/ok/muted)과 구분한다.
   purple: "bg-violet-600/15 text-violet-600 dark:bg-violet-400/15 dark:text-violet-400",
   blue: "bg-blue-600/15 text-blue-600 dark:bg-blue-400/15 dark:text-blue-400",
+  // 🔧 [사용자 지시, 2026-09-19 신설] "제보 처리" 뱃지 세분화 — 유예(노랑)/
+  // 벌점(연한 빨강)을 기존 amber(경고/대기)·warn(페널티/destructive)과
+  // 명확히 구분하기 위해 추가. rose는 warn(destructive, 진한 빨강)보다
+  // 옅은 톤으로 "벌점 < 페널티"의 심각도 차이를 색으로도 드러낸다.
+  yellow: "bg-yellow-500/15 text-yellow-600 dark:bg-yellow-400/15 dark:text-yellow-400",
+  // 🔧 [사용자 지시, 2026-09-19] "벌점"과 "페널티"(warn/destructive)가
+  // 같은 빨강 계열이되 벌점 쪽이 더 옅어야 한다는 지시 — tailwind 기본
+  // rose(핑크에 가까움) 대신 순수 빨강(red)을 쓰되, 글씨 자체를
+  // 반투명하게 흐리지 않고(불투명 유지) 배경/글씨 색상 단계를 destructive
+  // (진한 빨강)보다 밝게 잡아 "연한 빨간색"을 표현한다.
+  rose: "bg-red-500/12 text-red-500 dark:bg-red-400/15 dark:text-red-400",
 };
 
 // 대시보드 전반(내 대시보드/전체 대시보드/지난 기록)에서 반복되는 "틴트된 상태 배지".
@@ -76,6 +117,35 @@ export function TintedPill({
       {children}
     </span>
   );
+}
+
+// 🔧 [사용자 지시, 2026-09-19] 제보 처리 화면(관리자 ReportReviewList +
+// 회원 MyOutputPenSection)의 "{대기|확정} | {세부}" 통합 뱃지 — "확정"
+// 이더라도 실제 조치 심각도(경고<벌점<페널티)와 유예/반려를 색으로
+// 구분해달라는 지시로 세분화했다. 두 파일이 완전히 동일한 매핑을
+// 써야 해서 공용 헬퍼로 둔다(다른 함수들처럼 로컬 복제하기엔 매핑
+// 자체가 색상 정책이라 어긋나면 바로 눈에 띄는 종류의 버그라 공용화가
+// 더 안전하다고 판단).
+export function statusPillTone(detail: string): PillTone {
+  switch (detail) {
+    case "반려":
+      return "muted"; // 회색
+    case "유예":
+      return "yellow"; // 노란색
+    case "경고":
+      return "amber"; // 주황색
+    case "벌점":
+      return "rose"; // 연한 빨간색
+    case "페널티":
+      return "warn"; // 빨간색
+    case "상점":
+      // 🔧 [사용자 지시, 2026-09-19] 발신 전용 세부값 — 제보상점이 실제로
+      // 지급된 확정 건("확정 | 상점")만 초록색으로 강조한다.
+      return "ok"; // 초록색
+    default:
+      // "접수"/"이의"/"인정" — 대기 계열은 기존과 동일하게 amber 유지.
+      return "amber";
+  }
 }
 
 // 아이콘 + 라벨 + 값을 담는 요약 타일 (StatusView 상단 그리드).

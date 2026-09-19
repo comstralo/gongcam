@@ -1,10 +1,23 @@
 import { useEffect, useRef, useState } from "react";
-import { ListChecks, ChevronDown, CalendarDays, Image as ImageIcon, Trash2, FileText, Clock, Gavel } from "lucide-react";
+import { ListChecks, ChevronDown, CalendarDays, Image as ImageIcon, Trash2, FileText, Clock, Gavel, Star, FlaskConical } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
-import { InfoCard, SubRow, TintedPill } from "@/components/dashboard/shared";
-import { SectionHeader, SectionCard, CapturePreview, AdminListSkeleton } from "@/components/admin/shared";
+import { InfoCard, SubRow, TintedPill, STATUS_DAYS, statusPillTone } from "@/components/dashboard/shared";
+import {
+  SectionHeader,
+  SectionCard,
+  CapturePreview,
+  AdminListSkeleton,
+  AdminEmptyState,
+  formatDateTime24h,
+  occurrenceLabel,
+  penaltyCategoryLabel,
+  weeklyImpactLabel,
+  formatDeductedTime,
+  statusLabel,
+  DottedValue,
+} from "@/components/admin/shared";
 import { CycleSwitcher } from "@/components/dashboard/CycleSwitcher";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
@@ -19,8 +32,6 @@ import type {
   MyOutputPenResponse,
   TargetRespondResponse,
 } from "@/lib/api/types";
-
-const STATUS_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
 
 // ReportPage.tsx의 REASON_OPTIONS(고정 사유 5개 + "기타")와 동일한 목록.
 // "기타"를 선택하면 그 문구 자체는 서버로 전송되지 않고 참여자가 직접 입력한
@@ -41,57 +52,12 @@ function displayReason(reason: string): string {
   return FIXED_REASONS.has(reason) ? reason : "기타 (관리자 문의)";
 }
 
-// 카드 헤더 뱃지(단순화 버전, "처리현황" 상세 텍스트와는 별도) — 사용자
-// 확정 매핑(2026-09):
-// - targetResponse 없음 → "응답 대기 중"
-// - 응답했지만 reviewStatus === "pending"(검토 중) → "이의제기 (검토 중)"/
-//   "위반인정 (검토 중)"(90분 시한 초과로 자동 제출된 경우도 "위반인정
-//   (검토 중)"으로 동일하게 표시 — 자동 제출 여부는 더 이상 문구로
-//   구분하지 않는다).
-// - 관리자가 최종 처리했으면(pending이 아님) reviewStatus만으로 결정한다
-//   — approved→"확정", deferred→"유예", rejected/rejected_recognized→
-//   "반려". targetResponse(이의제기/위반인정)와 무관하다: 예를 들어
-//   "이의제기"했어도 관리자가 검토 후 실제 위반이라고 판단해 approved로
-//   처리하면 "확정"이 되고(이의제기가 받아들여지지 않음), "위반인정"했어도
-//   관리자가 위반이 아니라고 판단해 rejected로 처리하면 "반려"가 된다
-//   (사용자 확인) — 결국 이 관리자 최종 결정 자체가 대상자에게 실질적으로
-//   중요한 정보이므로, 어떤 응답을 냈었는지보다 결과(확정/유예/반려)를
-//   우선 보여준다.
-type StatusTone = "warn" | "primary" | "ok" | "muted";
-function statusInfo(item: MyOutputPenItem): { label: string; tone: StatusTone } {
-  if (!item.targetResponse) {
-    return { label: "응답 대기 중", tone: "warn" };
-  }
-  if (item.reviewStatus === "pending") {
-    const label = item.targetResponse === "disputed" ? "이의제기 (검토 중)" : "위반인정 (검토 중)";
-    return { label, tone: "primary" };
-  }
-  if (item.reviewStatus === "approved") return { label: "확정", tone: "warn" };
-  if (item.reviewStatus === "deferred") return { label: "유예", tone: "muted" };
-  return { label: "반려", tone: "muted" };
-}
 
-// "처리현황" SubRow에 쓰는 상세 텍스트 — statusInfo(카드 헤더 뱃지, 단순화된
-// 6종)와 달리 대상자가 실제로 어떤 응답을 제출했는지·90분 시한 초과로 자동
-// 제출됐는지·관리자 결정이 그 응답을 승인했는지 미승인했는지까지 그대로
-// 풀어서 보여준다(사용자 지시: "처리현황"은 텍스트, 카드 헤더는 뱃지로
-// 역할을 분리). "무응답 (관리자 확정/반려)"는 실제 운영에서 도달하지 않는
-// 경로라 제외하고 "대상자 응답 대기 중"으로 폴백한다(이전 확인 사항).
-function statusLabel(item: MyOutputPenItem): string {
-  if (!item.targetResponse) {
-    return "대상자 응답 대기 중";
-  }
-  const isDisputed = item.targetResponse === "disputed";
-  const label = isDisputed ? "이의제기" : "위반인정";
-  if (item.reviewStatus === "pending") {
-    if (item.targetResponseAuto) return "90분 내 무응답으로 위반인정 자동 제출 (검토 중)";
-    return `${label} 제출 (검토 중)`;
-  }
-  const wasApplied = item.reviewStatus === "approved" || item.reviewStatus === "deferred";
-  const approvedByAdmin = isDisputed ? !wasApplied : wasApplied;
-  const outcome = item.reviewStatus === "approved" ? "확정" : item.reviewStatus === "deferred" ? "유예" : "반려";
-  return `${label} ${approvedByAdmin ? "승인" : "미승인"} (${outcome})`;
-}
+// 🔧 [공용화, 2026-09-19 사용자 지시] statusLabel/actionLabel/
+// occurrenceLabel/penaltyCategoryLabel/weeklyImpactLabel/formatDeductedTime
+// 은 관리자 화면(ReportReviewList.tsx)과 완전히 동일한 로직을 복제해
+// 갖고 있었다 — "한쪽만 고치면 서로 달라지는" 문제를 없애기 위해
+// admin/shared.tsx로 옮기고 두 파일이 함께 import한다.
 
 // 시간 차감 예상 분 — 관리자가 "적용" 버튼을 눌러 발신~회신 시각을 직접
 // 입력해야만 실제 penalty.deductedMinutes가 확정되지만(서버 applyTimeDeduction),
@@ -109,11 +75,23 @@ function expectedDeductedMinutes(item: MyOutputPenItem, now: number = Date.now()
   return Math.max(0, diffMinutes - TIME_DEDUCT_GRACE_MINUTES);
 }
 
-// 차감 분을 "-HH:MM" 형식으로 포맷한다(사용자 지시).
-function formatDeductedTime(minutes: number): string {
-  const hh = Math.floor(minutes / 60);
-  const mm = minutes % 60;
-  return `-${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+// 🔧 [수신/발신 통합, 2026-09-19 사용자 지시] 발신 건(제보자 본인)의
+// "처리현황"은 관리자 화면과 공유하는 statusLabel(반려/유예/경고/벌점/
+// 페널티 등 세부 조치까지 노출)을 쓰지 않는다 — "제보자와 자세한 처리
+// 내역을 공유할 필요는 없다"는 목적에 따라, 검토 완료 전까지는 "검토
+// 중"만, 완료 후에는 실제 적용 여부(유예/반려도 결과적으로 벌점 미적용
+// 이므로 "위반 미인정"에 포함)만 보여준다.
+function sentStatusLabel(item: MyOutputPenItem): string {
+  if (item.reviewStatus === "pending") return "검토 중";
+  // 🔧 [버그 재수정, 2026-09-19] applyReportMerit(report-penalty.js
+  // 492~549행)을 다시 확인한 결과, 제보상점은 approved/rejected_recognized
+  // 뿐 아니라 "deferred"(유예)에서도 지급된다 — 492행 조건문이 이 셋을
+  // 하나의 블록으로 묶어 함께 applyReportMerit을 호출하기 때문이다(유예는
+  // "위반 인정, 다만 당일 1회 제한으로 대상자 벌점만 면제"라는 뜻이라
+  // 제보자 상점은 그대로 지급됨). 제보상점이 지급되지 않는 건 시트에
+  // 아무것도 쓰지 않는 순수 "rejected"(561행, 별도 블록) 하나뿐이다.
+  const recognized = item.reviewStatus !== "rejected";
+  return `검토 완료 (${recognized ? "위반 인정" : "위반 미인정"})`;
 }
 
 // "송출 P 대상 처리"(관리자용 ReportReviewList)와 동일한 요일별 아코디언 →
@@ -121,13 +99,17 @@ function formatDeductedTime(minutes: number): string {
 // 두 가지 서로 다른 항목을 같은 섹션에 함께 보여준다(사용자 지시):
 // - "내 화각 점검"(kind: "selfCheck") — 본인이 스스로 찍은 것, 벌점/페널티
 //   판정 대상이 아닌 읽기 전용.
-// - "받은 제보"(kind: "received") — 다른 사람이 나를 대상으로 접수한 일반
-//   제보. 대상자 본인이 "위반인정"/"이의제기" 중 하나를 제출할 수 있다
+// - "제보 목록"(kind: "outputPen", 🔧 [수신/발신 통합, 2026-09-19] 이전
+//   이름 "received"에서 변경 — GET /my-output-pen이 이제 수신(대상자가
+//   본인)뿐 아니라 발신(제보자가 본인)도 함께 내려주므로, "받은 제보"만을
+//   뜻하던 옛 이름이 더 이상 정확하지 않다) — 각 항목의 실제 방향은
+//   `data.direction`("received" | "sent")으로 구분한다. 수신 건만
+//   대상자 본인이 "위반인정"/"이의제기" 중 하나를 제출할 수 있다
 //   (관리자 화면의 90분 타임아웃·"다른 관리자 의견 반영" 활성화 조건이
-//   이 응답을 사용한다).
+//   이 응답을 사용한다) — 발신 건은 읽기 전용이다.
 type MergedItem =
   | { kind: "selfCheck"; id: string; ts: number; data: MyCaptureItem }
-  | { kind: "received"; id: string; ts: number; data: MyOutputPenItem };
+  | { kind: "outputPen"; id: string; ts: number; data: MyOutputPenItem };
 
 // 🔧 [버그 수정] 관리자 화면(ReportReviewList)의 groupByDay/thisWeekDateLabel은
 // "이번 주 대기 건만" 다루는 화면이라 요일 이름(월~일)만으로 그룹핑해도
@@ -148,35 +130,6 @@ function dateLabel(dateKey: string): string {
   return `${m}월 ${d}일 ${dayKr}요일`;
 }
 
-// 아래 3개 함수는 관리자 화면(ReportReviewList)의 동명 함수와 동일한
-// 로직이다(§ expectedDeductedMinutes의 미응답 실시간 계산 수정 포함) —
-// "받은 제보" 상세를 관리자 화면과 완전히 동일하게 보여달라는 사용자
-// 지시에 맞춰, 별도 공용 유틸로 옮기는 대신 이 파일에도 필요한 만큼만
-// 복제했다(다른 파일 변경을 최소화하려는 이 세션의 기존 패턴).
-function actionLabel(occurrence: number | null): string {
-  if (occurrence === 1) return "구두경고";
-  if (occurrence === 2 || occurrence === 3 || occurrence === 5) return "벌점";
-  if (occurrence === 4) return "송출 P : 1회";
-  if (occurrence === 6) return "송출 P : 2회";
-  return "적용 불가 (잔여 슬롯 없음)";
-}
-
-function occurrenceLabel(occurrence: number | null): string {
-  const action = actionLabel(occurrence);
-  return occurrence ? `${occurrence}차 (${action})` : action;
-}
-
-function weeklyImpactLabel(occurrence: number | null, weeklyMinorPenaltyCount: number): string {
-  if (occurrence === 1) return "없음";
-  if (occurrence === 2 || occurrence === 3 || occurrence === 5) {
-    const deduction = Math.round(weeklyMinorPenaltyCount * 0.1 * 10) / 10;
-    return `주간 총 상점에서 -${deduction}점`;
-  }
-  if (occurrence === 4) return "송출 P : 1회";
-  if (occurrence === 6) return "송출 P : 2회";
-  return "-";
-}
-
 function groupByDay(items: MergedItem[]) {
   const map = new Map<string, MergedItem[]>();
   for (const item of items) {
@@ -191,6 +144,425 @@ function groupByDay(items: MergedItem[]) {
     .sort((a, b) => (a[0] < b[0] ? -1 : 1))
     .map(([dateKey, groupItems]) => ({ dateKey, items: groupItems }));
 }
+
+// 🧪 [목업 미리보기, 사용자 지시] 관리자 화면(ReportReviewList)과 동일한
+// 패턴 — 실제 API 호출 없이 이 화면이 다룰 수 있는 상태(내 화각 점검/
+// 받은 제보, 응답 대기·이의제기·위반인정·90분 자동응답, 확정(경고/벌점/
+// 페널티)·유예·반려)를 한 번에 점검한다. occurrence 매핑은
+// actionLabel()(1=구두경고, 2·3·5=벌점, 4·6=송출 P)과 정확히 맞춘다.
+// 시각은 항상 "지금 기준 최근"으로 보이도록 Date.now() 상대값으로 채운다.
+const DUMMY_NOW = Date.now();
+
+const DUMMY_SELF_CHECK_ITEMS: MyCaptureItem[] = [
+  { id: "dummy-self-1", nickname: "재희", reason: "", mode: "screenshot", ts: DUMMY_NOW - 3 * 60 * 60 * 1000 },
+  { id: "dummy-self-2", nickname: "재희", reason: "", mode: "video", ts: DUMMY_NOW - 30 * 60 * 60 * 1000 },
+  // 🔧 [논리적 삭제, 2026-09-19] 본인이 삭제 버튼을 눌러 deleted 오버레이가
+  // 뜨는 케이스도 목업으로 미리보기 가능하게 한다.
+  { id: "dummy-self-3", nickname: "재희", reason: "", mode: "screenshot", ts: DUMMY_NOW - 50 * 60 * 60 * 1000, deleted: true, deletedReason: "manual" },
+  // 🔧 [10일 경과 자동 논리적 삭제, 2026-09-19] 봇의 매일 배치가 접수 10일
+  // 경과 건에 세팅하는 케이스 — "10일 초과로 삭제처리 되었습니다" 문구가
+  // 뜨는지 목업으로 확인할 수 있게 한다.
+  {
+    id: "dummy-self-4",
+    nickname: "재희",
+    reason: "",
+    mode: "screenshot",
+    ts: DUMMY_NOW - 11 * 24 * 60 * 60 * 1000,
+    deleted: true,
+    deletedReason: "expired",
+  },
+];
+
+const DUMMY_RECEIVED_ITEMS: MyOutputPenItem[] = [
+  // 아직 응답하지 않은 건 — "응답 대기 중"(글로우 강조 대상).
+  {
+    id: "dummy-received-1",
+    reason: "격자 기준을 벗어난 근접 화각",
+    mode: "screenshot",
+    ts: DUMMY_NOW - 1 * 60 * 60 * 1000,
+    reviewStatus: "pending",
+    targetResponse: null,
+    targetRespondedAt: null,
+    targetResponseAuto: false,
+    nextOccurrence: 2,
+    weeklyMinorPenaltyCount: 1,
+    deferOccurrence: null,
+    deferredOccurrence: null,
+    penalty: null,
+    merit: null,
+    timeDeduction: null,
+    deleted: false,
+    deletedReason: null,
+    direction: "received",
+    targetName: "재희",
+  },
+  // 이의제기 제출, 관리자 검토 대기 중.
+  {
+    id: "dummy-received-2",
+    reason: "전자기기 사용목적 확인 불가",
+    mode: "video",
+    ts: DUMMY_NOW - 5 * 60 * 60 * 1000,
+    reviewStatus: "pending",
+    targetResponse: "disputed",
+    targetRespondedAt: DUMMY_NOW - 4 * 60 * 60 * 1000,
+    targetResponseAuto: false,
+    nextOccurrence: 4,
+    weeklyMinorPenaltyCount: 0,
+    deferOccurrence: null,
+    deferredOccurrence: null,
+    penalty: null,
+    merit: null,
+    timeDeduction: null,
+    deleted: false,
+    deletedReason: null,
+    direction: "received",
+    targetName: "재희",
+  },
+  // 90분 무응답으로 시스템이 자동으로 위반인정 처리 — 아직 관리자 검토 전.
+  {
+    id: "dummy-received-3",
+    reason: "기타 사유",
+    mode: "screenshot",
+    ts: DUMMY_NOW - 2 * 60 * 60 * 1000,
+    reviewStatus: "pending",
+    targetResponse: "recognized",
+    targetRespondedAt: DUMMY_NOW - 30 * 60 * 1000,
+    targetResponseAuto: true,
+    nextOccurrence: 1,
+    weeklyMinorPenaltyCount: 0,
+    deferOccurrence: null,
+    deferredOccurrence: null,
+    penalty: null,
+    merit: null,
+    timeDeduction: null,
+    deleted: false,
+    deletedReason: null,
+    direction: "received",
+    targetName: "재희",
+  },
+  // 확정 — 1차(구두경고), 응답 지연 없어 시간 차감 0분(뱃지 숨김 케이스).
+  {
+    id: "dummy-received-4",
+    reason: "얼굴, 정수리 등 노출",
+    mode: "screenshot",
+    ts: DUMMY_NOW - 28 * 60 * 60 * 1000,
+    reviewStatus: "approved",
+    targetResponse: "recognized",
+    targetRespondedAt: DUMMY_NOW - 27 * 60 * 60 * 1000,
+    targetResponseAuto: false,
+    nextOccurrence: null,
+    weeklyMinorPenaltyCount: 0,
+    deferOccurrence: null,
+    deferredOccurrence: null,
+    penalty: { number: "1", name: "재희", occurrence: 1, isPCount: false, col: "F", deductedMinutes: 0, dayCol: null, weeklyMinorPenaltyCount: 0 },
+    merit: null,
+    timeDeduction: null,
+    deleted: false,
+    deletedReason: null,
+    direction: "received",
+    targetName: "재희",
+  },
+  // 확정 — 4차(송출 P 1회), 응답 지연 35분 발생(20분 유예 초과 15분 차감).
+  {
+    id: "dummy-received-5",
+    reason: "과도한 스티커 사용",
+    mode: "video",
+    ts: DUMMY_NOW - 50 * 60 * 60 * 1000,
+    reviewStatus: "approved",
+    targetResponse: "disputed",
+    targetRespondedAt: DUMMY_NOW - 49 * 60 * 60 * 1000 + 35 * 60 * 1000,
+    targetResponseAuto: false,
+    nextOccurrence: null,
+    weeklyMinorPenaltyCount: 2,
+    deferOccurrence: null,
+    deferredOccurrence: null,
+    penalty: { number: "1", name: "재희", occurrence: 4, isPCount: true, col: "I", deductedMinutes: 15, dayCol: "P", weeklyMinorPenaltyCount: 2 },
+    merit: null,
+    timeDeduction: null,
+    deleted: false,
+    deletedReason: null,
+    direction: "received",
+    targetName: "재희",
+  },
+  // 유예 — 당일 이미 1회 적용을 받아 2번째 건은 벌점만 면제, 시간 차감은 그대로.
+  {
+    id: "dummy-received-6",
+    reason: "손 또는 학습자료 확인 불가",
+    mode: "screenshot",
+    ts: DUMMY_NOW - 32 * 60 * 60 * 1000,
+    reviewStatus: "deferred",
+    targetResponse: "recognized",
+    targetRespondedAt: DUMMY_NOW - 31 * 60 * 60 * 1000,
+    targetResponseAuto: false,
+    nextOccurrence: null,
+    weeklyMinorPenaltyCount: 1,
+    deferOccurrence: 1,
+    deferredOccurrence: 3,
+    penalty: null,
+    merit: null,
+    timeDeduction: { number: "1", deductedMinutes: 12, dayCol: "P" },
+    deleted: false,
+    deletedReason: null,
+    direction: "received",
+    targetName: "재희",
+  },
+  // 반려 — 이의제기가 받아들여져 페널티 자체가 취소됨.
+  {
+    id: "dummy-received-7",
+    reason: "격자 기준을 벗어난 근접 화각",
+    mode: "screenshot",
+    ts: DUMMY_NOW - 55 * 60 * 60 * 1000,
+    reviewStatus: "rejected",
+    targetResponse: "disputed",
+    targetRespondedAt: DUMMY_NOW - 54 * 60 * 60 * 1000,
+    targetResponseAuto: false,
+    nextOccurrence: null,
+    weeklyMinorPenaltyCount: 0,
+    deferOccurrence: null,
+    deferredOccurrence: null,
+    penalty: null,
+    merit: null,
+    timeDeduction: null,
+    deleted: false,
+    deletedReason: null,
+    direction: "received",
+    targetName: "재희",
+  },
+  // 확정 — 3차(벌점), 잔여 슬롯 있어 정상 적용(occurrence 2/3/5 벌점군 중
+  // 아직 없던 3차 케이스 보강).
+  {
+    id: "dummy-received-8",
+    reason: "손 또는 학습자료 확인 불가",
+    mode: "video",
+    ts: DUMMY_NOW - 45 * 60 * 60 * 1000,
+    reviewStatus: "approved",
+    targetResponse: "recognized",
+    targetRespondedAt: DUMMY_NOW - 44 * 60 * 60 * 1000,
+    targetResponseAuto: false,
+    nextOccurrence: null,
+    weeklyMinorPenaltyCount: 3,
+    deferOccurrence: null,
+    deferredOccurrence: null,
+    penalty: { number: "1", name: "재희", occurrence: 3, isPCount: false, col: "H", deductedMinutes: 0, dayCol: null, weeklyMinorPenaltyCount: 3 },
+    merit: null,
+    timeDeduction: null,
+    deleted: false,
+    deletedReason: null,
+    direction: "received",
+    targetName: "재희",
+  },
+  // 반려 (상점인정) — 위반은 인정되나 잔여 슬롯이 없어 등록 불가, 대상자에게는
+  // 아무 처리도 되지 않음(관리자 화면과 동일하게 "반려"로 표시됨).
+  {
+    id: "dummy-received-9",
+    reason: "얼굴, 정수리 등 노출",
+    mode: "screenshot",
+    ts: DUMMY_NOW - 65 * 60 * 60 * 1000,
+    reviewStatus: "rejected_recognized",
+    targetResponse: "recognized",
+    targetRespondedAt: DUMMY_NOW - 64 * 60 * 60 * 1000,
+    targetResponseAuto: false,
+    nextOccurrence: null,
+    weeklyMinorPenaltyCount: 0,
+    deferOccurrence: null,
+    deferredOccurrence: null,
+    penalty: null,
+    merit: null,
+    timeDeduction: null,
+    deleted: false,
+    deletedReason: null,
+    direction: "received",
+    targetName: "재희",
+  },
+  // 🔧 [10일 경과 자동 논리적 삭제, 2026-09-19] 접수 10일 초과 확정 건 —
+  // "10일 초과로 삭제처리 되었습니다" 오버레이를 수신 화면에서도 목업으로
+  // 확인할 수 있게 한다.
+  {
+    id: "dummy-received-10",
+    reason: "손 또는 학습자료 확인 불가",
+    mode: "screenshot",
+    ts: DUMMY_NOW - 11 * 24 * 60 * 60 * 1000,
+    reviewStatus: "approved",
+    targetResponse: "recognized",
+    targetRespondedAt: DUMMY_NOW - 11 * 24 * 60 * 60 * 1000 + 30 * 60 * 1000,
+    targetResponseAuto: false,
+    nextOccurrence: null,
+    weeklyMinorPenaltyCount: 1,
+    deferOccurrence: null,
+    deferredOccurrence: null,
+    penalty: { number: "1", name: "재희", occurrence: 2, isPCount: false, col: "G", deductedMinutes: 0, dayCol: null, weeklyMinorPenaltyCount: 1 },
+    merit: null,
+    timeDeduction: null,
+    deleted: true,
+    deletedReason: "expired",
+    direction: "received",
+    targetName: "재희",
+  },
+  // 발신 — 내가 제보한 건, 아직 대상자 응답 대기 중(읽기 전용, 버튼 없음).
+  {
+    id: "dummy-sent-1",
+    reason: "얼굴, 정수리 등 노출",
+    mode: "screenshot",
+    ts: DUMMY_NOW - 3 * 60 * 60 * 1000,
+    reviewStatus: "pending",
+    targetResponse: null,
+    targetRespondedAt: null,
+    targetResponseAuto: false,
+    nextOccurrence: 1,
+    weeklyMinorPenaltyCount: 0,
+    deferOccurrence: null,
+    deferredOccurrence: null,
+    penalty: null,
+    merit: null,
+    timeDeduction: null,
+    deleted: false,
+    deletedReason: null,
+    direction: "sent",
+    targetName: "민준",
+  },
+  // 발신 — 내가 제보한 건, 위반인정으로 확정(벌점) — 읽기 전용.
+  {
+    id: "dummy-sent-2",
+    reason: "과도한 스티커 사용",
+    mode: "video",
+    ts: DUMMY_NOW - 40 * 60 * 60 * 1000,
+    reviewStatus: "approved",
+    targetResponse: "recognized",
+    targetRespondedAt: DUMMY_NOW - 39 * 60 * 60 * 1000,
+    targetResponseAuto: false,
+    nextOccurrence: null,
+    weeklyMinorPenaltyCount: 1,
+    deferOccurrence: null,
+    deferredOccurrence: null,
+    penalty: { number: "7", name: "민준", occurrence: 2, isPCount: false, col: "G", deductedMinutes: 0, dayCol: null, weeklyMinorPenaltyCount: 1 },
+    merit: { number: "1", name: "재희", occurrence: 3, col: "T" },
+    timeDeduction: null,
+    deleted: false,
+    deletedReason: null,
+    direction: "sent",
+    targetName: "민준",
+  },
+  // 발신 — 대상자가 이의제기를 제출, 아직 관리자 검토 대기 중("발신 대기 검토").
+  {
+    id: "dummy-sent-3",
+    reason: "전자기기 사용목적 확인 불가",
+    mode: "screenshot",
+    ts: DUMMY_NOW - 6 * 60 * 60 * 1000,
+    reviewStatus: "pending",
+    targetResponse: "disputed",
+    targetRespondedAt: DUMMY_NOW - 5 * 60 * 60 * 1000,
+    targetResponseAuto: false,
+    nextOccurrence: 5,
+    weeklyMinorPenaltyCount: 1,
+    deferOccurrence: null,
+    deferredOccurrence: null,
+    penalty: null,
+    merit: null,
+    timeDeduction: null,
+    deleted: false,
+    deletedReason: null,
+    direction: "sent",
+    targetName: "하윤",
+  },
+  // 발신 — 90분 무응답 자동 위반인정, 아직 관리자 검토 전.
+  {
+    id: "dummy-sent-4",
+    reason: "기타 사유",
+    mode: "video",
+    ts: DUMMY_NOW - 4 * 60 * 60 * 1000,
+    reviewStatus: "pending",
+    targetResponse: "recognized",
+    targetRespondedAt: DUMMY_NOW - 90 * 60 * 1000,
+    targetResponseAuto: true,
+    nextOccurrence: 1,
+    weeklyMinorPenaltyCount: 0,
+    deferOccurrence: null,
+    deferredOccurrence: null,
+    penalty: null,
+    merit: null,
+    timeDeduction: null,
+    deleted: false,
+    deletedReason: null,
+    direction: "sent",
+    targetName: "서준",
+  },
+  // 발신 — 이의제기가 받아들여져 순수 반려됨(제보상점 미지급) —
+  // "발신 확정 반려"(회색).
+  {
+    id: "dummy-sent-5",
+    reason: "격자 기준을 벗어난 근접 화각",
+    mode: "screenshot",
+    ts: DUMMY_NOW - 60 * 60 * 60 * 1000,
+    reviewStatus: "rejected",
+    targetResponse: "disputed",
+    targetRespondedAt: DUMMY_NOW - 59 * 60 * 60 * 1000,
+    targetResponseAuto: false,
+    nextOccurrence: null,
+    weeklyMinorPenaltyCount: 0,
+    deferOccurrence: null,
+    deferredOccurrence: null,
+    penalty: null,
+    merit: null,
+    timeDeduction: null,
+    deleted: false,
+    deletedReason: null,
+    direction: "sent",
+    targetName: "하윤",
+  },
+  // 발신 — 대상자가 당일 이미 1회 적용을 받아 유예 처리(벌점만 면제, 응답
+  // 지연 시간 차감은 그대로 적용) — applyReportMerit은 deferred에서도
+  // 제보상점을 지급하므로(위 sentStatusLabel 주석 참고) "발신 확정 상점"
+  // (초록)으로 표시된다 — approved/rejected_recognized와 다른 결정
+  // 경로에서도 동일하게 상점이 지급되는 케이스를 커버.
+  {
+    id: "dummy-sent-6",
+    reason: "손 또는 학습자료 확인 불가",
+    mode: "screenshot",
+    ts: DUMMY_NOW - 33 * 60 * 60 * 1000,
+    reviewStatus: "deferred",
+    targetResponse: "recognized",
+    targetRespondedAt: DUMMY_NOW - 32 * 60 * 60 * 1000,
+    targetResponseAuto: false,
+    nextOccurrence: null,
+    weeklyMinorPenaltyCount: 1,
+    deferOccurrence: 2,
+    deferredOccurrence: 4,
+    penalty: null,
+    // 🔧 [버그 수정] applyReportMerit(report-penalty.js)은 deferred(유예)
+    // 결정에서도 제보자에게 제보상점을 지급한다 — 이 목업은 merit: null로
+    // 남아있어 "이번 상점"은 맞게 나와도(reviewStatus !== "rejected") "누적
+    // 상점"(meritOccurrence 필요) SubRow가 안 뜨는 불일치가 있었다.
+    merit: { number: "1", name: "재희", occurrence: 4, col: "U" },
+    timeDeduction: { number: "1", deductedMinutes: 8, dayCol: "P" },
+    deleted: false,
+    deletedReason: null,
+    direction: "sent",
+    targetName: "서준",
+  },
+  // 발신 — 잔여 슬롯이 없어 "반려 (상점인정)"으로 확정, 제보상점은 지급됨
+  // ("발신 확정 상점", 초록).
+  {
+    id: "dummy-sent-7",
+    reason: "과도한 스티커 사용",
+    mode: "video",
+    ts: DUMMY_NOW - 70 * 60 * 60 * 1000,
+    reviewStatus: "rejected_recognized",
+    targetResponse: "recognized",
+    targetRespondedAt: DUMMY_NOW - 69 * 60 * 60 * 1000,
+    targetResponseAuto: false,
+    nextOccurrence: null,
+    weeklyMinorPenaltyCount: 0,
+    deferOccurrence: null,
+    deferredOccurrence: null,
+    penalty: null,
+    merit: { number: "1", name: "재희", occurrence: 5, col: "V" },
+    timeDeduction: null,
+    deleted: false,
+    deletedReason: null,
+    direction: "sent",
+    targetName: "민준",
+  },
+];
 
 export function MyOutputPenSection({
   refreshSignal,
@@ -218,6 +590,11 @@ export function MyOutputPenSection({
   const [hasNewReceived, setHasNewReceived] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // 🧪 [목업 미리보기, 사용자 지시] 관리자 화면(ReportReviewList)과 동일한
+  // showingDummy 패턴 — 켜져 있는 동안 실제 API 호출(load/detectNew)을
+  // 막고 고정 스냅샷(DUMMY_SELF_CHECK_ITEMS/DUMMY_RECEIVED_ITEMS)만
+  // 보여준다.
+  const [showingDummy, setShowingDummy] = useState(false);
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [respondingId, setRespondingId] = useState<string | null>(null);
@@ -256,7 +633,10 @@ export function MyOutputPenSection({
     ]);
   }
 
-  function load() {
+  function load(force = false) {
+    // 🧪 목업 중엔 실제 API를 호출하지 않는다 — 목업을 끌 때(force=true)만
+    // 실제 데이터로 복원하기 위해 다시 호출된다(아래 트레일링 버튼 참고).
+    if (showingDummy && !force) return;
     const requestId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
@@ -285,6 +665,8 @@ export function MyOutputPenSection({
   // selfCheckItems, 목록 자체)은 전혀 안 건드린다 — 새 항목이 있다는
   // 사실만 새로고침 버튼에 반영한다.
   function detectNew() {
+    // 🧪 목업 중엔 "새 항목 감지"도 실제 API를 호출하지 않는다.
+    if (showingDummy) return;
     const cycleParam = cycleFileId ? `?cycle=${encodeURIComponent(cycleFileId)}` : "";
     call<MyOutputPenResponse>(`/my-output-pen${cycleParam}`)
       .then((data) => {
@@ -333,6 +715,15 @@ export function MyOutputPenSection({
   // 당사자 본인이 "위반인정"/"이의제기" 중 하나를 제출한다 — 제출 성공 시
   // 서버 재조회 없이 로컬 상태만 갱신해 즉시 반영한다(다른 결정 흐름과 동일 패턴).
   function respond(item: MyOutputPenItem, response: "disputed" | "recognized") {
+    // 🧪 목업 중엔 실제 API를 호출하지 않고 로컬 state만 바꾼다.
+    if (showingDummy) {
+      setReceivedItems((prev) =>
+        prev
+          ? prev.map((i) => (i.id === item.id ? { ...i, targetResponse: response, targetRespondedAt: Date.now() } : i))
+          : prev
+      );
+      return;
+    }
     setRespondingId(item.id);
     setError(null);
     call<TargetRespondResponse>("/captures/target-respond", { method: "POST", body: { id: item.id, response } })
@@ -356,26 +747,54 @@ export function MyOutputPenSection({
   // "내 화각 점검"은 벌점/페널티 판정 대상이 아닌 순수 셀프 확인용 기록이라
   // (사용자 요청) 본인이 직접 삭제할 수 있다. "받은 제보"는 관리자 처리
   // 대상이라 여기서 삭제 버튼을 제공하지 않는다.
+  // 🔧 [논리적 삭제, 2026-09-19 사용자 지시] "화각 점검에서도 삭제를 누르면
+  // 동일한 처리를(반려와 같은 방식으로 논리적 삭제)" — 서버가 실제 파일을
+  // trash로만 옮기고 목록 엔트리는 남기므로(deleted 플래그), 프론트도
+  // 목록에서 항목을 제거하지 않고 deleted만 true로 반영해 오버레이가
+  // 뜨도록 한다.
   function deleteSelfCheck(item: MyCaptureItem) {
     if (!window.confirm("이 내 화각 점검 기록을 삭제할까요? 되돌릴 수 없습니다.")) return;
+    // 🧪 목업 중엔 실제 삭제 API를 호출하지 않고 로컬 state만 갱신한다.
+    if (showingDummy) {
+      setSelfCheckItems((prev) => (prev ? prev.map((i) => (i.id === item.id ? { ...i, deleted: true } : i)) : prev));
+      return;
+    }
     setDeletingId(item.id);
     setError(null);
     call<MyCaptureDeleteResponse>("/my-captures/delete", { method: "POST", body: { id: item.id } })
       .then(() => {
-        setSelfCheckItems((prev) => (prev ? prev.filter((i) => i.id !== item.id) : prev));
+        setSelfCheckItems((prev) => (prev ? prev.map((i) => (i.id === item.id ? { ...i, deleted: true } : i)) : prev));
       })
       .catch((err) => setError(err instanceof Error ? err.message : "삭제에 실패했습니다."))
       .finally(() => setDeletingId(null));
   }
 
+  // 🧪 [목업 미리보기] 토글을 켜는 순간 selfCheckItems/receivedItems
+  // state 자체에 스냅샷이 들어가므로(아래 트레일링 버튼), 이 폴백은
+  // 클릭 직후 커밋 전까지의 짧은 순간을 대비한 방어일 뿐이다.
+  const effectiveSelfCheckItems = showingDummy ? (selfCheckItems ?? DUMMY_SELF_CHECK_ITEMS) : selfCheckItems;
+  const effectiveReceivedItems = showingDummy ? (receivedItems ?? DUMMY_RECEIVED_ITEMS) : receivedItems;
+
   const items: MergedItem[] = [
-    ...(selfCheckItems || []).map((data): MergedItem => ({ kind: "selfCheck", id: data.id, ts: data.ts, data })),
-    ...(receivedItems || []).map((data): MergedItem => ({ kind: "received", id: data.id, ts: data.ts, data })),
+    ...(effectiveSelfCheckItems || []).map((data): MergedItem => ({ kind: "selfCheck", id: data.id, ts: data.ts, data })),
+    ...(effectiveReceivedItems || []).map((data): MergedItem => ({ kind: "outputPen", id: data.id, ts: data.ts, data })),
   ];
-  const loaded = selfCheckItems !== null && receivedItems !== null;
+  const loaded = effectiveSelfCheckItems !== null && effectiveReceivedItems !== null;
 
   return (
-    <SectionCard className="shadow-sm shadow-black/[0.03]">
+    <div className="flex flex-col gap-4">
+      {/* 🔧 [사용자 지시] 주차 전환 토글("내 화각 불량 제보"의 사이클
+          전환)을 섹션 접힘 상태와 무관하게 항상 보이도록 카드 바깥으로
+          뺐다 — 예전엔 CollapsiblePanel 안에 있어 섹션을 접으면 함께
+          사라졌다. */}
+      <CycleSwitcher
+        selectedFileId={cycleFileId}
+        onSelect={setCycleFileId}
+        memberNumber="self"
+        includeUnpaid
+        includeForced
+      />
+      <SectionCard className="shadow-sm shadow-black/[0.03]">
       <Collapsible defaultOpen className="flex flex-col">
         <SectionHeader
           icon={ListChecks}
@@ -385,15 +804,35 @@ export function MyOutputPenSection({
           refreshProgress={refreshProgress}
           refreshDisabled={!hasNewReceived}
           refreshDisabledReason="새로 접수된 내역이 없습니다"
+          trailing={
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              className={cn("shrink-0", showingDummy && "border-ok/30 bg-ok/15 text-ok hover:bg-ok/25 dark:hover:bg-ok/25")}
+              onClick={() => {
+                const next = !showingDummy;
+                setShowingDummy(next);
+                // 목업을 켤 땐 두 목록에 고정 스냅샷을 넣고, 끌 땐 null로
+                // 비워 load(true)가 실제 데이터로 다시 채우게 한다 —
+                // ReportReviewList.tsx와 동일한 패턴(CapturePreview가 더미
+                // id로 실제 파일을 fetch하려다 실패하는 것을 막기 위함).
+                setSelfCheckItems(next ? DUMMY_SELF_CHECK_ITEMS : null);
+                setReceivedItems(next ? DUMMY_RECEIVED_ITEMS : null);
+                setExpandedDay(null);
+                setExpandedId(null);
+                setHasNewReceived(false);
+                if (!next) load(true);
+              }}
+              aria-pressed={showingDummy}
+              aria-label={showingDummy ? "목업 미리보기 끄기" : "목업 데이터로 미리보기"}
+              title={showingDummy ? "목업 미리보기 끄기" : "목업 데이터로 미리보기"}
+            >
+              <FlaskConical className="size-3.5" strokeWidth={ICON_STROKE.default} />
+            </Button>
+          }
         />
         <CollapsiblePanel className="flex flex-col gap-4">
-          <CycleSwitcher
-            selectedFileId={cycleFileId}
-            onSelect={setCycleFileId}
-            memberNumber="self"
-            includeUnpaid
-            includeForced
-          />
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
@@ -402,10 +841,14 @@ export function MyOutputPenSection({
 
           {loading && !loaded && <AdminListSkeleton />}
 
+          {/* 🔧 [사용자 지시, 2026-09-19] "'내 화각 불량 제보'가 비어있을 때
+              출력되는 화면이 '화각 불량 제보 처리'가 비어있을 때랑 달라" —
+              관리자 화면(ReportReviewList)의 빈 상태(AdminEmptyState,
+              InfoCard+py-8)와 다른 임시 <p>(py-6, 카드 없음)를 쓰고 있어
+              스켈레톤→빈 상태 전환 시 높이 낙차가 관리자 화면과 달랐다.
+              7개 관리자 목록이 이미 통일해 쓰는 컴포넌트를 그대로 재사용. */}
           {!loading && loaded && items.length === 0 && (
-            <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">
-              확인할 내 화각 점검·제보가 없습니다.
-            </p>
+            <AdminEmptyState>확인할 내 화각 점검·제보가 없습니다.</AdminEmptyState>
           )}
 
           {loaded && items.length > 0 && (
@@ -414,7 +857,15 @@ export function MyOutputPenSection({
                 const isDayExpanded = expandedDay === group.dateKey;
                 // "내 화각 점검"(kind: "selfCheck")은 벌점/페널티 판정 대상이
                 // 아닌 자가 점검용 기록이라 건수에서 제외한다(사용자 지시).
-                const receivedCount = group.items.filter((item) => item.kind === "received").length;
+                // 🔧 [수신/발신 통합, 2026-09-19 사용자 지시] "총 N건" 하나로
+                // 뭉쳐 보여주던 것을 "총 수신 : N건"/"총 발신 : N건" 두
+                // 뱃지로 나눈다.
+                const receivedCount = group.items.filter(
+                  (item) => item.kind === "outputPen" && item.data.direction === "received"
+                ).length;
+                const sentCount = group.items.filter(
+                  (item) => item.kind === "outputPen" && item.data.direction === "sent"
+                ).length;
                 return (
                   <InfoCard key={group.dateKey} className="flex flex-col gap-2.5 bg-card">
                     <button
@@ -443,8 +894,15 @@ export function MyOutputPenSection({
                             🔧 [사용자 지시] "뱃지는 아까 키웠잖아? 지금보니까
                             살짝 작은게 나은 것 같다" — TintedPill과 함께
                             한 단계씩 낮춘다(text-xs sm:text-sm). */}
-                        <span className="rounded-full bg-amber-600/15 px-2.5 py-0.5 text-xs font-semibold text-amber-600 sm:text-sm dark:bg-amber-400/15 dark:text-amber-400">
-                          총 {receivedCount}건
+                        {/* 🔧 [수신/발신 통합, 2026-09-19 사용자 지시] "총 N건"
+                            하나였던 뱃지를 "총 수신 : N건"/"총 발신 : N건"
+                            두 개로 나눈다. 색상은 2차 토글의 수신(blue)/
+                            발신(purple) 뱃지와 동일하게 맞춘다(사용자 지시). */}
+                        <span className="rounded-full bg-blue-600/15 px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap text-blue-600 sm:text-sm dark:bg-blue-400/15 dark:text-blue-400">
+                          총 수신 : {receivedCount}건
+                        </span>
+                        <span className="rounded-full bg-violet-600/15 px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap text-violet-600 sm:text-sm dark:bg-violet-400/15 dark:text-violet-400">
+                          총 발신 : {sentCount}건
                         </span>
                         <ChevronDown
                           className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", isDayExpanded && "rotate-180")}
@@ -461,13 +919,63 @@ export function MyOutputPenSection({
                           .sort((a, b) => a.ts - b.ts)
                           .map((item) => {
                           const isItemExpanded = expandedId === item.id;
-                          const isReceived = item.kind === "received";
-                          const received = isReceived ? (item.data as MyOutputPenItem) : null;
+                          // 🔧 [수신/발신 통합, 2026-09-19] kind: "outputPen"은
+                          // "selfCheck가 아니라 GET /my-output-pen에서 온 항목"
+                          // 이라는 뜻일 뿐, 수신/발신 여부는 별도로
+                          // received.direction을 봐야 한다.
+                          const isOutputPenItem = item.kind === "outputPen";
+                          const received = isOutputPenItem ? (item.data as MyOutputPenItem) : null;
+                          const isSent = received?.direction === "sent";
                           // 버튼 자체는 항상 보여주되(사용자 지시), 이미 관리자가 최종
                           // 처리(적용/유예/반려)했거나 대상자가 이미 응답을 제출한
-                          // 건이면 눌러도 무효이므로 비활성화한다.
+                          // 건이면 눌러도 무효이므로 비활성화한다. 🔧 [수신/발신 통합]
+                          // 발신 건(본인이 제보한 건)은 대상자 전용 액션이라 항상 불가.
                           const canRespond =
-                            isReceived && received!.reviewStatus === "pending" && !received!.targetResponse;
+                            isOutputPenItem &&
+                            !isSent &&
+                            received!.reviewStatus === "pending" &&
+                            !received!.targetResponse;
+                          // 🔧 [뱃지 일치, 2026-09-19 사용자 지시] 관리자 화면
+                          // (ReportReviewList)과 동일한 "{대기|확정} | {세부}" 단일
+                          // 뱃지로 통일 — 1차 토글(날짜, 위 "총 수신/발신 N건")은
+                          // 그대로 두고 2차 토글(이 항목 헤더)만 맞춘다. 이 화면은
+                          // 로컬 세션 오버라이드(applied/rejected)가 없고 서버가
+                          // 이미 확정한 reviewStatus를 그대로 신뢰하므로 관리자
+                          // 화면의 isItemApplied류 헬퍼 대신 reviewStatus로 직접
+                          // 판정한다.
+                          const isApplied = isOutputPenItem && received!.reviewStatus === "approved";
+                          const isDeferred = isOutputPenItem && received!.reviewStatus === "deferred";
+                          const isRejected =
+                            isOutputPenItem &&
+                            (received!.reviewStatus === "rejected" || received!.reviewStatus === "rejected_recognized");
+                          const statusPillGroup: "대기" | "확정" = isApplied || isDeferred || isRejected ? "확정" : "대기";
+                          // 🔧 [사용자 지시 + 버그 재수정, 2026-09-19] 발신 건은 대상자
+                          // 처리 세부(경고/벌점/페널티/유예/반려/이의/인정)를 공유하지
+                          // 않는다는 원칙에 따라, "검토 중"인지 제보상점이 실제로
+                          // 지급됐는지("상점")만 구분한다 — applyReportMerit
+                          // (report-penalty.js 492~549행)은 approved/
+                          // rejected_recognized뿐 아니라 deferred(유예)에서도 지급하고,
+                          // 지급하지 않는 건 시트에 아무것도 쓰지 않는 순수
+                          // "rejected"(561행, 별도 블록) 하나뿐이다.
+                          const statusPillDetail = isSent
+                            ? statusPillGroup === "확정"
+                              ? received!.reviewStatus !== "rejected"
+                                ? "상점"
+                                : "반려"
+                              : "검토"
+                            : isApplied
+                              ? penaltyCategoryLabel(received!.penalty?.occurrence ?? received!.nextOccurrence)
+                              : isDeferred
+                                ? "유예"
+                                : isRejected
+                                  ? "반려"
+                                  : // 🔧 [사용자 지시, 2026-09-19] 수신(회원 본인) 화면은
+                                    // 관리자 화면과 달리 이의제기/위반인정 여부를 굳이
+                                    // 구분해 보여줄 필요가 없다 — "접수"(아직 응답 전)만
+                                    // 남기고 나머지는 "검토"로 합친다.
+                                    received?.targetResponse
+                                      ? "검토"
+                                      : "접수";
                           return (
                             // 🔧 [사용자 지시] 상세 펼치기/접기가 조건부 렌더링(즉시 나타남/
                             // 사라짐)이라 "뚝뚝 끊기는" 느낌이 있었다 — 기존에 섹션 전체
@@ -491,18 +999,29 @@ export function MyOutputPenSection({
                                 canRespond && "border-destructive/60 animate-unpaid-glow"
                               )}
                             >
-                              {/* 🔧 [사용자 지시] "뱃지가 줄어들어서 한 줄에 표현도 가능할 것
-                                  같은데 잘리거나 넘칠 때만 개행하도록" — 뱃지 크기를
-                                  줄인(TintedPill text-sm→text-xs) 뒤로는 대부분 폭에서 한
-                                  줄에 들어가므로, 시간(좌측 고정)과 뱃지 그룹(우측 정렬,
-                                  사용자 지시: "뱃지는 우측 정렬")을 양끝에 두고, 뱃지
-                                  그룹만 flex-wrap으로 둬 공간이 모자랄 때만 다음 줄로
-                                  넘어간다(이전엔 뱃지가 3개까지 붙는 유예/확정 건에서
-                                  좁은 폭에 잘려 보여 아예 별도 줄로 고정 분리했었으나,
-                                  뱃지 자체가 작아진 지금은 잘릴 때만 개행하는 편이
-                                  대부분의 경우 더 컴팩트하다). 접기 버튼은 뱃지 그룹과
-                                  함께 묶어 항상 맨 우측 끝을 지키게 한다. */}
-                              <div className="flex flex-wrap items-center justify-between gap-x-1.5 gap-y-1">
+                              {/* 🔧 [사용자 지시, 2026-09-19] "1차 토글(요일 그룹)을 재활용" —
+                                  기존엔 이 헤더가 <div>였고 우측의 ghost 아이콘 버튼만
+                                  클릭 가능해, 뱃지 사이 빈 공간(가운데)을 눌러도 토글되지
+                                  않고 ghost 버튼 특유의 hover 배경만 도드라졌다(사용자
+                                  지적). 1차 토글(위 요일 그룹 헤더, 776번째 줄 부근)과
+                                  동일하게 헤더 행 전체를 <button>으로 바꿔 어디를 눌러도
+                                  토글되고 별도 hover 배경도 생기지 않게 한다. */}
+                              <button
+                                type="button"
+                                onClick={() => setExpandedId(isItemExpanded ? null : item.id)}
+                                aria-expanded={isItemExpanded}
+                                className="flex flex-wrap items-center justify-between gap-x-1.5 gap-y-1 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded"
+                              >
+                                {/* 🔧 [사용자 지시] "뱃지가 줄어들어서 한 줄에 표현도 가능할 것
+                                    같은데 잘리거나 넘칠 때만 개행하도록" — 뱃지 크기를
+                                    줄인(TintedPill text-sm→text-xs) 뒤로는 대부분 폭에서 한
+                                    줄에 들어가므로, 시간(좌측 고정)과 뱃지 그룹(우측 정렬,
+                                    사용자 지시: "뱃지는 우측 정렬")을 양끝에 두고, 뱃지
+                                    그룹만 flex-wrap으로 둬 공간이 모자랄 때만 다음 줄로
+                                    넘어간다(이전엔 뱃지가 3개까지 붙는 유예/확정 건에서
+                                    좁은 폭에 잘려 보여 아예 별도 줄로 고정 분리했었으나,
+                                    뱃지 자체가 작아진 지금은 잘릴 때만 개행하는 편이
+                                    대부분의 경우 더 컴팩트하다).
                                 {/* 🔧 [사용자 지시] 이 시간 텍스트가 날짜 그룹 제목
                                     ("9월 9일 수요일", text-sm sm:text-base)과 같은
                                     위계(항목의 "제목" 역할)인데 한 단계 작은
@@ -517,104 +1036,56 @@ export function MyOutputPenSection({
                                     그룹과 접기 버튼 사이 간격을 줄여 더 가깝게 붙인다. */}
                                 <div className="flex min-w-0 flex-wrap items-center justify-end gap-0.5">
                                   <div className="flex flex-wrap items-center justify-end gap-1.5 [&_span]:shrink-0 [&_span]:whitespace-nowrap">
-                                    {isReceived ? (
-                                    received!.reviewStatus === "deferred" ? (
-                                      // 🔧 [관리자 화면과 동일화] 관리자 화면(ReportReviewList)은
-                                      // 유예 뱃지를 "유예 N차" + 원래 조치("2차 (벌점)" 등) 2개로
-                                      // 분리해 보여준다(사용자 지시로 여기도 통일).
+                                    {isOutputPenItem ? (
                                       <>
-                                        {/* 🔧 [사용자 지시] "유예도 구두경고 같은 노란색 뱃지로
-                                            표시해줘" — 확정 케이스의 사유 뱃지(구두경고/벌점 등)와
-                                            동일한 노란색 톤으로 맞춘다. */}
-                                        <TintedPill
-                                          tone="muted"
-                                          className="bg-yellow-500/15 text-yellow-600 dark:bg-yellow-400/15 dark:text-yellow-400"
-                                        >
-                                          {received!.deferOccurrence ? `유예 ${received!.deferOccurrence}차` : "유예"}
+                                        {/* 🔧 [수신/발신 통합, 2026-09-19 사용자 지시] "확정이나
+                                            대기 뱃지 앞에 '수신', '발신' 뱃지를 붙여서 구분" —
+                                            별도 뱃지로 앞에 붙인다(대기/확정 뱃지와는 성격이
+                                            다른 축의 구분이라 DividedValue로 합치지 않음). */}
+                                        <TintedPill tone={isSent ? "purple" : "blue"}>
+                                          {isSent ? "발신" : "수신"}
                                         </TintedPill>
-                                        {/* 🔧 [사용자 지시] 유예는 실제로 그 조치(구두경고/벌점 등)가
-                                            적용되지 않은 상태라, 사유 뱃지("N차 (사유)"/괄호 안
-                                            사유)를 아예 보여주지 않는다 — 남겨두면 "이미 그
-                                            조치가 적용됐다"는 혼동을 줄 수 있어서(사용자 확인).
-                                            "유예 N차" 뱃지와 시간 차감 뱃지만 남긴다. 상세 펼침
-                                            영역은 여전히 occurrenceLabel(전체 문구)을 그대로
-                                            보여준다 — 거기는 "원래대로라면 몇 차 (사유)였을지"를
-                                            설명하는 문맥이라 혼동 소지가 없다. */}
-                                        {/* 🔧 [차감시간 뱃지 추가] 유예도 벌점과 별개로 응답 지연
-                                            시간 차감이 확정되므로(사용자 지시) 세 번째 뱃지로
-                                            함께 노출한다. 🔧 [사용자 지시] 차감시간이 0분("-00:00")
-                                            이면 뱃지 자체를 보여주지 않는다 — 차감이 없다는 걸
-                                            뱃지로 강조할 필요가 없으므로. */}
-                                        {(received!.timeDeduction?.deductedMinutes ?? 0) > 0 && (
-                                          <TintedPill tone="muted">
-                                            {formatDeductedTime(received!.timeDeduction?.deductedMinutes ?? 0)}
-                                          </TintedPill>
-                                        )}
-                                      </>
-                                    ) : received!.reviewStatus === "approved" ? (
-                                      // 🔧 [차수 뱃지 추가] "확정" 뱃지 옆에도 유예와 동일하게
-                                      // "확정 적용" 값(어떤 조치)을 별도 뱃지로 붙여 상세를
-                                      // 펼치지 않아도 바로 볼 수 있게 한다(사용자 지시) — 헤더
-                                      // 뱃지는 괄호 안 사유만 보여준다(위와 동일한 이유).
-                                      <>
-                                        <TintedPill tone="warn">확정</TintedPill>
-                                        <TintedPill
-                                          tone="muted"
-                                          className="bg-yellow-500/15 text-yellow-600 dark:bg-yellow-400/15 dark:text-yellow-400"
-                                        >
-                                          {actionLabel(received!.penalty?.occurrence ?? received!.nextOccurrence)}
+                                        {/* 🔧 [뱃지 일치, 2026-09-19 사용자 지시] 관리자 화면
+                                            (ReportReviewList)과 동일하게 "{대기|확정} | {세부}"
+                                            단일 뱃지로 통일 — 기존에 최대 3개까지 늘어나던
+                                            확정/유예 뱃지(조치명·차감시간 포함)를 여기로 합친다.
+                                            차수·차감시간 상세는 펼쳤을 때 "학습시간 차감"/
+                                            "벌점 · 페널티 변동" SubRow에서 그대로 볼 수 있다.
+                                            색상 매핑(statusPillTone)은 관리자 화면과 완전히
+                                            동일한 공용 헬퍼를 재사용한다. 🔧 [사용자 지시,
+                                            2026-09-19] 발신의 "대기 | 검토"만 회색으로 —
+                                            수신도 같은 "검토" 문자열을 쓰지만(이의/인정 통합)
+                                            수신 쪽은 기존 amber를 유지해야 해서, statusPillTone
+                                            공용 매핑 대신 여기서 발신 여부로 먼저 갈라 처리한다. */}
+                                        <TintedPill tone={isSent && statusPillDetail === "검토" ? "muted" : statusPillTone(statusPillDetail)}>
+                                          {/* 🔧 [사용자 지시, 2026-09-19] 제보 도메인 뱃지 구분자를
+                                              공용 DividedValue(세로선)와 별개로 "·"로 통일. */}
+                                          <DottedValue items={[statusPillGroup, statusPillDetail]} />
                                         </TintedPill>
-                                        {/* 🔧 [차감시간 뱃지 추가] "확정 차감시간" 값도 세 번째
-                                            뱃지로 함께 노출한다(사용자 지시) — 0분이면 숨긴다. */}
-                                        {(received!.penalty?.deductedMinutes ?? received!.timeDeduction?.deductedMinutes ?? 0) > 0 && (
-                                          <TintedPill tone="muted">
-                                            {formatDeductedTime(
-                                              received!.penalty?.deductedMinutes ?? received!.timeDeduction?.deductedMinutes ?? 0
-                                            )}
-                                          </TintedPill>
-                                        )}
                                       </>
                                     ) : (
-                                      (() => {
-                                        const { label, tone } = statusInfo(received!);
-                                        return <TintedPill tone={tone}>{label}</TintedPill>;
-                                      })()
-                                    )
-                                    ) : (
-                                      <TintedPill tone="ok">화각 점검</TintedPill>
+                                      <>
+                                        {/* 🔧 [사용자 지시] "내 화각 점검"(selfCheck)도 수신/발신과
+                                            같은 방향 축의 뱃지가 있어야 통일감이 생긴다 — 수신도
+                                            발신도 아닌 항목이라 "기타"로 앞에 붙인다. */}
+                                        <TintedPill tone="muted">기타</TintedPill>
+                                        <TintedPill tone="ok">화각 점검</TintedPill>
+                                      </>
                                     )}
                                   </div>
-                                  {/* 🔧 [사용자 지시] 펼치기 버튼은 테두리 있는 버튼 대신 아이콘
-                                      모양만 남긴다(variant="ghost"). icon-sm의 클릭 영역(28px)이
-                                      화살표 아이콘(14px)보다 두 배 커, 그 여유 공간(7px)이 카드
-                                      오른쪽 패딩에 더해져 왼쪽 시간 텍스트 여백보다 시각적으로
-                                      넓어 보였다(사용자 지적: "우측에 마우스 커서 거의 2개
-                                      들어간다"). 터치 타겟(클릭 영역)은 그대로 두고 -mr-1.5로
-                                      시각적 위치만 카드 가장자리에 맞춘다. 뱃지 그룹과 같은
-                                      우측 묶음 안에 둬 뱃지가 개행되어도 접기 버튼은 항상
-                                      그 줄의 맨 끝을 지킨다. */}
-                                  <Button
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    className="-mr-1.5 shrink-0"
-                                    onClick={() => setExpandedId(isItemExpanded ? null : item.id)}
-                                    aria-label={isItemExpanded ? "상세 접기" : "상세 펼치기"}
-                                  >
-                                    {/* 🔧 [사용자 지시] "뱃지 우측의 빈 공간과 토글 ^ 버튼 색상이
-                                      일치하는지" — 날짜 그룹 헤더의 chevron은
-                                      text-muted-foreground(회색)로 명시돼 있는데, 이 항목별
-                                      chevron은 색 클래스가 없어 ghost 버튼의 기본 전경색을
-                                      그대로 물려받아 더 진하게 보였다 — 동일하게 맞춘다. */}
+                                  {/* 🔧 [사용자 지시, 2026-09-19] "1차 토글을 재활용" — 헤더 전체가
+                                      이제 버튼이므로(위 변경) 별도의 클릭 가능한 ghost 버튼을
+                                      두지 않고, 1차 토글(801~815번째 줄)과 동일하게 장식용
+                                      chevron 아이콘만 배치한다. */}
                                   <ChevronDown
-                                      className={cn(
-                                        "size-3.5 text-muted-foreground transition-transform",
-                                        isItemExpanded && "rotate-180"
-                                      )}
-                                      strokeWidth={ICON_STROKE.default}
-                                    />
-                                  </Button>
+                                    className={cn(
+                                      "size-3.5 shrink-0 text-muted-foreground transition-transform",
+                                      isItemExpanded && "rotate-180"
+                                    )}
+                                    strokeWidth={ICON_STROKE.default}
+                                  />
                                 </div>
-                              </div>
+                              </button>
 
                               {/* 🔧 [버그 수정] 여기 pt-2.5가 부모 Collapsible의
                                   gap-2.5(헤더-패널 사이 간격)에 더해져 중복 적용돼,
@@ -626,24 +1097,76 @@ export function MyOutputPenSection({
                               <CollapsiblePanel className="flex flex-col">
                                 <div className="flex flex-col gap-3 sm:gap-3.5">
                                   <div className="h-px w-full bg-border" />
+                                  {/* 🔧 [수신/발신 통합, 2026-09-19 사용자 지시] 발신 건(본인이
+                                      제보한 건)은 캡처를 볼 필요가 없어(제보 시 이미 확인한
+                                      본인 촬영물) 스크린샷·영상 미리보기를 생략한다. */}
+                                  {!isSent && (
                                   <div className="flex flex-col gap-1.5">
                                     <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                                       <ImageIcon className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                                       스크린샷 · 영상
                                     </span>
-                                    {session?.token ? (
-                                      <CapturePreview id={item.id} token={session.token} />
-                                    ) : (
-                                      <div className="flex aspect-video w-full items-center justify-center rounded-lg border border-dashed bg-muted">
-                                        <p className="text-xs text-muted-foreground sm:text-sm">
-                                          미리보기를 불러오지 못했습니다.
-                                        </p>
-                                      </div>
-                                    )}
+                                    <div className="relative">
+                                      {showingDummy ? (
+                                        // 🧪 목업 항목은 실제 파일이 없어 CapturePreview가 봇 프록시
+                                        // (/admin/captures/file)를 502로 실패시킨다(ReportReviewList.tsx
+                                        // 와 동일한 이유) — 플레이스홀더로 대체한다.
+                                        <div className="flex aspect-video w-full items-center justify-center rounded-lg border border-dashed bg-muted">
+                                          <p className="text-xs text-muted-foreground sm:text-sm">목업 이미지 (실제 파일 없음)</p>
+                                        </div>
+                                      ) : session?.token ? (
+                                        <CapturePreview id={item.id} token={session.token} />
+                                      ) : (
+                                        <div className="flex aspect-video w-full items-center justify-center rounded-lg border border-dashed bg-muted">
+                                          <p className="text-xs text-muted-foreground sm:text-sm">
+                                            미리보기를 불러오지 못했습니다.
+                                          </p>
+                                        </div>
+                                      )}
+                                      {/* 🔧 [사용자 지시, 2026-09-19] "반려된 건은 스크린샷/영상
+                                          영역에 불투명 오버레이를 덮어서 '반려로 삭제처리
+                                          되었습니다' 문구를 출력" — 서버는 실제 파일을 지우지
+                                          않고 trash 폴더로만 이동하지만(관리자 화면에서는 계속
+                                          조회 가능, 사용자 확정), 제보자와 자세한 내역을 공유할
+                                          필요는 없다는 같은 원칙에 따라 수신(회원) 화면에서만
+                                          가린다. "내 화각 점검"을 본인이 삭제한 경우도 동일한
+                                          방식(논리적 삭제)으로 처리해 같은 오버레이를 쓰되
+                                          문구만 다르게 한다(사용자 지시).
+                                          🔧 [10일 경과 자동 논리적 삭제, 2026-09-19 사용자 지시]
+                                          "접수 시점으로부터 10일이 지난 값은 모두 오버레이로
+                                          덮어쓰고 논리적 삭제 처리" — 봇의 매일 배치
+                                          (mark_expired_captures)가 selfCheck/수신 항목 모두에
+                                          deleted+deletedReason:"expired"를 세팅한다. 발신
+                                          항목은 애초에 이 스크린샷 섹션 자체가 !isSent 안에서만
+                                          렌더링되므로(위) 오버레이도 자연히 표시되지 않는다
+                                          (사용자 확정: "발신은 여전히 섹션 생략"). */}
+                                      {(() => {
+                                        const selfCheckData = !isOutputPenItem ? (item.data as MyCaptureItem) : null;
+                                        const isExpired =
+                                          (selfCheckData?.deleted && selfCheckData.deletedReason === "expired") ||
+                                          (received?.deleted && received.deletedReason === "expired");
+                                        const isManualDeleted = !!selfCheckData?.deleted && selfCheckData.deletedReason !== "expired";
+                                        if (!isRejected && !isExpired && !isManualDeleted) return null;
+                                        const text = isExpired
+                                          ? "10일 초과로 삭제처리 되었습니다."
+                                          : isRejected
+                                            ? "반려로 삭제처리 되었습니다."
+                                            : "삭제처리 되었습니다.";
+                                        return (
+                                          <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-background/90">
+                                            <p className="text-xs font-semibold text-muted-foreground sm:text-sm">{text}</p>
+                                          </div>
+                                        );
+                                      })()}
+                                    </div>
                                   </div>
-                                  {isReceived && (
+                                  )}
+                                  {isOutputPenItem && (
                                     <>
-                                      <div className="h-px w-full bg-border" />
+                                      {/* 🔧 [수신/발신 통합, 2026-09-19 사용자 지시] 발신 건은
+                                          스크린샷·영상 섹션이 생략되어 바로 위(824행)
+                                          구분선과 중첩되므로 여기서는 생략한다. */}
+                                      {!isSent && <div className="h-px w-full bg-border" />}
                                       <div className="flex flex-col gap-1.5">
                                         <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                                           <FileText className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
@@ -656,6 +1179,18 @@ export function MyOutputPenSection({
                                             항목들(labelClassName/valueClassName로 text-xs
                                             sm:text-sm 오버라이드됨)보다 한 단계 작았다 — 이
                                             섹션의 모든 SubRow에 동일하게 적용해 통일한다. */}
+                                        {/* 🔧 [수신/발신 통합, 2026-09-19 사용자 지시: "대상자
+                                            이름 보여줌"] 발신 건(본인이 제보한 건)에서만
+                                            누구를 제보했는지 보여준다 — 수신 건은 본인
+                                            이름이라 이미 아는 정보라 생략. */}
+                                        {isSent && (
+                                          <SubRow
+                                            label="대상자"
+                                            value={received!.targetName}
+                                            labelClassName="text-xs sm:text-sm"
+                                            valueClassName="text-xs sm:text-sm"
+                                          />
+                                        )}
                                         <SubRow
                                           label="사유"
                                           value={displayReason(received!.reason)}
@@ -664,18 +1199,27 @@ export function MyOutputPenSection({
                                         />
                                         <SubRow
                                           label="발생일시"
-                                          value={new Date(item.ts).toLocaleString("ko-KR")}
+                                          value={formatDateTime24h(item.ts)}
                                           labelClassName="text-xs sm:text-sm"
                                           valueClassName="text-xs sm:text-sm"
                                         />
                                         <SubRow
                                           label="처리현황"
-                                          value={statusLabel(received!)}
+                                          value={
+                                            isSent
+                                              ? sentStatusLabel(received!)
+                                              : statusLabel(received!, received!.penalty?.occurrence ?? null)
+                                          }
                                           labelClassName="text-xs sm:text-sm"
                                           valueClassName="text-xs sm:text-sm"
                                         />
                                       </div>
 
+                                      {/* 🔧 [수신/발신 통합, 2026-09-19 사용자 지시] 발신 건은
+                                          본인 학습시간이 차감되지 않으므로(대상자 학습시간만
+                                          영향받음) 이 섹션을 생략한다. */}
+                                      {!isSent && (
+                                      <>
                                       <div className="h-px w-full bg-border" />
 
                                       <div className="flex flex-col gap-1.5">
@@ -687,8 +1231,8 @@ export function MyOutputPenSection({
                                           label="응답일시"
                                           value={
                                             received!.targetRespondedAt
-                                              ? new Date(received!.targetRespondedAt).toLocaleString("ko-KR")
-                                              : "대상자 응답 대기 중"
+                                              ? formatDateTime24h(received!.targetRespondedAt)
+                                              : "응답 대기 중"
                                           }
                                           labelClassName="text-xs sm:text-sm"
                                           valueClassName="text-xs sm:text-sm"
@@ -715,9 +1259,64 @@ export function MyOutputPenSection({
                                           );
                                         })()}
                                       </div>
+                                      </>
+                                      )}
 
                                       <div className="h-px w-full bg-border" />
 
+                                      {/* 🔧 [수신/발신 통합, 2026-09-19 사용자 지시] 발신 건은
+                                          대상자의 벌점·페널티 세부(차수 등)를 공유할 필요가
+                                          없어(제보자와 자세한 처리 내역을 공유하지 않는다는
+                                          같은 원칙) 이 섹션 대신 "상점 변동"(제보자 본인에게
+                                          지급되는 제보상점)만 보여준다. */}
+                                      {isSent ? (
+                                        <div className="flex flex-col gap-1.5">
+                                          <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
+                                            <Star className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
+                                            제보 상점 변동
+                                          </span>
+                                          {(() => {
+                                            // 🔧 [백엔드 정책과 일치, 2026-09-19 재확인]
+                                            // applyReportMerit(report-penalty.js 492~549행)은
+                                            // "적용"(approved)·"반려 (상점인정)"(rejected_recognized)
+                                            // 뿐 아니라 "유예"(deferred)에서도 제보자에게 제보상점
+                                            // 1칸(0.1점)을 지급한다(492행이 이 셋을 한 블록으로
+                                            // 묶어 함께 호출) — 지급되지 않는 건 시트에 아무것도
+                                            // 쓰지 않는 순수 "반려"(rejected, 561행 별도 블록)뿐이다.
+                                            const isDecided = received!.reviewStatus !== "pending";
+                                            const isRecognized = isDecided && received!.reviewStatus !== "rejected";
+                                            const meritOccurrence =
+                                              received!.merit && !("error" in received!.merit!)
+                                                ? received!.merit!.occurrence
+                                                : null;
+                                            return (
+                                              <>
+                                                <SubRow
+                                                  label={isDecided ? "이번 상점" : "예상 적용"}
+                                                  value={isRecognized ? "+0.1점" : "없음"}
+                                                  labelClassName="text-xs sm:text-sm"
+                                                  valueClassName={cn("text-xs sm:text-sm", isRecognized && "text-ok")}
+                                                />
+                                                {/* 🔧 [사용자 지시] "이번 적용" 아래에 이 건이 반영된
+                                                    시점 기준 누적 제보상점을 함께 보여준다 —
+                                                    제보상점은 1차~5차 슬롯(칸당 0.1점)에 순서대로
+                                                    쌓이므로, 확정된 merit.occurrence(몇 번째
+                                                    슬롯인지)로 누적값을 계산할 수 있다. 미확정이거나
+                                                    미인정된 건은 슬롯 자체가 기록되지 않아
+                                                    meritOccurrence가 없다. */}
+                                                {meritOccurrence !== null && (
+                                                  <SubRow
+                                                    label="누적 상점"
+                                                    value={`총 +${(meritOccurrence * 0.1).toFixed(1)}점`}
+                                                    labelClassName="text-xs sm:text-sm"
+                                                    valueClassName="text-xs text-ok sm:text-sm"
+                                                  />
+                                                )}
+                                              </>
+                                            );
+                                          })()}
+                                        </div>
+                                      ) : (
                                       <div className="flex flex-col gap-1.5">
                                         <span className="inline-flex items-center gap-1.25 text-sm font-semibold sm:text-base">
                                           <Gavel className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
@@ -747,25 +1346,29 @@ export function MyOutputPenSection({
                                           // 확정 여부를 가른다.
                                           const isDecided =
                                             !!received!.penalty || received!.reviewStatus === "deferred" || isRejectedDecided;
+                                          // 🔧 [버그 수정] 취소선은 "원래 몇 차였을 조치가
+                                          // 취소됐다"를 보여주는 용도인데, 잔여 슬롯이 없어
+                                          // occurrence 자체가 null이면("적용 불가 (잔여 슬롯
+                                          // 없음)")애초에 취소할 조치 자체가 없어 취소선을
+                                          // 긋는 게 논리적으로 맞지 않다(사용자 지적). 그 경우
+                                          // "유예 N차"/"반려" 덧붙임 없이 순수 occurrenceLabel
+                                          // 값만 보여준다.
+                                          const decidedOccurrence = received!.deferredOccurrence ?? received!.nextOccurrence;
                                           return (
                                             <SubRow
                                               label={isDecided ? "확정 적용" : "예상 적용"}
                                               value={
-                                                received!.deferOccurrence ? (
+                                                received!.deferOccurrence && decidedOccurrence ? (
                                                   <>
-                                                    <span className="line-through">
-                                                      {occurrenceLabel(received!.deferredOccurrence ?? received!.nextOccurrence)}
-                                                    </span>{" "}
+                                                    <span className="line-through">{occurrenceLabel(decidedOccurrence)}</span>{" "}
                                                     유예 {received!.deferOccurrence}차
                                                   </>
                                                 ) : received!.penalty ? (
                                                   occurrenceLabel(received!.penalty.occurrence)
-                                                ) : isRejectedDecided ? (
-                                                  <span className="line-through">
-                                                    {occurrenceLabel(received!.deferredOccurrence ?? received!.nextOccurrence)}
-                                                  </span>
+                                                ) : isRejectedDecided && decidedOccurrence ? (
+                                                  <span className="line-through">{occurrenceLabel(decidedOccurrence)}</span>
                                                 ) : (
-                                                  occurrenceLabel(received!.nextOccurrence)
+                                                  occurrenceLabel(received!.deferOccurrence || isRejectedDecided ? decidedOccurrence : received!.nextOccurrence)
                                                 )
                                               }
                                               labelClassName="text-xs sm:text-sm"
@@ -805,17 +1408,31 @@ export function MyOutputPenSection({
                                           );
                                         })()}
                                       </div>
+                                      )}
                                     </>
                                   )}
 
-                                  {isReceived && (
+                                  {/* 🔧 [버그 수정, 2026-09-19] "확정된 건에 대해서는
+                                      '위반인정'/'이의제기' 버튼을 출력하지 마"라는 지시를
+                                      statusPillGroup === "대기"로만 구현했더니, 이미 응답을
+                                      제출했지만 관리자가 아직 처리하지 않은 건("대기 | 검토",
+                                      canRespond는 false라 disabled였음)에도 버튼이 그대로
+                                      떠 있는 문제가 있었다(사용자 지적: "대기 | 검토인데도
+                                      버튼이 출력되는 목업이 있다"). 버튼이 실제로 의미
+                                      있는 건 "아직 응답을 제출하지 않은 대기 건"뿐이고
+                                      canRespond가 정확히 그 조건(isOutputPenItem && !isSent
+                                      && pending && 응답 미제출)이므로, 렌더링 여부 자체를
+                                      canRespond로 가른다 — disabled 표시 대신 아예
+                                      노출하지 않는다. 남은 disabled는 respondingId(응답 전송
+                                      중 로딩)만 처리하면 된다. */}
+                                  {canRespond && (
                                     <>
                                       <div className="h-px w-full bg-border" />
                                       <div className="grid grid-cols-2 gap-2">
                                         <Button
                                           variant="outline"
                                           className="sm:h-11 sm:text-base"
-                                          disabled={!canRespond || respondingId === item.id}
+                                          disabled={respondingId === item.id}
                                           onClick={() => respond(received!, "recognized")}
                                         >
                                           위반인정
@@ -823,7 +1440,7 @@ export function MyOutputPenSection({
                                         <Button
                                           variant="destructive"
                                           className="sm:h-11 sm:text-base"
-                                          disabled={!canRespond || respondingId === item.id}
+                                          disabled={respondingId === item.id}
                                           onClick={() => respond(received!, "disputed")}
                                         >
                                           이의제기
@@ -832,7 +1449,11 @@ export function MyOutputPenSection({
                                     </>
                                   )}
 
-                                  {!isReceived && (
+                                  {/* 🔧 [논리적 삭제, 2026-09-19] 이미 삭제된 건은 재삭제할
+                                      필요가 없어(파일이 이미 trash에 있음) 버튼 자체를
+                                      숨긴다 — 확정 건에서 위반인정/이의제기 버튼을 숨기는
+                                      것과 동일한 원칙. */}
+                                  {!isOutputPenItem && !(item.data as MyCaptureItem).deleted && (
                                     <>
                                       <div className="h-px w-full bg-border" />
                                       <Button
@@ -860,6 +1481,7 @@ export function MyOutputPenSection({
           )}
         </CollapsiblePanel>
       </Collapsible>
-    </SectionCard>
+      </SectionCard>
+    </div>
   );
 }

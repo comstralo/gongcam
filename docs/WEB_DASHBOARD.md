@@ -35,6 +35,9 @@
 
 `App.tsx`의 최상위 라우팅에서 `"/"` 경로가 렌더링하는 `DashboardPage`를 말한다. 하단 탭바의
 "대시보드" 항목이며, 내부에 **My**(`view=me`, 기본값)와 **All**(`view=all`) 두 하위 탭을 가진다.
+🔧 [2026-09-19 정정] 화면에 실제로 보이는 탭 라벨은 My/**RANK**다(`DashboardPage.tsx`)
+— 내부 쿼리값(`me`/`all`)과 문서 전반의 "My/All" 표기는 코드 식별자를 그대로
+쓴 것이고, 사용자가 화면에서 보는 문구는 "RANK"임에 유의.
 
 - **My** → `StatusPage` → `StatusView` — 로그인한 본인(또는 관리자가 선택한 다른 회원)의
   개인 대시보드. 요약 타일 6개 + 요일별 상세 카드 + 반휴 신청.
@@ -57,10 +60,16 @@
 
 ```
 DashboardPage (app/src/pages/DashboardPage.tsx)
-├─ Tabs: "me" | "all"  — URL 쿼리(view, cycle)와 동기화, 최초 마운트 이후엔 로컬 state로만 관리
+├─ Tabs: "me" | "RANK"(표시 라벨, 쿼리값은 여전히 me/all)  — URL 쿼리(view, cycle)와 동기화, 최초 마운트 이후엔 로컬 state로만 관리
 ├─ [me]  StatusPage (pages/StatusPage.tsx)
+│         ├─ 🔧 [2026-09-19 추가, 기존에 문서 누락] SectionCard+Collapsible+
+│         │   SectionHeader("내 대시보드")로 전체를 감싼다 — 새로고침 버튼은
+│         │   캐시 TTL이 지나기 전엔 비활성화되고, 화면이 보이는 동안 같은
+│         │   주기(10분/2시간, §9)로 자동 폴링한다
 │         ├─ Select: "내 대시보드" | 다른 회원 (관리자 전용, /admin/members)
-│         ├─ CycleSwitcher (components/dashboard/CycleSwitcher.tsx)  — 지난 주 조회
+│         ├─ AdminCycleRangeSelect (components/dashboard/AdminCycleRangeSelect.tsx,
+│         │   🔧 2026-09-19 신설, 관리자 전용) — §6.2
+│         ├─ CycleSwitcher (components/dashboard/CycleSwitcher.tsx)  — 지난 주 조회(최대 3주)
 │         └─ StatusView (components/dashboard/StatusView.tsx)
 │             ├─ SummaryTile × 6  (components/dashboard/shared.tsx)
 │             │   ├─ 목표시간        → GoalTypeScheduleDialog (edit, 본인만)
@@ -79,6 +88,9 @@ DashboardPage (app/src/pages/DashboardPage.tsx)
 │                         ├─ LeaveApplyButton type="normal" adminTargetNumber=번호
 │                         └─ LeaveApplyButton type="reason" adminTargetNumber=번호 (증빙 없이 즉시 등록)
 └─ [all] RosterPage (pages/RosterPage.tsx)
+          ├─ 🔧 [2026-09-19 추가] "랭킹"/"상금 정산" 각각 독립된 SectionCard로
+          │   나뉘어 각자 자체 새로고침 버튼 + usePollingRefresh(30분)을 가짐
+          ├─ AdminCycleRangeSelect (관리자 전용) — §6.2
           ├─ CycleSwitcher
           ├─ "랭킹" 섹션 → RosterView (components/dashboard/RosterView.tsx)
           └─ "상금 정산" 섹션 (RosterPage.tsx 안에 인라인 — 별도 컴포넌트 없음)
@@ -86,8 +98,13 @@ DashboardPage (app/src/pages/DashboardPage.tsx)
 
 공용 UI 프리미티브(`ItemTitle`, `TintedPill`, `SummaryTile`, `DividedValue`, `SubRow`,
 `InfoCard`, `won()`, `buildDepositCauseItems`, `formatTotalPenalty`, `DayDetailCard`,
-`MAX_LEAVES_PER_DAY`)는 전부 `components/dashboard/shared.tsx` 한 파일에 모여 있고, My/All
-탭뿐 아니라 관리자 화면(`ExitProcessDialog` 등)에서도 재사용된다.
+`MAX_LEAVES_PER_DAY`, 🔧 [2026-09-19 추가, 기존에 문서 누락] `STATUS_DAYS`,
+`thisWeekDateLabel()`, `mergePenaltyLabel()`, `DepositCauseCard`, `RefundAmountCard`,
+`DepositCauseItem` 타입)는 전부 `components/dashboard/shared.tsx` 한 파일에 모여 있고,
+My/All 탭뿐 아니라 관리자 화면(`ExitProcessDialog` 등)에서도 재사용된다. `STATUS_DAYS`/
+`thisWeekDateLabel`은 이번 세션(2026-09-19) 리팩토링으로 admin 쪽 6개 파일
+(AdminMoneyTab/ReasonLeaveReviewList/PenaltyCandidateList/ReportReviewList/StatusView/
+MyOutputPenSection)에 중복 정의돼 있던 것을 이 파일로 공용화한 것이다.
 
 ---
 
@@ -130,14 +147,22 @@ DashboardPage (app/src/pages/DashboardPage.tsx)
 
 ### 3.4 공통 앱 셸(`AppShell`) — 헤더·전환 페이드·전역 CSS
 
-대시보드를 포함한 모든 메인 라우트("/", "/report", "/notifications", "/links",
+대시보드를 포함한 모든 메인 라우트("/", "/report", "/notifications",
 "/settings", "/admin")는 `App.tsx`가 `<AppShell title=... titleIcon=...>`로 감싸
 공통 헤더를 그린다(`components/layout/AppShell.tsx`). 헤더 = eyebrow 라벨
-("공부합시당 캠스터디") + `h1` 제목, 그리고 **우측 상단에 항상 뜨는 토글 버튼 2개**:
+("공부합시당 캠스터디") + `h1` 제목, 그리고 🔧 [2026-09-19 정정] ~~우측 상단에
+항상 뜨는 토글 버튼 2개~~ 실제로는 **버튼 3개**(`PeriodAlarmToggleButton` →
+`LinksHeaderButton` → `ThemeToggleButton` 순, `AppShell.tsx`):
 
 - **`PeriodAlarmToggleButton`** (`components/layout/PeriodAlarmToggleButton.tsx`) —
-  교시 종소리 on/off pill. 켜짐이면 남은 시간(`N교시 MM:SS` / `휴식 MM:SS` /
-  `1교시 전 MM:SS`)을 함께 표시. `usePeriodAlarm()` → `PeriodAlarmContext`.
+  교시 종소리 on/off pill. 켜짐이면 남은 시간을 `"{N}교시 · MM:SS 남음"` /
+  `"휴식 · MM:SS 남음"` / `"1교시 · MM:SS 남음"`(교시 시작 전) 형식으로 함께
+  표시(2026-09-11 "교시 알림 표시 개선"으로 이 형식으로 바뀜). `usePeriodAlarm()`
+  → `PeriodAlarmContext`.
+- **`LinksHeaderButton`** (`components/layout/LinksHeaderButton.tsx`, 🔧
+  2026-09-19 문서 누락 확인) — 원래 하단 탭의 별도 "/links" 페이지였던 외부
+  링크 목록·체커 바로가기를 헤더의 Dialog 모달로 옮긴 것. "/links" 라우트
+  자체는 이미 제거됐다.
 - **`ThemeToggleButton`** (`components/layout/ThemeToggleButton.tsx`) — 다크/라이트
   전환. 테두리 없는 원형 아이콘(Moon/Sun). `useTheme()`.
 
@@ -250,6 +275,12 @@ CSS 변수를 재정의한다. 배경은 순수 OLED 블랙 `#0a0a0a`(웜 브라
 백엔드(`MAX_LEAVES_PER_DAY_LIMIT`, index.js) 양쪽에 동일하게 하드코딩되어 있다 — 한쪽만
 바꾸면 어긋난다.
 
+🔧 [2026-09-19 추가, 기존에 문서 누락] 다이얼로그를 닫으면 요일별로 `localStorage`
+(`halfDayLeaveModalClosedAt:{day}`)에 닫은 시각을 기록해 **30초간 재오픈을 막고**,
+트리거 버튼에 "N초 후 재시도" 카운트다운을 보여준다(`HalfDayLeaveDialog.tsx`) —
+새로고침에도 유지되며, 아래 §4.3.1의 `blockedByPastDay`(과거 요일 차단)와는
+별개의 독립된 잠금 조건이다.
+
 #### 4.3.1 과거 요일 차단 + 관리자 대리 신청 (2026-09-10)
 
 본인이 실시간(현재 시트) 조회 중일 때, 선택한 요일이 오늘보다 과거면
@@ -287,8 +318,9 @@ TODAY_INDEX`를 계산해 넘긴다.
 ### 5.1 랭킹 (`RosterView`)
 
 `RosterMember[]`을 순위(`rankValue`, 메달 이모지 1~4위 + 숫자 5위 이후) 오름차순 정렬,
-전원 순위가 비어 있으면("-") 회원번호 오름차순으로 대체 정렬. 기본 8명만 보여주고
-"더 보기" 버튼으로 전체 펼침(`COLLAPSED_COUNT = 8`).
+전원 순위가 비어 있으면("-") 회원번호 오름차순으로 대체 정렬. 기본 7명만 보여주고
+"더 보기" 버튼으로 전체 펼침(🔧 [2026-09-19 정정] `COLLAPSED_COUNT = 7`,
+`RosterView.tsx:8` — 문서가 8로 잘못 적고 있었다).
 
 ### 5.2 상금 정산 카드
 
@@ -296,7 +328,12 @@ TODAY_INDEX`를 계산해 넘긴다.
   재납자 납부 벌금 / (조건부) 퇴실·재납자 납부 예치금. 마지막 항목은
   `data.depositOuter`가 `undefined`(백엔드가 아예 필드를 안 보낸 경우)면 통째로 숨긴다.
 - **이번 주 정산**: `settlement`가 `undefined`(로딩 전)/`null`(비공개)/`[]`(대상 없음)/
-  `SettlementItem[]`(공개) 네 가지 상태를 구분해 각각 다른 문구를 보여준다.
+  `SettlementItem[]`(공개) 네 가지 상태를 구분해 각각 다른 문구를 보여준다. 🔧
+  [2026-09-19 추가, 기존에 누락] `settlement`가 채워져 있어도(대상자가
+  계산됨) `settlementSettled: boolean`(집계!P6==="완료" 여부, `roster-status.js`)
+  이 false면 관리자가 아직 "상금 정산 집행"을 누르지 않은 것이라 금액을
+  보여주지 않고 "아직 집행되지 않았습니다"만 표시한다(`RosterPage.tsx`) —
+  즉 실제로는 다섯 번째 상태로 봐야 한다.
 
 ### 5.3 노출 제한 (백엔드 `handleRosterStatus`)
 
@@ -399,6 +436,27 @@ URL 쿼리 `cycle`로 관리해 두 탭에 전달), 실시간(현재) 값과 "�
   되므로 "가입 전" 오판정으로 요일이 잘못 비활성화되는 일은 없지만, 이
   `date` 값 자체를 다른 용도로 신뢰해서는 안 된다.
 
+### 6.2 관리자 전체 이력 조회 — `AdminCycleRangeSelect` (🔧 2026-09-19 신설, 기존에 문서 전체 누락)
+
+`CycleSwitcher`(§6 본문)는 "현재 진행 중인 사이클(최대 3주)"로 조회 범위가
+제한되는데, 관리자에게는 이 제약이 완전히 풀렸다 — `StatusPage.tsx`/
+`RosterPage.tsx`가 `CycleSwitcher`보다 먼저 `AdminCycleRangeSelect`
+(`components/dashboard/AdminCycleRangeSelect.tsx`, 관리자 전용)를 렌더링한다.
+
+- **`GET /admin/cycles`** → `handleAdminCycleGroups`(`cycle.js`)가
+  `listAllCycleGroups`로 Drive의 모든 백업 파일을 사이클(3주) 단위 그룹으로
+  묶어 반환한다 — `CycleGroup` 타입, 현재 사이클을 포함해 과거 사이클
+  전체를 나열한다는 점이 `GET /cycles`(현재 사이클 안의 개별 주차만 나열)와
+  다르다.
+- 관리자가 과거 사이클을 고르면 `cycleAny` 쿼리 파라미터로 전달되고,
+  `handleStatus`/`handleRosterStatus`가 `resolveTargetFileIdForAnyBackup`
+  (`cycle.js`)로 그 fileId를 사이클 제약 없이 그대로 받아들인다 — `isAdmin`
+  이 아니면 `cycleAny`는 조용히 무시되고 기존 `cycle`(현재 사이클 내
+  `CycleSwitcher`) 처리로 폴백한다. `cycle`과 `cycleAny`가 동시에 오면
+  `cycleAny`가 우선한다.
+- 즉 일반 회원은 여전히 "최대 3주 전까지"만 볼 수 있고, 관리자만 그 이전
+  사이클까지 전체 이력을 조회할 수 있다.
+
 ---
 
 ## 7. 백엔드 라우트 — 엔드포인트 → 핸들러 매핑
@@ -408,9 +466,10 @@ URL 쿼리 `cycle`로 관리해 두 탭에 전달), 실시간(현재) 값과 "�
 
 | 메서드 | 경로 | 핸들러 | 비고 |
 |---|---|---|---|
-| GET | `/status` | `handleStatus` | `?cycle=<fileId>`로 과거 주차 조회 |
+| GET | `/status` | `handleStatus` | `?cycle=<fileId>`로 과거 주차 조회, `?cycleAny=<fileId>`(관리자 전용)는 사이클 제약 없이 조회(§6.2) |
 | GET | `/roster-status` | `handleRosterStatus` | 〃 |
-| GET | `/cycles` | `handleCycleList` | `?member=<번호\|self>` |
+| GET | `/cycles` | `handleCycleList` | `?member=<번호\|self>` — 현재 사이클 안의 개별 주차만 |
+| GET | `/admin/cycles` | `handleAdminCycleGroups` | 🔧 [2026-09-19 추가, 기존에 문서 누락] 관리자 전용, 과거 사이클 전체를 그룹 단위로 나열(§6.2) |
 | GET | `/admin/members` | `handleAdminMembers` | 관리자 전용, "다른 회원 보기" 드롭다운 |
 | GET | `/admin/members/:number` | `handleAdminMemberStatus` | 관리자가 특정 회원 `/status`와 동형 응답 조회 |
 | GET | `/goal-schedule` | `handleGetGoalSchedule` | 다음 주 목표시간 예약 조회 |
@@ -437,7 +496,7 @@ URL 쿼리 `cycle`로 관리해 두 탭에 전달), 실시간(현재) 값과 "�
 | `weeklyMerit`, `weeklyMeritRank`, `weeklyMeritBreakdown` | 상점 타일 + 세부 모달 |
 | `normalLeaveLeft`, `reasonLeaveLeft` | 반휴 잔여량 (요일 무관, 전체 잔여) |
 | `depositRefundEstimate`, `depositRefundBreakdown` | (SettingsPage에서 소비, §9.2) |
-| `exitRequested`, `exitRequestDate`, `exitAgreedAt` | 퇴실 프로세스 상태(SettingsPage 범위) |
+| `exitRequested`, `exitRequestDate`, `exitAgreedAt`, `prizePending` | 퇴실 프로세스 상태(SettingsPage 범위, `docs/WEB_SETTINGS.md` §3.2). `prizePending`은 🔧 [2026-09-19 추가, 기존에 누락] "동의합니다" 버튼 활성화 조건에 쓰임 |
 | `periodAttendanceRate`, `periodAttendanceBreakdown`, `periodGrid` | 교시 참여율 타일 + 학습시간 모달의 교시별 그리드 |
 | `weeklyGoalTime`, `weeklyStudyTime`, `weeklyTotalFine` | 학습시간 타일 |
 | `weeklyOutputPen`, `weeklyTimePen`, `totalPenaltyBreakdown` | 총 페널티 타일 + 세부 모달(적립 이력) |
@@ -452,6 +511,13 @@ URL 쿼리 `cycle`로 관리해 두 탭에 전달), 실시간(현재) 값과 "�
 | `collectMoney`, `fineCarry`, `fineThisWeek`, `fineOuter` | 상금 정산 카드 |
 | `depositOuter?` | 조건부 노출(§5.3) |
 | `settlement?` | 조건부 노출(§5.3) |
+| `settlementSettled: boolean` | 🔧 [2026-09-19 추가, 기존에 누락] 집계!P6==="완료" 여부. `settlement`가 채워져 있어도 이 값이 false면 금액을 숨긴다(§5.2) |
+
+### `CycleGroup` (🔧 2026-09-19 추가, 기존에 문서 누락)
+
+| 필드 | 용도 |
+|---|---|
+| (사이클 그룹 배열) | `GET /admin/cycles`(§6.2, 관리자 전용)가 반환. `GET /cycles`의 `CycleWeek`와 달리 개별 주차가 아니라 3주 단위 사이클을 하나의 그룹으로 묶은 것 — 과거 사이클 전체를 나열할 때 쓴다 |
 
 ---
 

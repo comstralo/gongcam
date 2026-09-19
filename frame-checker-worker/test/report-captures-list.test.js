@@ -15,6 +15,8 @@ import {
   handleCaptureTargetRespond,
   handleAdminCaptureVote,
   handleAdminCaptureFile,
+  isVisibleForMyOutputPen,
+  myOutputPenDirection,
 } from "../src/report-review.js";
 import { handleReportStatus } from "../src/report-penalty.js";
 import { TEST_SERVICE_ACCOUNT_JSON, oauthTokenResponse } from "./helpers/service-account.js";
@@ -163,6 +165,41 @@ describe("handleMyOutputPen", () => {
     const body = await res.json();
     expect(res.status, JSON.stringify(body)).toBe(200);
     expect(body.items).toEqual([]);
+  });
+});
+
+// 🔧 [수신/발신 통합, 2026-09-19] handleMyOutputPen 내부 가시성/방향
+// 판정을 뽑아낸 순수 함수 — 봇 응답 모킹 없이도 "수신/발신 필터가
+// 상호 배타적으로 정확히 갈리는지" 자체를 직접 검증한다.
+describe("isVisibleForMyOutputPen / myOutputPenDirection", () => {
+  const memberName = "재희";
+  const myEmail = "jaehee@test.com";
+
+  it("selfCheck 항목은 수신·발신 여부와 무관하게 항상 제외한다", () => {
+    const item = { selfCheck: true, nickname: memberName, reporterEmail: myEmail };
+    expect(isVisibleForMyOutputPen(item, memberName, myEmail)).toBe(false);
+  });
+
+  it("본인이 대상자(nickname 일치)면 수신 건으로 보인다", () => {
+    const item = { selfCheck: false, nickname: memberName, reporterEmail: "other@test.com" };
+    expect(isVisibleForMyOutputPen(item, memberName, myEmail)).toBe(true);
+    expect(myOutputPenDirection(item, memberName)).toBe("received");
+  });
+
+  it("본인이 제보자(reporterEmail 일치)면 발신 건으로 보인다", () => {
+    const item = { selfCheck: false, nickname: "다른회원", reporterEmail: myEmail };
+    expect(isVisibleForMyOutputPen(item, memberName, myEmail)).toBe(true);
+    expect(myOutputPenDirection(item, memberName)).toBe("sent");
+  });
+
+  it("reporterEmail 대소문자가 달라도 발신 건으로 매칭한다", () => {
+    const item = { selfCheck: false, nickname: "다른회원", reporterEmail: "JAEHEE@TEST.COM" };
+    expect(isVisibleForMyOutputPen(item, memberName, myEmail)).toBe(true);
+  });
+
+  it("본인과 무관한 건(대상자도 제보자도 아님)은 보이지 않는다", () => {
+    const item = { selfCheck: false, nickname: "다른회원", reporterEmail: "other@test.com" };
+    expect(isVisibleForMyOutputPen(item, memberName, myEmail)).toBe(false);
   });
 });
 

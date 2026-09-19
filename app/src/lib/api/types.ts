@@ -932,6 +932,15 @@ export type MyCaptureItem = {
   reason: string;
   mode: "screenshot" | "video";
   ts: number;
+  // 🔧 [논리적 삭제, 2026-09-19] 본인이 삭제 버튼을 눌렀는지, 또는 접수
+  // 10일이 지나 봇이 자동으로 삭제 처리했는지 — 서버는 실제 파일을
+  // 지우지 않고 trash 폴더로만 이동하므로(관리자는 계속 조회 가능), 이
+  // 항목은 목록에서 사라지지 않고 계속 남아 스크린샷·영상 영역에
+  // 오버레이로 표시된다. deletedReason으로 "직접 삭제"("삭제처리
+  // 되었습니다")와 "10일 경과 자동 삭제"("10일 초과로 삭제처리
+  // 되었습니다")를 구분한다.
+  deleted?: boolean;
+  deletedReason?: "manual" | "expired";
 };
 
 export type MyCapturesResponse = {
@@ -951,6 +960,13 @@ export type MyOutputPenItem = {
   mode: "screenshot" | "video";
   ts: number;
   reviewStatus: "pending" | "approved" | "rejected" | "rejected_recognized" | "deferred";
+  // 🔧 [수신/발신 통합, 2026-09-19] 이 건이 로그인한 본인 기준으로
+  // "받은 제보"(대상자)인지 "낸 제보"(제보자)인지 — 서버가 이미 상호
+  // 배타적으로 판정해 내려준다. targetName은 발신 건에서 "누구를
+  // 제보했는지" 보여주기 위한 대상자 이름(수신 건에서는 본인 이름이라
+  // 프론트에서 쓰지 않는다).
+  direction: "received" | "sent";
+  targetName: string;
   targetResponse: "disputed" | "recognized" | null;
   targetRespondedAt: number | null;
   // 90분 타임아웃으로 자동 위반인정된 건인지 — 대상자가 직접 버튼을 눌러
@@ -975,6 +991,14 @@ export type MyOutputPenItem = {
   // "유예" 결정에서만 채워지는 시간 차감 확정값(관리자 화면과 동일 — 벌점은
   // 면제돼도 응답 지연 시간 차감은 별도 적용됨).
   timeDeduction: TimeDeductionResult | null;
+  // 🔧 [10일 경과 자동 논리적 삭제, 2026-09-19] 봇의 매일 정기 작업이 접수
+  // 10일 경과 건에 세팅하는 플래그 — 서버는 실제 파일을 지우지 않고 trash
+  // 폴더로만 이동하므로, 이 항목은 목록에서 사라지지 않고 계속 남아
+  // 스크린샷·영상 영역에 "10일 초과로 삭제처리 되었습니다" 오버레이로
+  // 표시된다. 수신/발신 제보는 본인이 직접 삭제하는 기능이 없어
+  // deletedReason은 항상 "expired"다.
+  deleted: boolean;
+  deletedReason: "manual" | "expired" | null;
 };
 
 export type MyOutputPenResponse = {
@@ -1117,4 +1141,16 @@ export type AdminPushSendCategoryResponse = {
   blocked?: boolean;
   message?: string;
   sent?: number;
+};
+
+// 🔧 [Stream Chat 도입, 2026-09-19] "관리자-회원 1:1 문의방" — 이 프로젝트
+// 세션(POST /verify 등으로 이미 발급된 token)을 그대로 실어 요청하면,
+// Stream Chat 클라이언트가 접속에 필요한 값을 한 번에 내려준다. apiKey는
+// Stream 관례상 공개 가능한 값이라 그대로 프론트에 노출해도 안전하다.
+export type ChatTokenResponse = {
+  token: string;
+  apiKey: string;
+  userId: string;
+  userName: string;
+  isAdmin: boolean;
 };

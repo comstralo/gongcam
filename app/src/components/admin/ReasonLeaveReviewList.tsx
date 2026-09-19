@@ -4,38 +4,14 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
-import { InfoCard, SubRow, TintedPill } from "@/components/dashboard/shared";
-import { SectionHeader, CapturePreview, AdminListSkeleton, AdminEmptyState } from "@/components/admin/shared";
+import { SubRow, TintedPill, STATUS_DAYS, thisWeekDateLabel } from "@/components/dashboard/shared";
+import { SectionHeader, CapturePreview, AdminListSkeleton, AdminEmptyState, formatDateTime24h, DayGroupHeader } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { usePollingRefresh } from "@/hooks/usePollingRefresh";
 import { useAuth } from "@/lib/auth/useAuth";
 import { ICON_STROKE, cn } from "@/lib/utils";
 import type { LeaveProofReviewItem, LeaveProofListResponse, LeaveProofDecideResponse } from "@/lib/api/types";
-
-const STATUS_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
-
-// 기준 주(월~일)의 각 요일 실제 날짜를 "8월 19일" 형태로 계산한다(송출 P
-// 제보 확인의 thisWeekDateLabel과 동일 패턴). weekOf("YYMMDD")를 주면 그 주
-// 기준, 없으면 오늘이 속한 이번 주 기준.
-function thisWeekDateLabel(dayKr: string, weekOf?: string | null): string {
-  const dayIndex = STATUS_DAYS.indexOf(dayKr);
-  if (dayIndex === -1) return "";
-  let monday: Date;
-  if (weekOf) {
-    const m = /^(\d{2})(\d{2})(\d{2})$/.exec(weekOf);
-    if (!m) return "";
-    monday = new Date(2000 + parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
-  } else {
-    const now = new Date();
-    const todayIndex = (now.getDay() + 6) % 7;
-    monday = new Date(now);
-    monday.setDate(now.getDate() - todayIndex);
-  }
-  const target = new Date(monday);
-  target.setDate(monday.getDate() + dayIndex);
-  return `${target.getMonth() + 1}월 ${target.getDate()}일`;
-}
 
 // 승인/반려 판정 — 로컬 state(방금 이 세션에서 처리한 것)뿐 아니라 서버
 // reviewStatus도 함께 본다. 지난 사이클 조회(readOnly)는 leaveHistory
@@ -277,40 +253,38 @@ export function ReasonLeaveReviewList({
               const rejectedCount = group.items.filter((item) => isItemRejected(item, rejected)).length;
               const pendingCount = group.items.length - approvedCount - rejectedCount;
               return (
-                // 🔧 [사용자 지시] "제보 쪽 토글의 전환 애니메이션처럼 부드럽게"
-                // — MyOutputPenSection에 적용한 base-ui Collapsible(높이
-                // 전환)을 여기도 적용한다.
-                <Collapsible key={group.day} open={isDayExpanded} onOpenChange={(open) => setExpandedDay(open ? group.day : null)}>
-                <InfoCard className="flex flex-col gap-2.5 bg-card">
-                  <CollapsibleTrigger className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded" hideChevron>
+                // 🔧 [리팩토링, 2026-09-19] 요일별 그룹 헤더 바깥 골격을
+                // DayGroupHeader로 공용화(admin/shared.tsx).
+                <DayGroupHeader
+                  key={group.day}
+                  isExpanded={isDayExpanded}
+                  onOpenChange={(open) => setExpandedDay(open ? group.day : null)}
+                  header={
                     <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                      <span className="inline-flex shrink-0 items-center gap-1.25 text-sm font-semibold text-muted-foreground sm:text-base">
-                        <CalendarDays className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
+                      {/* 🔧 [사용자 지시, 2026-09-19] "날짜 제목: 아이콘은 무채색,
+                          텍스트는 검정색으로" — ReportReviewList의 날짜 그룹
+                          헤더와 동일하게 맞춘다. */}
+                      <span className="inline-flex shrink-0 items-center gap-1.25 text-sm font-semibold sm:text-base">
+                        <CalendarDays className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                         {thisWeekDateLabel(group.day, cycleWeekOf)} {group.day}요일
                       </span>
                       {/* 🔧 [사용자 지시] "'화각 불량 제보'에서 설정한 디자인을 기준으로
                           비슷한 모양의 다른 화면에도 적용" — 제보 화면의 "총 N건" 뱃지와
                           동일한 크기(text-xs sm:text-sm)로 통일한다. */}
                       <span className="ml-auto flex flex-wrap items-center justify-end gap-1">
-                        <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-destructive sm:text-sm">
+                        <TintedPill tone="warn" className="whitespace-nowrap">
                           대기 : {pendingCount}건
-                        </span>
-                        <span className="rounded-full bg-ok/15 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-ok sm:text-sm">
+                        </TintedPill>
+                        <TintedPill tone="ok" className="whitespace-nowrap">
                           승인 : {approvedCount}건
-                        </span>
-                        <span className="rounded-full bg-amber-600/15 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-amber-600 sm:text-sm dark:bg-amber-400/15 dark:text-amber-400">
+                        </TintedPill>
+                        <TintedPill tone="amber" className="whitespace-nowrap">
                           반려 : {rejectedCount}건
-                        </span>
+                        </TintedPill>
                       </span>
                     </span>
-                    <ChevronDown
-                      className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", isDayExpanded && "rotate-180")}
-                      strokeWidth={ICON_STROKE.default}
-                    />
-                  </CollapsibleTrigger>
-
-                  <CollapsiblePanel className="flex flex-col">
-                    <div className="flex flex-col gap-2.5 pt-2.5">
+                  }
+                >
                       {group.items.map((item) => {
                         const isMemberExpanded = expandedId === item.id;
                         const isApproved = isItemApproved(item, approved);
@@ -396,7 +370,7 @@ export function ReasonLeaveReviewList({
                                     <div className="flex flex-col gap-1.5 [&_span]:text-xs [&_span]:sm:text-sm">
                                       <SubRow label="사유" value={item.reason || "-"} />
                                       <SubRow label="신청 장수" value={`${item.count ?? 1}장`} />
-                                      <SubRow label="신청일시" value={new Date(item.ts).toLocaleString("ko-KR")} />
+                                      <SubRow label="신청일시" value={formatDateTime24h(item.ts)} />
                                     </div>
                                   </div>
 
@@ -484,10 +458,7 @@ export function ReasonLeaveReviewList({
                           </Collapsible>
                         );
                       })}
-                    </div>
-                  </CollapsiblePanel>
-                </InfoCard>
-                </Collapsible>
+                </DayGroupHeader>
               );
             })}
           </div>

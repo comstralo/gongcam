@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { HashRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
-import { LayoutDashboard, ScanLine, Bell, Settings, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, ScanLine, Bell, Settings, ShieldCheck, MessageCircle } from "lucide-react";
 import { AuthProvider } from "@/lib/auth/AuthContext";
 import { useAuth } from "@/lib/auth/useAuth";
 import { MyStatusProvider } from "@/lib/status/MyStatusContext";
@@ -12,14 +12,15 @@ import { IdleOverlay } from "@/components/layout/IdleOverlay";
 import { LoginPage } from "@/pages/LoginPage";
 import { CheckerPage } from "@/pages/CheckerPage";
 import { ReportPage } from "@/pages/ReportPage";
+import { ChatPage } from "@/pages/ChatPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { NotificationsPage } from "@/pages/NotificationsPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { AdminPage } from "@/pages/AdminPage";
 import { useVersionCheck } from "@/hooks/useVersionCheck";
 
-type MainView = "/" | "/report" | "/notifications" | "/settings" | "/admin";
-const MAIN_VIEWS: MainView[] = ["/", "/report", "/notifications", "/settings", "/admin"];
+type MainView = "/" | "/report" | "/chat" | "/notifications" | "/settings" | "/admin";
+const MAIN_VIEWS: MainView[] = ["/", "/report", "/chat", "/notifications", "/settings", "/admin"];
 
 // 로그인 후 오가는 5개 메인 페이지(대시보드/제보/링크/설정/관리자)는 예전
 // react-router <Routes>처럼 경로가 바뀔 때마다 언마운트/재마운트되면, 각
@@ -37,6 +38,7 @@ function MainViews() {
   const everVisited = useRef<Record<MainView, boolean>>({
     "/": false,
     "/report": false,
+    "/chat": false,
     "/notifications": false,
     "/settings": false,
     "/admin": false,
@@ -74,6 +76,13 @@ function MainViews() {
         {everVisited.current["/report"] && (
           <AppShell title="제보" titleIcon={ScanLine}>
             <ReportPage visible={path === "/report"} />
+          </AppShell>
+        )}
+      </div>
+      <div hidden={path !== "/chat"} className="animate-tab-enter">
+        {everVisited.current["/chat"] && (
+          <AppShell title="채팅" titleIcon={MessageCircle}>
+            <ChatPage visible={path === "/chat"} />
           </AppShell>
         )}
       </div>

@@ -223,9 +223,14 @@ def make_dashboard_handler(ctx):
                 # 건도 반환할 수 있는데, 그 파일 자체는 CAPTURES_DIR이 아니라
                 # capture_manifest.ARCHIVE_FILES_DIR로 함께 이동돼 있다 —
                 # 원본 위치에 없으면 아카이브 위치를 폴백으로 확인한다.
+                # 🔧 [논리적 삭제] 반려/화각 점검 삭제로 trash로 옮겨진 파일도
+                # 동일한 이유로 계속 서빙 가능해야 한다(archive 폴백과 동일
+                # 패턴).
                 path = os.path.join(CAPTURES_DIR, filename)
                 if not os.path.exists(path):
                     path = os.path.join(capture_manifest.ARCHIVE_FILES_DIR, filename)
+                if not os.path.exists(path):
+                    path = os.path.join(capture_manifest.TRASH_FILES_DIR, filename)
                 self._send_file(path, content_type)
                 return
 
@@ -421,6 +426,26 @@ def make_dashboard_handler(ctx):
                     self._send_json(400, {"error": "invalid request"})
                     return
                 ok = capture_manifest.delete_capture(capture_id)
+                self._send_json(200 if ok else 404, {"ok": ok})
+                return
+
+            # 🔧 [논리적 삭제, 사용자 지시] "내 화각 점검" 셀프 삭제 전용 —
+            # 관리자 "폐기"(/captures/delete, 위)와 달리 목록에서 사라지지
+            # 않고 deleted 플래그만 남긴다.
+            if parsed.path == "/captures/self-check-delete":
+                if not self._check_secret():
+                    self._unauthorized()
+                    return
+                length = int(self.headers.get("Content-Length", 0))
+                try:
+                    body = json.loads(self.rfile.read(length)) if length else {}
+                except Exception:
+                    body = {}
+                capture_id = body.get("id")
+                if not capture_id:
+                    self._send_json(400, {"error": "invalid request"})
+                    return
+                ok = capture_manifest.mark_self_check_deleted(capture_id)
                 self._send_json(200 if ok else 404, {"ok": ok})
                 return
 

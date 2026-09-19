@@ -3,8 +3,8 @@ import { ShieldAlert, ChevronDown, CalendarDays, FlaskConical, User, Radio, Cale
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
-import { InfoCard, TintedPill } from "@/components/dashboard/shared";
-import { SectionHeader, PenaltyHistorySection, AdminListSkeleton, AdminEmptyState } from "@/components/admin/shared";
+import { TintedPill, STATUS_DAYS, thisWeekDateLabel } from "@/components/dashboard/shared";
+import { SectionHeader, PenaltyHistorySection, AdminListSkeleton, AdminEmptyState, DayGroupHeader } from "@/components/admin/shared";
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
 import { useApi } from "@/hooks/useApi";
 import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
@@ -13,7 +13,6 @@ import { useAuth } from "@/lib/auth/useAuth";
 import { ICON_STROKE, cn } from "@/lib/utils";
 import type { AdminExitCandidatesResponse, ExitCandidate, ExitKind, PenaltySlotHistoryEntry } from "@/lib/api/types";
 
-const STATUS_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
 const UNKNOWN_DAY = "요일 미확인";
 
 // 송출 P 슬롯 차수(1~6차)를 실제 조치명으로 바꾼다 — "송출 P 제보 확인"의
@@ -29,28 +28,6 @@ const OUTPUT_PEN_SLOT_LABELS = [
   "페널티 (2차)",
 ];
 
-// 기준 주(월~일)의 각 요일 실제 날짜를 "8월 19일" 형태로 계산한다(벌금 미납
-// 현황 · 송출 P 제보 확인과 동일 패턴). weekOf("YYMMDD")를 주면 그 주 기준,
-// 없으면 오늘이 속한 이번 주 기준 — 사이클 토글로 지난 주를 선택했을 때도
-// 실제 그 주의 날짜를 보여주기 위함.
-function thisWeekDateLabel(dayKr: string, weekOf?: string | null): string {
-  const dayIndex = STATUS_DAYS.indexOf(dayKr);
-  if (dayIndex === -1) return "";
-  let monday: Date;
-  if (weekOf) {
-    const m = /^(\d{2})(\d{2})(\d{2})$/.exec(weekOf);
-    if (!m) return "";
-    monday = new Date(2000 + parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
-  } else {
-    const now = new Date();
-    const todayIndex = (now.getDay() + 6) % 7;
-    monday = new Date(now);
-    monday.setDate(now.getDate() - todayIndex);
-  }
-  const target = new Date(monday);
-  target.setDate(monday.getDate() + dayIndex);
-  return `${target.getMonth() + 1}월 ${target.getDate()}일`;
-}
 
 // 페널티 2회 달성 시점(occurredDay)의 요일로 그룹핑한다. 슬롯 주석이 없어
 // 요일을 알 수 없는 회원은 "요일 미확인" 그룹으로 따로 모은다.
@@ -224,40 +201,38 @@ export function PenaltyCandidateList({
               const depositCount = group.items.filter((c) => processed[c.number] === "deposit_again").length;
               const waitingCount = group.items.length - forcedCount - depositCount;
               return (
-                // 🔧 [사용자 지시] "제보 쪽 토글의 전환 애니메이션처럼 부드럽게"
-                // — MyOutputPenSection에 적용한 base-ui Collapsible(높이
-                // 전환)을 여기도 적용한다.
-                <Collapsible key={group.day} open={isDayExpanded} onOpenChange={(open) => setExpandedDay(open ? group.day : null)}>
-                <InfoCard className="flex flex-col gap-2.5 bg-card">
-                  <CollapsibleTrigger className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded" hideChevron>
+                // 🔧 [리팩토링, 2026-09-19] 요일별 그룹 헤더 바깥 골격을
+                // DayGroupHeader로 공용화(admin/shared.tsx).
+                <DayGroupHeader
+                  key={group.day}
+                  isExpanded={isDayExpanded}
+                  onOpenChange={(open) => setExpandedDay(open ? group.day : null)}
+                  header={
                     <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                      <span className="inline-flex shrink-0 items-center gap-1.25 text-sm font-semibold text-muted-foreground sm:text-base">
-                        <CalendarDays className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
+                      {/* 🔧 [사용자 지시, 2026-09-19] "날짜 제목: 아이콘은 무채색,
+                          텍스트는 검정색으로" — ReportReviewList의 날짜 그룹
+                          헤더와 동일하게 맞춘다. */}
+                      <span className="inline-flex shrink-0 items-center gap-1.25 text-sm font-semibold sm:text-base">
+                        <CalendarDays className="size-3.5 shrink-0 text-muted-foreground sm:size-4" strokeWidth={ICON_STROKE.default} />
                         {isUnknown ? group.day : `${thisWeekDateLabel(group.day, cycleWeekOf)} ${group.day}요일`}
                       </span>
                       {/* 🔧 [사용자 지시] "'화각 불량 제보'에서 설정한 디자인을 기준으로
                           비슷한 모양의 다른 화면에도 적용" — 제보 화면의 "총 N건" 뱃지와
                           동일한 크기(text-xs sm:text-sm)로 통일한다. */}
                       <span className="ml-auto flex flex-wrap items-center justify-end gap-1">
-                        <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-destructive sm:text-sm">
+                        <TintedPill tone="warn" className="whitespace-nowrap">
                           대기 : {waitingCount}건
-                        </span>
-                        <span className="rounded-full bg-ok/15 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-ok sm:text-sm">
+                        </TintedPill>
+                        <TintedPill tone="ok" className="whitespace-nowrap">
                           재납 : {depositCount}건
-                        </span>
-                        <span className="rounded-full bg-amber-600/15 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-amber-600 sm:text-sm dark:bg-amber-400/15 dark:text-amber-400">
+                        </TintedPill>
+                        <TintedPill tone="amber" className="whitespace-nowrap">
                           강퇴 : {forcedCount}건
-                        </span>
+                        </TintedPill>
                       </span>
                     </span>
-                    <ChevronDown
-                      className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", isDayExpanded && "rotate-180")}
-                      strokeWidth={ICON_STROKE.default}
-                    />
-                  </CollapsibleTrigger>
-
-                  <CollapsiblePanel className="flex flex-col">
-                    <div className="flex flex-col gap-2.5 pt-2.5">
+                  }
+                >
                       {group.items.map((c) => {
                         const isMemberExpanded = expandedNumber === c.number;
                         const decidedKind = processed[c.number];
@@ -391,10 +366,7 @@ export function PenaltyCandidateList({
                           </Collapsible>
                         );
                       })}
-                    </div>
-                  </CollapsiblePanel>
-                </InfoCard>
-                </Collapsible>
+                </DayGroupHeader>
               );
             })}
           </div>

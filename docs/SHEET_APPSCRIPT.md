@@ -22,10 +22,19 @@
 | `collect_carry_check_cell` | Q6 | 총 모금액 이월 체크박스 | |
 | `period_omission_cell` | R6 | 오류 교시 수(구루미 오류 보정용) | |
 | `pen_cycle_cell` | D25 | 페널티 사이클(1→2→3→1 순환) | |
-| `leader_output_pen_cell` | H4 | 스터디장 금주 송출 P | |
-| `leader_time_pen_cell` | J4 | 스터디장 금주 주간 P | |
+| `leader_output_pen_cell` | H4 | 스터디장 금주 송출 P — 🔧 [2026-09-19] `weekly_calc()`가 더 이상 읽지 않는 죽은 상수(선언만 남아있음, 아래 참고) | |
+| `leader_time_pen_cell` | J4 | 스터디장 금주 주간 P — 위와 동일하게 죽은 상수 | |
 
 ### 개인 탭(1~15, template)
+
+🔧 **[2026-09-19 전면 정정]** 아래 표는 "데이터 시트 통합" 리팩토링 이전
+셀 배치(C38~C46)를 그대로 갖고 있었다 — 실제 정본은 `docs/tmp_appscript.js`가
+아니라 **`study_sw/assets/appscript.js`**(2185줄, mtime 최신)이고, 이 정본
+기준 최신 배치는 다음과 같다. 옛 `output_pen_thisweek_cell`/
+`output_pen_cumul_cell`/`time_pen_thisweek_cell`/`time_pen_cumul_cell`/
+`holiday_reason_use_thisweek_cell`/`holiday_reason_use_cumul_cell` 6개
+상수는 **코드에서 완전히 삭제됐다**(누적 페널티 카운터 개념 자체가 "데이터"
+시트 F~M 슬롯 방식으로 대체됨).
 
 | 앱스크립트 변수 | 셀 | 의미 | index.js 상수 (0-idx) |
 |---|---|---|---|
@@ -37,18 +46,20 @@
 | `deposit_again_cell` | R3 | 예치금 재납 | `ROW_DEPOSIT_AGAIN`/`COL_DEPOSIT_AGAIN` |
 | `fine_no_status_cell` | C33 | 미납신호 | `ROW_FINE_NO_STATUS` |
 | `fine_already_payment_cell` | C34 | 주간벌금(=SUMIF로 "납부"만 합산) | `ROW_WEEKLY_TOTAL_FINE` |
-| `report_sheet_row_cell` | C38 | 제보상점 시트 행 번호 | `ROW_REPORT_SHEET_ROW` |
-| `output_pen_thisweek_cell` | C39 | 금주 송출 P | `ROW_OUTPUT_PEN_THISWEEK` |
-| `output_pen_cumul_cell` | C40 | 누적 송출 P | `ROW_OUTPUT_PEN_CUMUL` |
-| `time_pen_thisweek_cell` | C41 | 금주 달성(주간) P | `ROW_TIME_PEN_THISWEEK` |
-| `time_pen_cumul_cell` | C42 | 누적 달성(주간) P | `ROW_TIME_PEN_CUMUL` |
-| `holiday_normal_use_thiskweek_cell` | C44 | 일반 반휴 잔여량 | `ROW_NORMAL_LEAVE_LEFT` |
-| `holiday_reason_use_thisweek_cell` | C45 | 사유 반휴 잔여량 | `ROW_REASON_LEAVE_LEFT` |
-| `holiday_reason_use_cumul_cell` | C46 | 사유 반휴 누적 사용량 | — |
+| (C39 표시 행, 별도 상수 없음) | C39 | "송출 P / 주간 P" 표시(수식) | — |
+| `holiday_normal_use_thiskweek_cell` | C40 | 일반 반휴 잔여량 | `ROW_NORMAL_LEAVE_LEFT` |
+| (C41, 별도 상수 없음) | C41 | 사유 반휴 잔여량 | `ROW_REASON_LEAVE_LEFT` |
+| `report_sheet_row_cell` | **C42**(구 C38→C43→C42, 이름은 하위호환으로 유지) | "데이터" 시트 참조용 행 계산 번호 | `ROW_REPORT_SHEET_ROW` |
+| `data_audit_row_cell`(🔧 신규, 표에 없었음) | **C43** | "데이터 (감사)" 시트 참조용 행 계산 번호 — 원본 회원 시트(1~15)는 항상 0, 퇴실·재납 백업 탭에서만 값을 가짐 | — |
 | `holiday_normal_row`/`holiday_reason_row` | 20/21행 | 일반/사유 반휴 사용 여부 | `ROW_NORMAL_LEAVE_USE`/`ROW_REASON_LEAVE_USE` |
 | `add_time_row` | 27행 | 가산 학습시간 | `ROW_BONUS_STUDY_TIME` |
 | `fine_value_row` | 29행 | 일간 총 벌금 | `ROW_TOTAL_FINE` |
 | `fine_check_row` | 32행 | 납부확인(미납/납부/면제) | `ROW_PAYMENT_CHECK` |
+
+우측 "index.js 대응" 열은 실제로는 이미 위 최신 배치와 일치한다
+(`ROW_NORMAL_LEAVE_LEFT=39`→C40, `ROW_REASON_LEAVE_LEFT=40`→C41,
+`ROW_REPORT_SHEET_ROW=41`→C42, `frame-checker-worker/src/index.js`) — 표의
+좌측(앱스크립트 셀 좌표)만 낡아 있었을 뿐, 우측은 최신 상태였다.
 
 요일별 시작열은 `cell_ranges()` 함수가 계산한다 — 월=C, 화=F, 수=I, 목=L, 금=O, 토=R, 일=U (index.js `STATUS_DAY_COLS`와 동일한 규칙).
 
@@ -71,7 +82,7 @@
 
 ### `weekly_calc()` — 주간집계(상금 분배 대상 출력)
 
-집계 탭 D20:D24(총 모금액~퇴실예치)와 H4/J4(스터디장 페널티)를 읽고, 순위가 🥇🥈🥉🏅인 회원만 골라 상금 분배 메시지를 조립해 `ui.alert`로 출력한다. 상금 수령자가 없으면 총 모금액을 D21(이월 상금)에 누적한다. 이 함수는 데이터를 확정 반영하지 않고 **미리보기/공지 문구 생성**이 목적이다.
+집계 탭 D20:D24(총 모금액~퇴실예치)를 읽고, 순위가 🥇🥈🥉🏅인 회원만 골라 상금 분배 메시지를 조립해 `ui.alert`로 출력한다. 상금 수령자가 없으면 총 모금액을 D21(이월 상금)에 누적한다. 이 함수는 데이터를 확정 반영하지 않고 **미리보기/공지 문구 생성**이 목적이다. 🔧 [2026-09-19 정정] 스터디장 페널티는 더 이상 H4/J4(`leader_output_pen_cell`/`leader_time_pen_cell`)를 직접 읽지 않는다 — "데이터" 시트 4행(F~M열)에서 현재 페널티 사이클(`pen_cycle_cell`)과 일치하는 슬롯 개수로 판정한다(`[3,5,6,7].forEach(...)`). 회원 데이터 로드 범위도 `C4:F18`(F열=순위 인덱스 3까지)로 축소됐다.
 
 ### `manage_member_selector()` — 스터디원 관리 라우터
 

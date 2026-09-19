@@ -386,6 +386,12 @@ export async function handleMyCaptures(req, env, origin, url) {
 // 관리자 전용 handleAdminCaptureDelete와 달리 로그인한 본인이 자신의
 // selfCheck 기록만 지울 수 있도록 별도 라우트로 둔다 — 다른 사람의 캡처나
 // 일반 제보를 실수로/악의적으로 지우지 못하게.
+// 🔧 [논리적 삭제, 사용자 지시] "화각 점검에서도 삭제를 누르면 동일한
+// 처리를 해줘" — 이전에는 관리자 "폐기"와 같은 /captures/delete(완전
+// 말소, 목록에서도 사라짐)를 그대로 호출했다. 이제는 전용 엔드포인트
+// (/captures/self-check-delete)를 호출해 manifest 엔트리는 목록에 그대로
+// 남기고(deleted 플래그만 세움) 파일만 trash로 옮긴다 — 프론트가
+// "삭제처리 되었습니다" 오버레이를 스크린샷/영상 영역에 표시할 수 있게.
 export async function handleMyCaptureDelete(req, env, origin) {
   const authHeader = req.headers.get("Authorization") || "";
   const token = authHeader.replace(/^Bearer\s+/i, "");
@@ -403,7 +409,7 @@ export async function handleMyCaptureDelete(req, env, origin) {
     return json({ error: "본인의 내 화각 점검 기록만 삭제할 수 있습니다." }, 403, origin);
   }
 
-  const result = await proxyToBotDashboard(env, "/captures/delete", {
+  const result = await proxyToBotDashboard(env, "/captures/self-check-delete", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ id }),
@@ -412,12 +418,37 @@ export async function handleMyCaptureDelete(req, env, origin) {
   return json(result, 200, origin);
 }
 
-// [내 송출 P 제보 확인]이 "나를 대상으로 한 다른 사람의 제보"(selfCheck가
-// 아닌 일반 제보 중 nickname이 본인)를 조회한다 — 대상자가 "위반인정"/
-// "이의제기"를 누를 수 있는 목록. handleAdminCapturesList와 달리 관리자
-// 권한이 필요 없다(로그인만 하면 자기 것만 볼 수 있음). cycle 쿼리
-// 파라미터(GET /cycles가 내려준 백업 fileId, 없으면 현재 진행 중)로 그
-// 주(월~일, KST)에 발생한 항목 전체를 reviewStatus 무관하게 보여준다.
+// 🔧 [수신/발신 통합] handleMyOutputPen의 가시성 판정을 순수 함수로
+// 뽑아 단위 테스트 가능하게 한다 — 봇 응답을 모킹해야 하는 통합 테스트
+// 없이도 "수신/발신 필터가 상호 배타적으로 정확히 갈리는지"를 검증할
+// 수 있다.
+export function isVisibleForMyOutputPen(item, memberName, myEmail) {
+  return (
+    !item.selfCheck &&
+    (item.nickname === memberName || (item.reporterEmail || "").toLowerCase() === myEmail)
+  );
+}
+
+// 판정된 항목이 본인 기준으로 "received"(수신)인지 "sent"(발신)인지 —
+// isVisibleForMyOutputPen을 통과한 항목에서만 호출한다는 전제.
+export function myOutputPenDirection(item, memberName) {
+  return item.nickname === memberName ? "received" : "sent";
+}
+
+// [내 송출 P 제보 확인]이 "나를 대상으로 한 다른 사람의 제보"(수신,
+// selfCheck가 아닌 일반 제보 중 nickname이 본인)와 "내가 제보한 건"
+// (발신, reporterEmail이 본인)을 함께 조회한다 — 대상자가 "위반인정"/
+// "이의제기"를 누를 수 있는 건 수신 건뿐이다. handleAdminCapturesList와
+// 달리 관리자 권한이 필요 없다(로그인만 하면 자기 것만 볼 수 있음).
+// cycle 쿼리 파라미터(GET /cycles가 내려준 백업 fileId, 없으면 현재
+// 진행 중)로 그 주(월~일, KST)에 발생한 항목 전체를 reviewStatus
+// 무관하게 보여준다.
+// 🔧 [수신/발신 통합, 2026-09-19 사용자 지시] "내 화각 불량 제보"가
+// 지금까지 수신 건만 보여주고 있었는데, 본인이 제보한 건(발신)도 같은
+// 화면에서 "수신"/"발신" 구분과 함께 볼 수 있게 확장한다. 한 회원이
+// 동시에 제보자이자 대상자인 경우(자기 자신을 제보)는 프론트 REASON
+// 폼에서 본인이 대상자 후보에서 원천 제외되어 발생하지 않으므로, 아래
+// visible 필터의 두 조건(수신/발신)은 항상 상호 배타적이다.
 export async function handleMyOutputPen(req, env, origin, url) {
   const authHeader = req.headers.get("Authorization") || "";
   const token = authHeader.replace(/^Bearer\s+/i, "");
@@ -433,7 +464,8 @@ export async function handleMyOutputPen(req, env, origin, url) {
     // members:(10분) 캐시로 갖고 있으므로, 여기서 이메일로 찾으면 그
     // 캐시를 그대로 재사용할 수 있다(사용자 지적).
     const members = await listAllMembers(env, accessToken, env.GOOGLE_SHEET_FILE_ID);
-    const member = members.find((m) => m.email === (session.email || "").toLowerCase());
+    const myEmail = (session.email || "").toLowerCase();
+    const member = members.find((m) => m.email === myEmail);
     if (!member) return json({ items: [] }, 200, origin);
 
     const data = await proxyToBotDashboard(env, "/captures");
@@ -445,13 +477,14 @@ export async function handleMyOutputPen(req, env, origin, url) {
     // 24시간 창 제한은 폐지, 선택된 주 전체를 reviewStatus 무관하게 노출한다.
     const cycleFileId = url ? url.searchParams.get("cycle") : null;
     const inCycle = await filterItemsByCycle(env, accessToken, allItems, cycleFileId);
-    const visible = inCycle.filter((item) => !item.selfCheck && item.nickname === member.name);
+    const visible = inCycle.filter((item) => isVisibleForMyOutputPen(item, member.name, myEmail));
     // 🔧 [상세 화면 관리자 화면과 동일화] "벌점·페널티 변동"(적용 시 차수,
     // 이번 주 영향)을 관리자 화면과 동일하게 보여주려면 nextOccurrence/
     // weeklyMinorPenaltyCount가 필요하다 — attachNextOccurrence는 그대로
     // 재사용 가능한 순수 함수다(env, items만 받음). 제보자 이름도 이 함수가
-    // 함께 채워주지만, "제보자는 숨긴다"(사용자 지시)는 프론트에서 그냥
-    // 안 보여주는 방식으로 처리하고 여기서는 굳이 제거하지 않는다.
+    // 함께 채워주지만, 수신 건에서는 "제보자는 숨긴다"(사용자 지시)는
+    // 프론트에서 그냥 안 보여주는 방식으로 처리하고 여기서는 굳이
+    // 제거하지 않는다.
     const withOccurrence = await attachNextOccurrence(env, visible);
     // 🔧 [관리자 화면과 동일화] 유예(deferOccurrence, 당일 몇 번째 유예인지)
     // 정보도 관리자 목록(handleAdminCapturesList)과 동일한 로직으로 계산해
@@ -466,6 +499,14 @@ export async function handleMyOutputPen(req, env, origin, url) {
       mode: item.mode,
       ts: item.ts,
       reviewStatus: item.reviewStatus,
+      // 🔧 [수신/발신 통합] 이 항목이 본인 기준으로 수신인지 발신인지 —
+      // 위 visible 필터가 이미 상호 배타적으로 걸러뒀으므로 nickname
+      // 일치 여부만으로 안전하게 판정할 수 있다. targetName은 발신
+      // 건에서 프론트가 "누구를 제보했는지" 보여주기 위한 대상자 이름
+      // (사용자 지시로 발신 건은 대상자를 보여줌) — 수신 건은 본인
+      // 이름이라 프론트에서 쓰지 않는다.
+      direction: myOutputPenDirection(item, member.name),
+      targetName: item.nickname,
       targetResponse: item.targetResponse || null,
       targetRespondedAt: item.targetRespondedAt || null,
       // 90분 타임아웃으로 자동 위반인정된 건인지 — 대상자가 직접 버튼을 눌러
@@ -488,6 +529,12 @@ export async function handleMyOutputPen(req, env, origin, url) {
       // 등으로 applied[item.id](이 세션 로컬 상태)를 잃어도 이 스냅샷으로
       // "취소" 버튼이 정확한 파일에서 롤백할 수 있게 한다.
       sourceFileId: item.sourceFileId || null,
+      // 🔧 [10일 경과 자동 논리적 삭제, 2026-09-19] 봇의 매일 정기 작업
+      // (mark_expired_captures)이 접수 10일 경과 건에 세팅하는 플래그를
+      // 그대로 내려준다 — 프론트가 스크린샷/영상 영역에 "10일 초과로
+      // 삭제처리 되었습니다" 오버레이를 표시하는 데 쓴다.
+      deleted: !!item.deleted,
+      deletedReason: item.deletedReason || null,
     }));
     return json({ items }, 200, origin);
   } catch (err) {

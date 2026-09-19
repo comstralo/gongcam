@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { RotateCw, FileText, Image as ImageIcon, Loader2, Search, Hash, ExternalLink, Eye, type LucideIcon } from "lucide-react";
+import { RotateCw, FileText, Image as ImageIcon, Loader2, Search, Hash, ExternalLink, Eye, ChevronDown, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Input } from "@/components/ui/input";
+import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   InfoCard,
@@ -46,6 +47,115 @@ export function formatDateTime24h(ts: number): string {
   const d = new Date(ts);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.toLocaleDateString("ko-KR")} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+// 🔧 [공용화, 2026-09-19 사용자 지시] "화각 불량 제보 처리"(관리자,
+// ReportReviewList.tsx)와 "내 화각 불량 제보"(회원, MyOutputPenSection.tsx)
+// 가 글자 하나 다르지 않게 복제해 갖고 있던 제보 처리 문구 함수들 —
+// "한쪽만 고치면 서로 달라지는" 문제를 근본적으로 없애기 위해 공용
+// 파일로 옮겼다. 두 파일 모두 이 함수들을 import해서 쓴다.
+
+// 송출 P 슬롯 차수(1~6차)별로 실제 적용되는 조치가 다르다 — 1차는 구두경고만,
+// 2/3/5차는 총 상점에서 벌점만 차감(개인 탭 C35 수식), 4/6차는 실제 송출 P가
+// 발생해 예치금 재납 등 페널티로 이어진다(OUTPUT_PEN_P_SLOTS와 동일 기준).
+export function actionLabel(occurrence: number | null): string {
+  if (occurrence === 1) return "구두경고";
+  if (occurrence === 2 || occurrence === 3 || occurrence === 5) return "벌점";
+  if (occurrence === 4) return "송출 P : 1회";
+  if (occurrence === 6) return "송출 P : 2회";
+  return "적용 불가 (잔여 슬롯 없음)";
+}
+
+// 버튼/SubRow 문구용 "N차 (조치명)" 형태. occurrence가 없으면(회원을 못
+// 찾았거나 슬롯이 다 찼으면) "적용 불가 (잔여 슬롯 없음)"만 보여준다.
+export function occurrenceLabel(occurrence: number | null): string {
+  const action = actionLabel(occurrence);
+  return occurrence ? `${occurrence}차 (${action})` : action;
+}
+
+// 뱃지 통폐합(§ReportReviewList/MyOutputPenSection 헤더 뱃지)용 3갈래
+// 요약 — actionLabel과 동일한 차수 매핑이지만 "경고/벌점/페널티"만
+// 필요할 때 쓴다.
+export function penaltyCategoryLabel(occurrence: number | null): string {
+  if (occurrence === 1) return "경고";
+  if (occurrence === 4 || occurrence === 6) return "페널티";
+  return "벌점"; // occurrence === 2, 3, 5
+}
+
+// "이번 주 영향"(벌점·페널티 변동) SubRow용 — 2/3/5차는 이번 사이클
+// 슬롯 개수 × 0.1점 차감, 4/6차는 실제 송출 P 발생, 1차는 영향 없음.
+export function weeklyImpactLabel(occurrence: number | null, weeklyMinorPenaltyCount: number): string {
+  if (occurrence === 1) return "없음";
+  if (occurrence === 2 || occurrence === 3 || occurrence === 5) {
+    const deduction = Math.round(weeklyMinorPenaltyCount * 0.1 * 10) / 10;
+    return `주간 총 상점에서 -${deduction}점`;
+  }
+  if (occurrence === 4) return "송출 P : 1회";
+  if (occurrence === 6) return "송출 P : 2회";
+  return "-";
+}
+
+// 차감 분을 "-HH:MM" 형식으로 포맷한다.
+export function formatDeductedTime(minutes: number): string {
+  const hh = Math.floor(minutes / 60);
+  const mm = minutes % 60;
+  return `-${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
+// 🔧 [사용자 지시, 2026-09-19] "화각 불량 제보 처리"/"내 화각 불량 제보"
+// 뱃지("대기 | 확정", "수신 | 발신" 등)의 구분자를 다른 화면(대시보드
+// 타일 등)이 공용으로 쓰는 DividedValue(세로선 │)와 별개로 "·"(가운뎃점)로
+// 바꿔달라는 요청 — 제보 도메인 뱃지에서만 국한된 변경이라 공용
+// DividedValue는 그대로 두고, 이 두 화면(ReportReviewList/
+// MyOutputPenSection)만 쓰는 전용 컴포넌트를 admin/shared.tsx에 둔다(이미
+// 두 파일이 공유하는 위치).
+export function DottedValue({ items }: { items: ReactNode[] }) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      {items.map((item, i) => (
+        <span key={i} className="inline-flex items-center gap-1">
+          {i > 0 && <span aria-hidden="true">·</span>}
+          {item}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+// "처리현황" SubRow 텍스트 — 대상자 응답(targetResponse)과 관리자 최종
+// 처리(reviewStatus)를 조합한다. confirmedOccurrence는 reviewStatus가
+// "approved"일 때만 의미 있는 확정 조치 차수(경고/벌점/페널티 판정용)로,
+// 호출자가 로컬 세션 오버라이드(관리자 화면의 applied 등)와 서버 스냅샷을
+// 이미 병합해 넘겨야 한다 — 이 함수 자체는 그 병합 방식을 모른 채 순수하게
+// occurrence 값만 받는다(두 화면이 서로 다른 방식으로 병합하므로 이렇게
+// 분리해야 공용화가 가능했다).
+export function statusLabel(
+  item: {
+    reviewStatus: "pending" | "approved" | "rejected" | "rejected_recognized" | "deferred";
+    targetResponse: "disputed" | "recognized" | null;
+    targetResponseAuto: boolean;
+  },
+  confirmedOccurrence: number | null
+): string {
+  if (!item.targetResponse) {
+    return "응답 대기 중";
+  }
+  const isDisputed = item.targetResponse === "disputed";
+  // 90분 시한 초과로 시스템이 자동 제출한 응답은 대상자 본인이 직접
+  // 누른 위반인정과 구분되도록 "자동응답"으로 표시한다.
+  const responseLabel = item.targetResponseAuto ? "자동응답" : isDisputed ? "이의제기" : "위반인정";
+  if (item.reviewStatus === "pending") {
+    if (item.targetResponseAuto) return "90분 내 무응답으로 자동 제출 (검토 중)";
+    return `${responseLabel} 제출 (검토 중)`;
+  }
+  if (item.reviewStatus === "deferred") {
+    return `${responseLabel} → 검토 완료 (유예 확정)`;
+  }
+  if (item.reviewStatus === "rejected" || item.reviewStatus === "rejected_recognized") {
+    return `${responseLabel} → 검토 완료 (반려 확정)`;
+  }
+  // reviewStatus === "approved"
+  return `${responseLabel} → 검토 완료 (${penaltyCategoryLabel(confirmedOccurrence)} 확정)`;
 }
 
 // "스터디원 목록"의 참여자 뷰/퇴실자 뷰가 각자 손으로 복붙해 구현하던
@@ -267,6 +377,80 @@ export function AdminEmptyState({ children }: { children: ReactNode }) {
     <InfoCard className="flex items-center justify-center bg-card py-8">
       <p className="text-center text-sm text-muted-foreground sm:text-base">{children}</p>
     </InfoCard>
+  );
+}
+
+// 🔧 [리팩토링, 2026-09-19] "스터디원 목록"/"퇴실 스터디원 목록"이 완전히
+// 동일한 마크업(주석에도 "동일한 마크업을 그대로 재사용한다"고 명시)으로
+// 각자 갖고 있던 이름 검색창을 공용화. placeholder만 도메인마다 다르다.
+export function AdminSearchInput({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <div className="relative">
+      <Search
+        className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground sm:size-4"
+        strokeWidth={ICON_STROKE.default}
+      />
+      <Input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="pl-9 sm:h-11 sm:pl-10 sm:text-base"
+      />
+    </div>
+  );
+}
+
+// 🔧 [리팩토링, 2026-09-19] 관리자 탭 4곳(벌금 납부/예치금 재납/사유 반휴/
+// 화각 불량 제보)의 "요일별 그룹" 1차 토글이 바깥 골격(Collapsible 상태
+// 관리 + InfoCard + CollapsibleTrigger의 className + ChevronDown + 펼침
+// 패널 wrapper)을 완전히 동일하게 복붙해 갖고 있었다 — 이번 세션에서 실제로
+// 겪은 뱃지 개행/토글 버그가 이 4곳에 각각 따로 있었던 근본 원인. 다만
+// 헤더 안쪽(날짜 라벨 + 뱃지 나열)의 세부 구조는 화면마다 미묘하게 달라
+// (예: ReportReviewList는 뱃지가 2행으로 줄바꿈되고 ChevronDown이 다른
+// 위치에 있음) 그 부분까지 강제로 통일하면 오히려 각 화면의 실제 배치
+// 의도를 왜곡할 위험이 있다 — 그래서 헤더 안쪽 콘텐츠는 `header` prop으로
+// 그대로 받아 각 파일이 자유롭게 구성하게 하고, 100% 동일했던 바깥 골격만
+// 공용화한다.
+export function DayGroupHeader({
+  isExpanded,
+  onOpenChange,
+  header,
+  children,
+}: {
+  isExpanded: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** CollapsibleTrigger 안에 그대로 렌더링되는 헤더 콘텐츠(날짜 라벨 + 뱃지들).
+   * ChevronDown은 이 컴포넌트가 자동으로 붙이므로 포함하지 않는다. */
+  header: ReactNode;
+  /** CollapsiblePanel 안에 펼쳐질 때 보여줄 내용(회원별 상세 목록 등). */
+  children: ReactNode;
+}) {
+  return (
+    <Collapsible open={isExpanded} onOpenChange={onOpenChange}>
+      <InfoCard className="flex flex-col gap-2.5 bg-card">
+        <CollapsibleTrigger
+          className="flex items-center justify-between gap-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded"
+          hideChevron
+        >
+          {header}
+          <ChevronDown
+            className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", isExpanded && "rotate-180")}
+            strokeWidth={ICON_STROKE.default}
+          />
+        </CollapsibleTrigger>
+        <CollapsiblePanel className="flex flex-col">
+          <div className="flex flex-col gap-2.5 pt-2.5">{children}</div>
+        </CollapsiblePanel>
+      </InfoCard>
+    </Collapsible>
   );
 }
 

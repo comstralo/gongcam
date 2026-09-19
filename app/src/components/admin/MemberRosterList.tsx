@@ -1,12 +1,11 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { Users, User, ChevronDown, Bell, FlaskConical, Search } from "lucide-react";
+import { Users, User, ChevronDown, Bell, FlaskConical } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { InfoCard, SubRow, TintedPill } from "@/components/dashboard/shared";
-import { SectionHeader, AdminListSkeleton, AdminEmptyState, MemberStatusInfoCard } from "@/components/admin/shared";
+import { SectionHeader, AdminListSkeleton, AdminEmptyState, AdminSearchInput, MemberStatusInfoCard } from "@/components/admin/shared";
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
 import { ExitedMemberRosterView } from "@/components/admin/ExitedMemberRosterView";
 import type { RosterViewHandle, RosterViewState } from "@/components/admin/ExitedMemberRosterView";
@@ -211,10 +210,18 @@ const DUMMY_BREAKDOWNS: Record<string, DepositRefundBreakdown> = {
     depositAgainStatus: null,
     lateNotice: false,
   },
+  // 🔧 [사실성 수정, 2026-09-19] depositRefundBreakdown()의 reason은
+  // "참여상태 미확인"/"가입 30일 미만"/"벌금 시한 내 미납"/"예치금 재납
+  // 시한 미납"/"예치금 재납 대상자" 5개 고정 문자열만 가능하다(deposit.js).
+  // 페널티(outputPen/timePen)나 고지지연(lateNotice)만으로는 amount만
+  // 깎일 뿐 reason은 항상 null로 유지된다 — "페널티 1회"/"페널티 2회
+  // 이상"/"퇴실 통보 지연"/"벌금 미납" 같은 문자열은 이 필드에 실재하지
+  // 않는다(그 사유들은 화면의 "차감 원인" 카드가 별도로 forcedExitChecks
+  // 결과를 조합해 보여줄 뿐, breakdown.reason 자체는 아니다).
   // 서준: 페널티 1회 — 정산 퇴실 시 50% 반환.
   "2": {
     amount: 5000,
-    reason: "페널티 1회",
+    reason: null,
     outputPen: 1,
     timePen: 0,
     daysSinceJoin: 216,
@@ -228,7 +235,7 @@ const DUMMY_BREAKDOWNS: Record<string, DepositRefundBreakdown> = {
   // 차감으로 나타나는 차이를 확인할 수 있다).
   "3": {
     amount: 0,
-    reason: "페널티 2회 이상",
+    reason: null,
     outputPen: 1,
     timePen: 1,
     daysSinceJoin: 197,
@@ -241,7 +248,7 @@ const DUMMY_BREAKDOWNS: Record<string, DepositRefundBreakdown> = {
   // 차감되는 케이스, 페널티 케이스와 사유가 다름을 비교할 수 있다).
   "4": {
     amount: 5000,
-    reason: "퇴실 통보 지연",
+    reason: null,
     outputPen: 0,
     timePen: 0,
     daysSinceJoin: 151,
@@ -250,11 +257,12 @@ const DUMMY_BREAKDOWNS: Record<string, DepositRefundBreakdown> = {
     depositAgainStatus: null,
     lateNotice: true,
   },
-  // 도윤: 벌금 미납 + 가입 30일 미만 — 강제퇴실 조건 2개가 동시에 걸리는
-  // 케이스(차감 원인 카드에 두 항목이 함께 100%로 표시됨).
+  // 도윤: 벌금 시한 내 미납 + 가입 30일 미만 — 강제퇴실 조건 2개가 동시에
+  // 걸리는 케이스(차감 원인 카드에 두 항목이 함께 100%로 표시됨). reason은
+  // daysSinceJoin<30이 fineNoStatus 체크보다 먼저 걸려 "가입 30일 미만".
   "5": {
     amount: 0,
-    reason: "벌금 미납",
+    reason: "가입 30일 미만",
     outputPen: 0,
     timePen: 0,
     daysSinceJoin: 12,
@@ -512,22 +520,10 @@ const ActiveMemberRosterView = forwardRef<
         </Alert>
       )}
 
-      {/* 🔧 [사용자 지시] "퇴실 스터디원 목록"과 동일한 이름 검색 UI —
-          ExitedMemberRosterView §검색창과 동일한 마크업(위치/아이콘/placeholder
-          스타일)을 그대로 재사용한다. */}
+      {/* 🔧 [리팩토링, 2026-09-19] ExitedMemberRosterView와 완전히 동일했던
+          검색창 마크업을 admin/shared.tsx의 AdminSearchInput으로 공용화. */}
       {members && members.length > 0 && (
-        <div className="relative">
-          <Search
-            className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground sm:size-4"
-            strokeWidth={ICON_STROKE.default}
-          />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="이름으로 검색"
-            className="pl-9 sm:h-11 sm:pl-10 sm:text-base"
-          />
-        </div>
+        <AdminSearchInput value={query} onChange={setQuery} placeholder="이름으로 검색" />
       )}
 
       {/* 🔧 [버그 수정, 2026-09] ReasonLeaveReviewList와 동일한 근본
@@ -540,10 +536,11 @@ const ActiveMemberRosterView = forwardRef<
 
       {members && members.length === 0 && <AdminEmptyState>등록된 스터디원이 없습니다.</AdminEmptyState>}
 
+      {/* 🔧 [리팩토링, 2026-09-19] 검색결과 없음 문구가 AdminEmptyState를
+          안 써서 스켈레톤/빈 목록과 높이가 달랐다(AdminEmptyState 도입
+          취지에서 빠져있던 사각지대) — 통일. */}
       {!loading && members && members.length > 0 && filteredMembers && filteredMembers.length === 0 && (
-        <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">
-          "{query}"와 일치하는 스터디원이 없습니다.
-        </p>
+        <AdminEmptyState>"{query}"와 일치하는 스터디원이 없습니다.</AdminEmptyState>
       )}
 
       {filteredMembers && filteredMembers.length > 0 && (

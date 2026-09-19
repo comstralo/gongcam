@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Clock, Timer, CalendarDays, Award, ListChecks, ShieldAlert, CircleDollarSign, CircleCheck } from "lucide-react";
 import { cn, ICON_STROKE } from "@/lib/utils";
-import { SummaryTile, DividedValue, DayDetailCard, formatTotalPenalty } from "@/components/dashboard/shared";
+import { SummaryTile, DividedValue, DayDetailCard, formatTotalPenalty, STATUS_DAYS } from "@/components/dashboard/shared";
 import { formatRankInline } from "@/components/dashboard/RosterView";
 import { MeritBreakdownDialog } from "@/components/dashboard/MeritBreakdownDialog";
 import { GoalTypeScheduleDialog } from "@/components/dashboard/GoalTypeScheduleDialog";
@@ -13,8 +13,6 @@ import { HalfDayLeaveDialog } from "@/components/dashboard/HalfDayLeaveDialog";
 import { useAuth } from "@/lib/auth/useAuth";
 import { useTodayIndex } from "@/hooks/useTodayIndex";
 import type { StatusResponse } from "@/lib/api/types";
-
-const STATUS_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
 
 // 시트 원본 값은 "8H (교시제)"처럼 괄호가 붙어 있어 그대로 노출하면 답답해
 // 보인다 — 괄호만 제거해 "8H 교시제"로 표시한다.

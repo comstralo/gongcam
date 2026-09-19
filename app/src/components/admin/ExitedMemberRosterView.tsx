@@ -1,14 +1,14 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { User, ChevronDown, Search } from "lucide-react";
+import { User, ChevronDown } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { InfoCard, TintedPill } from "@/components/dashboard/shared";
 import {
   displayExitedName as displayName,
   AdminListSkeleton,
   AdminEmptyState,
+  AdminSearchInput,
   MemberStatusInfoCard,
   ExitResultCards,
 } from "@/components/admin/shared";
@@ -79,7 +79,14 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
       fineAlreadyPayment: 3000,
       breakdown: {
         amount: 0,
-        reason: "페널티 2회 이상",
+        // 🔧 [사실성 수정, 2026-09-19] depositRefundBreakdown()의 reason은
+        // "참여상태 미확인"/"가입 30일 미만"/"벌금 시한 내 미납"/"예치금
+        // 재납 시한 미납"/"예치금 재납 대상자" 5개 고정 문자열만 가능하고,
+        // 페널티만으로 강제퇴실 조건(penTotal>=2)을 충족한 경우는 reason이
+        // null인 채 amount만 0이 된다("페널티 2회 이상"이라는 reason 값
+        // 자체가 실재하지 않음) — 원인은 reasons(아래, forcedExitChecks
+        // 기반)로만 표시된다.
+        reason: null,
         outputPen: 1,
         timePen: 1,
         daysSinceJoin: 82,
@@ -148,7 +155,11 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
       fineAlreadyPayment: 0,
       breakdown: {
         amount: 0,
-        reason: "페널티 2회 이상",
+        // 🔧 [사실성 수정, 2026-09-19] depositAgainStatus가 "미납"이면
+        // depositRefundBreakdown()의 우선순위상(fineNoStatus 체크 다음,
+        // penTotal 체크보다 먼저) reason이 항상 "예치금 재납 시한 미납"이
+        // 된다 — "페널티 2회 이상"은 실재하지 않는 문자열.
+        reason: "예치금 재납 시한 미납",
         outputPen: 2,
         timePen: 0,
         daysSinceJoin: 60,
@@ -157,7 +168,15 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
         depositAgainStatus: "미납",
         lateNotice: false,
       },
-      reasons: [{ code: "penalty_2_or_more", label: "페널티 누적 2회 이상 (송출 P 2회 / 주간 P 0회) ➡️ 0% 반환" }],
+      // 🔧 [사실성 수정, 2026-09-19] forcedExitChecks()는 depositAgainStatus
+      // ==="미납"(met: deposit_again_unpaid)과 penTotal>=2(met:
+      // penalty_2_or_more)를 각각 독립적으로 판정한다 — 이 더미는 outputPen:2
+      // 로 두 조건이 동시에 met이므로 calcForcedOutDeposit()이 실제로
+      // reasons 배열에 둘 다 담는다(met인 체크만 필터링).
+      reasons: [
+        { code: "deposit_again_unpaid", label: "예치금 시한 내 미납 ➡️ 0% 반환" },
+        { code: "penalty_2_or_more", label: "페널티 누적 2회 이상 (송출 P 2회 / 주간 P 0회) ➡️ 0% 반환" },
+      ],
       processedDate: "2026-08-17",
       blacklist: false,
       googleAccount: "areum.yoon@gmail.com",
@@ -270,7 +289,10 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
       fineAlreadyPayment: 0,
       breakdown: {
         amount: 5000,
-        reason: "페널티 1회",
+        // 🔧 [사실성 수정, 2026-09-19] 페널티 1회 단독(고지지연 없음)은
+        // depositRefundBreakdown()에서 amount만 5000으로 깎이고 reason은
+        // null로 유지된다 — "페널티 1회"라는 reason 값은 실재하지 않음.
+        reason: null,
         outputPen: 1,
         timePen: 0,
         daysSinceJoin: 140,
@@ -375,8 +397,13 @@ const DUMMY_EXITED_MEMBERS: ExitedMemberEntry[] = [
         depositAgainStatus: "미납",
         lateNotice: false,
       },
+      // 🔧 [사실성 수정, 2026-09-19] depositAgainStatus:"미납"도 met이므로
+      // forcedExitChecks()가 deposit_again_unpaid도 함께 반환한다(누락돼
+      // 있었음) — 벌금 미납 + 예치금 재납 미납 + 페널티 2회 이상 3개 조건이
+      // 동시에 걸리는, 가능한 가장 복합적인 강제퇴실 케이스로 만든다.
       reasons: [
         { code: "fine_unpaid", label: "벌금 시한 내 미납 ➡️ 0% 반환" },
+        { code: "deposit_again_unpaid", label: "예치금 시한 내 미납 ➡️ 0% 반환" },
         { code: "penalty_2_or_more", label: "페널티 누적 2회 이상 (송출 P 1회 / 주간 P 1회) ➡️ 0% 반환" },
       ],
       processedDate: "2026-07-05",
@@ -523,19 +550,10 @@ export const ExitedMemberRosterView = forwardRef<
         </Alert>
       )}
 
+      {/* 🔧 [리팩토링, 2026-09-19] MemberRosterList와 완전히 동일했던
+          검색창 마크업을 admin/shared.tsx의 AdminSearchInput으로 공용화. */}
       {members && members.length > 0 && (
-        <div className="relative">
-          <Search
-            className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground sm:size-4"
-            strokeWidth={ICON_STROKE.default}
-          />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="이름으로 검색"
-            className="pl-9 sm:h-11 sm:pl-10 sm:text-base"
-          />
-        </div>
+        <AdminSearchInput value={query} onChange={setQuery} placeholder="이름으로 검색" />
       )}
 
       {/* 🔧 [버그 수정, 2026-09] ReasonLeaveReviewList와 동일한 근본
@@ -548,10 +566,10 @@ export const ExitedMemberRosterView = forwardRef<
 
       {members && members.length === 0 && <AdminEmptyState>퇴실한 스터디원이 없습니다.</AdminEmptyState>}
 
+      {/* 🔧 [리팩토링, 2026-09-19] 검색결과 없음 문구를 AdminEmptyState로
+          통일(MemberRosterList와 동일한 사각지대였음). */}
       {!loading && members && members.length > 0 && filteredMembers && filteredMembers.length === 0 && (
-        <p className="py-6 text-center text-sm text-muted-foreground sm:text-base">
-          "{query}"와 일치하는 퇴실 스터디원이 없습니다.
-        </p>
+        <AdminEmptyState>"{query}"와 일치하는 퇴실 스터디원이 없습니다.</AdminEmptyState>
       )}
 
       {filteredMembers && filteredMembers.length > 0 && (

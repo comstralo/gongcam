@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, Flag, Bell, ScanLine, Settings, ShieldCheck, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, Flag, Bell, ScanLine, Settings, ShieldCheck, MessageCircle, type LucideIcon } from "lucide-react";
 import { cn, ICON_STROKE } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/useAuth";
 import { useUnreadNotificationCount } from "@/lib/notifications/notifications";
@@ -15,6 +15,7 @@ const TABS: Tab[] = [
   { to: "/notifications", label: "알림", icon: Bell },
   { to: "/", label: "대시보드", icon: LayoutDashboard },
   { to: "/report", label: "제보", icon: Flag },
+  { to: "/chat", label: "채팅", icon: MessageCircle },
   { to: "/checker", label: "체커", icon: ScanLine },
   { to: "/settings", label: "설정", icon: Settings },
   { to: "/admin", label: "관리자", icon: ShieldCheck, adminOnly: true },

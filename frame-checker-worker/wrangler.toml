@@ -81,3 +81,7 @@ ALLOWED_ORIGIN = "https://comstralo.github.io"
 # 앱스크립트(sheet_reset)가 매주 초기화 직전 시트 전체를 복사해 저장하는 Drive 폴더.
 # 이 폴더는 일반 사용자와 공유되어 있지 않고 서비스 계정에게만 뷰어 권한이 부여됨.
 BACKUP_FOLDER_ID = "15-_j0UmDC3Ox6l1ujZmAeGuuLU3gHhH7"
+# Stream Chat(getstream.io) App Key — Stream 관례상 공개 가능한 값이라(프론트에도
+# 그대로 노출됨) 시크릿이 아닌 일반 변수로 둔다. Secret은 별도로
+# wrangler secret put STREAM_CHAT_API_SECRET으로 등록되어 있다(env.STREAM_CHAT_API_SECRET).
+STREAM_CHAT_API_KEY = "v4yt7b64nh38"

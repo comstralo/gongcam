@@ -95,7 +95,7 @@ Provider가 잠깐 언마운트되며 나는 `useContext` 에러 등)가 그대�
 쓰이는 것과 정확히 같은 모듈 인스턴스를 받는다(공식 문서 명시) —
 별도 번들링/변환 없이 `export`만 붙이면 바로 유닛 테스트할 수 있다.
 
-## 현재 유효한 잔류 근거 요약 (21차 기준)
+## 현재 유효한 잔류 근거 요약 (21차 기준 — 🔧 [2026-09-19] 아래 표 재실측 갱신)
 
 > 아래는 1~21차 각 섹션에 흩어져 있는 "이 함수는 index.js에 남긴다"
 > 는 선언들의 **최신 스냅샷**이다. 각 차수 섹션 본문은 그 시점의
@@ -104,34 +104,41 @@ Provider가 잠깐 언마운트되며 나는 `useContext` 에러 등)가 그대�
 > 덧붙이고 남겨뒀다), **지금 코드베이스의 진실**을 알고 싶으면 이
 > 표만 보면 된다. 17차 구조 감사가 "차수 섹션을 순서대로 읽으면 낡은
 > 근거를 최신으로 오인하기 쉽다"고 지적해 추가했다.
+>
+> 🔧 **[2026-09-19 정정]** "이 표만 보면 된다"는 문구를 스스로 무색하게
+> 만든 사실이 발견됐다 — 21차(2026-09-17) 이후 하루 뒤(2026-09-18)에
+> 실질적 기능 개발 7개 커밋이 더 있었고, 그로 인해 `cycle.js`/
+> `exit-request.js`/`exit-confirm.js` 세 파일이 아래 표보다 커져 있었다.
+> 상세는 아래 새 "22차" 섹션 참고. 표 자체는 이번에 재실측해 최신화했다.
 
-**최종 파일 구조**(21차 기준, `frame-checker-worker/src/`):
+**최종 파일 구조**(🔧 [2026-09-19] 재실측, `frame-checker-worker/src/`):
 
 | 파일 | 줄 수 | 도메인 |
 |---|---:|---|
-| `index.js` | 2,079 | 엔트리포인트 — 세션/인증 프리미티브, 시트 API 저수준 유틸, 사용량 계측, DO stub, 관리자 위임 OAuth 저수준 유틸, 목표시간 예약, 참여자 명단, 라우팅 테이블(`export default { fetch, scheduled }`) |
-| `personal-status.js` | 1,043 | 개인 대시보드(`handleStatus`/`handleAdminMemberStatus`) |
-| `exit-confirm.js` | 743 | 퇴실/재납 — 미리보기/확정 실행 |
+| `index.js` | 2,099 | 엔트리포인트 — 세션/인증 프리미티브, 시트 API 저수준 유틸, 사용량 계측, DO stub, 관리자 위임 OAuth 저수준 유틸, 목표시간 예약, 참여자 명단, 라우팅 테이블(`export default { fetch, scheduled }`) |
+| `personal-status.js` | 1,083 | 개인 대시보드(`handleStatus`/`handleAdminMemberStatus`) |
+| `durable-objects.js` | 922 | DO 클래스 8개 |
+| `exit-confirm.js` | 801 | 퇴실/재납 — 미리보기/확정 실행. 🔧 22차(2026-09-18)에 +58줄(퇴실 예약일자/최근 접속/퇴실 집행일자 캡처, 아래 참고) |
 | `report-penalty.js` | 845 | 제보/캡처 — 벌점/제보상점 반영(승인/취소/삭제/반려취소) |
-| `report-review.js` | 663 | 제보/캡처 — 캡처 검토/목록/투표 |
-| `members.js` | 654 | 회원 관리(CRUD/번호 재배치), 회원 상세 로스터 |
-| `report-intake.js` | 389 | 제보/캡처 — 접수/쿨다운 |
-| `roster-status.js` | 310 | 랭킹/로스터/정산(19차에서 personal-status.js에서 분리) |
-| `durable-objects.js` | 913 | DO 클래스 8개 |
 | `leave.js` | 863 | 사유반휴/일반반휴 |
-| `notify.js` | 663 | 알림/푸시 |
-| `exit-candidates.js` | 252 | 퇴실/재납 — 후보 판정/공유 조회, 블랙리스트 |
+| `report-review.js` | 663 | 제보/캡처 — 캡처 검토/목록/투표 |
+| `members.js` | 678 | 회원 관리(CRUD/번호 재배치), 회원 상세 로스터 |
+| `notify.js` | 665 | 알림/푸시 |
+| `cycle.js` | 470 | 사이클(3주 백업) 판정. 🔧 22차에 +112줄(`groupBackupsIntoCycles`/`listAllCycleGroups`/`handleAdminCycleGroups`/`resolveTargetFileIdForAnyBackup` 신설) |
+| `report-intake.js` | 389 | 제보/캡처 — 접수/쿨다운 |
 | `bot.js` | 398 | 봇 원격 상태/사용량 |
 | `cache.js` | 371 | 캐시 인프라 |
-| `cycle.js` | 358 | 사이클(3주 백업) 판정 |
-| `auth.js` | 259 | 로그인/OAuth |
-| `deposit.js` | 248 | 예치금 반환/강제퇴실/정산 판정 핵심 계산 |
+| `roster-status.js` | 320 | 랭킹/로스터/정산(19차에서 personal-status.js에서 분리) |
+| `exit-request.js` | 280 | 퇴실/재납 — 신청/동의/취소, 도움봇 조회. 🔧 22차에 +126줄(`autoAgreeExpiredExitRequests`/`agreeExitRequestForMember` 신설) |
+| `deposit.js` | 265 | 예치금 반환/강제퇴실/정산 판정 핵심 계산 |
+| `auth.js` | 265 | 로그인/OAuth |
+| `exit-candidates.js` | 252 | 퇴실/재납 — 후보 판정/공유 조회, 블랙리스트 |
 | `fines.js` | 216 | 벌금/납부 처리 |
-| `exit-request.js` | 154 | 퇴실/재납 — 신청/동의/취소, 도움봇 조회 |
 | `push-crypto.js` | 153 | 웹푸시 암호화(RFC 8291/8292) |
 | `date-utils.js` | 132 | KST 날짜 계산 |
 | `pure-utils.js` | 79 | 회원 계정 파싱 + 웹푸시 보조 + 알림 기본값(세 영역이 섞인 의도된 잡동사니 유틸, 18차에서 member-utils.js → pure-utils.js로 리네임) |
-| `exit-timing.js` | 28 | 정산 공개 시점 판정(순수 함수) |
+| `exit-timing.js` | 29 | 정산 공개 시점 판정 — 🔧 [2026-09-19 정정] "순수 함수"가 아니라 **시계 의존 함수**다(`isSettlementVisibleToMembers`/`exitDateSettled` 둘 다 `Date.now()`를 직접 호출). 테스트 파일명도 실제 성격에 맞게 `exit-timing-clock.test.js`(아래 3차 참고) |
+| `worker-entry.js` | 28 | `fetch`/`scheduled` 얇은 진입점(위 "버그 우회" 절 참고) |
 
 **index.js에 여러 도메인이 공유해서 남아있는 것들**(대표 예시 —
 전체 목록은 각 차수 섹션 참고):
@@ -1629,6 +1636,55 @@ diff 검증 스크립트로 이동한 23개 함수 + `EXIT_KIND_VALUES` 상수
 0건도 함께 확인). `npm test` 기준 448개 테스트 전부 통과, 연속
 2회 재실행으로 안정성 재확인.
 
+## 구조 개선 22차 — 21차 이후 신규 기능 7건 (2026-09-18, 🔧 [2026-09-19] 문서 누락분 추가)
+
+> 21차(2026-09-17)까지의 서술이 스스로를 "지금 코드베이스의 진실"이라
+> 표방했지만, 실제로는 그 다음날(2026-09-18)에 순수 구조 리팩터링이
+> 아니라 **실질적 기능 개발** 커밋 7개(`b01b364`, `9a34cdc`, `68af8c0`,
+> `0df9b68`, `6f8b86b`, `7fa833e`, `e7de323`, `bfaf5d5`)가 있었고, 이번
+> 세션의 문서 전수 대조에서야 뒤늦게 발견됐다. 앞선 1~21차와 성격이
+> 다르다 — 파일을 옮긴 게 아니라 새 함수/새 라우트를 추가한 것이라
+> "차수"라는 이름이 어색할 수 있지만, 위 파일 구조 표의 줄 수 증가분이
+> 전부 이 작업 때문이라 같은 번호 체계로 기록한다.
+
+**1) 관리자 전용 "사이클 범위 선택"** (`cycle.js`, +112줄) —
+`groupBackupsIntoCycles`/`listAllCycleGroups`/`handleAdminCycleGroups`
+(신규 라우트 `GET /admin/cycles`)/`resolveTargetFileIdForAnyBackup` 4개
+함수 신설. 관리자가 `?cycleAny=`로 현재 사이클(최대 3주) 제약 없이 전체
+이력을 조회할 수 있게 한다 — `handleStatus`(personal-status.js)/
+`handleRosterStatus`(roster-status.js)에 새 분기 추가. 테스트:
+`test/cycle-groups.test.js`(211줄, 신설).
+
+**2) 퇴실 신청 48시간 자동 동의 크론** (`exit-request.js`, +126줄) —
+`autoAgreeExpiredExitRequests`/`agreeExitRequestForMember` 2개 함수
+신설. 마지막 참여일 익일로부터 48시간이 지나도 회원이 "동의합니다"를
+누르지 않으면 5분 주기 cron(`scheduled`)이 자동으로 동의 처리한다.
+테스트: `test/exit-requests.test.js`에 `autoAgreeExpiredExitRequests`
+describe 블록 추가(신규 함수라 기존 테스트 파일에 편입).
+
+**3) 정산 퇴실 절차 재정의** (`exit-timing.js`, `DepositRefundDialog.tsx`) —
+`exitDateSettled()`/`exitDatePassedDay()`의 판정 기준이 "exitDate 다음날
+오전 2시 KST"라는 모호한 기준에서 **"익일(자정) 이후"로 단순화**됐다.
+벌금 미납/상금 미정산 판정은 `canAgree`라는 별도 축으로 분리되어, 동의
+버튼을 숨기지 않고 비활성화만 하도록 바뀌었다. `StatusResponse.prizePending`
+필드도 이때 추가됐다. 상세는 `docs/WEB_SETTINGS.md` §3.2(2026-09-19
+전면 재작성)에 반영.
+
+**4) `exit-confirm.js` 퇴실 확정 신규 캡처 필드** (+58줄, 이번 세션 계획
+기준 구현 완료) — `handleAdminExitConfirm`이 확정 처리 시 `exitRequestEntry`
+조회(모든 kind로 확장)와 `do/last-login/list` 조회 결과를 DO 저장
+`entry`에 `exitRequestDate`/`lastLoginAt`/`lastLoginIp` 3개 필드로 추가
+기록한다 — 회원번호 슬롯이 나중에 재사용돼도 퇴실 시점의 이 값들이
+영구 보존된다. 프론트(`ExitedMemberRosterView.tsx`, `types.ts`)도 이
+필드를 "상태 정보" 카드에 표시하도록 반영 완료. 테스트:
+`test/exit-confirm.test.js`(필드 null 검증 + `exitRequestDate`/
+`lastLoginAt`/`lastLoginIp` 실값 검증 케이스 추가).
+
+이 7개 커밋으로 최종 테스트 스위트는 **36개 파일, 479개 테스트**로
+늘었다(21차 시점의 "448개"에서 +31, `npm test` 재실행으로 확인) — 21차
+이하 섹션에 반복 등장하는 "448개 테스트 전부 통과"라는 숫자는 이제
+22차 이전 시점의 스냅샷으로 읽을 것.
+
 ## 다음 단계
 
 사이클 판정, 예치금/강제퇴실/정산 판정, 회원 관리/알림·푸시의
@@ -1644,7 +1700,10 @@ OAuth 도메인, 개인 대시보드/랭킹 클러스터, `handleAdminMembersRos
 추가로 세 건의 유효한 분할(personal-status.js→roster-status.js,
 report.js→report-intake/review/penalty, exit.js→exit-request/
 candidates/confirm)을 발견해 전부 처리했다. 세 차수 모두 코드 작업·
-테스트·diff 검증·배포·문서화·커밋까지 완료된 상태다.
+테스트·diff 검증·배포·문서화·커밋까지 완료된 상태다. 🔧 [2026-09-19
+추가] 다만 이 "완료" 판단은 순수 구조 리팩터링 관점의 것이고, 그
+다음날(2026-09-18) 같은 파일들(`cycle.js`/`exit-request.js`/
+`exit-confirm.js`) 위에 실질적 기능 개발이 더 있었다 — 위 22차 참고.
 
 이번 리팩터링 전체(1~21차)에서 반복적으로 확인된 원칙들을 다시
 정리한다: 테스트 없이 구조 변경부터 시작하지 않는다(전 차수),
