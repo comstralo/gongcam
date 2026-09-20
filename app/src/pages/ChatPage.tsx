@@ -33,7 +33,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/lib/auth/useAuth";
 import { useTheme } from "@/hooks/useTheme";
-import { useKeyboardInset } from "@/hooks/useKeyboardInset";
+import { useVisualViewportRect } from "@/hooks/useKeyboardInset";
 import { ICON_STROKE, cn } from "@/lib/utils";
 import type { AdminMembersResponse, ChatTokenResponse } from "@/lib/api/types";
 
@@ -891,12 +891,10 @@ function AdminChatArea({
   call,
   sidebarView,
   onSidebarViewChange,
-  keyboardInset,
 }: {
   call: ReturnType<typeof useApi>["call"];
   sidebarView: "channels" | "members";
   onSidebarViewChange: (view: "channels" | "members") => void;
-  keyboardInset: number;
 }) {
   const { channel, setActiveChannel } = useChatContext();
   const hasActiveChannel = !!channel;
@@ -1015,21 +1013,8 @@ function AdminChatArea({
                     <ChannelHeader Avatar={() => null} />
                   </div>
                 </div>
-                {/* 🔧 [버그 수정, 2026-09-20 사용자 지시: "이제 이렇게
-                    되는데 이게 개선이 된건가..?" — 채팅 박스 전체에
-                    translateY를 걸었더니 입력창은 키보드 위에 붙었지만
-                    바로 위 헤더(상대방 이름, 채팅목록/회원목록 탭)까지
-                    함께 밀려 화면 밖으로 나갔다] — 카카오톡처럼 헤더는
-                    화면에 고정하고, 그 아래(메시지 리스트+입력창)만
-                    감싸서 이 wrapper에만 translateY를 건다 — 헤더는
-                    keyboardInset과 무관하게 원래 위치 그대로 남는다. */}
-                <div
-                  className="flex min-h-0 flex-1 flex-col"
-                  style={{ transform: keyboardInset ? `translateY(${keyboardInset}px)` : undefined }}
-                >
-                  <MessageList />
-                  <MessageComposer />
-                </div>
+                <MessageList />
+                <MessageComposer />
               </Window>
               <Thread />
             </Channel>
@@ -1049,7 +1034,7 @@ export function ChatPage({ visible, tabBarCollapsed }: { visible: boolean; tabBa
   const { call } = useApi();
   const { isAdmin } = useAuth();
   const { dark } = useTheme();
-  const keyboardInset = useKeyboardInset();
+  const viewportRect = useVisualViewportRect();
   const [client, setClient] = useState<StreamChat | null>(null);
   const [memberChannel, setMemberChannel] = useState<StreamChannel | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1227,29 +1212,56 @@ export function ChatPage({ visible, tabBarCollapsed }: { visible: boolean; tabBa
   // 🔧 [버그 수정, 2026-09-20 사용자 지시: "메시지 보내기에 탭 해서
   // 입력 상태가 되면 카카오톡처럼 되면 좋겠는데 너무 여백이 많이
   // 생겨" → "여전히 아이폰에서 입력 시 공백이 생겨" → "아예 이렇게
-  // 올라가 버리는데?"] — 실기기(아이폰) 디버그 배지로 여러 차례
-  // 실측해 확인한 정확한 원인(useKeyboardInset.ts 상단 주석 참고):
-  // iOS Safari는 키보드가 뜰 때 100dvh나 레이아웃 자체를 줄이지 않고,
-  // 대신 "카메라"(visualViewport)를 문서 좌표계 안에서 키보드 높이만큼
-  // 아래로 이동(offsetTop)시킨다 — 이 오프셋은 body를 position:fixed로
-  // 완전히 잠가도(실측으로 확인, 문서 스크롤 자체가 원인이 아니었음)
-  // 그대로 발생한다.
-  // 🔧 [버그 수정] 처음엔 이 최상위(헤더 탭+채팅 박스 전체를 담은)
-  // wrapper 자체에 translateY를 걸었는데, 그러면 채팅 박스 안의
-  // 채널 헤더("재희1" 이름 표시줄)와 상단 탭("채팅 목록"/"회원 목록")
-  // 까지 함께 아래로 밀려 화면 밖으로 넘어갔다(사용자 실측 스크린샷:
-  // "이제 이렇게 되는데 이게 개선이 된건가..?") — 카카오톡처럼 헤더는
-  // 화면에 고정되고 메시지 영역만 줄어들어야 한다. translateY는 헤더
-  // 아래(메시지 리스트+입력창)를 감싸는 wrapper에만 적용한다(아래
-  // "chat-message-area" div 참고) — 헤더는 원래 위치 그대로 남고, 그
-  // 아래 콘텐츠만 오프셋만큼 아래로 내려 키보드 바로 위에 오게 한다.
+  // 올라가 버리는데?" → "다시 이렇게 됐는데"] — 실기기(아이폰)
+  // 디버그 배지로 확인한 원인: iOS Safari는 키보드가 뜰 때 100dvh나
+  // 레이아웃 자체를 줄이지 않고, 대신 "카메라"(visualViewport)를 문서
+  // 좌표계 안에서 키보드 높이만큼 아래로 이동(offsetTop > 0)시킨다.
+  // 🔧 [버그 수정] 이 오프셋을 height calc + translateY 조합으로
+  // 보정하려는 시도를 두 차례 했으나 모두 실패했다 — 박스 전체를
+  // 옮기면 헤더까지 밀려났고(1차), 헤더만 이동에서 빼자 이번엔 헤더가
+  // 원래 레이아웃 뷰포트 좌표(카메라가 이미 그 자리를 벗어나 실제로는
+  // 화면 밖) 그대로 남아 화면 전체가 빈 채로 보였다(2차, 실측
+  // 스크린샷: "다시 이렇게 됐는데"). translateY는 "레이아웃 흐름
+  // 안에서 상대적으로 옮기는" 도구일 뿐이라, 애초에 좌표계 자체가
+  // 어긋난 문제(카메라가 문서 전체와 다른 위치에 있음)를 부분적으로만
+  // 보정하면 반드시 다른 부분이 깨졌다.
+  //
+  // 근본 해법(실제 모바일 채팅 웹뷰들이 쓰는 표준 패턴): 이 컨테이너
+  // 자체를 position:fixed로 만들고, top/height를 useVisualViewportRect
+  // (visualViewport.offsetTop/height 그대로 노출)로 매 resize마다
+  // 직접 계산해 갱신한다. position:fixed는 원래 레이아웃 뷰포트
+  // 기준이라 카메라 이동과 무관하지만, top 자체를 "지금 카메라가
+  // 정확히 어디 있는지"로 다시 계산하면 컨테이너가 카메라를 그대로
+  // 따라다니게 된다 — 내부의 헤더/메시지 리스트/입력창 사이 상대적
+  // flex 레이아웃은 전혀 건드리지 않으므로 부분적 보정 문제 자체가
+  // 생기지 않는다. viewportRect가 아직 없으면(SSR/구형 브라우저)
+  // 기존 100dvh 기반 정적 레이아웃으로 폴백한다.
+  const headerOffsetPx = 88; // AppShell 표준 헤더("공부합시당 캠스터디" + 제목) 실측 높이.
+  // 🔧 [사용자 지시] "키보드가 떴 동안 하단 탭바는 덮여도 무방(카카오톡
+  // 방식)" — 키보드가 없을 때(viewportRect.top === 0)는 하단 탭바가
+  // 화면에 그대로 보이므로 그 실측 높이(펼침 89px/접힘 약 24px)만큼
+  // 채팅 박스 아래를 비워둬야 겹치지 않는다. 키보드가 떠 있을 때
+  // (viewportRect.top > 0)는 탭바 자체가 이미 카메라(visualViewport)
+  // 밖으로 밀려나 안 보이므로, 그 자리까지 채팅 박스가 채워도 무방
+  // (오히려 그래야 입력창이 키보드 바로 위까지 정확히 내려온다).
+  const tabBarHeightPx = viewportRect && viewportRect.top > 0 ? 0 : tabBarCollapsed ? 24 : 89;
   return (
     <div
       hidden={!visible}
-      className="flex w-full page-content flex-col gap-2"
-      style={{
-        height: `calc(100dvh - ${tabBarCollapsed ? "6.6rem" : "11.5rem"} - ${keyboardInset}px)`,
-      }}
+      className={cn(
+        "w-full page-content flex-col gap-2 px-2.5 sm:px-4",
+        viewportRect ? "fixed left-1/2 flex -translate-x-1/2" : "flex"
+      )}
+      style={
+        viewportRect
+          ? {
+              top: headerOffsetPx + viewportRect.top,
+              height: viewportRect.height - headerOffsetPx - tabBarHeightPx,
+            }
+          : {
+              height: `calc(100dvh - ${tabBarCollapsed ? "6.6rem" : "11.5rem"})`,
+            }
+      }
     >
       {isAdmin && <ChatListHeader view={sidebarView} onViewChange={setSidebarView} />}
       <div className="flex w-full min-h-0 flex-1 flex-col overflow-hidden rounded-lg border">
@@ -1287,28 +1299,15 @@ export function ChatPage({ visible, tabBarCollapsed }: { visible: boolean; tabBa
           // 2단 레이아웃(목록/대화창 스플릿, 활성 채널 여부에 따른
           // 자동 전환)은 AdminChatArea(<Chat> 자식, useChatContext로
           // 활성 채널을 구독해야 해서 별도 컴포넌트로 분리)가 담당한다.
-          <AdminChatArea
-            call={call}
-            sidebarView={sidebarView}
-            onSidebarViewChange={setSidebarView}
-            keyboardInset={keyboardInset}
-          />
+          <AdminChatArea call={call} sidebarView={sidebarView} onSidebarViewChange={setSidebarView} />
         ) : (
           // 회원 — 목록 없이 본인-관리자 채널로 바로 진입.
           <div className="chat-message-area h-full">
             <Channel channel={memberChannel ?? undefined}>
               <Window>
                 <ChannelHeader title="관리자에게 문의하기" Avatar={PersonAvatar} />
-                {/* 🔧 [버그 수정, 2026-09-20] AdminChatArea와 동일한 이유로
-                    헤더는 고정하고 이 아래(메시지 리스트+입력창)만
-                    translateY로 키보드 위에 맞춘다. */}
-                <div
-                  className="flex min-h-0 flex-1 flex-col"
-                  style={{ transform: keyboardInset ? `translateY(${keyboardInset}px)` : undefined }}
-                >
-                  <MessageList />
-                  <MessageComposer />
-                </div>
+                <MessageList />
+                <MessageComposer />
               </Window>
             </Channel>
           </div>
