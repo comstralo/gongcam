@@ -11,6 +11,28 @@ export const PULL_REFRESH_EVENT = "app:pull-refresh";
 // 문서 최상단에서 아래로 당기는 제스처를 추적해 당김 거리(px, 0~MAX_PULL)와
 // 새로고침 트리거 여부를 반환한다. 스크롤이 맨 위(scrollY===0)일 때 시작한
 // 터치만 인정해, 페이지 내부 스크롤 중 우발적으로 당겨지는 걸 막는다.
+// 🔧 [버그 수정, 2026-09-20 사용자 지시: "모바일에서 채팅 스크롤을 하려고
+// 하면 우리 웹 서비스의 새로고침이 발동해버린다"] — 이 훅은 원래
+// window.scrollY===0일 때만 당김을 추적하면 안전하다고 가정했는데, 이는
+// "페이지 전체가 window 스크롤로 움직이는 화면"에만 맞는 전제였다.
+// Stream Chat의 메시지 리스트(.str-chat__main-panel-inner)처럼 페이지
+// 자체는 스크롤하지 않고 내부 div가 자체적으로 overflow-y:auto로
+// 스크롤하는 화면에서는 window.scrollY가 항상 0으로 유지된 채, 그 내부
+// 리스트를 위로 스크롤하려는 터치가 그대로 이 전역 리스너에 pull-to-
+// refresh 제스처로 오인됐다(실측: 채팅에서만 재현, 페이지 자체가
+// window 스크롤을 쓰는 다른 탭에서는 무해했음 — scrollY가 이미 0보다
+// 커져 자연히 걸러짐). 터치 시작 지점의 조상 중에 "스스로 스크롤 가능한
+// (overflow-y auto/scroll + 실제 스크롤할 컨텐츠가 있는)" 요소가 있으면
+// 그 안의 스크롤을 우선하고 전역 당김 추적 자체를 시작하지 않는다.
+function findScrollableAncestor(el: Element | null): Element | null {
+  for (let node = el; node && node !== document.body; node = node.parentElement) {
+    const style = getComputedStyle(node);
+    const canScrollY = style.overflowY === "auto" || style.overflowY === "scroll";
+    if (canScrollY && node.scrollHeight > node.clientHeight) return node;
+  }
+  return null;
+}
+
 export function usePullToRefresh() {
   const [pullDistance, setPullDistance] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -20,6 +42,15 @@ export function usePullToRefresh() {
   useEffect(() => {
     function onTouchStart(e: TouchEvent) {
       if (window.scrollY > 0 || refreshing) {
+        startY.current = null;
+        return;
+      }
+      const scrollableAncestor = findScrollableAncestor(e.target as Element | null);
+      // 내부 스크롤 컨테이너가 맨 위가 아니면(더 위로 스크롤할 여지가
+      // 있으면) 그 스크롤을 우선한다. 이미 맨 위(scrollTop===0)라면
+      // 카카오톡 등과 동일하게 그 다음 당김은 페이지 새로고침으로
+      // 넘어가도 자연스러우므로 계속 추적한다.
+      if (scrollableAncestor && scrollableAncestor.scrollTop > 0) {
         startY.current = null;
         return;
       }

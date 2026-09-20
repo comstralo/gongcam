@@ -80,7 +80,7 @@
   container-type: inline-size;
 }
 .chat-message-area .str-chat {
-  --str-chat__message-max-width: min(400px, 72cqw);
+  --str-chat__message-max-width: min(400px, 60cqw);
   /* 🔧 [버그 수정, 2026-09-19 사용자 지시: "이미지 전송도 해봤는데 일반
      메시지랑 다르게 작동한다 — 답장도 안 되고 크기도 크다"] — Stream은
      첨부파일이 있는 메시지(.str-chat__message--has-attachment)에서
@@ -91,7 +91,7 @@
      오버라이드해도 이 규칙이 더 안쪽에서 재차 400px로 되돌려버려
      이미지 버블만 이전 크기 그대로 넓게 남았다 — 텍스트 메시지와
      동일한 비율로 맞추기 위해 이 변수도 함께 오버라이드한다. */
-  --str-chat__message-with-attachment-max-width: min(400px, 72cqw);
+  --str-chat__message-with-attachment-max-width: min(400px, 60cqw);
 }
 
 /* 🔧 [사용자 지시, 2026-09-19] "메시지 입력창 영역이 여전히 넓어 보인다" —
