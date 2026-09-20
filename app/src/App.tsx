@@ -48,7 +48,12 @@ function MainViews() {
   // 처리 할 수 있어?" — 접힘 상태를 AppShell(탭바 자체를 그리는 쪽)과
   // ChatPage(탭바가 접힌 만큼 자기 높이를 늘려야 하는 쪽) 둘 다 알아야
   // 해서, 둘의 공통 부모인 여기서 소유한다.
-  const [chatTabBarCollapsed, setChatTabBarCollapsed] = useState(false);
+  // 🔧 [사용자 지시, 2026-09-20] "채팅창에 들어오면 기본으로 하단
+  // 네비바가 접힌 상태가 되도록" — 초기값을 true로. 세션 중 사용자가
+  // 직접 펼치면(다른 탭에 갔다 돌아와도 이 컴포넌트는 hidden div로
+  // 계속 마운트 유지되는 구조라) 그 선택은 그대로 남는다 — 매번 다시
+  // 접히면 "펼쳐 두고 싶다"는 선택 자체를 무시하는 셈이라 부자연스럽다.
+  const [chatTabBarCollapsed, setChatTabBarCollapsed] = useState(true);
 
   if (!session) return <Navigate to="/login" replace />;
   if (!MAIN_VIEWS.includes(path)) return <Navigate to="/" replace />;

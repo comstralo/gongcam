@@ -887,7 +887,6 @@ function AdminChatArea({
 
   return (
     <div className="flex h-full flex-col">
-      <ChatListHeader view={sidebarView} onViewChange={onSidebarViewChange} />
       <div className="flex min-h-0 flex-1">
         <div
           className={cn(
@@ -1180,14 +1179,31 @@ export function ChatPage({ visible, tabBarCollapsed }: { visible: boolean; tabBa
   // 테두리에 겹쳐버렸다(실측: 박스 bottom=768px, 버튼 top=750px로
   // 18px 겹침) — 절약된 공간(89px-50px=39px) 전부가 아니라 그만큼만
   // 정확히 빼야 버튼이 박스 바깥에 온전히 놓인다.
+  // 🔧 [사용자 지시, 2026-09-20] "채팅목록, 회원목록을 박스에서 아예
+  // 빼라니까? 다른 메뉴처럼" — 이전엔 AdminChatArea(Chat 안쪽) 안에서
+  // ChatListHeader를 그렸는데, 그러면 이 탭 전환 UI가 채팅 박스 테두리
+  // 안에 갇혀 다른 페이지(ReportPage 등)의 최상단 탭 메뉴와 시각적으로
+  // 달라 보였다. ChatListHeader는 client/channel 등 Stream 컨텍스트를
+  // 전혀 참조하지 않는 순수 탭 UI라 Chat 바깥으로 옮겨도 무방하다.
+  // 🔧 [버그 수정] 처음엔 박스 자체에만 h-[calc(100dvh-Nrem)] 절대
+  // 계산을 그대로 두고 그 위에 헤더를 얹었더니, 헤더가 차지하는 높이
+  // (실측 59px+gap 8px=67px)만큼 이 계산이 반영을 안 해 박스 아래에
+  // 그만큼의 빈 여백이 생겼다(실측 스크린샷으로 확인) — 헤더 높이가
+  // 바뀔 때마다 이 매직넘버를 다시 재보정해야 하는 취약한 구조이기도
+  // 하다. 절대 높이 계산 자체를 최상위 wrapper(헤더+박스를 합친 전체
+  // 영역)로 옮기고, 안쪽 박스는 flex-1 min-h-0으로 "헤더가 쓰고 남은
+  // 나머지"를 자동으로 채우게 하면 헤더 높이가 얼마든 다시 계산할
+  // 필요가 없다.
   return (
     <div
       hidden={!visible}
       className={cn(
-        "flex w-full page-content flex-col overflow-hidden rounded-lg border",
+        "flex w-full page-content flex-col gap-2",
         tabBarCollapsed ? "h-[calc(100dvh-8.7rem)]" : "h-[calc(100dvh-11.5rem)]"
       )}
     >
+      {isAdmin && <ChatListHeader view={sidebarView} onViewChange={setSidebarView} />}
+      <div className="flex w-full min-h-0 flex-1 flex-col overflow-hidden rounded-lg border">
       <Chat client={client} theme={dark ? "str-chat__theme-dark" : "str-chat__theme-light"}>
         {/* 🔧 [사용자 지시] "상대방 아이콘을 사람 모양을 한 그림 형태로" —
             ChannelList(채널 목록)와 Channel(대화창) 둘 다 이 컴포넌트
@@ -1237,6 +1253,7 @@ export function ChatPage({ visible, tabBarCollapsed }: { visible: boolean; tabBa
         )}
         </ComponentProvider>
       </Chat>
+      </div>
     </div>
   );
 }
