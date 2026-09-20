@@ -377,6 +377,18 @@
   *::-webkit-scrollbar {
     display: none; /* Chrome/Safari/신형 Edge */
   }
+  /* 🔧 [버그 수정, 2026-09-20 사용자 재보고: "채팅 목록이나 메시지 보내기
+     영역에 손을 대고 올리면 UI가 말려 올라가는 현상이 그대로야"] —
+     .str-chat(채팅 콘텐츠 컨테이너)에 overscroll-behavior: none을 걸어도
+     재발이 계속됐다. 이유: overscroll-behavior는 "이 요소가 오버스크롤될
+     때 그 여분 스크롤을 부모로 전파(체이닝)할지"만 제어하는 속성이라,
+     정작 iOS Safari에서 화면 전체가 말려 올라가는 러버밴드 바운스는 그
+     체이닝의 "종착지"인 html(실제 뷰포트 스크롤 컨테이너 역할)에서
+     재생된다 — 그 상위 요소인 html 자체에 규칙이 없으면 체이닝이 막혀도
+     html이 스스로 바운스할 수 있다. body는 이미 contain(pull-to-refresh용,
+     체이닝만 막고 시각적 바운스는 허용)이었지만 html에는 아무 규칙도
+     없었다. html에 overscroll-behavior-y: none을 추가해 최종 종착지
+     자체의 바운스를 완전히 끈다. */
   body {
     @apply bg-background text-foreground;
     /* 자체 pull-to-refresh(usePullToRefresh)와 브라우저 기본 당김 동작이
@@ -399,7 +411,20 @@
     user-select: text;
     -webkit-touch-callout: default;
   }
+  /* 🔧 [버그 수정, 2026-09-20 사용자 재보고: "채팅 목록이나 메시지 보내기
+     영역에 손을 대고 올리면 UI가 말려 올라가는 현상이 그대로야"] —
+     .str-chat(채팅 콘텐츠 컨테이너)에 overscroll-behavior: none을 걸어도
+     재발이 계속됐다. 이유: overscroll-behavior는 "이 요소가 오버스크롤될
+     때 그 여분 스크롤을 부모로 전파(체이닝)할지"만 제어하는 속성이라,
+     정작 iOS Safari에서 화면 전체가 말려 올라가는 러버밴드 바운스는 그
+     체이닝의 "종착지"인 html(실제 뷰포트 스크롤 컨테이너 역할)에서
+     재생된다 — 그 상위 요소인 html 자체에 규칙이 없으면 체이닝이 막혀도
+     html이 스스로 바운스할 수 있다. body는 이미 contain(pull-to-refresh용,
+     체이닝만 막고 시각적 바운스는 허용)이었지만 html에는 아무 규칙도
+     없었다. html에 overscroll-behavior-y: none을 추가해 최종 종착지
+     자체의 바운스를 완전히 끈다. */
   html {
     @apply font-sans;
+    overscroll-behavior-y: none;
   }
 }
