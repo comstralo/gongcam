@@ -74,6 +74,16 @@ export function AppShell({
   const collapseButtonObserverRef = useRef<ResizeObserver | null>(null);
   const collapseButtonResizeListenerRef = useRef<(() => void) | null>(null);
   const collapseButtonCleanupRef = useRef<(() => void) | null>(null);
+  // 🔧 [버그 수정, 2026-09-21 사용자 재보고: "여전히 여백이 생긴다"] —
+  // 디버그 배지 실측으로 확인: 키보드를 닫은 뒤 window.innerHeight가
+  // 상단 안전영역만큼(예: 47px) 줄어든 채 원복되지 않는 경우가 있는데
+  // (interactive-widget=resizes-content를 넣어도 이 WebView에서는 여전히
+  // 발생), collapseButtonRef의 report()가 바로 이 window.innerHeight로
+  // "화면 맨 아래 - 버튼 위치"를 계산해 tabBarHeight를 실제보다 47px
+  // 작게 보고했다. useVisualViewportRect가 이미 이 문제를 보정해두므로
+  // (관측된 최댓값을 기억해 원복 실패를 감지), window.innerHeight
+  // 대신 이 훅의 최신값을 report()에서 읽을 수 있도록 ref에 담아둔다.
+  const viewportRectRef = useRef<{ top: number; height: number } | null>(null);
 
   // 🔧 [버그 수정, 2026-09-20 사용자 지시: "1번 사진은 초기 접힌
   // 상태인데 저렇게 영역이랑 겹치게 나와 ... 폈다가 다시 접으면 2번
@@ -108,7 +118,10 @@ export function AppShell({
       if (!button || !onBarHeightChange) return;
       const report = () => {
         const rect = button.getBoundingClientRect();
-        onBarHeightChange(window.innerHeight - rect.top);
+        const rectBasedInnerHeight = viewportRectRef.current
+          ? viewportRectRef.current.top + viewportRectRef.current.height
+          : window.innerHeight;
+        onBarHeightChange(rectBasedInnerHeight - rect.top);
       };
       report();
       // 🔧 [버그 수정, 2026-09-21 사용자 지시: "채팅 박스가 줄어들어버리는게
@@ -146,6 +159,14 @@ export function AppShell({
   // visualViewport 좌표를 직접 계산해, 키보드가 뜨면 확실히 화면
   // 밖으로 사라지고 없을 때는 확실히 화면 최하단에 붙게 한다.
   const viewportRect = useVisualViewportRect();
+  // viewportRect가 갱신될 때마다(예: 키보드가 닫히며 innerHeight 원복
+  // 실패가 보정될 때) ref에 최신값을 반영하고 collapseButtonRef의
+  // report()를 다시 실행해 tabBarHeight도 그 즉시 새 값으로 갱신한다.
+  useEffect(() => {
+    viewportRectRef.current = viewportRect;
+    collapseButtonResizeListenerRef.current?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewportRect?.top, viewportRect?.height]);
 
   return (
     <div
