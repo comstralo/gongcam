@@ -394,6 +394,12 @@ function SwipeableMessage() {
   const MOVE_DEAD_ZONE = 5;
   const pointerDownTargetRef = useRef<HTMLElement | null>(null);
   const pointerDownPosRef = useRef<{ x: number; y: number } | null>(null);
+  // 🔧 [버그 수정, 2026-09-20] endDrag가 유령 재실행(지연된
+  // lostpointercapture 등)으로 잘못 다시 호출되는 것을 막기 위한 가드 —
+  // 자세한 경위는 endDrag 안의 주석 참고. handlePointerDown이 실제로
+  // 드래그를 시작할 때만 그 pointerId를 기록하고, endDrag가 정상
+  // 종료되는 순간 즉시 null로 되돌린다.
+  const activePointerIdRef = useRef<number | null>(null);
   // 🔧 [사용자 지시, 2026-09-19] "메시지를 꾹 눌러서 수정/삭제/반응(꾹
   // 눌러서 여는 컨텍스트 메뉴)" — Stream은 이미 편집/삭제/리액션 전체
   // 기능을 갖춘 MessageActions 메뉴를 내장하고 있다(실측 확인: "메시지
@@ -434,7 +440,37 @@ function SwipeableMessage() {
     // 만 보장한다(W3C 스펙: touchend의 preventDefault는 그로부터
     // 파생되는 click 생성 자체를 억제). 이 요소에 네이티브 touchend
     // 리스너를 캡처 단계로 걸어 다음 touchend 하나만 확실히 삼킨다.
+    //
+    // 🔧 [버그 수정, 2026-09-20] 액션 메뉴(ContextMenuButton)는 DOM상
+    // document.body 근처의 별도 portal에 렌더링되어 이 wrapper의
+    // 실제 자손이 아니지만, React는 이벤트를 DOM 트리가 아니라 React
+    // 엘리먼트 트리를 따라 위임한다(portal이어도 React 트리상으로는
+    // 이 메시지의 자손이라 발생). 그 결과 "메뉴 안의 버튼(예: 인용
+    // 답장, 반응 추가)"을 누른 pointerdown이 실제 DOM 조상은 전혀
+    // 거치지 않고도 이 이미지 메시지 wrapper의 onPointerDown까지
+    // 올라온다. e.target이 실제로 이 DOM 요소(e.currentTarget) 내부에
+    // 있을 때만 "이 wrapper를 눌렀다"고 인정하고, 아닌 경우(메뉴
+    // 버튼을 누른 것이 React 트리를 통해 위임된 경우)는 이 wrapper와
+    // 전혀 무관한 이벤트이므로 아래로 흘려보내지 않고 완전히
+    // 무시한다.
+    //
+    // 🔧 [버그 수정, 2026-09-20 사용자 재보고: "'반응 추가'를 눌러도
+    // 팝업 메뉴 뒤의 이미지 메시지가 눌려서 이미지 크게 보기가
+    // 돼버려"] — 처음엔 이 분기를 "메뉴가 열린 상태 + 이 wrapper
+    // 내부를 눌렀을 때"로만 좁히고, 조건이 거짓이면(=위임된 pointerdown)
+    // 그대로 아래 "새 드래그 시작" 로직(479행~)으로 흘려보냈다. 그
+    // 결과 이 이미지와 무관한 메뉴 버튼 터치인데도 이 wrapper에
+    // setPointerCapture가 걸리고 activePointerIdRef까지 갱신되어
+    // (실측: gotpointercapture의 target이 엉뚱하게 이 wrapper로 찍힘),
+    // 곧이어 오는 pointerup/lostpointercapture가 "클릭이었다" 분기로
+    // 빠져 pointerDownTargetRef(이 이미지 자신)를 다시 click()해버렸다.
+    // 메뉴가 열려 있는 동안 이 wrapper의 실제 DOM 밖에서 위임되어 온
+    // pointerdown은 이 wrapper 입장에서 처리할 이벤트가 전혀 아니므로,
+    // 아래로 흘려보내지 않고 여기서 완전히 return해야 한다.
     if (document.querySelector(".str-chat__message-actions-box--open")) {
+      if (!e.currentTarget.contains(e.target as Node)) {
+        return;
+      }
       e.preventDefault();
       document.body.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
       e.currentTarget.addEventListener(
@@ -457,6 +493,7 @@ function SwipeableMessage() {
         ? (target as HTMLElement)
         : target.closest<HTMLElement>("button, a, [role='button']");
     pointerDownPosRef.current = { x: e.clientX, y: e.clientY };
+    activePointerIdRef.current = e.pointerId;
     // 🔧 [버그 수정, PC 브라우저] 왼쪽으로 당기면 버블 자체가 translateX로
     // 밀려나므로, capture 없이는 커서가 금방 버블 바깥으로 벗어나
     // 이후의 pointermove/pointerup을 이 요소가 받지 못했다. 그 결과
@@ -634,6 +671,33 @@ function SwipeableMessage() {
   }
 
   function endDrag(e: React.PointerEvent<HTMLDivElement>) {
+    // 🔧 [버그 수정, 2026-09-20 사용자 지시: "꾹 누르면 메뉴가 뜨는
+    // 기능 있잖아? 근데 메뉴를 누르면 해당 메뉴 기능이 실행되는게
+    // 아니라 뒤에 위치한 메시지가 이미지면 이미지가 클릭되어 확장되어
+    // 버리는데?"] — 실측(CDP 실제 터치 + click 이벤트 캡처 로깅)으로
+    // 정확한 경위를 확인했다: 롱프레스로 메뉴를 연 뒤 손을 떼면 그
+    // 시점의 endDrag가 정상 실행되고 activePointerIdRef/longPressFiredRef
+    // 등 모든 상태를 리셋한다. 그 후 사용자가 실제 메뉴 항목(예: "인용
+    // 답장")을 클릭하면, Stream의 그 onClick이
+    // messageComposer.setQuotedMessage 이후 textarea.focus()를
+    // 호출하는데, 이 포커스 이동이 (오래전 롱프레스 때 이 이미지
+    // wrapper에 걸어뒀던) setPointerCapture를 브라우저가 암묵적으로
+    // 해제시켜 lostpointercapture 이벤트를 뒤늦게(실측: 메뉴 클릭
+    // 시점으로부터 약 460ms 후) 재발생시킨다 — onLostPointerCapture도
+    // 이 endDrag로 연결돼 있어, 이미 리셋된 pointerDownTargetRef가
+    // (그사이 다른 제스처가 없었다면 여전히 이전 이미지 엘리먼트를
+    // 가리키고 있는 경우) "클릭이었다"는 분기로 잘못 빠져 그 이미지를
+    // 다시 click()해 확대 모달을 열어버렸다. 근본 원인은 "이미 한 번
+    // 완전히 종료 처리된 제스처의 유령 재실행"이므로, 이 이벤트의
+    // pointerId가 handlePointerDown이 기록해둔 "현재 진행 중인" ID와
+    // 다르면(또는 애초에 진행 중인 제스처가 없으면) 그 어떤 분기도
+    // 타지 않고 완전히 무시한다 — 이게 유일하게 확실한 방어다(단순
+    // ref 값 리셋 타이밍에 의존한 방어는 실측 결과 위 시나리오를
+    // 놓쳤다).
+    if (activePointerIdRef.current === null || activePointerIdRef.current !== e.pointerId) {
+      return;
+    }
+    activePointerIdRef.current = null;
     clearLongPressTimer();
     if (e.currentTarget.hasPointerCapture(e.pointerId)) {
       e.currentTarget.releasePointerCapture(e.pointerId);
