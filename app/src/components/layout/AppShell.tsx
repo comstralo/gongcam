@@ -134,63 +134,67 @@ export function AppShell({
         </header>
       )}
       {children}
-      {collapsibleTabBar && tabBarCollapsed ? (
-        // 🔧 [사용자 지시, 2026-09-20] "접힌 상태를 아이콘으로 표시하고
-        // 누르면 다시 복구되도록" — TabBar 자리를 완전히 비우지 않고
-        // 같은 위치(fixed bottom)에 작은 원형 버튼 하나만 남겨, 탭바가
-        // "숨겨졌을 뿐 여전히 여기 있다"는 걸 알 수 있게 한다.
-        <button
-          type="button"
-          onClick={() => collapsibleTabBar.onCollapsedChange(false)}
-          aria-label="하단 탭 메뉴 펼치기"
-          title="하단 탭 메뉴 펼치기"
-          // 🔧 [사용자 지시, 2026-09-20] "기호를 좀 더 아래로 내리고
-          // 원형 아이콘 말고 ^ 기호로만 구현해줘 — 버튼이 커서 네비바를
-          // 숨긴 의미가 퇴색되고 있어" — 이전엔 원형 배경(size-9,
-          // border+bg-card+shadow-lift)을 가진 버튼이라 그 배경 자체가
-          // 차지하는 공간(36px + 상하 여백)이 작지 않아, "탭바를 접어
-          // 채팅 영역을 넓힌다"는 목적과 상충됐다. 배경/테두리/그림자를
-          // 모두 없애고 순수 셰브런 문자만 남겨(히트박스는 실제 접근성을
-          // 위해 padding으로 충분히 확보하되 시각적으로는 아이콘만
-          // 보이게) 차지하는 실제 화면 높이를 최소화한다.
-          // 🔧 [버그 수정] bottom:0(레이아웃 뷰포트 기준)은 iOS Safari가
-          // fixed 요소를 실제로는 키보드 위(visualViewport 근처)까지
-          // 끌어올려 그리는 특성 때문에, 키보드가 떠도 화면 밖으로
-          // 사라지지 않고 입력창 바로 아래에 걸쳐 보였다(실측). top을
-          // viewportRect 기준으로 직접 계산해 항상 "지금 화면의 실제
-          // 맨 아래"에 오도록 고정한다 — viewportRect가 아직 없으면
-          // (초기 렌더/구형 브라우저) 기존 bottom:0으로 폴백.
-          className={cn(
-            "fixed inset-x-0 z-20 mx-auto flex justify-center text-muted-foreground",
-            !viewportRect && "bottom-0 pb-[calc(4px+env(safe-area-inset-bottom,0px))]"
-          )}
-          style={
-            viewportRect
-              ? { top: viewportRect.top + viewportRect.height - 28 }
-              : undefined
-          }
-        >
-          {/* 🔧 [사용자 지시, 2026-09-20] "네비바가 접혔다는걸 알도록
-              힌트 효과를 줄 수 있을까?" — 버튼을 최소화하면서 옅어진
-              존재감을 보완한다. 이 button 엘리먼트 자체는 tabBarCollapsed
-              분기(TabBar와 삼항으로 나뉨)가 true가 될 때마다 새로
-              마운트되므로, 별도 상태 없이 이 아이콘의 animate-
-              collapse-hint 클래스가 접을 때마다 자동으로 재생된다(유한
-              반복이라 몇 번 튕긴 뒤 스스로 멈춘다 — index.css 참고). */}
-          <ChevronUp className="size-5 animate-collapse-hint" strokeWidth={ICON_STROKE.default} />
-        </button>
-      ) : (
-        <div className={cn(fitToScreen && "mobile-landscape:hidden")}>
-          <TabBar
-            collapseButton={
-              collapsibleTabBar && {
-                onClick: () => collapsibleTabBar.onCollapsedChange(true),
+      {(() => {
+        // 🔧 [버그 수정, 2026-09-20 사용자 지시: "입력 상태에서는 다시
+        // 네비바를 끌어 올릴 이유가 없잖아? ^ 표시가 보이지 않길
+        // 바란거고, 탭바 위의 공백도 남겨두지 말고 툴바를 위로 끌어올려서
+        // 낭비하는 공간이 없도록"] — 세 가지 경우를 구분해야 한다:
+        // 접힘+키보드없음(^ 버튼), 접힘+키보드있음(아무것도 없음 — 그
+        // 자리는 채팅 컨테이너가 그대로 이어받는다, ChatPage.tsx의
+        // tabBarHeightPx 참고), 펼침(TabBar). 원래 삼항 연산자
+        // (collapsibleTabBar && tabBarCollapsed ? ^버튼 : TabBar)로는
+        // 가운데 경우를 표현할 수 없어(접힘 조건이 그대로면 else가
+        // TabBar를 펼쳐버리는 부작용) 3분기 함수로 바꿨다.
+        const keyboardUp = !!(viewportRect && viewportRect.top > 0);
+        if (collapsibleTabBar && tabBarCollapsed && keyboardUp) return null;
+        if (collapsibleTabBar && tabBarCollapsed) {
+          // 🔧 [사용자 지시, 2026-09-20] "접힌 상태를 아이콘으로 표시하고
+          // 누르면 다시 복구되도록" — TabBar 자리를 완전히 비우지 않고
+          // 같은 위치(fixed bottom)에 작은 원형 버튼 하나만 남겨, 탭바가
+          // "숨겨졌을 뿐 여전히 여기 있다"는 걸 알 수 있게 한다.
+          return (
+            <button
+              type="button"
+              onClick={() => collapsibleTabBar.onCollapsedChange(false)}
+              aria-label="하단 탭 메뉴 펼치기"
+              title="하단 탭 메뉴 펼치기"
+              // 🔧 [사용자 지시, 2026-09-20] "기호를 좀 더 아래로 내리고
+              // 원형 아이콘 말고 ^ 기호로만 구현해줘 — 버튼이 커서
+              // 네비바를 숨긴 의미가 퇴색되고 있어" — 이전엔 원형 배경
+              // (size-9, border+bg-card+shadow-lift)을 가진 버튼이라 그
+              // 배경 자체가 차지하는 공간(36px + 상하 여백)이 작지
+              // 않아, "탭바를 접어 채팅 영역을 넓힌다"는 목적과
+              // 상충됐다. 배경/테두리/그림자를 모두 없애고 순수 셰브런
+              // 문자만 남겨(히트박스는 실제 접근성을 위해 padding으로
+              // 충분히 확보하되 시각적으로는 아이콘만 보이게) 차지하는
+              // 실제 화면 높이를 최소화한다.
+              className="fixed inset-x-0 bottom-0 z-20 mx-auto flex justify-center pb-[calc(4px+env(safe-area-inset-bottom,0px))] text-muted-foreground"
+            >
+              {/* 🔧 [사용자 지시, 2026-09-20] "네비바가 접혔다는걸
+                  알도록 힌트 효과를 줄 수 있을까?" — 버튼을 최소화하면서
+                  옅어진 존재감을 보완한다. 이 button 엘리먼트 자체는
+                  tabBarCollapsed 분기가 true가 될 때마다 새로
+                  마운트되므로, 별도 상태 없이 이 아이콘의 animate-
+                  collapse-hint 클래스가 접을 때마다 자동으로 재생된다
+                  (유한 반복이라 몇 번 튕긴 뒤 스스로 멈춘다 —
+                  index.css 참고). */}
+              <ChevronUp className="size-5 animate-collapse-hint" strokeWidth={ICON_STROKE.default} />
+            </button>
+          );
+        }
+        return (
+          <div className={cn(fitToScreen && "mobile-landscape:hidden")}>
+            <TabBar
+              collapseButton={
+                collapsibleTabBar && {
+                  onClick: () => collapsibleTabBar.onCollapsedChange(true),
+                }
               }
-            }
-            viewportRect={collapsibleTabBar ? viewportRect : undefined}
-          />
-        </div>
-      )}
+              viewportRect={collapsibleTabBar ? viewportRect : undefined}
+            />
+          </div>
+        );
+      })()}
     </div>
   );
 }
