@@ -99,11 +99,19 @@ function useSafeAreaInset(side: "top" | "bottom"): number {
 // 시켰지만(둘 다 844로 실측됨), documentElement.clientHeight(실제 가시
 // 영역, 스크롤바 제외)는 여전히 797로 남아 그 차이(47px)만큼 body
 // 전체가 스크롤 가능해지는 부작용을 낳았다(실측: scrollHeight 844,
-// clientHeight 797, 미스크롤 상태에서 47px 여백). position:fixed 요소는
-// 스크롤과 무관하게 항상 뷰포트에 고정되므로 이 스크롤 여지 자체가
-// 실질적인 문제는 아니었지만(v버튼는 육안 확인상 정상 위치), 불필요한
-// 문서 스크롤은 막아둔다 — overflow:hidden으로 body가 그 47px만큼
-// 스크롤되는 것 자체를 원천 차단한다.
+// clientHeight 797, 미스크롤 상태에서 47px 여백).
+// 🔧 [버그 수정, 2026-09-21 사용자 재보고: "채팅창은 스크롤 전환이
+// 되고 있지 않아"] — 이 여백을 막으려 html에 overflow:hidden을
+// 추가했더니, 그 안의 .str-chat__message-list-scroll(overflow:auto인
+// 채팅 메시지 스크롤 영역)까지 el.scrollTop을 직접 대입해도 전혀
+// 반영되지 않을 정도로 완전히 스크롤이 막혀버렸다(실측: 강제로
+// scrollTop = scrollHeight를 대입해도 값이 계속 0으로 되돌아옴) — 일부
+// WebKit 버전은 조상 요소의 overflow:hidden이 그 안의 auto/scroll
+// 자식까지 스크롤 자체를 막아버리는 것으로 보인다. position:fixed
+// 요소는 어차피 스크롤과 무관하게 항상 뷰포트에 고정되므로(v버튼은 이미
+// 육안 확인상 정상), 이 47px 문서 스크롤 여지는 시각적으로 크게 문제되지
+// 않는 부작용이었다 — 채팅 스크롤 자체를 막는 훨씬 더 심각한 회귀를
+// 만드느니 이 여지는 그냥 허용한다(overflow 규칙 제거).
 export function useDocumentHeightFix(): void {
   useEffect(() => {
     const viewport = window.visualViewport;
@@ -114,14 +122,12 @@ export function useDocumentHeightFix(): void {
       if (offsetTop > 0) {
         document.documentElement.style.removeProperty("height");
         document.body.style.removeProperty("height");
-        document.documentElement.style.removeProperty("overflow");
         return;
       }
       const isLandscape = window.innerWidth > window.screen.width;
       const screenHeight = isLandscape ? window.screen.width : window.screen.height;
       document.documentElement.style.height = `${screenHeight}px`;
       document.body.style.height = `${screenHeight}px`;
-      document.documentElement.style.overflow = "hidden";
     };
 
     update();
@@ -134,7 +140,6 @@ export function useDocumentHeightFix(): void {
       window.removeEventListener("resize", update);
       document.documentElement.style.removeProperty("height");
       document.body.style.removeProperty("height");
-      document.documentElement.style.removeProperty("overflow");
     };
   }, []);
 }
