@@ -1030,11 +1030,33 @@ function AdminChatArea({
 // 인스턴스를 그대로 반환하는 싱글턴 팩토리라 실제로는 안전망에 가깝다).
 let chatClient: StreamChat | null = null;
 
-export function ChatPage({ visible, tabBarCollapsed }: { visible: boolean; tabBarCollapsed?: boolean }) {
+export function ChatPage({
+  visible,
+  tabBarCollapsed,
+  onTabBarCollapsedChange,
+}: {
+  visible: boolean;
+  tabBarCollapsed?: boolean;
+  onTabBarCollapsedChange?: (collapsed: boolean) => void;
+}) {
   const { call } = useApi();
   const { isAdmin } = useAuth();
   const { dark } = useTheme();
   const viewportRect = useVisualViewportRect();
+  // 🔧 [버그 수정, 2026-09-20 사용자 지시: "네비바 올라온 상태에서 입력
+  // 모드로 가면 이렇게 되는데, 자연히 접히도록 해줘"] — 사용자가 탭바를
+  // 수동으로 펼쳐둔 채(tabBarCollapsed=false) 입력창을 탭하면, 펼쳐진
+  // TabBar 전체가 화면에 그대로 남아 키보드 바로 위에 끼어들었다(실측
+  // 스크린샷). 지금까지의 처리(^버튼 숨김, 헤더 오프셋 제거 등)는 모두
+  // "이미 접혀 있는 상태"만 다뤘을 뿐, "펼쳐진 상태에서 키보드가 뜨는"
+  // 이 경우는 다루지 않았다 — 키보드가 새로 뜨는 순간(viewportRect.top이
+  // 0에서 양수로 바뀌는 순간) 탭바가 펼쳐져 있으면 자동으로 접는다.
+  useEffect(() => {
+    if (viewportRect && viewportRect.top > 0 && tabBarCollapsed === false) {
+      onTabBarCollapsedChange?.(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewportRect?.top]);
   const [client, setClient] = useState<StreamChat | null>(null);
   const [memberChannel, setMemberChannel] = useState<StreamChannel | null>(null);
   const [error, setError] = useState<string | null>(null);

@@ -96,7 +96,11 @@ function MainViews() {
             titleIcon={MessageCircle}
             collapsibleTabBar={{ collapsed: chatTabBarCollapsed, onCollapsedChange: setChatTabBarCollapsed }}
           >
-            <ChatPage visible={path === "/chat"} tabBarCollapsed={chatTabBarCollapsed} />
+            <ChatPage
+              visible={path === "/chat"}
+              tabBarCollapsed={chatTabBarCollapsed}
+              onTabBarCollapsedChange={setChatTabBarCollapsed}
+            />
           </AppShell>
         )}
       </div>
