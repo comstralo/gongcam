@@ -1231,11 +1231,25 @@ export function ChatPage({ visible, tabBarCollapsed }: { visible: boolean; tabBa
           계산이 두 차례 모두 틀린 원인을 알아내기 위한 임시 표시 —
           원인 확인 후 제거한다. */}
       {keyboardInsetDebug && (
-        <div className="fixed top-14 right-2 z-50 rounded bg-black/80 p-1.5 font-mono text-[10px] leading-tight text-white">
+        // 🔧 [사용자 피드백] "키보드가 올라가면 디버그 박스가 안 보인다"
+        // — 화면 상단 고정이라 키보드가 뜨면 스크롤해야 보였다. 항상
+        // 시야에 들어오도록 visualViewport 좌표 기준으로 화면 최하단에
+        // 고정한다(fixed는 레이아웃 뷰포트 기준이라 키보드 위에 있어도
+        // 안 보일 수 있어, visualViewport.offsetTop+height로 직접
+        // 계산한 절대 위치를 쓴다).
+        <div
+          className="fixed left-2 z-50 rounded bg-black/80 p-1.5 font-mono text-[10px] leading-tight text-white"
+          style={{
+            top: window.visualViewport
+              ? window.visualViewport.offsetTop + window.visualViewport.height - 90
+              : 56,
+          }}
+        >
           <div>inset: {keyboardInsetDebug.inset}</div>
           <div>raw: {keyboardInsetDebug.rawViewportHeight}</div>
           <div>base: {keyboardInsetDebug.baselineHeight}</div>
           <div>inH: {keyboardInsetDebug.innerHeight}</div>
+          <div>dvh: {keyboardInsetDebug.dvhPx}</div>
         </div>
       )}
       {isAdmin && <ChatListHeader view={sidebarView} onViewChange={setSidebarView} />}

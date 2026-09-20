@@ -25,6 +25,7 @@ export type KeyboardInsetDebug = {
   rawViewportHeight: number;
   baselineHeight: number;
   innerHeight: number;
+  dvhPx: number;
 };
 
 export function useKeyboardInset() {
@@ -34,6 +35,21 @@ export function useKeyboardInset() {
   useEffect(() => {
     const viewport: VisualViewport | null = window.visualViewport;
     if (!viewport) return;
+
+    // 🔧 [임시 디버깅] "100dvh"가 실기기에서 실제로 몇 px인지 직접
+    // 측정하는 숨김 probe 엘리먼트 — 처음 가정("iOS는 키보드가 떠도
+    // dvh를 안 줄인다")이 최신 iOS 버전에서도 여전히 맞는지 확인하기
+    // 위함. 만약 이미 dvh 자체가 줄어들어 있다면, keyboardInset을 거기서
+    // 또 빼는 이 훅 자체가 이중 차감의 원인이다.
+    const probe = document.createElement("div");
+    probe.style.position = "fixed";
+    probe.style.top = "0";
+    probe.style.left = "0";
+    probe.style.height = "100dvh";
+    probe.style.width = "0";
+    probe.style.pointerEvents = "none";
+    probe.style.visibility = "hidden";
+    document.body.appendChild(probe);
 
     // 🔧 [버그 수정, 2026-09-20 사용자 지시: "여전히 아이폰에서 입력 시
     // 공백이 생겨" — 실제 아이폰 스크린샷으로 확인: 채팅 박스가 화면
@@ -66,6 +82,7 @@ export function useKeyboardInset() {
         rawViewportHeight: Math.round(viewport.height),
         baselineHeight: Math.round(baselineHeight),
         innerHeight: window.innerHeight,
+        dvhPx: Math.round(probe.getBoundingClientRect().height),
       });
     };
 
@@ -75,6 +92,7 @@ export function useKeyboardInset() {
     return () => {
       viewport.removeEventListener("resize", update);
       viewport.removeEventListener("scroll", update);
+      probe.remove();
     };
   }, []);
 
