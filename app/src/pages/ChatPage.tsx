@@ -1123,6 +1123,28 @@ export function ChatPage({ visible, tabBarCollapsed }: { visible: boolean; tabBa
     return () => document.removeEventListener("click", handleGlobalClickCapture, { capture: true });
   }, []);
 
+  // 🔧 [버그 수정, 2026-09-20 사용자 지시: "여전히 아이폰에서 입력 시
+  // 공백이 생겨" → 디버그 배지로 실측한 결과 100dvh는 키보드가 떠도
+  // 전혀 줄지 않아(dvh 값이 base와 동일하게 유지) 채팅 박스 자체는
+  // calc() 그대로 정상 크기(예: 322px)로 남아 있었다. 그런데도 화면에서
+  // 박스가 거의 안 보였던 진짜 원인은 따로 있었다 — body/html이
+  // 스크롤 가능한 상태라, iOS Safari가 포커스된 textarea를 "보이는
+  // 영역까지" 자동으로 스크롤시키는 표준 동작이 문서 전체를 위로 밀어
+  // 올려 채팅 박스 윗부분(메시지 리스트 대부분)이 화면 밖으로
+  // 넘어갔다. 채팅 화면이 보이는 동안만 body 자체를 스크롤 불가능하게
+  // 고정하면, iOS가 스크롤할 대상이 없어져 이 자동 스크롤이 아예
+  // 발생하지 않는다 — 박스 안 메시지 리스트(자체 overflow-y-auto)만
+  // 정상적으로 스크롤된다. 다른 탭으로 돌아갈 때는 반드시 원복해야
+  // 다른 페이지가 다시 스크롤 가능해진다.
+  useEffect(() => {
+    if (!visible) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [visible]);
+
   useEffect(() => {
     if (connectedRef.current) return;
     connectedRef.current = true;
