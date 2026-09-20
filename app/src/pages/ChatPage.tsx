@@ -1478,6 +1478,26 @@ export function ChatPage({
   // ⚠️ 이 훅은 아래 early return(error / loading) 앞에 있어야 한다 —
   // 뒤에 두면 로딩→완료 전환 시 훅 개수가 달라져 "Rendered more hooks
   // than during the previous render" 오류로 화면이 깨진다(실제 발생).
+  // 🔧 [버그 수정, 2026-09-21 재진단] 디버그 배지 재비교 결과, 키보드를
+  // 닫은 뒤 vpH가 정상(844)이 아니라 797(=844-47, 상단 안전영역만큼
+  // 줄어든 값)로 남고, 순수 CSS fixed bottom인 ^ 버튼까지 같이 47px
+  // 올라간다 — React 계산이 아니라 iOS(홈 화면 앱/Safari)가 키보드
+  // 해제 후에도 뷰포트를 원복하지 않는 알려진 문제다. 입력창 blur 직후
+  // window.scrollTo(0,0)로 뷰포트 재계산을 유도한다(애니메이션 시간차를
+  // 고려해 여러 시점에 반복).
+  useEffect(() => {
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const onFocusOut = (e: FocusEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (!el || !(el.tagName === "TEXTAREA" || el.tagName === "INPUT")) return;
+      [0, 100, 300, 600].forEach((ms) => timers.push(setTimeout(() => window.scrollTo(0, 0), ms)));
+    };
+    document.addEventListener("focusout", onFocusOut);
+    return () => {
+      document.removeEventListener("focusout", onFocusOut);
+      timers.forEach(clearTimeout);
+    };
+  }, []);
   const containerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const scrollEl = containerRef.current?.querySelector<HTMLElement>(".str-chat__message-list-scroll");
@@ -1651,6 +1671,8 @@ export function ChatPage({
         vpTop={String(viewportRect?.top ?? "null")} vpH={String(viewportRect?.height ?? "null")}
         <br />
         tabBarH={String(tabBarHeight ?? "null")} collapsed={String(tabBarCollapsed)}
+        <br />
+        innerH={window.innerHeight} scrollY={Math.round(window.scrollY)} pageTop={Math.round(window.visualViewport?.pageTop ?? -1)}
       </div>
       {/* 🔧 [버그 수정, 2026-09-20 사용자 지시: "채팅 쪽이 폭이 더 좁게
           되어있잖아? 이 부분을 '제보'에 맞춰서 크기를 확장해줘"] — 이
