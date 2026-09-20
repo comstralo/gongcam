@@ -1499,20 +1499,19 @@ export function ChatPage({
   // 않아 채팅 박스 하단이 이 버튼과 겹쳤다. 튀어나온 순수 부분(14px)을
   // 더해 겹치지 않게 한다.
   // 🔧 [버그 수정, 2026-09-20 사용자 지시: "네비바 하단에 여백이
-  // 가득한데"] — 펼침(구 89px)/접힘(구 24px) 모두 env(safe-area-inset-
-  // bottom)이 0이던 시절의 순수 하드코딩값이라, TabBar.tsx의 pb를
-  // 22px→8px로 줄인 것과 정합성이 깨질 뻔했다. TabBar와 동일하게
-  // "env가 0일 때의 순수 부분"만 하드코딩하고(펼침: TabBar 순수높이
-  // 75 + 접기버튼 튀어나온 순수분 14 = 89, 접힘: AppShell 접기버튼
-  // 아이콘 20 + 순수 padding 4 = 24 — 우연히 구 값과 숫자가 같지만
-  // 이제 이 아래에서 실측 안전영역을 명시적으로 더한다는 점이 다르다),
-  // 실제 안전영역은 훅으로 실측해 한 번만 더한다.
+  // 가득한데" → "다른 앱의 높이를 참고해서 조정해줘"] — 펼침/접힘 모두
+  // env(safe-area-inset-bottom)이 0이던 시절의 순수 하드코딩값이었다.
+  // TabBar.tsx의 pb를 22px→4px로 줄인 것과 정합성을 맞춰, "env가 0일
+  // 때의 순수 부분"만 하드코딩하고(펼침: TabBar 순수높이 71 + 접기버튼
+  // 튀어나온 순수분 14 = 85, 접힘: AppShell 접기버튼 아이콘 20 + 순수
+  // padding 4 = 24, 이쪽은 변경 없음), 실제 안전영역은 훅으로 실측해
+  // 한 번만 더한다.
   const tabBarHeightPx =
     viewportRect && viewportRect.top > 0
       ? 0
       : tabBarCollapsed
         ? 24 + safeAreaInsetBottom
-        : 89 + safeAreaInsetBottom;
+        : 85 + safeAreaInsetBottom;
   return (
     <div
       hidden={!visible}

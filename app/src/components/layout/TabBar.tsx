@@ -59,19 +59,19 @@ export function TabBar({
   // pt-1.5+콘텐츠+pb-22px 실측 합)이던 시절엔 실제
   // env(safe-area-inset-bottom)을 반영하지 못해, 위 pb-[calc(...)] (CSS,
   // 브라우저가 자동으로 정확히 계산)와 이 JS 상수(수동으로 맞춰야 함)
-  // 사이에 정합성이 계속 깨졌다(이번에도 pb를 22→8로 줄였는데 이 값을
-  // 안 고쳤으면 다시 어긋날 뻔했다). "env가 0이었을 때의 순수 부분"만
-  // 분리해 하드코딩하고(89 - 기존 pb 22 + 새 pb 8 = 75), 실제
-  // 안전영역은 훅으로 실측해 더한다 — 이제 이 값은 항상 위 className의
-  // 계산식과 자동으로 일치한다. 훅은 조건부 return(!session) 이전에
-  // 호출해야 하므로 여기 최상단에 둔다.
+  // 사이에 정합성이 계속 깨졌다. "env가 0이었을 때의 순수 부분"만
+  // 분리해 하드코딩하고(다른 앱과 실측 비교해 최종 pb 4px 기준: 89 -
+  // 기존 pb 22 + 새 pb 4 = 71), 실제 안전영역은 훅으로 실측해 더한다
+  // — 이제 이 값은 항상 위 className의 계산식과 자동으로 일치한다.
+  // 훅은 조건부 return(!session) 이전에 호출해야 하므로 여기
+  // 최상단에 둔다.
   const safeAreaInsetBottom = useSafeAreaInsetBottom();
   if (!session) return null;
 
   // 🔧 2026-09: 부스터디장(공동 검토자)도 "관리자" 탭을 볼 수 있다 —
   // 실제로 들어가면 AdminPage가 "송출 P 대상 처리"만 제한적으로 보여준다.
   const tabs = TABS.filter((t) => !t.adminOnly || isAdmin || isCoReviewer);
-  const tabBarHeight = 75 + safeAreaInsetBottom; // 실측 순수 높이(pt-1.5 + 콘텐츠 + pb-8px) + 실측 안전영역.
+  const tabBarHeight = 71 + safeAreaInsetBottom; // 실측 순수 높이(pt-1.5 + 콘텐츠 + pb-4px) + 실측 안전영역.
 
   return (
     <nav
@@ -85,12 +85,16 @@ export function TabBar({
       // bottom)이 실제로 채워지면서(실측: 34px) 그 22px 위에 그대로
       // 더해져 탭 아이콘 아래로 56px(22+34)나 되는 빈 공간이 생겼다.
       // 이 22px는 애초에 "env가 항상 0이라 대신 채워 넣은 값"이었지
-      // env와 별개로 필요한 순수 여백이 아니었으므로, 이제 env가 실제
-      // 홈 인디케이터 영역을 정확히 알려주는 지금은 최소한의 시각적
-      // 여백(8px)만 남기고 나머지는 실측 안전영역에 맡긴다.
+      // env와 별개로 필요한 순수 여백이 아니었다.
+      // 🔧 [버그 수정, 2026-09-20] 8px로 줄인 뒤에도 사용자가 다른 앱
+      // (마이루틴 등, 스크린샷으로 실측 비교)과 나란히 비교해보니
+      // 여전히 탭 아이콘 아래 공간이 눈에 띄게 넓었다 — 참고 앱들은
+      // 순수 여백을 거의 0에 가깝게 두고 실제 홈 인디케이터 안전영역
+      // (env, 이미 34px로 충분히 여유로움)에만 의존한다. 순수 여백을
+      // 4px까지 더 줄인다.
       className={cn(
         "fixed inset-x-0 z-20 flex justify-center gap-0.5 border-t bg-card px-2.5 pt-1.5 shadow-lift sm:gap-1",
-        viewportRect ? "pb-0" : "bottom-0 pb-[calc(8px+env(safe-area-inset-bottom,0px))]"
+        viewportRect ? "pb-0" : "bottom-0 pb-[calc(4px+env(safe-area-inset-bottom,0px))]"
       )}
       style={viewportRect ? { top: viewportRect.top + viewportRect.height - tabBarHeight } : undefined}
       aria-label="하단 탭 메뉴"

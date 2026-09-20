@@ -94,18 +94,19 @@ export function AppShell({
       // 옮겼다 — sm: 반응형 분기가 필요해 순수 인라인 style로는 표현이
       // 안 됐다(sm:pt-4가 media query 필요).
       // 🔧 [버그 수정, 2026-09-20 사용자 지시: "네비바 하단에 여백이
-      // 가득한데"] — TabBar의 pb를 22px→8px로 줄인(14px 감소) 것과
-      // 정합성을 맞춰, 이 값들(TabBar 실제 높이에서 파생된 여유값)도
-      // 동일하게 14px씩 줄인다.
+      // 가득한데" → (실기기 다른 앱과 비교 후 재보고) "다른 앱의
+      // 높이를 참고해서 조정해줘"] — TabBar의 pb를 22px→8px→4px로
+      // 줄인 것과 정합성을 맞춰, 이 값들(TabBar 실제 높이에서 파생된
+      // 여유값)도 동일하게 총 18px씩 줄인다.
       style={
         {
           paddingBottom:
             session && !fitToScreen
               ? collapsibleTabBar && tabBarCollapsed
-                ? "calc(32px + 26px + env(safe-area-inset-bottom, 0px))"
-                : "calc(32px + 50px + env(safe-area-inset-bottom, 0px))"
+                ? "calc(32px + 22px + env(safe-area-inset-bottom, 0px))"
+                : "calc(32px + 46px + env(safe-area-inset-bottom, 0px))"
               : undefined,
-          "--shell-pb-portrait": "calc(32px + 50px + env(safe-area-inset-bottom, 0px))",
+          "--shell-pb-portrait": "calc(32px + 46px + env(safe-area-inset-bottom, 0px))",
         } as CSSProperties
       }
     >
