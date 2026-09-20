@@ -1308,9 +1308,26 @@ export function ChatPage({
   // "이미 접혀 있는 상태"만 다뤘을 뿐, "펼쳐진 상태에서 키보드가 뜨는"
   // 이 경우는 다루지 않았다 — 키보드가 새로 뜨는 순간(viewportRect.top이
   // 0에서 양수로 바뀌는 순간) 탭바가 펼쳐져 있으면 자동으로 접는다.
+  // 🔧 [버그 수정, 2026-09-21 사용자 지시: "입력을 하다가 닫으면 ^의
+  // 위치가 저렇게 올라와버리고 아래에는 여백이 생긴다"] — 위 effect가
+  // 키보드가 뜰 때 탭바를 자동으로 접긴 했지만, 키보드가 다시 닫힐 때
+  // (viewportRect.top이 양수→0으로 돌아갈 때) 원래대로 자동으로 펴주는
+  // 처리가 없었다 — 그래서 입력을 마치고 키보드를 내려도 탭바는 계속
+  // "접힌" 상태(^버튼만 남고 탭바 자체는 숨김)로 남았고, ChatPage가
+  // 그 접힌 상태 기준으로 컨테이너 height를 계산해(1598행,
+  // tabBarCollapsed ? "6.6rem" : "11.5rem") 실제로는 탭바가 차지해야
+  // 할 공간만큼 그대로 빈 여백이 남았다. "자동으로 접었을 때"만
+  // 기억해뒀다가 키보드가 닫히면 그때만 자동으로 되돌린다 — 사용자가
+  // ^버튼으로 수동으로 접은 경우는 건드리지 않는다.
+  const autoCollapsedRef = useRef(false);
   useEffect(() => {
-    if (viewportRect && viewportRect.top > 0 && tabBarCollapsed === false) {
+    const keyboardUp = !!viewportRect && viewportRect.top > 0;
+    if (keyboardUp && tabBarCollapsed === false) {
+      autoCollapsedRef.current = true;
       onTabBarCollapsedChange?.(true);
+    } else if (!keyboardUp && autoCollapsedRef.current) {
+      autoCollapsedRef.current = false;
+      onTabBarCollapsedChange?.(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewportRect?.top]);
