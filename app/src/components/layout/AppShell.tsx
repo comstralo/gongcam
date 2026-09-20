@@ -6,6 +6,7 @@ import { ThemeToggleButton } from "./ThemeToggleButton";
 import { PeriodAlarmToggleButton } from "./PeriodAlarmToggleButton";
 import { LinksHeaderButton } from "./LinksHeaderButton";
 import { useAuth } from "@/lib/auth/useAuth";
+import { useVisualViewportRect } from "@/hooks/useKeyboardInset";
 import { cn, ICON_STROKE } from "@/lib/utils";
 
 type AppShellProps = {
@@ -48,6 +49,19 @@ export function AppShell({
 }: AppShellProps) {
   const { session } = useAuth();
   const tabBarCollapsed = collapsibleTabBar?.collapsed ?? false;
+  // 🔧 [사용자 지시, 2026-09-20] "키보드 입력 상태에서 ^ 표시가 보이는것도
+  // 이상하고" — 이 접기 버튼(펼치기 힌트)이 fixed bottom:0(레이아웃
+  // 뷰포트 기준)이라, 키보드가 떠도 레이아웃 뷰포트 자체는 안 줄어드는
+  // iOS 표준 동작과 무관하게 iOS Safari가 fixed 요소를 실제로는
+  // 키보드 위(visualViewport 근처)까지 끌어올려 그리는 특성이 있어
+  // (또 다른 iOS 고유 동작 — ChatPage.tsx가 채팅 컨테이너 자체를
+  // position:fixed + visualViewport 좌표로 재구성한 것과 같은 종류의
+  // 문제), 실측 결과 이 버튼이 화면 밖으로 사라지지 않고 오히려 입력창
+  // 바로 아래에 붙어 보였다. collapsibleTabBar가 켜진 화면(현재는
+  // 채팅 하나뿐)에서만 이 버튼도 채팅 컨테이너와 동일하게
+  // visualViewport 좌표를 직접 계산해, 키보드가 뜨면 확실히 화면
+  // 밖으로 사라지고 없을 때는 확실히 화면 최하단에 붙게 한다.
+  const viewportRect = useVisualViewportRect();
 
   return (
     <div
@@ -138,9 +152,23 @@ export function AppShell({
           // 채팅 영역을 넓힌다"는 목적과 상충됐다. 배경/테두리/그림자를
           // 모두 없애고 순수 셰브런 문자만 남겨(히트박스는 실제 접근성을
           // 위해 padding으로 충분히 확보하되 시각적으로는 아이콘만
-          // 보이게) 차지하는 실제 화면 높이를 최소화한다. 여백도 4px로
-          // 줄여 화면 최하단에 바짝 붙인다.
-          className="fixed inset-x-0 bottom-0 z-20 mx-auto flex justify-center pb-[calc(4px+env(safe-area-inset-bottom,0px))] text-muted-foreground"
+          // 보이게) 차지하는 실제 화면 높이를 최소화한다.
+          // 🔧 [버그 수정] bottom:0(레이아웃 뷰포트 기준)은 iOS Safari가
+          // fixed 요소를 실제로는 키보드 위(visualViewport 근처)까지
+          // 끌어올려 그리는 특성 때문에, 키보드가 떠도 화면 밖으로
+          // 사라지지 않고 입력창 바로 아래에 걸쳐 보였다(실측). top을
+          // viewportRect 기준으로 직접 계산해 항상 "지금 화면의 실제
+          // 맨 아래"에 오도록 고정한다 — viewportRect가 아직 없으면
+          // (초기 렌더/구형 브라우저) 기존 bottom:0으로 폴백.
+          className={cn(
+            "fixed inset-x-0 z-20 mx-auto flex justify-center text-muted-foreground",
+            !viewportRect && "bottom-0 pb-[calc(4px+env(safe-area-inset-bottom,0px))]"
+          )}
+          style={
+            viewportRect
+              ? { top: viewportRect.top + viewportRect.height - 28 }
+              : undefined
+          }
         >
           {/* 🔧 [사용자 지시, 2026-09-20] "네비바가 접혔다는걸 알도록
               힌트 효과를 줄 수 있을까?" — 버튼을 최소화하면서 옅어진
@@ -159,6 +187,7 @@ export function AppShell({
                 onClick: () => collapsibleTabBar.onCollapsedChange(true),
               }
             }
+            viewportRect={collapsibleTabBar ? viewportRect : undefined}
           />
         </div>
       )}

@@ -3,6 +3,7 @@ import { LayoutDashboard, Flag, Bell, ScanLine, Settings, ShieldCheck, MessageCi
 import { cn, ICON_STROKE } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/useAuth";
 import { useUnreadNotificationCount } from "@/lib/notifications/notifications";
+import type { ViewportRect } from "@/hooks/useKeyboardInset";
 
 type Tab = {
   to: string;
@@ -33,7 +34,23 @@ const TABS: Tab[] = [
 // 자신은 fixed여도 스스로는 absolute 자식의 위치 기준(containing
 // block)이 될 수 있으므로, 이 nav 안에 버튼을 직접 내장시켜(선택적 prop)
 // nav의 상단 테두리(border-t) 경계에 걸치도록 배치한다.
-export function TabBar({ collapseButton }: { collapseButton?: { onClick: () => void } }) {
+export function TabBar({
+  collapseButton,
+  viewportRect,
+}: {
+  collapseButton?: { onClick: () => void };
+  /**
+   * 🔧 [버그 수정, 2026-09-20 사용자 지시: "키보드 입력 상태에서 ^
+   * 표시가 보이는것도 이상하고"] — fixed bottom:0(레이아웃 뷰포트
+   * 기준)은 iOS Safari가 fixed 요소를 실제로는 키보드 위(visualViewport
+   * 근처)까지 끌어올려 그리는 특성 때문에, 키보드가 떠도 이 탭바가
+   * 화면 밖으로 사라지지 않고 입력창 근처에 걸쳐 보였다(ChatPage
+   * 실측). collapsibleTabBar를 쓰는 화면(현재 채팅)에서만 이 값을
+   * 넘겨 bottom 대신 visualViewport 기준 top을 직접 계산한다 — 다른
+   * 페이지는 그런 문제가 없어 생략하면 기존 bottom:0 그대로 동작한다.
+   */
+  viewportRect?: ViewportRect | null;
+}) {
   const { session, isAdmin, isCoReviewer } = useAuth();
   const unreadCount = useUnreadNotificationCount();
   if (!session) return null;
@@ -41,6 +58,7 @@ export function TabBar({ collapseButton }: { collapseButton?: { onClick: () => v
   // 🔧 2026-09: 부스터디장(공동 검토자)도 "관리자" 탭을 볼 수 있다 —
   // 실제로 들어가면 AdminPage가 "송출 P 대상 처리"만 제한적으로 보여준다.
   const tabs = TABS.filter((t) => !t.adminOnly || isAdmin || isCoReviewer);
+  const tabBarHeight = 89; // 실측 높이(pt-1.5 + 콘텐츠 + pb-22px 등 포함).
 
   return (
     <nav
@@ -53,7 +71,11 @@ export function TabBar({ collapseButton }: { collapseButton?: { onClick: () => v
       // 손봐야 하는 더 큰 변경이라, 우선 이 하단 여백 자체를 계속
       // 조정하는 쪽으로 처리 — env() 항은 나중에 viewport-fit=cover가
       // 추가돼도 자연히 더해지도록 그대로 남겨둔다.
-      className="fixed inset-x-0 bottom-0 z-20 flex justify-center gap-0.5 border-t bg-card px-2.5 pb-[calc(22px+env(safe-area-inset-bottom,0px))] pt-1.5 shadow-lift sm:gap-1"
+      className={cn(
+        "fixed inset-x-0 z-20 flex justify-center gap-0.5 border-t bg-card px-2.5 pt-1.5 shadow-lift sm:gap-1",
+        viewportRect ? "pb-0" : "bottom-0 pb-[calc(22px+env(safe-area-inset-bottom,0px))]"
+      )}
+      style={viewportRect ? { top: viewportRect.top + viewportRect.height - tabBarHeight } : undefined}
       aria-label="하단 탭 메뉴"
     >
       {collapseButton && (
