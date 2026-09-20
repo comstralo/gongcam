@@ -1500,19 +1500,27 @@ export function ChatPage({
   }, []);
   const containerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const scrollEl = containerRef.current?.querySelector<HTMLElement>(".str-chat__message-list-scroll");
+    // 🔧 [버그 수정, 2026-09-21 사용자 지시: "네가 보고 있는 것만 계속
+    // 반복해서 짚지 말고 연관 코드도 전수 조사해서 뭐가 문제인지
+    // 철저하게 밝혀"] — 이 effect가 계속 효과가 없던 진짜 원인을
+    // Stream 소스(MessageList.mjs)에서 찾았다: onScroll/ref=setListElement
+    // (실제 스크롤 컨테이너, Stream 내부에서 "listElement"라 부르는
+    // 그 요소)가 걸리는 클래스는 messageListClass(기본값
+    // "str-chat__message-list")이고, ".str-chat__message-list-scroll"은
+    // 그 "자식"(InfiniteScroll 컴포넌트)일 뿐이다 — 실측(computed
+    // overflow-y: visible, scrollTop 대입 즉시 0으로 원복, scroll 이벤트
+    // 자체가 전혀 발생 안 함)도 이와 정확히 일치한다: overflow가 실제로
+    // 걸린 스크롤 컨테이너가 아니라 그 안의 콘텐츠 래퍼를 건드리고
+    // 있었으니 당연히 아무 효과가 없었다. 지금까지의 모든 스크롤 보정
+    // 시도(53ad3aa, 55ab7fa 등)가 잘못된 셀렉터를 썼던 것 — 실제
+    // 스크롤 컨테이너인 .str-chat__message-list로 바로잡는다.
+    const scrollEl = containerRef.current?.querySelector<HTMLElement>(".str-chat__message-list");
     if (!scrollEl) return;
-    // 🔧 [버그 수정, 2026-09-21 실기기 웹 인스펙터 실측] 컨테이너 height가
-    // 정상(672)으로 고쳐진 뒤에도 스크롤 위치(scrollTop)가 0(완전히
-    // 맨 위)까지 밀려나 있는 경우를 확인했다. viewportRect.top/height
-    // 값 변경에만 반응하는 effect는, 그 값이 바뀌는 순간과 스크롤
-        // 컨테이너 자신의 실제 크기(clientHeight)가 바뀌는 순간 사이에
-    // 시차가 있어(리사이즈 애니메이션, Stream의 내부 재계산 등) 놓치는
-    // 경우가 있었다 — ResizeObserver로 스크롤 컨테이너 자신의 크기
-    // 변화를 직접 감시해, 그 값이 실제로 바뀔 때마다 정확히 반응한다.
     // 대화창을 여는 이 시점엔 사용자가 이미 맨 아래(최신 메시지)를
     // 보고 있었을 것이 거의 확실하므로, 조건 없이 무조건 맨 아래로
-    // 스크롤한다.
+    // 스크롤한다. ResizeObserver로 컨테이너 자신의 크기 변화를 직접
+    // 감시해, viewportRect 값 변경과 실제 DOM 크기 변경 사이의 시차
+    // 없이 정확히 반응한다.
     const scrollToBottom = () => {
       scrollEl.scrollTop = scrollEl.scrollHeight;
     };
