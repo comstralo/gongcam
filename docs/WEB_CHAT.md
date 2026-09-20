@@ -14,6 +14,12 @@
 > `app/src/App.tsx`(라우트), `app/src/components/layout/TabBar.tsx`(탭),
 > `frame-checker-worker/src/chat.js`, `frame-checker-worker/src/index.js`
 > (라우팅), `frame-checker-worker/wrangler.toml`(`STREAM_CHAT_API_KEY`).
+>
+> 2026-09-21 갱신: 2026-09-20~21 이틀에 걸친 UI/UX 다듬기(탭바 접힘,
+> 시간대별 그룹핑, 메시지 액션 메뉴 범위, iOS PWA 키보드/뷰포트 버그
+> 시리즈 등)를 반영해 §3.4, §3.5(신규)를 추가/갱신하고 §6에 함정
+> 2건을 보강함. 관련 파일: `app/src/hooks/useKeyboardInset.ts`(신규),
+> `app/src/components/layout/AppShell.tsx`, `app/index.html`.
 
 ## 1. 범위 정의 — "채팅"이란
 
@@ -157,10 +163,106 @@ Stream이 이미 편집/삭제/반응 추가 기능을 갖춘 `MessageActions` �
 
 - **발신자 이름**: 로그인 세션의 `memberName`을 그대로 Stream user name으로
   쓴다(§4.1) — 관리자도 고정 문자열 "관리자"가 아니라 실제 이름이 표시된다.
+  카카오톡처럼 같은 사람이 연속으로 보낸 메시지 그룹에서는 첫 메시지에만
+  아바타+이름을 보여준다(`useSenderNameToShow`).
+  🔧 [버그 수정, 2026-09-21] Stream의 `groupStyles`(`"top"`/`"middle"`/
+  `"bottom"`/`"single"`)는 오직 "같은 발신자가 연속으로 보냈는가"만 보고,
+  그 사이 시간이 몇 분이 지났든 전혀 고려하지 않는다(Stream 자체에 이
+  기준을 넣는 옵션이 없음 — 실측: 16분 간격에도 `groupStyles`가 계속
+  `"middle"`). `processedMessages`에서 직전 메시지를 찾아 분/시/날짜가
+  다르면 `groupStyles` 값과 무관하게 그룹 시작으로 취급하도록 보정했다.
 - **시간**: Stream 기본은 dayjs 24시간제 — `formatMessageDate()`로 12시간제
   ("오전/오후 h:mm")로 직접 렌더링하고, 같은 분에 연속으로 보낸 메시지는
   마지막 것에만 표시한다. 읽음 확인은 카카오톡처럼 "1" 배지(상대가 안 읽었을
   때만 표시, `useUnreadOneBadge`)로 대체.
+- **메시지 여백 롱프레스/우클릭**: §3.3의 액션 메뉴 트리거는 처음엔 메시지
+  버블 전체(빈 여백 포함)에 걸려 있어, 아바타-이름 사이나 인용카드+사진이
+  있는 메시지의 콘텐츠 사이 빈 공간을 눌러도 메뉴가 떴다. 실제 콘텐츠
+  요소(텍스트/이미지/인용카드) 위에서만 인정하도록 좁혔다.
+- **메시지 액션 메뉴가 입력창(composer) 아래로 관통하는 문제**: floating-ui의
+  `flip` 미들웨어가 채팅 전용 `position:fixed` 컨테이너(§3.5)를 화면
+  경계로 인식하지 못해, 메뉴가 화면 하단 기준으로만 뒤집혀 입력창 영역을
+  뚫고 내려가곤 했다. `requestAnimationFrame`으로 메뉴가 실제 렌더링된
+  뒤 DOM 위치를 다시 읽어, 입력창 상단을 넘으면 위로 밀어올리는 사후
+  보정을 추가했다(`getBoundingClientRect().height`는 `bottom` CSS
+  오프셋을 반영 못 하므로 `window.innerHeight - rect.top`으로 총 높이를
+  계산).
+
+### 3.5 하단 탭바 접힘 + 키보드/뷰포트 대응 (iOS PWA 특유의 함정)
+
+채팅은 입력창까지 세로 공간이 빠듯해, 하단 탭바(`TabBar`)를 접어 `^`
+아이콘 하나로 줄일 수 있는 `AppShell`의 `collapsibleTabBar` 옵트인을 쓰는
+유일한 화면이다. 이 기능과 "키보드가 뜨면 채팅 입력창이 카카오톡처럼
+키보드 바로 위까지 붙어야 한다"는 요구가 겹치면서, **iOS PWA(홈 화면에
+추가해 standalone으로 실행) 특유의 뷰포트 버그 여러 개**를 실기기 + Mac
+Safari 원격 디버깅(iOS 기기 웹 인스펙터)으로 실측 후 하나씩 해결해야
+했다. 관련 코드: `app/src/hooks/useKeyboardInset.ts`,
+`app/src/components/layout/AppShell.tsx`, `app/index.html`.
+
+**iOS Safari/PWA의 키보드 처리 방식**: 키보드가 뜰 때 `100dvh`나 레이아웃
+자체를 줄이지 않고, 대신 `visualViewport`("카메라")를 문서 좌표계 안에서
+키보드 높이만큼 아래로 이동(`offsetTop > 0`)시킨다. 근본 해법은 채팅
+컨테이너 자체를 `position:fixed`로 만들고 `top`/`height`를
+`visualViewport.offsetTop`/`height`로 매 `resize`마다 직접 계산하는
+것(`useVisualViewportRect`) — 카카오톡 웹뷰 등 실제 모바일 채팅 UI가 쓰는
+표준 패턴과 같다. 이 방식을 `TabBar`(`collapseButton`/`viewportRect` prop)와
+채팅 컨테이너 둘 다에 일관되게 적용해야 한다 — 한쪽만 적용하면 뷰포트가
+어긋난 두 좌표계가 서로 겹쳐 요소가 잘리거나 파묻히는 문제가 재발한다
+(아래 "발견된 버그들" 4번째 항목).
+
+**발견된 iOS 고유 버그들** (모두 PWA standalone, 실기기 실측으로 확인 —
+시뮬레이터/Playwright로는 재현 안 됨):
+
+1. **`visualViewport.offsetTop`/`height` 원복 실패**: 키보드를 닫은 뒤
+   `visualViewport.height`가 원래값(예: 844)이 아니라 상단 안전영역만큼
+   (예: 47px) 줄어든 값(797)에 계속 머무는 경우가 있다. `resize` 이벤트를
+   아무리 재구독하거나 디바운스해도 고쳐지지 않는다 — 브라우저 자체가
+   잘못된 값을 보고하는 것이라 그렇다. `index.html`의 viewport meta에
+   `interactive-widget=resizes-content`(iOS 16.4+, 키보드 등장/해제에
+   맞춰 레이아웃 뷰포트를 브라우저가 직접 리사이즈하도록 위임하는 표준
+   속성)를 추가해봤으나 이 WebView(PWA standalone)에서는 효과가
+   없었다 — 유지는 하되(다른 최신 기기에서 도움이 될 수 있음) 이 버그의
+   실질적 해법으로 의존하지 않는다.
+2. **`window.innerHeight`도 동시에 같은 버그를 겪는다**: 1번과 완전히
+   독립된 문제가 아니라, `innerHeight`와 `visualViewport.height`가
+   "둘 다 함께" 같은 잘못된 값(797)을 보고한다 — 즉 두 API 사이의 계산
+   불일치가 아니라 WebKit이 이 시점에 보고하는 뷰포트 값 자체가 실제로
+   잘못됐다는 뜻이다.
+3. **`document.documentElement.clientHeight`(실제 렌더링 가시 영역)까지
+   같은 문제를 겪는다**: `html`/`body`에 인라인으로 정확한 높이(844px)를
+   강제해도, `clientHeight`는 여전히 797로 남을 수 있다 — 이 차이만큼
+   문서 전체가 스크롤 가능해지는 부작용이 생기지만, `position:fixed`
+   요소는 스크롤과 무관하게 항상 뷰포트에 고정되므로 실질적인 문제는
+   아니다(불필요한 스크롤 여지 자체는 남겨둔다 — 아래 4번째 함정 참고).
+4. **DOM 위치 역산 방식의 이중 함정**: `AppShell`의 `^`버튼(탭바 접힘
+   힌트)은 원래 `bottom: calc(env(safe-area-inset-bottom)/2)`처럼 순수
+   CSS로 화면 최하단에 고정됐는데, 이 `bottom` 오프셋 자체가 레이아웃
+   뷰포트(`window.innerHeight`) 하단을 기준으로 계산되므로 1~2번 버그의
+   영향을 그대로 물려받는다. `tabBarHeight`를
+   `window.innerHeight - 버튼의 rect.top`으로 역산하는 방식도 마찬가지
+   함정에 걸린다: 뷰포트 높이가 보정돼도 버튼의 실제 DOM 위치는 그
+   보정 "이전" 시점 기준으로 그려진 채 남아 있어, 두 낡은 값이 상쇄되지
+   않고 오히려 어긋난다. **해결책은 뷰포트 참조 자체를 없애는 것** —
+   버튼은 자기 자신의 렌더링 높이(콘텐츠 크기, 뷰포트와 무관하게 항상
+   정확)에 안전영역 상수(`useSafeAreaInsetBottom`)만 더해 순수 CSS
+   값만으로 계산하고, 위치도 `bottom` 오프셋 대신 `TabBar`와 동일하게
+   `viewportRect` 기준 `top`으로 직접 계산한다.
+5. **`.str-chat__message-list-scroll`은 실제 스크롤 컨테이너가 아니다**:
+   Stream 소스(`MessageList.mjs`)를 직접 읽어 확인한 결과, `onScroll`/
+   `ref`가 걸리는 실제 스크롤 컨테이너는 `messageListClass`(기본값
+   `"str-chat__message-list"`)이고, `.str-chat__message-list-scroll`은
+   그 안의 `InfiniteScroll` 컴포넌트(콘텐츠 래퍼)일 뿐이다 — computed
+   `overflow-y: visible`(스크롤 불가능한 상태)이고 `scrollTop`을 대입해도
+   즉시 0으로 원복된다. 채팅 컨테이너가 리사이즈될 때(키보드 뜸/닫힘)
+   Stream이 스크롤 위치를 자동으로 재조정하지 않는 문제를 보정하려면
+   `.str-chat__message-list`를 `ResizeObserver`로 감시해야 한다.
+
+이 중 어느 하나라도 놓치면 "`^`버튼이 안 보이거나 입력창에 파묻힌다",
+"컨테이너는 정상 크기인데 마지막 메시지가 안 보이고 스크롤을 올려야
+과거 메시지가 나온다" 같은 증상이 재발한다 — 콘솔 로그나 배지 값만으로
+추측하지 말고, Mac Safari의 iOS 기기 웹 인스펙터(설정 > Safari > 고급 >
+"웹 검사기" 켜기 → 케이블 1회 연결)로 실제 `getBoundingClientRect()`/
+`getComputedStyle()` 값을 직접 확인해야 정확히 잡힌다.
 
 ---
 
@@ -246,6 +348,19 @@ Node.js 전용 `stream-chat` 서버 SDK 대신 Stream REST API를 fetch로 직�
   로직)을 여러 차례 오래된 상태로 유지해 버그처럼 보인 사례가 반복됐다** —
   `rm -rf node_modules/.vite` + dev 서버 완전 재시작이 실측 검증 전 거의
   매번 필요했다.
+- **iOS PWA(standalone)의 뷰포트 버그는 스크린샷/디버그 배지 값 비교만으로는
+  근본 원인에 못 미친다** — §3.5에 정리된 5가지 버그는 겉보기 증상(여백,
+  `^`버튼 위치, 스크롤 안 됨)이 서로 뒤섞여 나타나 여러 차례 잘못된 원인을
+  짚고 되돌리는 시행착오를 거쳤다. Mac Safari의 iOS 기기 웹 인스펙터로
+  실기기에 직접 연결해 `getBoundingClientRect()`/`getComputedStyle()`을
+  콘솔에서 직접 확인하고 나서야 각 버그를 정확히 분리해 잡을 수 있었다 —
+  다음에 비슷한 증상이 재발하면 처음부터 이 방법을 쓸 것.
+- **`.str-chat__message-list-scroll`과 `.str-chat__message-list`를 혼동하기
+  쉽다** — 이름이 비슷해 직관적으로는 전자가 스크롤 컨테이너처럼 보이지만,
+  실제 `onScroll`/스크롤 가능한 요소는 후자다(§3.5의 5번 항목). Stream
+  DOM에서 스크롤 위치를 직접 조작해야 할 일이 생기면 반드시 소스
+  (`MessageList.mjs`)나 실측(`overflow-y` computed style, `scrollTop`
+  대입 후 값이 실제로 바뀌는지)으로 확인할 것.
 
 ---
 
