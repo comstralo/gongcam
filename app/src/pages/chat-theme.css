@@ -123,6 +123,23 @@
   font-size: 0.875rem;
 }
 
+/* 🔧 [버그 수정, 2026-09-20 사용자 지시: "모바일에서 메시지 보내기 칸에
+   터치하면 화면이 확대되어 버린다"] — iOS Safari는 포커스되는 input/
+   textarea의 font-size가 16px 미만이면 사용자가 읽기 쉽도록 자동으로
+   화면을 확대하는 내장 동작이 있다(W3C 표준은 아니고 WebKit 고유
+   휴리스틱). 위에서 0.875rem(14px)으로 줄인 게 바로 이 조건에 걸렸다.
+   앱 전역 viewport 메타에 user-scalable=no/maximum-scale=1을 걸면
+   이 입력창뿐 아니라 앱 전체의 핀치 줌 자체가 막혀 접근성이 나빠지므로
+   (다른 화면에는 이 문제가 없음), 이 textarea에만 767px 이하에서
+   16px로 되돌려 확대 트리거 자체를 없앤다 — 데스크톱에서는 이 자동
+   확대 동작이 없으므로 기존 0.875rem을 그대로 유지해 사용자가 요청한
+   시각적 크기를 지킨다. */
+@media (max-width: 767px) {
+  .str-chat .str-chat__message-composer-controls__text-composition-controls__text textarea {
+    font-size: 16px;
+  }
+}
+
 /* 🔧 [버그 수정] 헤더 높이만 줄이고 안쪽 패딩(기본 16px, --str-chat__
    spacing-md 전역 변수 — 입력창 패딩과도 공유돼 여기서만 못 줄임)은
    그대로라, 이름+온라인상태 2줄 텍스트가 들어갈 공간이 부족해 겹쳐
