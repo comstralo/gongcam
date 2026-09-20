@@ -1,4 +1,4 @@
-import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { ChevronUp } from "lucide-react";
 import { TabBar } from "./TabBar";
@@ -71,17 +71,51 @@ export function AppShell({
 }: AppShellProps) {
   const { session } = useAuth();
   const tabBarCollapsed = collapsibleTabBar?.collapsed ?? false;
-  const collapseButtonRef = useRef<HTMLButtonElement>(null);
+  const collapseButtonObserverRef = useRef<ResizeObserver | null>(null);
+  const collapseButtonResizeListenerRef = useRef<(() => void) | null>(null);
 
-  useEffect(() => {
-    const button = collapseButtonRef.current;
-    if (!button || !onBarHeightChange) return;
-    const report = () => onBarHeightChange(button.getBoundingClientRect().height);
-    report();
-    const observer = new ResizeObserver(report);
-    observer.observe(button);
-    return () => observer.disconnect();
-  }, [onBarHeightChange]);
+  // 🔧 [버그 수정, 2026-09-20 사용자 지시: "1번 사진은 초기 접힌
+  // 상태인데 저렇게 영역이랑 겹치게 나와 ... 폈다가 다시 접으면 2번
+  // 사진처럼 돼"] — 예전엔 useRef + useEffect([onBarHeightChange])
+  // 조합이었는데, 이 버튼은 tabBarCollapsed가 바뀔 때마다(TabBar ↔
+  // 버튼 전환) 통째로 마운트/언마운트되는 별개의 DOM이라 매번 새로
+  // 측정을 시작해야 한다 — 하지만 그 effect의 의존성 배열에
+  // tabBarCollapsed가 없어 버튼이 새로 마운트돼도 재실행되지 않았고,
+  // 이전 버튼(이미 사라짐)의 ResizeObserver만 계속 남아 있거나
+  // 최초 마운트 시점의 값이 갱신 안 된 채 남는 등 타이밍이 어긋났다.
+  // 콜백 ref로 바꾸면 React가 이 버튼이 마운트/언마운트될 때마다
+  // (즉 tabBarCollapsed가 바뀔 때마다) 정확히 호출해주므로, 매번
+  // 확실하게 새로 측정을 시작하고 이전 구독을 정리할 수 있다.
+  //
+  // button.getBoundingClientRect().height는 버튼 자신의 렌더링
+  // 높이(아이콘 크기 정도)만 잴 뿐, 이 버튼을 화면 최하단에서 띄워
+  // 올린 bottom 오프셋(env(safe-area-inset-bottom)/2, "여백 중간에
+  // 오도록" 조정 때 추가됨)은 전혀 반영하지 못한다 — 화면 맨 아래
+  // (window.innerHeight)부터 버튼 "위쪽" 경계까지의 거리를 재면, 버튼
+  // 높이와 그 아래 남는 오프셋 여백을 모두 포함한 "탭바 영역이 실제로
+  // 차지하는 총 높이"가 정확히 나온다.
+  const collapseButtonRef = useCallback(
+    (button: HTMLButtonElement | null) => {
+      collapseButtonObserverRef.current?.disconnect();
+      collapseButtonObserverRef.current = null;
+      if (collapseButtonResizeListenerRef.current) {
+        window.removeEventListener("resize", collapseButtonResizeListenerRef.current);
+        collapseButtonResizeListenerRef.current = null;
+      }
+      if (!button || !onBarHeightChange) return;
+      const report = () => {
+        const rect = button.getBoundingClientRect();
+        onBarHeightChange(window.innerHeight - rect.top);
+      };
+      report();
+      const observer = new ResizeObserver(report);
+      observer.observe(button);
+      collapseButtonObserverRef.current = observer;
+      collapseButtonResizeListenerRef.current = report;
+      window.addEventListener("resize", report);
+    },
+    [onBarHeightChange]
+  );
   // 🔧 [사용자 지시, 2026-09-20] "키보드 입력 상태에서 ^ 표시가 보이는것도
   // 이상하고" — 이 접기 버튼(펼치기 힌트)이 fixed bottom:0(레이아웃
   // 뷰포트 기준)이라, 키보드가 떠도 레이아웃 뷰포트 자체는 안 줄어드는
