@@ -713,6 +713,28 @@ function SwipeableMessage() {
     void toggleBtn.getBoundingClientRect();
     toggleBtn.click();
     shrinkOptionsAndToggle();
+    // 🔧 [버그 수정, 2026-09-20 사용자 지시: "메시지 보내기 영역
+    // 아래로는 메뉴가 뚫고 내려가지 않도록"] — 이 메뉴는
+    // ChatActionsContextMenu에서 placement를 강제로 bottom-start/
+    // bottom-end로 뒤집는데(위쪽에서 열리면 헤더 뒤로 가려지는 문제
+    // 수정), floating-ui의 flip은 기본적으로 뷰포트 전체를 경계로
+    // 계산해 "아래쪽에 얼마나 남았는지"만 볼 뿐, 우리 채팅 입력창이
+    // 그 훨씬 위에서 화면을 사실상 가로막고 있다는 사실은 몰라
+    // 입력창 아래(심지어 화면 밖)까지 메뉴가 뚫고 내려가는 경우가
+    // 있었다. floating-ui가 위치를 다 정한 뒤(다음 프레임) 실제 렌더된
+    // 위치를 직접 읽어, 입력창 상단을 넘으면 그만큼 위로 강제 보정한다.
+    requestAnimationFrame(() => {
+      const box = document.querySelector<HTMLElement>(".str-chat__message-actions-box--open");
+      const composer = document.querySelector<HTMLElement>(".str-chat__message-composer");
+      if (!box || !composer) return;
+      const boxRect = box.getBoundingClientRect();
+      const composerTop = composer.getBoundingClientRect().top;
+      const overflow = boxRect.bottom - composerTop;
+      if (overflow > 0) {
+        const currentTop = parseFloat(getComputedStyle(box).top) || boxRect.top;
+        box.style.setProperty("top", `${currentTop - overflow}px`, "important");
+      }
+    });
   }
 
   function handleContextMenu(e: React.MouseEvent<HTMLDivElement>) {
