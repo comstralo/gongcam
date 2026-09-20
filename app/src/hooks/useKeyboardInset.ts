@@ -1,93 +1,45 @@
 import { useEffect, useState } from "react";
 
 // 🔧 [사용자 지시, 2026-09-20] "메시지 보내기에 탭 해서 입력 상태가 되면
-// 카카오톡처럼 되면 좋겠는데 너무 여백이 많이 생겨" — 채팅 박스는
-// 100dvh 기준 절대 높이로 고정돼 있는데(ChatPage.tsx), iOS Safari는
-// 소프트웨어 키보드가 올라와도 레이아웃 뷰포트(따라서 dvh 값)를 줄이지
-// 않는 게 표준 동작이다(키보드는 그 위에 오버레이될 뿐 문서 흐름에
-// 영향을 주지 않음) — 그 결과 키보드가 화면 아래쪽을 가려도 우리 박스는
-// 원래 높이 그대로 남아, 입력창이 키보드 바로 위에 붙지 못하고 그 사이에
-// 큰 빈 공간(가려진 영역)이 생겼다. window.visualViewport는 이 키보드
-// 오버레이를 반영해 실제로 보이는 영역만큼만 높이가 줄어드는 별도
-// API다 — "키보드가 없을 때의 visualViewport 높이"를 기준값으로 고정해
-// 두고 그 값과 현재 값의 차이를 반환하면 곧 키보드가 가리는 픽셀 수다
-// (아래 baselineHeight 참고 — 처음엔 window.innerHeight를 기준으로
-// 썼다가 iOS 주소창 자동 접힘 때문에 오히려 부정확해져 이 방식으로
-// 교체했다). 이 값을 반환해 채팅 박스 높이 계산에서 빼면, 키보드가 뜬
-// 만큼 박스가 줄어들어 입력창이 항상 키보드 바로 위에 붙는다.
-// 🔧 [임시 디버깅, 2026-09-20] 실기기(아이폰)에서 두 차례 수정에도
-// 계속 재현된 문제(처음엔 여백이 남고, 그다음엔 반대로 박스가 거의
-// 사라짐)의 정확한 원인을 알아내기 위해, visualViewport의 실측값 자체를
-// 화면에 노출한다. 원인이 확인되면 이 디버그 필드와 표시용 코드는
-// 제거한다.
-export type KeyboardInsetDebug = {
-  inset: number;
-  rawViewportHeight: number;
-  baselineHeight: number;
-  innerHeight: number;
-  dvhPx: number;
-  offsetTop: number;
-  pageYOffset: number;
-};
-
+// 카카오톡처럼 되면 좋겠는데 너무 여백이 많이 생겨" → 실기기(아이폰)
+// 디버그 배지로 여러 차례 실측해 정확한 원인을 확인했다:
+//
+// 1) 100dvh는 키보드가 떠도 전혀 줄지 않는다(실측: dvh와 base가 항상
+//    동일) — 채팅 박스의 높이 계산(calc(100dvh - ... - inset)) 자체는
+//    처음부터 정확했다.
+// 2) body를 position:fixed로 완전히 잠가도(문서 스크롤 자체를 원천
+//    차단) 문제가 재현됐다 — 즉 원인이 "문서가 스크롤된다"는 것도
+//    아니었다.
+// 3) 결정적 실측: 키보드가 뜨면 visualViewport.offsetTop이 정확히
+//    keyboardInset과 같은 값으로 커진다(예: inset=369, offsetTop=369,
+//    raw+offsetTop=base). 즉 iOS Safari는 키보드가 뜰 때 레이아웃
+//    자체를 줄이는 게 아니라 "카메라(visualViewport)를 문서 좌표계
+//    안에서 아래로 이동시킨다" — body 스크롤과는 무관한, iOS 고유의
+//    visualViewport 오프셋이다.
+//
+// 결론: 채팅 박스는 높이만 줄여서는 부족하고, 그 offsetTop만큼 함께
+// 아래로 이동(translateY)해야 실제 카메라(visualViewport) 안에 다시
+// 들어온다 — 높이 축소(inset)와 위치 이동(offsetTop)은 이 오프셋의
+// 서로 다른 두 측면이라 값이 항상 같다.
 export function useKeyboardInset() {
   const [inset, setInset] = useState(0);
-  const [debug, setDebug] = useState<KeyboardInsetDebug | null>(null);
 
   useEffect(() => {
     const viewport: VisualViewport | null = window.visualViewport;
     if (!viewport) return;
 
-    // 🔧 [임시 디버깅] "100dvh"가 실기기에서 실제로 몇 px인지 직접
-    // 측정하는 숨김 probe 엘리먼트 — 처음 가정("iOS는 키보드가 떠도
-    // dvh를 안 줄인다")이 최신 iOS 버전에서도 여전히 맞는지 확인하기
-    // 위함. 만약 이미 dvh 자체가 줄어들어 있다면, keyboardInset을 거기서
-    // 또 빼는 이 훅 자체가 이중 차감의 원인이다.
-    const probe = document.createElement("div");
-    probe.style.position = "fixed";
-    probe.style.top = "0";
-    probe.style.left = "0";
-    probe.style.height = "100dvh";
-    probe.style.width = "0";
-    probe.style.pointerEvents = "none";
-    probe.style.visibility = "hidden";
-    document.body.appendChild(probe);
-
-    // 🔧 [버그 수정, 2026-09-20 사용자 지시: "여전히 아이폰에서 입력 시
-    // 공백이 생겨" — 실제 아이폰 스크린샷으로 확인: 채팅 박스가 화면
-    // 중간에서 멈추고, 그 아래(접기 힌트~진짜 키보드 사이)에 여전히
-    // 큰 빈 공간이 남아 있었다] — window.innerHeight를 매번 다시
-    // 읽어 "레이아웃 뷰포트"로 삼은 게 원인이었다. iOS Safari는 키보드가
-    // 뜨는 동안 주소창이 자동으로 접히며 window.innerHeight 자체도
-    // 함께 커지는데(키보드와 무관한 변화), 그 순간의 innerHeight를
-    // 기준으로 삼으면 "주소창이 접힌 만큼 커진 값"과 "키보드가 줄인
-    // visualViewport 값"이 서로 다른 시점의 서로 다른 원인으로 뒤섞여
-    // 실제 키보드 높이보다 훨씬 작은 값이 계산됐다(실측: 화면 절반
-    // 가까이 빈 공간이 남았는데도 계산된 inset은 그 절반에도 못
-    // 미쳤음). 대신 "키보드가 없는 상태"의 visualViewport.height를
-    // 최초 마운트 시점에 기준값으로 한 번만 고정해두고, 이후로는 항상
-    // 그 고정 기준값과 현재 값의 차이만 본다 — 주소창 등 innerHeight
-    // 자체의 변동과 완전히 무관해진다.
+    // 키보드가 없는 상태의 visualViewport 높이를 기준값으로 고정해두고,
+    // 그 값과 현재 값의 차이를 반환한다 — window.innerHeight는 iOS의
+    // 주소창 자동 접힘으로 키보드와 무관하게 변동해 기준으로 삼기
+    // 부적절하다(먼저 시도해 실패).
     let baselineHeight = viewport.height;
 
     const update = () => {
-      // 키보드가 접혀 있는 상태(주소창 표시 등으로 baseline 이상 커진
-      // 경우)라면 그게 새로운 "키보드 없음" 기준이므로 baseline을
-      // 갱신한다 — 그래야 나중에 실제로 키보드가 뜰 때만 감소로 잡힌다.
       if (viewport.height > baselineHeight) {
         baselineHeight = viewport.height;
       }
       const heightDiff = baselineHeight - viewport.height;
       setInset(Math.max(0, Math.round(heightDiff)));
-      setDebug({
-        inset: Math.max(0, Math.round(heightDiff)),
-        rawViewportHeight: Math.round(viewport.height),
-        baselineHeight: Math.round(baselineHeight),
-        innerHeight: window.innerHeight,
-        dvhPx: Math.round(probe.getBoundingClientRect().height),
-        offsetTop: Math.round(viewport.offsetTop),
-        pageYOffset: Math.round(window.pageYOffset),
-      });
     };
 
     update();
@@ -96,9 +48,8 @@ export function useKeyboardInset() {
     return () => {
       viewport.removeEventListener("resize", update);
       viewport.removeEventListener("scroll", update);
-      probe.remove();
     };
   }, []);
 
-  return { inset, debug };
+  return inset;
 }

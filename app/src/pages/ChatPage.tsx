@@ -1034,7 +1034,7 @@ export function ChatPage({ visible, tabBarCollapsed }: { visible: boolean; tabBa
   const { call } = useApi();
   const { isAdmin } = useAuth();
   const { dark } = useTheme();
-  const { inset: keyboardInset, debug: keyboardInsetDebug } = useKeyboardInset();
+  const keyboardInset = useKeyboardInset();
   const [client, setClient] = useState<StreamChat | null>(null);
   const [memberChannel, setMemberChannel] = useState<StreamChannel | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1122,53 +1122,6 @@ export function ChatPage({ visible, tabBarCollapsed }: { visible: boolean; tabBa
     document.addEventListener("click", handleGlobalClickCapture, { capture: true });
     return () => document.removeEventListener("click", handleGlobalClickCapture, { capture: true });
   }, []);
-
-  // 🔧 [버그 수정, 2026-09-20 사용자 지시: "여전히 아이폰에서 입력 시
-  // 공백이 생겨" → 디버그 배지로 실측한 결과 100dvh는 키보드가 떠도
-  // 전혀 줄지 않아(dvh 값이 base와 동일하게 유지) 채팅 박스 자체는
-  // calc() 그대로 정상 크기로 남아 있었다. 그런데도 화면에서 박스가
-  // 거의 안 보였던 진짜 원인은 따로 있었다 — body/html이 스크롤 가능한
-  // 상태라, iOS Safari가 포커스된 textarea를 "보이는 영역까지" 자동
-  // 스크롤시키는 표준 동작이 문서 전체를 위로 밀어 올렸다.
-  // 🔧 [버그 수정] body { overflow: hidden }만으로 시도했으나 여전히
-  // 재현됐다(사용자 재확인 스크린샷) — 이건 iOS Safari의 잘 알려진
-  // 특성으로, overflow:hidden은 데스크톱 브라우저에서는 스크롤을 확실히
-  // 막지만 iOS Safari는 포커스 시 자동 스크롤(및 바운스 스크롤)을 이
-  // 속성만으로 막지 못하는 경우가 많다. 모바일 웹에서 스크롤을 확실히
-  // 잠그는 표준 우회책은 body 자체를 position:fixed로 문서 흐름에서
-  // 완전히 빼버리는 것 — 이러면 "스크롤할 문서"라는 개념 자체가 없어져
-  // iOS의 자동 스크롤 로직이 개입할 여지가 없다. 진입 시점의 스크롤
-  // 위치를 저장해 top으로 고정하고, 나갈 때 그 위치로 되돌려 원래
-  // 화면이 있던 곳 그대로 복원한다(다른 화면은 hidden으로 유지되는
-  // 구조라 스크롤 위치를 잃으면 사용자가 놀랄 수 있음).
-  useEffect(() => {
-    if (!visible) return;
-    const scrollY = window.scrollY;
-    const body = document.body;
-    const previous = {
-      position: body.style.position,
-      top: body.style.top,
-      left: body.style.left,
-      right: body.style.right,
-      width: body.style.width,
-      overflow: body.style.overflow,
-    };
-    body.style.position = "fixed";
-    body.style.top = `-${scrollY}px`;
-    body.style.left = "0";
-    body.style.right = "0";
-    body.style.width = "100%";
-    body.style.overflow = "hidden";
-    return () => {
-      body.style.position = previous.position;
-      body.style.top = previous.top;
-      body.style.left = previous.left;
-      body.style.right = previous.right;
-      body.style.width = previous.width;
-      body.style.overflow = previous.overflow;
-      window.scrollTo(0, scrollY);
-    };
-  }, [visible]);
 
   useEffect(() => {
     if (connectedRef.current) return;
@@ -1258,49 +1211,26 @@ export function ChatPage({ visible, tabBarCollapsed }: { visible: boolean; tabBa
   // 필요가 없다.
   // 🔧 [버그 수정, 2026-09-20 사용자 지시: "메시지 보내기에 탭 해서
   // 입력 상태가 되면 카카오톡처럼 되면 좋겠는데 너무 여백이 많이
-  // 생겨"] — 이 100dvh 기준 절대 높이는 소프트웨어 키보드가 떠도
-  // 줄어들지 않는다(iOS Safari 표준 동작: 키보드는 레이아웃 뷰포트에
-  // 영향을 주지 않고 그 위에 오버레이만 됨). 그 결과 키보드가 화면
-  // 아래쪽을 가려도 이 박스는 원래 높이 그대로 남아, 입력창이 키보드
-  // 바로 위에 붙지 못하고 그 사이에 키보드가 가린 만큼의 빈 공간이
-  // 생겼다. useKeyboardInset(visualViewport 기반, 실제 가려진 픽셀
-  // 수를 반환)만큼 높이에서 추가로 빼, 키보드가 뜬 만큼 박스가 즉시
-  // 줄어들어 입력창이 항상 키보드 바로 위에 붙게 한다.
+  // 생겨" → "여전히 아이폰에서 입력 시 공백이 생겨" → "아예 이렇게
+  // 올라가 버리는데?"] — 실기기(아이폰) 디버그 배지로 여러 차례
+  // 실측해 확인한 정확한 원인(useKeyboardInset.ts 상단 주석 참고):
+  // iOS Safari는 키보드가 뜰 때 100dvh나 레이아웃 자체를 줄이지 않고,
+  // 대신 "카메라"(visualViewport)를 문서 좌표계 안에서 키보드 높이만큼
+  // 아래로 이동(offsetTop)시킨다 — 이 오프셋은 body를 position:fixed로
+  // 완전히 잠가도(실측으로 확인, 문서 스크롤 자체가 원인이 아니었음)
+  // 그대로 발생한다. 그래서 박스는 높이를 줄이는 것(height calc)뿐
+  // 아니라, 그 오프셋만큼 자기 자신도 함께 아래로 옮겨야(translateY)
+  // 실제 카메라 안에 다시 들어온다 — 높이 축소량과 이동량은 같은
+  // 오프셋의 두 측면이라 항상 동일한 keyboardInset 값을 쓴다.
   return (
     <div
       hidden={!visible}
       className="flex w-full page-content flex-col gap-2"
       style={{
         height: `calc(100dvh - ${tabBarCollapsed ? "6.6rem" : "11.5rem"} - ${keyboardInset}px)`,
+        transform: keyboardInset ? `translateY(${keyboardInset}px)` : undefined,
       }}
     >
-      {/* 🔧 [임시 디버깅, 2026-09-20] 실기기(아이폰)에서 키보드 인셋
-          계산이 두 차례 모두 틀린 원인을 알아내기 위한 임시 표시 —
-          원인 확인 후 제거한다. */}
-      {keyboardInsetDebug && (
-        // 🔧 [사용자 피드백] "키보드가 올라가면 디버그 박스가 안 보인다"
-        // — 화면 상단 고정이라 키보드가 뜨면 스크롤해야 보였다. 항상
-        // 시야에 들어오도록 visualViewport 좌표 기준으로 화면 최하단에
-        // 고정한다(fixed는 레이아웃 뷰포트 기준이라 키보드 위에 있어도
-        // 안 보일 수 있어, visualViewport.offsetTop+height로 직접
-        // 계산한 절대 위치를 쓴다).
-        <div
-          className="fixed left-2 z-50 rounded bg-black/80 p-1.5 font-mono text-[10px] leading-tight text-white"
-          style={{
-            top: window.visualViewport
-              ? window.visualViewport.offsetTop + window.visualViewport.height - 130
-              : 56,
-          }}
-        >
-          <div>inset: {keyboardInsetDebug.inset}</div>
-          <div>raw: {keyboardInsetDebug.rawViewportHeight}</div>
-          <div>base: {keyboardInsetDebug.baselineHeight}</div>
-          <div>inH: {keyboardInsetDebug.innerHeight}</div>
-          <div>dvh: {keyboardInsetDebug.dvhPx}</div>
-          <div>offT: {keyboardInsetDebug.offsetTop}</div>
-          <div>pgY: {keyboardInsetDebug.pageYOffset}</div>
-        </div>
-      )}
       {isAdmin && <ChatListHeader view={sidebarView} onViewChange={setSidebarView} />}
       <div className="flex w-full min-h-0 flex-1 flex-col overflow-hidden rounded-lg border">
       <Chat client={client} theme={dark ? "str-chat__theme-dark" : "str-chat__theme-light"}>
