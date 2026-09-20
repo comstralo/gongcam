@@ -434,3 +434,22 @@
     z-index: auto;
   }
 }
+
+/* 🔧 [버그 수정, 2026-09-20 사용자 지시: "박스 우측에 선이 좀 굵어
+   보이는데 이건 왜 그런건지" → "없던건데 갑자기 생겼는데"] — Stream
+   기본 .str-chat__channel-list는 자체 border-inline-end(우측 테두리,
+   Stream 팔레트의 회색 --str-chat__border-core-default)를 항상
+   그린다(index.css 4114행). "목록 우선 진입"(위 채널 미선택 시 목록이
+   채팅 박스 전체 폭을 차지하는 max-w-none 상태, ChatPage.tsx
+   AdminChatArea) 도입 전에는 목록이 항상 max-w-70(280px) 안에 갇혀
+   있어 이 Stream 테두리가 박스 우측 테두리와 멀리 떨어져 있었는데,
+   목록이 박스 전체 폭을 차지하게 되면서 이 Stream 테두리가 우리 박스
+   자체의 테두리(rounded-lg border, 앱 테마 베이지색)와 거의 같은
+   자리에 겹쳐 서로 다른 두 색 테두리가 나란히 보여 "우측만 굵다"는
+   착시를 만들었다(실측: getComputedStyle로 rgb(213,219,225) vs 우리
+   테두리 rgb(232,221,200) 두 색 확인). 목록/대화창 사이 경계는 이미
+   AdminChatArea가 자체 wrapper에 Tailwind border-r로 그리고 있어
+   Stream 쪽은 완전히 불필요한 중복이므로 없앤다. */
+.str-chat__channel-list {
+  border-inline-end: none;
+}

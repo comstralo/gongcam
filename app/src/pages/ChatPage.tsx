@@ -767,7 +767,20 @@ function SwipeableMessage() {
 // 메뉴들처럼 상단에 올려줘" — 좌측 사이드바 안(48px 높이, 우측 대화창
 // 헤더와 나란히 맞춤)에 있던 걸 페이지 최상단으로 옮겼다. 더 이상 그
 // 헤더와 높이를 맞출 필요가 없어져, ReportPage의 실제 패딩(py-2.5)과
-// 동일하게 키우고 페이지 좌우 여백에 맞춰 하단 구분선만 남긴다.
+// 동일하게 키운다.
+// 🔧 [버그 수정, 2026-09-20 사용자 지시: "탭바 아래에 구분선 제거해"] —
+// 이 탭이 채팅 박스(border 카드) "안"에 있던 시절엔 border-b가 그 아래
+// 목록과의 경계 역할을 했지만, 박스 바깥(다른 페이지 최상단 탭과 같은
+// 위치)으로 옮긴 뒤에는 그 바로 아래 채팅 박스 자체의 border-top과
+// 겹쳐 이중선처럼 보였다 — ReportPage 등 다른 페이지의 탭도 이런
+// 구분선을 쓰지 않는다(제거해 일관성도 맞춘다).
+// 🔧 [버그 수정, 2026-09-20 사용자 지시: "탭바 폭이 다른 메뉴랑 달라"] —
+// 사이드바 안(48px 높이)에 있던 시절엔 좌우 여백(p-2)이 필요했지만,
+// 박스 바깥으로 옮긴 지금은 이 padding 때문에 탭이 그 아래 채팅
+// 박스(padding 없음, page-content 전체 폭)보다 좌우로 8px씩 좁아 보였다
+// (실측 스크린샷으로 확인). ReportPage 등 다른 페이지의 최상단 탭은
+// 이런 wrapper padding 없이 페이지 전체 폭(page-content)을 그대로
+// 쓴다 — 동일하게 맞춘다.
 function ChatListHeader({
   view,
   onViewChange,
@@ -776,7 +789,7 @@ function ChatListHeader({
   onViewChange: (view: "channels" | "members") => void;
 }) {
   return (
-    <div className="shrink-0 border-b p-2">
+    <div className="shrink-0">
       <Tabs value={view} onValueChange={(v) => onViewChange(v as "channels" | "members")} className="w-full">
         <TabsList className="h-auto w-full rounded-full bg-secondary p-1">
           <TabsTrigger value="channels" className="h-auto flex-1 rounded-full py-2 text-xs data-active:shadow-sm">
