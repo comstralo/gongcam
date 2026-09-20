@@ -33,6 +33,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/lib/auth/useAuth";
 import { useTheme } from "@/hooks/useTheme";
+import { useKeyboardInset } from "@/hooks/useKeyboardInset";
 import { ICON_STROKE, cn } from "@/lib/utils";
 import type { AdminMembersResponse, ChatTokenResponse } from "@/lib/api/types";
 
@@ -1033,6 +1034,7 @@ export function ChatPage({ visible, tabBarCollapsed }: { visible: boolean; tabBa
   const { call } = useApi();
   const { isAdmin } = useAuth();
   const { dark } = useTheme();
+  const keyboardInset = useKeyboardInset();
   const [client, setClient] = useState<StreamChat | null>(null);
   const [memberChannel, setMemberChannel] = useState<StreamChannel | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1207,13 +1209,23 @@ export function ChatPage({ visible, tabBarCollapsed }: { visible: boolean; tabBa
   // 영역)로 옮기고, 안쪽 박스는 flex-1 min-h-0으로 "헤더가 쓰고 남은
   // 나머지"를 자동으로 채우게 하면 헤더 높이가 얼마든 다시 계산할
   // 필요가 없다.
+  // 🔧 [버그 수정, 2026-09-20 사용자 지시: "메시지 보내기에 탭 해서
+  // 입력 상태가 되면 카카오톡처럼 되면 좋겠는데 너무 여백이 많이
+  // 생겨"] — 이 100dvh 기준 절대 높이는 소프트웨어 키보드가 떠도
+  // 줄어들지 않는다(iOS Safari 표준 동작: 키보드는 레이아웃 뷰포트에
+  // 영향을 주지 않고 그 위에 오버레이만 됨). 그 결과 키보드가 화면
+  // 아래쪽을 가려도 이 박스는 원래 높이 그대로 남아, 입력창이 키보드
+  // 바로 위에 붙지 못하고 그 사이에 키보드가 가린 만큼의 빈 공간이
+  // 생겼다. useKeyboardInset(visualViewport 기반, 실제 가려진 픽셀
+  // 수를 반환)만큼 높이에서 추가로 빼, 키보드가 뜬 만큼 박스가 즉시
+  // 줄어들어 입력창이 항상 키보드 바로 위에 붙게 한다.
   return (
     <div
       hidden={!visible}
-      className={cn(
-        "flex w-full page-content flex-col gap-2",
-        tabBarCollapsed ? "h-[calc(100dvh-7.5rem)]" : "h-[calc(100dvh-11.5rem)]"
-      )}
+      className="flex w-full page-content flex-col gap-2"
+      style={{
+        height: `calc(100dvh - ${tabBarCollapsed ? "6.6rem" : "11.5rem"} - ${keyboardInset}px)`,
+      }}
     >
       {isAdmin && <ChatListHeader view={sidebarView} onViewChange={setSidebarView} />}
       <div className="flex w-full min-h-0 flex-1 flex-col overflow-hidden rounded-lg border">
