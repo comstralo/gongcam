@@ -880,18 +880,25 @@ function SwipeableMessage() {
             <span>{formatMessageDate(thisCreatedAt)}</span>
           </div>
         )}
+        {/* 🔧 [버그 수정, 2026-09-20 사용자 지시: "아바타가 너무 여백
+            없이 좌측에 딱 붙었잖아"] — 이 아바타는 이제 .str-chat__message
+            (Stream이 좌우 padding-inline을 주던 그 요소, chat-theme.css:
+            302행 근처) 바깥, SwipeableMessage가 만든 flex row의 첫
+            항목이라 그 패딩의 영향을 전혀 받지 않는다. 내 메시지 쪽
+            바깥 여백(padding-inline-end: 8px)과 대칭이 되도록 ms-2(8px)
+            를 명시적으로 준다. */}
         {!isMyMessage() &&
           (senderName ? (
             // 🔧 [버그 수정] 부모 row가 items-end라 self 지정이 없으면
             // 아바타도 row 바닥(버블 위치)에 맞춰져 이름과 나란해질 수
             // 없었다 — self-start로 이 아바타만 상단 정렬해 이름과
             // 나란한 카카오톡 구조를 만든다.
-            <PersonAvatar size="md" className="me-2.5 shrink-0 self-start" />
+            <PersonAvatar size="md" className="ms-2 me-2.5 shrink-0 self-start" />
           ) : (
             // 그룹 중간/마지막 메시지는 카카오톡처럼 아바타 자리를
             // 비워 버블 시작 위치를 그룹 첫 메시지와 맞춘다(아바타
             // 폭 32px + gap 10px).
-            <div className="me-2.5 w-8 shrink-0" />
+            <div className="ms-2 me-2.5 w-8 shrink-0" />
           ))}
         <div className="min-w-0">
           {senderName && (
