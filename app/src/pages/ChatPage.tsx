@@ -388,6 +388,7 @@ function useUnreadOneBadge() {
 // 정렬 규칙을 따르므로 항상 정확히 나란하다.
 function useSenderNameToShow(): string | null {
   const { message, isMyMessage, groupStyles } = useMessageContext();
+  const { processedMessages } = useMessageListContext();
   // 🔧 [버그 수정] 이 Stream 버전의 MessageContext는 firstOfGroup/
   // endOfGroup/groupedByUser를 채우지 않는다(실측: 항상 undefined) —
   // 대신 groupStyles(문자열 배열, 예: ["single"]/["top"]/["middle"]/
@@ -395,7 +396,27 @@ function useSenderNameToShow(): string | null {
   // "single"(그룹에 메시지가 하나뿐)일 때만 그룹의 시작이므로, 이때만
   // 이름을 보여준다(카카오톡처럼 같은 사람이 연속으로 보낸 메시지
   // 그룹에서는 첫 메시지에만 표시).
-  const isGroupStart = groupStyles?.includes("top") || groupStyles?.includes("single");
+  let isGroupStart = groupStyles?.includes("top") || groupStyles?.includes("single");
+  // 🔧 [버그 수정, 2026-09-20 사용자 지시: "전송 시각이 다른 경우엔
+  // 아바타랑 이름이 붙어야 하는데... 분 단위가 분명히 다른데 안뜨는
+  // 메시지들이 있어"] — Stream의 groupStyles는 오직 "같은 발신자가
+  // 연속으로 보냈는가"만 보고 "middle"/"bottom"을 매기며, 그 사이
+  // 시간이 몇 분이 지났든 전혀 고려하지 않는다(Stream 자체에 이 기준을
+  // 넣는 옵션이 없음, 실측: 16분 간격에도 groupStyles가 계속 "middle").
+  // 카카오톡 등 참고 기준대로 "직전 메시지와 분 단위가 다르면(다른
+  // 발신자 그룹처럼) 새로 아바타/이름을 보여준다"를 여기서 직접
+  // 보정한다 — processedMessages에서 바로 이전 메시지를 찾아 생성
+  // 시각의 분이 다르면 groupStyles 값과 무관하게 그룹 시작으로 취급.
+  if (!isGroupStart) {
+    const idx = processedMessages.findIndex((m) => m.id === message.id);
+    const prevMessage = idx > 0 ? processedMessages[idx - 1] : undefined;
+    const prevCreatedAt = prevMessage && "created_at" in prevMessage ? prevMessage.created_at : undefined;
+    const prevDate = prevCreatedAt ? new Date(prevCreatedAt) : null;
+    const thisDate = message.created_at ? new Date(message.created_at) : null;
+    if (prevDate && thisDate && (prevDate.getMinutes() !== thisDate.getMinutes() || prevDate.getHours() !== thisDate.getHours() || prevDate.toDateString() !== thisDate.toDateString())) {
+      isGroupStart = true;
+    }
+  }
   if (isMyMessage() || !isGroupStart) return null;
   return message.user?.name || message.user?.id || null;
 }
