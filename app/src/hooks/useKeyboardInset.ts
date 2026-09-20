@@ -94,18 +94,16 @@ function useSafeAreaInset(side: "top" | "bottom"): number {
   return inset;
 }
 
-// 🔧 [버그 수정, 2026-09-21 웹 인스펙터 실측] useVisualViewportRect의
-// screen.height 보정은 React state(viewportRect)로는 정확한 값(844)을
-// 만들어내지만, position:fixed 요소가 실제로 그려지는 브라우저의 렌더링
-// 캔버스 자체(document.documentElement.clientHeight, getComputedStyle
-// height, 100dvh 프로브 모두 동일하게 797로 실측)는 React가 전혀 건드릴
-// 수 없는 영역이다 — 이 문서 캔버스 자체가 797로 줄어든 채 원복되지
-// 않으면, top:807 같은 좌표를 계산해 그 위치에 요소를 배치해도 이미
-// 문서의 렌더링 가능 영역(0~797) 밖이라 화면에서 잘려 보이지 않는다.
-// html/body에 인라인으로 height를 직접 강제하면(브라우저가 그 값을
-// 실제 문서 캔버스 크기로 다시 채택) 이 문제를 근본적으로 해결할 수
-// 있다 — screen.height(이 버그의 영향을 받지 않음이 실측 확인됨)를
-// 키보드가 없을 때 강제로 적용한다.
+// 🔧 [버그 수정, 2026-09-21 웹 인스펙터 실측] html/body에 screen.height를
+// 강제하는 시도(이전 버전)는 innerHeight/visualViewport.height는 정상화
+// 시켰지만(둘 다 844로 실측됨), documentElement.clientHeight(실제 가시
+// 영역, 스크롤바 제외)는 여전히 797로 남아 그 차이(47px)만큼 body
+// 전체가 스크롤 가능해지는 부작용을 낳았다(실측: scrollHeight 844,
+// clientHeight 797, 미스크롤 상태에서 47px 여백). position:fixed 요소는
+// 스크롤과 무관하게 항상 뷰포트에 고정되므로 이 스크롤 여지 자체가
+// 실질적인 문제는 아니었지만(v버튼는 육안 확인상 정상 위치), 불필요한
+// 문서 스크롤은 막아둔다 — overflow:hidden으로 body가 그 47px만큼
+// 스크롤되는 것 자체를 원천 차단한다.
 export function useDocumentHeightFix(): void {
   useEffect(() => {
     const viewport = window.visualViewport;
@@ -114,16 +112,16 @@ export function useDocumentHeightFix(): void {
     const update = () => {
       const offsetTop = viewport.offsetTop;
       if (offsetTop > 0) {
-        // 키보드가 떠 있는 동안은 강제 높이를 풀어 Stream 등 다른
-        // 로직(visualViewport 기준 fixed 컨테이너)이 정상 동작하게 둔다.
         document.documentElement.style.removeProperty("height");
         document.body.style.removeProperty("height");
+        document.documentElement.style.removeProperty("overflow");
         return;
       }
       const isLandscape = window.innerWidth > window.screen.width;
       const screenHeight = isLandscape ? window.screen.width : window.screen.height;
       document.documentElement.style.height = `${screenHeight}px`;
       document.body.style.height = `${screenHeight}px`;
+      document.documentElement.style.overflow = "hidden";
     };
 
     update();
@@ -136,6 +134,7 @@ export function useDocumentHeightFix(): void {
       window.removeEventListener("resize", update);
       document.documentElement.style.removeProperty("height");
       document.body.style.removeProperty("height");
+      document.documentElement.style.removeProperty("overflow");
     };
   }, []);
 }
