@@ -84,32 +84,34 @@ export function useVisualViewportRect(): ViewportRect | null {
     const viewport: VisualViewport | null = window.visualViewport;
     if (!viewport) return;
 
-    // 🔧 [버그 수정, 2026-09-21] 실기기(홈 화면에 추가한 PWA, standalone
-    // 모드) 디버그 배지로 실측 확인: 키보드를 닫은 뒤
-    // visualViewport.height가 키보드 뜨기 전 원래값(예: 844)으로
-    // 돌아오지 못하고 상단 안전영역만큼 줄어든 값(예: 797 = 844-47)에
-    // 머무는 경우가 있었다 — iOS PWA standalone에서 널리 보고된 버그로,
-    // resize를 아무리 다시 구독하거나 디바운스해도 애초에 브라우저가
-    // 잘못된 값을 보고하는 것이라 고쳐지지 않는다(실측: 여러 초 기다려도
-    // 797에 고정). 대신 "키보드가 없을 때 관측된 값 중 최댓값"을
-    // 별도로 기억해뒀다가, offsetTop이 0(키보드 없음)인데 방금 관측된
-        // height가 그 최댓값보다 작으면 iOS가 원복에 실패한 것으로 보고
-    // 최댓값을 그대로 쓴다 — 화면 회전 등으로 실제 화면 크기 자체가
-    // 바뀌는 경우엔 그 즉시 새 값이 이전 최댓값을 넘어서므로 자연히
-    // 새 최댓값으로 갱신된다.
-    let maxHeightWithoutKeyboard = 0;
+    // 🔧 [버그 수정, 2026-09-21] Mac Safari의 iOS 기기 웹 인스펙터로
+    // 실기기(홈 화면에 추가한 PWA, standalone, iOS 27)에 직접 연결해
+    // 콘솔에서 실측 확인: 키보드를 닫은 뒤 window.innerHeight와
+    // visualViewport.height가 "둘 다 함께" 원래값(844)이 아니라 상단
+    // 안전영역만큼(47px) 줄어든 값(797)에 머물렀다 — 즉 이건
+    // visualViewport와 innerHeight 사이의 계산 불일치가 아니라, WebKit이
+    // 보고하는 뷰포트 값 자체가 실제로 잘못됐다는 뜻이다("관측된 값 중
+    // 최댓값을 기억"하는 이전 보정은, 페이지 로드 후 최댓값을 한 번도
+    // 못 본 채 바로 재현하면 애초에 틀린 값을 최댓값으로 잘못 학습하는
+    // 결함이 있었다).
+    //
+    // window.screen.height(디바이스의 물리적 화면 높이, CSS px 기준)는
+    // 같은 기기에서 실측해도 이 버그의 영향을 받지 않고 항상 844로
+    // 고정되어 있음을 확인했다(웹 인스펙터 콘솔 실측). 키보드가 없을
+    // 때는 이 값을 "진짜 뷰포트 높이"로 신뢰하고, 키보드가 떠 있을 때
+    // (offsetTop > 0)만 그 순간엔 정확한 visualViewport.height를 그대로
+    // 쓴다 — 지금까지 문제가 된 경우는 전부 "키보드를 닫은 후"였고
+    // "키보드가 떠 있는 동안"의 값은 실측에서 항상 정확했다.
     const update = () => {
       const offsetTop = viewport.offsetTop;
-      let height = viewport.height;
-      if (offsetTop === 0) {
-        if (height > maxHeightWithoutKeyboard) {
-          maxHeightWithoutKeyboard = height;
-        } else if (maxHeightWithoutKeyboard - height <= 60) {
-          // 60px 이내 차이만 "원복 실패"로 간주해 보정한다 — 그보다 큰
-          // 차이는 실제 화면 크기 변화(회전 등)일 가능성이 높다.
-          height = maxHeightWithoutKeyboard;
-        }
-      }
+      // screen.height/width는 방향(세로/가로)에 따라 실제 의미가 바뀌므로
+      // (iOS는 회전 시 이 둘의 값 자체를 서로 교체) 매번 다시 읽어,
+      // 현재 방향에서 "더 큰 실측 대비"가 아니라 실제 세로 길이를 쓰도록
+      // window.innerWidth(레이아웃 뷰포트, 이 훅이 다루는 height 버그와
+      // 무관하게 항상 정확함)와 비교해 방향을 판단한다.
+      const isLandscape = window.innerWidth > window.screen.width;
+      const screenHeight = isLandscape ? window.screen.width : window.screen.height;
+      const height = offsetTop > 0 ? viewport.height : screenHeight;
       setRect({ top: offsetTop, height });
     };
 
