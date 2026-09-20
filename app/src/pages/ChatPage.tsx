@@ -579,6 +579,14 @@ function SwipeableMessage() {
     longPressFiredRef.current = false;
     const wrapperEl = e.currentTarget;
     clearLongPressTimer();
+    // 🔧 [버그 수정, 2026-09-20 사용자 지시: "어중간한 위치에서 꾹
+    // 누르면 이런 식으로 떠"] — 이 wrapper(onPointerDown이 걸린 최상위
+    // div)는 아바타/이름/시간까지 포함한 메시지 행 전체를 감싸므로,
+    // 그 사이 여백(어중간한 위치)을 눌러도 롱프레스 타이머가 그대로
+    // 등록돼 메뉴가 떴다. 실제 눌린 지점이 말풍선(Stream이 렌더링하는
+    // .str-chat__message-bubble) 안일 때만 타이머를 등록해, 여백에서는
+    // 아무 반응도 없게 한다.
+    if (!target.closest(".str-chat__message-bubble")) return;
     longPressTimerRef.current = setTimeout(() => {
       longPressFiredRef.current = true;
       openMessageActionsMenu(wrapperEl);
@@ -703,6 +711,11 @@ function SwipeableMessage() {
   }
 
   function handleContextMenu(e: React.MouseEvent<HTMLDivElement>) {
+    // 🔧 [버그 수정, 2026-09-20] 롱프레스와 동일하게, 말풍선 바깥
+    // 여백(아바타/이름/시간 사이)에서의 우클릭은 브라우저 기본 메뉴를
+    // 그대로 둔다 — 여백 우클릭까지 우리 메뉴가 뜨면 롱프레스와
+    // 일관성이 깨진다.
+    if (!(e.target as Element).closest(".str-chat__message-bubble")) return;
     // 브라우저 기본 우클릭 메뉴(복사/검사 등) 대신 우리 액션 메뉴를 연다.
     e.preventDefault();
     clearLongPressTimer();
