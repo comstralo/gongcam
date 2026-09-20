@@ -1288,7 +1288,7 @@ export function ChatPage({ visible, tabBarCollapsed }: { visible: boolean; tabBa
           className="fixed left-2 z-50 rounded bg-black/80 p-1.5 font-mono text-[10px] leading-tight text-white"
           style={{
             top: window.visualViewport
-              ? window.visualViewport.offsetTop + window.visualViewport.height - 90
+              ? window.visualViewport.offsetTop + window.visualViewport.height - 130
               : 56,
           }}
         >
