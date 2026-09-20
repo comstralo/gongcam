@@ -73,6 +73,7 @@ export function AppShell({
   const tabBarCollapsed = collapsibleTabBar?.collapsed ?? false;
   const collapseButtonObserverRef = useRef<ResizeObserver | null>(null);
   const collapseButtonResizeListenerRef = useRef<(() => void) | null>(null);
+  const collapseButtonCleanupRef = useRef<(() => void) | null>(null);
 
   // 🔧 [버그 수정, 2026-09-20 사용자 지시: "1번 사진은 초기 접힌
   // 상태인데 저렇게 영역이랑 겹치게 나와 ... 폈다가 다시 접으면 2번
@@ -102,17 +103,33 @@ export function AppShell({
         window.removeEventListener("resize", collapseButtonResizeListenerRef.current);
         collapseButtonResizeListenerRef.current = null;
       }
+      collapseButtonCleanupRef.current?.();
+      collapseButtonCleanupRef.current = null;
       if (!button || !onBarHeightChange) return;
       const report = () => {
         const rect = button.getBoundingClientRect();
         onBarHeightChange(window.innerHeight - rect.top);
       };
       report();
+      // 🔧 [버그 수정, 2026-09-21 사용자 지시: "채팅 박스가 줄어들어버리는게
+      // 문제 같은데"] — 키보드가 닫히며 이 버튼이 막 다시 마운트되는
+      // 순간엔 iOS Safari의 키보드 축소 애니메이션이 아직 끝나지 않아
+      // window.innerHeight/getBoundingClientRect 값이 최종 안정 상태가
+      // 아닐 수 있다(실측: 채팅 박스 height가 tabBarHeight를 실제보다
+      // 크게 반영해 그만큼 작아짐). 마운트 직후 한 번, 그리고 키보드
+      // 애니메이션이 보통 끝나는 시점(약 300ms) 이후 한 번 더 재측정해,
+      // 애니메이션 도중 값을 캡처했더라도 곧 안정값으로 덮어쓰이게 한다.
+      const raf = requestAnimationFrame(report);
+      const settleTimer = setTimeout(report, 300);
       const observer = new ResizeObserver(report);
       observer.observe(button);
       collapseButtonObserverRef.current = observer;
       collapseButtonResizeListenerRef.current = report;
       window.addEventListener("resize", report);
+      collapseButtonCleanupRef.current = () => {
+        cancelAnimationFrame(raf);
+        clearTimeout(settleTimer);
+      };
     },
     [onBarHeightChange]
   );
