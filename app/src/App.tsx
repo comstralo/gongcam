@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { HashRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
 import { LayoutDashboard, ScanLine, Bell, Settings, ShieldCheck, MessageCircle } from "lucide-react";
 import { AuthProvider } from "@/lib/auth/AuthContext";
@@ -44,6 +44,11 @@ function MainViews() {
     "/admin": false,
   });
   if (MAIN_VIEWS.includes(path)) everVisited.current[path] = true;
+  // 🔧 [사용자 지시, 2026-09-20] "채팅 화면에서는 하단 네비바를 숨김
+  // 처리 할 수 있어?" — 접힘 상태를 AppShell(탭바 자체를 그리는 쪽)과
+  // ChatPage(탭바가 접힌 만큼 자기 높이를 늘려야 하는 쪽) 둘 다 알아야
+  // 해서, 둘의 공통 부모인 여기서 소유한다.
+  const [chatTabBarCollapsed, setChatTabBarCollapsed] = useState(false);
 
   if (!session) return <Navigate to="/login" replace />;
   if (!MAIN_VIEWS.includes(path)) return <Navigate to="/" replace />;
@@ -81,8 +86,12 @@ function MainViews() {
       </div>
       <div hidden={path !== "/chat"} className="animate-tab-enter">
         {everVisited.current["/chat"] && (
-          <AppShell title="채팅" titleIcon={MessageCircle}>
-            <ChatPage visible={path === "/chat"} />
+          <AppShell
+            title="채팅"
+            titleIcon={MessageCircle}
+            collapsibleTabBar={{ collapsed: chatTabBarCollapsed, onCollapsedChange: setChatTabBarCollapsed }}
+          >
+            <ChatPage visible={path === "/chat"} tabBarCollapsed={chatTabBarCollapsed} />
           </AppShell>
         )}
       </div>

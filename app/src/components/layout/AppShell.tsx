@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { TabBar } from "./TabBar";
 import { ThemeToggleButton } from "./ThemeToggleButton";
 import { PeriodAlarmToggleButton } from "./PeriodAlarmToggleButton";
@@ -23,10 +24,30 @@ type AppShellProps = {
    * 사용하지 않는다.
    */
   fitToScreen?: boolean;
+  /**
+   * 🔧 [사용자 지시, 2026-09-20] "채팅 화면에서는 하단 네비바를 숨김
+   * 처리 할 수 있어? 접힌 상태를 아이콘으로 표시하고 누르면 다시 복구
+   * 되도록" — 채팅처럼 메시지 입력창까지 세로 공간이 빠듯한 화면에서만
+   * 켜는 옵트인. 지정하면 TabBar 대신 작게 접힌 원형 토글 버튼(위쪽
+   * 화살표) 하나만 하단에 남기고, 누르면 TabBar가 다시 펼쳐진다.
+   * 상태 자체는 App.tsx(MainViews)가 소유한다 — ChatPage도 이 접힘
+   * 여부에 맞춰 자기 높이 계산을 함께 조정해야 해서(탭바가 접힌 만큼
+   * 채팅 영역이 더 커져야 자연스러움), 두 컴포넌트가 형제 관계인 이상
+   * 상태를 여기 로컬로 두면 공유할 방법이 없다.
+   */
+  collapsibleTabBar?: { collapsed: boolean; onCollapsedChange: (collapsed: boolean) => void };
 };
 
-export function AppShell({ children, title, titleIcon: TitleIcon, hideEyebrow, fitToScreen }: AppShellProps) {
+export function AppShell({
+  children,
+  title,
+  titleIcon: TitleIcon,
+  hideEyebrow,
+  fitToScreen,
+  collapsibleTabBar,
+}: AppShellProps) {
   const { session } = useAuth();
+  const tabBarCollapsed = collapsibleTabBar?.collapsed ?? false;
 
   return (
     <div
@@ -61,7 +82,11 @@ export function AppShell({ children, title, titleIcon: TitleIcon, hideEyebrow, f
       style={
         {
           paddingBottom:
-            session && !fitToScreen ? "calc(32px + 64px + env(safe-area-inset-bottom, 0px))" : undefined,
+            session && !fitToScreen
+              ? collapsibleTabBar && tabBarCollapsed
+                ? "calc(32px + 40px + env(safe-area-inset-bottom, 0px))"
+                : "calc(32px + 64px + env(safe-area-inset-bottom, 0px))"
+              : undefined,
           "--shell-pb-portrait": "calc(32px + 64px + env(safe-area-inset-bottom, 0px))",
         } as CSSProperties
       }
@@ -95,9 +120,43 @@ export function AppShell({ children, title, titleIcon: TitleIcon, hideEyebrow, f
         </header>
       )}
       {children}
-      <div className={cn(fitToScreen && "mobile-landscape:hidden")}>
-        <TabBar />
-      </div>
+      {collapsibleTabBar && tabBarCollapsed ? (
+        // 🔧 [사용자 지시, 2026-09-20] "접힌 상태를 아이콘으로 표시하고
+        // 누르면 다시 복구되도록" — TabBar 자리를 완전히 비우지 않고
+        // 같은 위치(fixed bottom)에 작은 원형 버튼 하나만 남겨, 탭바가
+        // "숨겨졌을 뿐 여전히 여기 있다"는 걸 알 수 있게 한다.
+        <button
+          type="button"
+          onClick={() => collapsibleTabBar.onCollapsedChange(false)}
+          aria-label="하단 탭 메뉴 펼치기"
+          title="하단 탭 메뉴 펼치기"
+          // 🔧 [버그 수정, 2026-09-20 사용자 지시: "탭바는 박스 바깥으로
+          // 빼"] — 채팅 박스 높이 계산(ChatPage.tsx의 h-[calc(100dvh-
+          // 7.5rem)])이 이 버튼의 실제 차지 공간(size-9=36px + 여백
+          // 6px=42px)보다 여유가 없어, 버튼이 박스 하단 테두리 위에 약
+          // 10px 겹쳐 떠 있었다(실측: 박스 bottom=768px인데 버튼
+          // top=758px). 여백을 버튼 높이(36px)보다 넉넉하게 키워 박스
+          // 테두리와 완전히 분리한다.
+          className="fixed inset-x-0 bottom-0 z-20 mx-auto mb-[calc(14px+env(safe-area-inset-bottom,0px))] flex size-9 items-center justify-center rounded-full border bg-card text-muted-foreground shadow-lift"
+        >
+          <ChevronUp className="size-4.5" strokeWidth={ICON_STROKE.default} />
+        </button>
+      ) : (
+        <div className={cn("relative", fitToScreen && "mobile-landscape:hidden")}>
+          <TabBar />
+          {collapsibleTabBar && (
+            <button
+              type="button"
+              onClick={() => collapsibleTabBar.onCollapsedChange(true)}
+              aria-label="하단 탭 메뉴 접기"
+              title="하단 탭 메뉴 접기"
+              className="absolute inset-x-0 -top-3 mx-auto flex size-6 items-center justify-center rounded-full border bg-card text-muted-foreground shadow-lift"
+            >
+              <ChevronDown className="size-3.5" strokeWidth={ICON_STROKE.default} />
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

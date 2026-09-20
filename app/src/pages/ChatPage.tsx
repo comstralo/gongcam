@@ -1017,7 +1017,7 @@ function AdminChatArea({
 // 인스턴스를 그대로 반환하는 싱글턴 팩토리라 실제로는 안전망에 가깝다).
 let chatClient: StreamChat | null = null;
 
-export function ChatPage({ visible }: { visible: boolean }) {
+export function ChatPage({ visible, tabBarCollapsed }: { visible: boolean; tabBarCollapsed?: boolean }) {
   const { call } = useApi();
   const { isAdmin } = useAuth();
   const { dark } = useTheme();
@@ -1171,8 +1171,23 @@ export function ChatPage({ visible }: { visible: boolean }) {
   // 8.5rem(136px)로는 41px 부족해, 채팅 박스 하단이 탭바 밑으로 41px
   // 파고들어 메시지 입력창이 탭바에 가려 보였다 — 11.5rem(184px)으로
   // 조정해 겹침 없이 정확히 맞춘다.
+  // 🔧 [사용자 지시, 2026-09-20] "채팅 화면에서는 하단 네비바를 숨김
+  // 처리 할 수 있어?" — 탭바(실높이 89px)가 접히면 AppShell이 그 자리에
+  // 작은 펼치기 버튼(36px 버튼 + 14px 여백 = 50px)을 대신 그린다. 이
+  // 높이 계산은 그 값과 별개로 고정된 매직넘버라 처음엔 탭바가 접혀도
+  // 채팅 박스가 그만큼 커지지 않아 빈 공간만 아래에 남았고, AppShell의
+  // paddingBottom 차이(24px)만 빼자 이번엔 반대로 펼치기 버튼이 박스
+  // 테두리에 겹쳐버렸다(실측: 박스 bottom=768px, 버튼 top=750px로
+  // 18px 겹침) — 절약된 공간(89px-50px=39px) 전부가 아니라 그만큼만
+  // 정확히 빼야 버튼이 박스 바깥에 온전히 놓인다.
   return (
-    <div hidden={!visible} className="flex h-[calc(100dvh-11.5rem)] w-full page-content flex-col overflow-hidden rounded-lg border">
+    <div
+      hidden={!visible}
+      className={cn(
+        "flex w-full page-content flex-col overflow-hidden rounded-lg border",
+        tabBarCollapsed ? "h-[calc(100dvh-8.7rem)]" : "h-[calc(100dvh-11.5rem)]"
+      )}
+    >
       <Chat client={client} theme={dark ? "str-chat__theme-dark" : "str-chat__theme-light"}>
         {/* 🔧 [사용자 지시] "상대방 아이콘을 사람 모양을 한 그림 형태로" —
             ChannelList(채널 목록)와 Channel(대화창) 둘 다 이 컴포넌트
