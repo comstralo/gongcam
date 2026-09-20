@@ -583,10 +583,15 @@ function SwipeableMessage() {
     // 누르면 이런 식으로 떠"] — 이 wrapper(onPointerDown이 걸린 최상위
     // div)는 아바타/이름/시간까지 포함한 메시지 행 전체를 감싸므로,
     // 그 사이 여백(어중간한 위치)을 눌러도 롱프레스 타이머가 그대로
-    // 등록돼 메뉴가 떴다. 실제 눌린 지점이 말풍선(Stream이 렌더링하는
-    // .str-chat__message-bubble) 안일 때만 타이머를 등록해, 여백에서는
-    // 아무 반응도 없게 한다.
-    if (!target.closest(".str-chat__message-bubble")) return;
+    // 등록돼 메뉴가 떴다. 처음엔 .str-chat__message-bubble 안인지만
+    // 확인했는데, 인용 답장+사진처럼 여러 콘텐츠가 한 버블 안에 세로로
+    // 쌓인 경우(Stream 소스 확인: QuotedMessage와 Attachment가 같은
+    // MessageBubble의 형제로 렌더링됨) 그 사이 빈 여백도 여전히 버블
+    // "안"이라 인정되어 재발했다(사용자 재보고: "삭제된 메시지 아래
+    // 메시지에 대고 한거야" — 인용 카드와 사진 사이 여백). 실제 콘텐츠
+    // 요소(텍스트, 첨부 이미지/파일, 인용 카드) 위일 때만 인정한다.
+    if (!target.closest(".str-chat__message-text, .str-chat__attachment, .str-chat__quoted-message-preview"))
+      return;
     longPressTimerRef.current = setTimeout(() => {
       longPressFiredRef.current = true;
       openMessageActionsMenu(wrapperEl);
@@ -711,11 +716,15 @@ function SwipeableMessage() {
   }
 
   function handleContextMenu(e: React.MouseEvent<HTMLDivElement>) {
-    // 🔧 [버그 수정, 2026-09-20] 롱프레스와 동일하게, 말풍선 바깥
-    // 여백(아바타/이름/시간 사이)에서의 우클릭은 브라우저 기본 메뉴를
-    // 그대로 둔다 — 여백 우클릭까지 우리 메뉴가 뜨면 롱프레스와
-    // 일관성이 깨진다.
-    if (!(e.target as Element).closest(".str-chat__message-bubble")) return;
+    // 🔧 [버그 수정, 2026-09-20] 롱프레스와 동일하게, 실제 콘텐츠(텍스트/
+    // 첨부/인용 카드) 바깥에서의 우클릭은 브라우저 기본 메뉴를 그대로
+    // 둔다 — 자세한 경위는 handlePointerDown의 동일 가드 주석 참고.
+    if (
+      !(e.target as Element).closest(
+        ".str-chat__message-text, .str-chat__attachment, .str-chat__quoted-message-preview"
+      )
+    )
+      return;
     // 브라우저 기본 우클릭 메뉴(복사/검사 등) 대신 우리 액션 메뉴를 연다.
     e.preventDefault();
     clearLongPressTimer();
@@ -899,19 +908,25 @@ function SwipeableMessage() {
             302행 근처) 바깥, SwipeableMessage가 만든 flex row의 첫
             항목이라 그 패딩의 영향을 전혀 받지 않는다. 내 메시지 쪽
             바깥 여백(padding-inline-end: 8px)과 대칭이 되도록 ms-2(8px)
-            를 명시적으로 준다. */}
+            를 명시적으로 준다.
+            🔧 [버그 수정, 2026-09-20 사용자 재보고: "여전히 아이콘과
+            이름, 말풍선 거리가 멀어. 카카오톡을 참고해서"] — me-2.5
+            (10px)가 카카오톡(아바타-말풍선 간격 약 6px)보다 눈에 띄게
+            넓었다. me-1.5(6px)로 좁힌다 — 그룹 중간/마지막 메시지의
+            빈 아바타 자리(바로 아래)도 버블 시작 위치가 그룹 첫
+            메시지와 어긋나지 않도록 동일하게 맞춘다. */}
         {!isMyMessage() &&
           (senderName ? (
             // 🔧 [버그 수정] 부모 row가 items-end라 self 지정이 없으면
             // 아바타도 row 바닥(버블 위치)에 맞춰져 이름과 나란해질 수
             // 없었다 — self-start로 이 아바타만 상단 정렬해 이름과
             // 나란한 카카오톡 구조를 만든다.
-            <PersonAvatar size="md" className="ms-2 me-2.5 shrink-0 self-start" />
+            <PersonAvatar size="md" className="ms-2 me-1.5 shrink-0 self-start" />
           ) : (
             // 그룹 중간/마지막 메시지는 카카오톡처럼 아바타 자리를
             // 비워 버블 시작 위치를 그룹 첫 메시지와 맞춘다(아바타
-            // 폭 32px + gap 10px).
-            <div className="ms-2 me-2.5 w-8 shrink-0" />
+            // 폭 32px + gap 6px).
+            <div className="ms-2 me-1.5 w-8 shrink-0" />
           ))}
         <div className="min-w-0">
           {senderName && (
