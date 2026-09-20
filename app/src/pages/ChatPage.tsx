@@ -1297,6 +1297,8 @@ export function ChatPage({ visible, tabBarCollapsed }: { visible: boolean; tabBa
           <div>base: {keyboardInsetDebug.baselineHeight}</div>
           <div>inH: {keyboardInsetDebug.innerHeight}</div>
           <div>dvh: {keyboardInsetDebug.dvhPx}</div>
+          <div>offT: {keyboardInsetDebug.offsetTop}</div>
+          <div>pgY: {keyboardInsetDebug.pageYOffset}</div>
         </div>
       )}
       {isAdmin && <ChatListHeader view={sidebarView} onViewChange={setSidebarView} />}

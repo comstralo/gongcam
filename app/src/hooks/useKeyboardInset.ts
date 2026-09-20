@@ -26,6 +26,8 @@ export type KeyboardInsetDebug = {
   baselineHeight: number;
   innerHeight: number;
   dvhPx: number;
+  offsetTop: number;
+  pageYOffset: number;
 };
 
 export function useKeyboardInset() {
@@ -83,6 +85,8 @@ export function useKeyboardInset() {
         baselineHeight: Math.round(baselineHeight),
         innerHeight: window.innerHeight,
         dvhPx: Math.round(probe.getBoundingClientRect().height),
+        offsetTop: Math.round(viewport.offsetTop),
+        pageYOffset: Math.round(window.pageYOffset),
       });
     };
 
