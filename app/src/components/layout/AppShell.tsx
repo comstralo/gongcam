@@ -213,7 +213,15 @@ export function AppShell({
               // 문자만 남겨(히트박스는 실제 접근성을 위해 padding으로
               // 충분히 확보하되 시각적으로는 아이콘만 보이게) 차지하는
               // 실제 화면 높이를 최소화한다.
-              className="fixed inset-x-0 bottom-0 z-20 mx-auto flex justify-center pb-[calc(4px+env(safe-area-inset-bottom,0px))] text-muted-foreground"
+              // 🔧 [사용자 지시, 2026-09-20] "^ 기호가 좀 더 아래에
+              // 위치하도록 해줘. 여백의 중간쯤에?" — bottom-0(화면 맨
+              // 끝에 딱 붙임)이라 아이콘이 항상 여백 구간 맨 위쪽에
+              // 치우쳐 보였다. 이 버튼 아래로 남는 순수 여백은 홈
+              // 인디케이터 안전영역(env(safe-area-inset-bottom))인데,
+              // bottom을 그 절반만큼 올려 아이콘이 그 여백 구간의
+              // 세로 중앙 부근에 오도록 한다.
+              className="fixed inset-x-0 z-20 mx-auto flex justify-center text-muted-foreground"
+              style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) / 2)" }}
             >
               {/* 🔧 [사용자 지시, 2026-09-20] "네비바가 접혔다는걸
                   알도록 힌트 효과를 줄 수 있을까?" — 버튼을 최소화하면서
