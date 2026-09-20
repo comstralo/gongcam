@@ -6,7 +6,7 @@ import { ThemeToggleButton } from "./ThemeToggleButton";
 import { PeriodAlarmToggleButton } from "./PeriodAlarmToggleButton";
 import { LinksHeaderButton } from "./LinksHeaderButton";
 import { useAuth } from "@/lib/auth/useAuth";
-import { useVisualViewportRect } from "@/hooks/useKeyboardInset";
+import { useVisualViewportRect, useSafeAreaInsetBottom } from "@/hooks/useKeyboardInset";
 import { cn, ICON_STROKE } from "@/lib/utils";
 
 type AppShellProps = {
@@ -72,77 +72,48 @@ export function AppShell({
   const { session } = useAuth();
   const tabBarCollapsed = collapsibleTabBar?.collapsed ?? false;
   const collapseButtonObserverRef = useRef<ResizeObserver | null>(null);
-  const collapseButtonResizeListenerRef = useRef<(() => void) | null>(null);
-  const collapseButtonCleanupRef = useRef<(() => void) | null>(null);
-  // 🔧 [버그 수정, 2026-09-21 사용자 재보고: "여전히 여백이 생긴다"] —
-  // 디버그 배지 실측으로 확인: 키보드를 닫은 뒤 window.innerHeight가
-  // 상단 안전영역만큼(예: 47px) 줄어든 채 원복되지 않는 경우가 있는데
-  // (interactive-widget=resizes-content를 넣어도 이 WebView에서는 여전히
-  // 발생), collapseButtonRef의 report()가 바로 이 window.innerHeight로
-  // "화면 맨 아래 - 버튼 위치"를 계산해 tabBarHeight를 실제보다 47px
-  // 작게 보고했다. useVisualViewportRect가 이미 이 문제를 보정해두므로
-  // (관측된 최댓값을 기억해 원복 실패를 감지), window.innerHeight
-  // 대신 이 훅의 최신값을 report()에서 읽을 수 있도록 ref에 담아둔다.
-  const viewportRectRef = useRef<{ top: number; height: number } | null>(null);
 
-  // 🔧 [버그 수정, 2026-09-20 사용자 지시: "1번 사진은 초기 접힌
-  // 상태인데 저렇게 영역이랑 겹치게 나와 ... 폈다가 다시 접으면 2번
-  // 사진처럼 돼"] — 예전엔 useRef + useEffect([onBarHeightChange])
-  // 조합이었는데, 이 버튼은 tabBarCollapsed가 바뀔 때마다(TabBar ↔
-  // 버튼 전환) 통째로 마운트/언마운트되는 별개의 DOM이라 매번 새로
-  // 측정을 시작해야 한다 — 하지만 그 effect의 의존성 배열에
-  // tabBarCollapsed가 없어 버튼이 새로 마운트돼도 재실행되지 않았고,
-  // 이전 버튼(이미 사라짐)의 ResizeObserver만 계속 남아 있거나
-  // 최초 마운트 시점의 값이 갱신 안 된 채 남는 등 타이밍이 어긋났다.
-  // 콜백 ref로 바꾸면 React가 이 버튼이 마운트/언마운트될 때마다
-  // (즉 tabBarCollapsed가 바뀔 때마다) 정확히 호출해주므로, 매번
-  // 확실하게 새로 측정을 시작하고 이전 구독을 정리할 수 있다.
+  // 🔧 [버그 수정, 2026-09-21 사용자 지시: "정석적인 방법으로,
+  // 땜빵질하지 말고 확실한 해결책을 갖고와"] — Mac Safari의 iOS 기기
+  // 웹 인스펙터로 실기기에 직접 연결해 실측한 결과, "화면 맨 아래
+  // (window.innerHeight) - 버튼 위치(rect.top)"로 tabBarHeight를
+  // 역산하는 이전 방식 자체가 근본적으로 잘못됐음을 확인했다:
+  // window.innerHeight/visualViewport.height는 iOS PWA에서 키보드를
+  // 닫은 뒤 안전영역만큼 원복 실패하는 경우가 있고(useVisualViewportRect
+  // 참고), 설령 그 값을 useVisualViewportRect로 보정해도 "버튼의 실제
+  // DOM 위치(rect.top)"는 그 보정 이전 시점에 낡은 뷰포트 기준으로
+  // 그려진 채 남아 있어 계산이 다시 어긋났다(실측: tabBarHeight가
+  // 정상치보다 정확히 안전영역만큼 커짐 — 두 낡은 값과 새 값이 섞여
+  // 상쇄되지 않고 오히려 어긋남).
   //
-  // button.getBoundingClientRect().height는 버튼 자신의 렌더링
-  // 높이(아이콘 크기 정도)만 잴 뿐, 이 버튼을 화면 최하단에서 띄워
-  // 올린 bottom 오프셋(env(safe-area-inset-bottom)/2, "여백 중간에
-  // 오도록" 조정 때 추가됨)은 전혀 반영하지 못한다 — 화면 맨 아래
-  // (window.innerHeight)부터 버튼 "위쪽" 경계까지의 거리를 재면, 버튼
-  // 높이와 그 아래 남는 오프셋 여백을 모두 포함한 "탭바 영역이 실제로
-  // 차지하는 총 높이"가 정확히 나온다.
+  // 이 버튼은 애초에 bottom: calc(env(safe-area-inset-bottom)/2)로
+  // 완전히 CSS만으로 고정되는 요소라, "뷰포트 전체에서 버튼이 어디
+  // 있는지"를 DOM에서 역산할 필요가 전혀 없다 — 버튼 자신의 렌더링
+  // 높이(ResizeObserver로 측정, 콘텐츠 크기라 뷰포트 값과 무관하게
+  // 항상 정확함)에 안전영역의 절반(버튼을 띄운 bottom 오프셋)을 더하면
+  // 뷰포트 높이를 전혀 참조하지 않고도 항상 정확한 총 높이가 나온다.
+  const safeAreaInsetBottom = useSafeAreaInsetBottom();
+  const safeAreaInsetBottomRef = useRef(safeAreaInsetBottom);
+  const collapseButtonResizeListenerRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    safeAreaInsetBottomRef.current = safeAreaInsetBottom;
+    collapseButtonResizeListenerRef.current?.();
+  }, [safeAreaInsetBottom]);
+
   const collapseButtonRef = useCallback(
     (button: HTMLButtonElement | null) => {
       collapseButtonObserverRef.current?.disconnect();
       collapseButtonObserverRef.current = null;
-      if (collapseButtonResizeListenerRef.current) {
-        window.removeEventListener("resize", collapseButtonResizeListenerRef.current);
-        collapseButtonResizeListenerRef.current = null;
-      }
-      collapseButtonCleanupRef.current?.();
-      collapseButtonCleanupRef.current = null;
+      collapseButtonResizeListenerRef.current = null;
       if (!button || !onBarHeightChange) return;
       const report = () => {
-        const rect = button.getBoundingClientRect();
-        const rectBasedInnerHeight = viewportRectRef.current
-          ? viewportRectRef.current.top + viewportRectRef.current.height
-          : window.innerHeight;
-        onBarHeightChange(rectBasedInnerHeight - rect.top);
+        onBarHeightChange(button.getBoundingClientRect().height + safeAreaInsetBottomRef.current / 2);
       };
       report();
-      // 🔧 [버그 수정, 2026-09-21 사용자 지시: "채팅 박스가 줄어들어버리는게
-      // 문제 같은데"] — 키보드가 닫히며 이 버튼이 막 다시 마운트되는
-      // 순간엔 iOS Safari의 키보드 축소 애니메이션이 아직 끝나지 않아
-      // window.innerHeight/getBoundingClientRect 값이 최종 안정 상태가
-      // 아닐 수 있다(실측: 채팅 박스 height가 tabBarHeight를 실제보다
-      // 크게 반영해 그만큼 작아짐). 마운트 직후 한 번, 그리고 키보드
-      // 애니메이션이 보통 끝나는 시점(약 300ms) 이후 한 번 더 재측정해,
-      // 애니메이션 도중 값을 캡처했더라도 곧 안정값으로 덮어쓰이게 한다.
-      const raf = requestAnimationFrame(report);
-      const settleTimer = setTimeout(report, 300);
       const observer = new ResizeObserver(report);
       observer.observe(button);
       collapseButtonObserverRef.current = observer;
       collapseButtonResizeListenerRef.current = report;
-      window.addEventListener("resize", report);
-      collapseButtonCleanupRef.current = () => {
-        cancelAnimationFrame(raf);
-        clearTimeout(settleTimer);
-      };
     },
     [onBarHeightChange]
   );
@@ -159,14 +130,6 @@ export function AppShell({
   // visualViewport 좌표를 직접 계산해, 키보드가 뜨면 확실히 화면
   // 밖으로 사라지고 없을 때는 확실히 화면 최하단에 붙게 한다.
   const viewportRect = useVisualViewportRect();
-  // viewportRect가 갱신될 때마다(예: 키보드가 닫히며 innerHeight 원복
-  // 실패가 보정될 때) ref에 최신값을 반영하고 collapseButtonRef의
-  // report()를 다시 실행해 tabBarHeight도 그 즉시 새 값으로 갱신한다.
-  useEffect(() => {
-    viewportRectRef.current = viewportRect;
-    collapseButtonResizeListenerRef.current?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewportRect?.top, viewportRect?.height]);
 
   return (
     <div

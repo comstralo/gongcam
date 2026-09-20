@@ -42,6 +42,23 @@ export function useSafeAreaInsetTop(): number {
   return useSafeAreaInset("top");
 }
 
+// 🔧 [버그 수정, 2026-09-21] AppShell의 v버튼(탭바 접힘 힌트) 높이 계산이
+// "화면 맨 아래(window.innerHeight) - 버튼 위치(rect.top)"처럼 뷰포트
+// 높이값에 의존하는 DOM 측정 방식을 썼는데, 이 값 자체가 iOS PWA에서
+// 키보드를 닫은 뒤 원복 실패로 흔들리는 문제(useVisualViewportRect 주석
+// 참고)에 계속 발목 잡혔다 — 뷰포트 높이가 보정되어도, 그 보정이
+// 반영되기 "전"에 이미 측정해둔 버튼의 화면상 위치(rect.top)가 낡은
+// 채로 남아 다시 어긋났다(실측: tabBarHeight가 정상치보다 정확히
+// 안전영역만큼 커짐). 애초에 이 버튼은 bottom:
+// calc(env(safe-area-inset-bottom)/2)로 완전히 CSS만으로 고정되는
+// 요소라, "화면 어디에 있는지"를 DOM에서 역산할 필요가 없다 — 버튼
+// 자신의 렌더링 높이(콘텐츠 크기, 뷰포트와 무관)와 이 안전영역 값만
+// 알면 총 높이(버튼 높이 + 그 아래 남는 여백)를 뷰포트 높이 참조 없이
+// 직접 계산할 수 있다.
+export function useSafeAreaInsetBottom(): number {
+  return useSafeAreaInset("bottom");
+}
+
 // 🔧 [버그 수정, 2026-09-20 사용자 지시: "네비바 하단에 여백이
 // 가득한데"] — 하단도 같은 문제였다: TabBar/AppShell 여러 곳에 흩어진
 // 하드코딩 여백(22px 등)이 전부 "env(safe-area-inset-bottom)이 항상
