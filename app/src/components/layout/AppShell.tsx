@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronUp } from "lucide-react";
 import { TabBar } from "./TabBar";
 import { ThemeToggleButton } from "./ThemeToggleButton";
 import { PeriodAlarmToggleButton } from "./PeriodAlarmToggleButton";
@@ -130,31 +130,36 @@ export function AppShell({
           onClick={() => collapsibleTabBar.onCollapsedChange(false)}
           aria-label="하단 탭 메뉴 펼치기"
           title="하단 탭 메뉴 펼치기"
-          // 🔧 [버그 수정, 2026-09-20 사용자 지시: "탭바는 박스 바깥으로
-          // 빼"] — 채팅 박스 높이 계산(ChatPage.tsx의 h-[calc(100dvh-
-          // 7.5rem)])이 이 버튼의 실제 차지 공간(size-9=36px + 여백
-          // 6px=42px)보다 여유가 없어, 버튼이 박스 하단 테두리 위에 약
-          // 10px 겹쳐 떠 있었다(실측: 박스 bottom=768px인데 버튼
-          // top=758px). 여백을 버튼 높이(36px)보다 넉넉하게 키워 박스
-          // 테두리와 완전히 분리한다.
-          className="fixed inset-x-0 bottom-0 z-20 mx-auto mb-[calc(14px+env(safe-area-inset-bottom,0px))] flex size-9 items-center justify-center rounded-full border bg-card text-muted-foreground shadow-lift"
+          // 🔧 [사용자 지시, 2026-09-20] "기호를 좀 더 아래로 내리고
+          // 원형 아이콘 말고 ^ 기호로만 구현해줘 — 버튼이 커서 네비바를
+          // 숨긴 의미가 퇴색되고 있어" — 이전엔 원형 배경(size-9,
+          // border+bg-card+shadow-lift)을 가진 버튼이라 그 배경 자체가
+          // 차지하는 공간(36px + 상하 여백)이 작지 않아, "탭바를 접어
+          // 채팅 영역을 넓힌다"는 목적과 상충됐다. 배경/테두리/그림자를
+          // 모두 없애고 순수 셰브런 문자만 남겨(히트박스는 실제 접근성을
+          // 위해 padding으로 충분히 확보하되 시각적으로는 아이콘만
+          // 보이게) 차지하는 실제 화면 높이를 최소화한다. 여백도 4px로
+          // 줄여 화면 최하단에 바짝 붙인다.
+          className="fixed inset-x-0 bottom-0 z-20 mx-auto flex justify-center pb-[calc(4px+env(safe-area-inset-bottom,0px))] text-muted-foreground"
         >
-          <ChevronUp className="size-4.5" strokeWidth={ICON_STROKE.default} />
+          {/* 🔧 [사용자 지시, 2026-09-20] "네비바가 접혔다는걸 알도록
+              힌트 효과를 줄 수 있을까?" — 버튼을 최소화하면서 옅어진
+              존재감을 보완한다. 이 button 엘리먼트 자체는 tabBarCollapsed
+              분기(TabBar와 삼항으로 나뉨)가 true가 될 때마다 새로
+              마운트되므로, 별도 상태 없이 이 아이콘의 animate-
+              collapse-hint 클래스가 접을 때마다 자동으로 재생된다(유한
+              반복이라 몇 번 튕긴 뒤 스스로 멈춘다 — index.css 참고). */}
+          <ChevronUp className="size-5 animate-collapse-hint" strokeWidth={ICON_STROKE.default} />
         </button>
       ) : (
-        <div className={cn("relative", fitToScreen && "mobile-landscape:hidden")}>
-          <TabBar />
-          {collapsibleTabBar && (
-            <button
-              type="button"
-              onClick={() => collapsibleTabBar.onCollapsedChange(true)}
-              aria-label="하단 탭 메뉴 접기"
-              title="하단 탭 메뉴 접기"
-              className="absolute inset-x-0 -top-3 mx-auto flex size-6 items-center justify-center rounded-full border bg-card text-muted-foreground shadow-lift"
-            >
-              <ChevronDown className="size-3.5" strokeWidth={ICON_STROKE.default} />
-            </button>
-          )}
+        <div className={cn(fitToScreen && "mobile-landscape:hidden")}>
+          <TabBar
+            collapseButton={
+              collapsibleTabBar && {
+                onClick: () => collapsibleTabBar.onCollapsedChange(true),
+              }
+            }
+          />
         </div>
       )}
     </div>

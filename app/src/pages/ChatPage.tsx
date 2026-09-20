@@ -1185,13 +1185,13 @@ export function ChatPage({ visible, tabBarCollapsed }: { visible: boolean; tabBa
   // 조정해 겹침 없이 정확히 맞춘다.
   // 🔧 [사용자 지시, 2026-09-20] "채팅 화면에서는 하단 네비바를 숨김
   // 처리 할 수 있어?" — 탭바(실높이 89px)가 접히면 AppShell이 그 자리에
-  // 작은 펼치기 버튼(36px 버튼 + 14px 여백 = 50px)을 대신 그린다. 이
-  // 높이 계산은 그 값과 별개로 고정된 매직넘버라 처음엔 탭바가 접혀도
-  // 채팅 박스가 그만큼 커지지 않아 빈 공간만 아래에 남았고, AppShell의
-  // paddingBottom 차이(24px)만 빼자 이번엔 반대로 펼치기 버튼이 박스
-  // 테두리에 겹쳐버렸다(실측: 박스 bottom=768px, 버튼 top=750px로
-  // 18px 겹침) — 절약된 공간(89px-50px=39px) 전부가 아니라 그만큼만
-  // 정확히 빼야 버튼이 박스 바깥에 온전히 놓인다.
+  // 작은 펼치기 버튼을 대신 그린다. 이 높이 계산은 그 값과 별개로
+  // 고정된 매직넘버라 버튼의 실제 크기가 바뀔 때마다 재보정이 필요했다
+  // (실측 기반 값). 🔧 [사용자 지시] "버튼이 커서 네비바를 숨긴 의미가
+  // 퇴색된다"는 지적으로 AppShell의 펼치기 버튼을 원형 배경 없는 순수
+  // ^ 문자(아이콘 20px + 여백 4px ≈ 24px)로 축소하며 7.5rem(120px)으로
+  // 다시 낮췄다(실측: 축소 전 8.7rem 기준으로는 박스와 버튼 사이 27px
+  // 여백이 남았음).
   // 🔧 [사용자 지시, 2026-09-20] "채팅목록, 회원목록을 박스에서 아예
   // 빼라니까? 다른 메뉴처럼" — 이전엔 AdminChatArea(Chat 안쪽) 안에서
   // ChatListHeader를 그렸는데, 그러면 이 탭 전환 UI가 채팅 박스 테두리
@@ -1212,7 +1212,7 @@ export function ChatPage({ visible, tabBarCollapsed }: { visible: boolean; tabBa
       hidden={!visible}
       className={cn(
         "flex w-full page-content flex-col gap-2",
-        tabBarCollapsed ? "h-[calc(100dvh-8.7rem)]" : "h-[calc(100dvh-11.5rem)]"
+        tabBarCollapsed ? "h-[calc(100dvh-7.5rem)]" : "h-[calc(100dvh-11.5rem)]"
       )}
     >
       {isAdmin && <ChatListHeader view={sidebarView} onViewChange={setSidebarView} />}

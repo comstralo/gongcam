@@ -202,6 +202,30 @@
   }
 }
 
+/* 🔧 [사용자 지시, 2026-09-20] "네비바가 접혔다는걸 알도록 힌트 효과를
+   줄 수 있을까?" — 채팅 화면 하단 탭바를 접었을 때 남는 펼치기 버튼을
+   원형 배경 없는 순수 ^ 문자로 최소화하면서(AppShell.tsx), "여기 눌러서
+   다시 펼 수 있다"는 존재감이 옅어질 위험이 생겼다. 계속 반복되는
+   pulse/bounce는 오래 접어둔 채 채팅만 볼 때 시야 구석에서 계속
+   깜빡여 오히려 방해가 되므로, 접는 그 순간에만 위아래로 몇 번 튕기고
+   스스로 멈추는 유한 반복(iteration count 3)으로 만든다 — 이후엔
+   완전히 정적인 상태로 남아 채팅에 집중하는 데 방해되지 않는다. */
+@keyframes collapse-hint-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+@utility animate-collapse-hint {
+  animation: collapse-hint-bounce 0.5s ease-in-out 3;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
 @theme inline {
     /* 🔧 [사용자 지시] variable font → 정적 폰트(woff2)로 교체하며
        "Pretendard Variable"이 아니라 "Pretendard"가 실제 font-family

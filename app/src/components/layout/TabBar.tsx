@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, Flag, Bell, ScanLine, Settings, ShieldCheck, MessageCircle, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, Flag, Bell, ScanLine, Settings, ShieldCheck, MessageCircle, ChevronDown, type LucideIcon } from "lucide-react";
 import { cn, ICON_STROKE } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/useAuth";
 import { useUnreadNotificationCount } from "@/lib/notifications/notifications";
@@ -23,7 +23,17 @@ const TABS: Tab[] = [
 
 // shadcn Tabs는 "한 화면 안 콘텐츠 전환"용이라 페이지 이동에는 의미상 맞지 않는다.
 // NavLink 기반으로 직접 만든다.
-export function TabBar() {
+// 🔧 [사용자 지시, 2026-09-20] "접는 버튼을 아예 네비바에 내장시키고
+// 싶은거야. 상단 경계쪽에 표시되도록" — 채팅 화면(AppShell의
+// collapsibleTabBar)에서만 쓰는 "탭바 접기" 버튼을, TabBar 바깥에서
+// 별도 relative wrapper로 얹으려 했더니 TabBar 자신이
+// position:fixed라 그 wrapper가 문서 흐름에 기여할 콘텐츠 크기가
+// 없어(fixed 자식은 부모의 레이아웃 크기에 기여하지 않음) 0×0으로
+// 접혀버렸다(실측: getBoundingClientRect width/height 모두 0). TabBar
+// 자신은 fixed여도 스스로는 absolute 자식의 위치 기준(containing
+// block)이 될 수 있으므로, 이 nav 안에 버튼을 직접 내장시켜(선택적 prop)
+// nav의 상단 테두리(border-t) 경계에 걸치도록 배치한다.
+export function TabBar({ collapseButton }: { collapseButton?: { onClick: () => void } }) {
   const { session, isAdmin, isCoReviewer } = useAuth();
   const unreadCount = useUnreadNotificationCount();
   if (!session) return null;
@@ -46,6 +56,17 @@ export function TabBar() {
       className="fixed inset-x-0 bottom-0 z-20 flex justify-center gap-0.5 border-t bg-card px-2.5 pb-[calc(22px+env(safe-area-inset-bottom,0px))] pt-1.5 shadow-lift sm:gap-1"
       aria-label="하단 탭 메뉴"
     >
+      {collapseButton && (
+        <button
+          type="button"
+          onClick={collapseButton.onClick}
+          aria-label="하단 탭 메뉴 접기"
+          title="하단 탭 메뉴 접기"
+          className="absolute inset-x-0 -top-3.5 z-10 mx-auto flex justify-center text-muted-foreground"
+        >
+          <ChevronDown className="size-3.5" strokeWidth={ICON_STROKE.default} />
+        </button>
+      )}
       {tabs.map((tab) => {
         const Icon = tab.icon;
         const showUnreadHint = tab.to === "/notifications" && unreadCount > 0;
