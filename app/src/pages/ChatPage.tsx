@@ -35,7 +35,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/lib/auth/useAuth";
 import { useTheme } from "@/hooks/useTheme";
-import { useVisualViewportRect } from "@/hooks/useKeyboardInset";
+import { useVisualViewportRect, useSafeAreaInsetTop } from "@/hooks/useKeyboardInset";
 import { ICON_STROKE, cn } from "@/lib/utils";
 import type { AdminMembersResponse, ChatTokenResponse } from "@/lib/api/types";
 
@@ -1218,6 +1218,7 @@ export function ChatPage({
   const { isAdmin } = useAuth();
   const { dark } = useTheme();
   const viewportRect = useVisualViewportRect();
+  const safeAreaInsetTop = useSafeAreaInsetTop();
   // 🔧 [버그 수정, 2026-09-20 사용자 지시: "네비바 올라온 상태에서 입력
   // 모드로 가면 이렇게 되는데, 자연히 접히도록 해줘"] — 사용자가 탭바를
   // 수동으로 펼쳐둔 채(tabBarCollapsed=false) 입력창을 탭하면, 펼쳐진
@@ -1465,7 +1466,17 @@ export function ChatPage({
   // 전환 UI)에서 실측한 탭 시작 y좌표는 74px였는데, 여기서는 88px를
   // 써서 그 차이(14px)만큼 채팅 탭이 더 아래에서 시작해 불필요한
   // 공백이 있었다 — 74px로 실측값에 맞춘다.
-  const headerOffsetPx = viewportRect && viewportRect.top > 0 ? 0 : 74;
+  // 🔧 [버그 수정, 2026-09-20 사용자 지시: "위쪽이 잘리는 현상이 전혀
+  // 개선이 안됐어"] — 74px는 env(safe-area-inset-top)이 0으로 평가되던
+  // (viewport-fit=cover 추가 전) 시절의 실측값이라, 그 값이 실제로
+  // 반영된 이후(디버그 배지 실측: env-top 47px, header-pt 57px)에는
+  // AppShell 헤더가 그만큼 더 커졌는데 이 오프셋은 그대로 남아 채팅
+  // 컨테이너가 헤더 위로 겹쳐 올라갔다(=헤더가 잘려 보임). 74px 중
+  // "safe-area가 0이었을 때의 순수 헤더 높이" 부분(74 - 이전
+  // page-pt-safe 10px = 64px 근사)에 실측 safeAreaInsetTop을 그대로
+  // 더해, safe-area 유무와 무관하게 항상 실제 헤더 높이를 따라가게
+  // 한다.
+  const headerOffsetPx = viewportRect && viewportRect.top > 0 ? 0 : 74 + safeAreaInsetTop;
   // 🔧 [사용자 지시] "키보드가 떴 동안 하단 탭바는 덮여도 무방(카카오톡
   // 방식)" — 키보드가 없을 때(viewportRect.top === 0)는 하단 탭바가
   // 화면에 그대로 보이므로 그 실측 높이(펼침 89px/접힘 약 24px)만큼

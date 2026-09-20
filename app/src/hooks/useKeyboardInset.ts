@@ -27,6 +27,43 @@ import { useEffect, useState } from "react";
 // 생기지 않는다.
 export type ViewportRect = { top: number; height: number };
 
+// 🔧 [버그 수정, 2026-09-20 사용자 지시: "위쪽이 잘리는 현상이 전혀
+// 개선이 안됐어"] — ChatPage의 headerOffsetPx가 AppShell 헤더 높이를
+// 74px 하드코딩값으로 써왔는데, 이건 env(safe-area-inset-top)이 0이던
+// (viewport-fit=cover 추가 전) 시절의 실측값이었다. 그 값을 추가한
+// 이후 실제 헤더는 이 세이프에어리어만큼(실측: 아이폰에서 47px) 더
+// 커졌는데 74px는 그대로라, 채팅 컨테이너가 그 늘어난 만큼 헤더 위에
+// 겹쳐 올라가 헤더가 잘려 보였다(디버그 배지로 env-top:47px 확인).
+// CSS의 env()는 JS 인라인 style 계산식 안에서 직접 쓸 수 없으므로,
+// 화면에 보이지 않는 프로브 엘리먼트로 실제 계산된 padding 값을 읽어
+// px 숫자로 노출한다 — 회전 등으로 값이 바뀔 수 있어 resize에도
+// 반응한다.
+export function useSafeAreaInsetTop(): number {
+  const [inset, setInset] = useState(0);
+
+  useEffect(() => {
+    const probe = document.createElement("div");
+    probe.style.position = "fixed";
+    probe.style.top = "0";
+    probe.style.paddingTop = "env(safe-area-inset-top, 0px)";
+    probe.style.visibility = "hidden";
+    probe.style.pointerEvents = "none";
+    document.body.appendChild(probe);
+
+    const update = () => {
+      setInset(parseFloat(getComputedStyle(probe).paddingTop) || 0);
+    };
+    update();
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("resize", update);
+      document.body.removeChild(probe);
+    };
+  }, []);
+
+  return inset;
+}
+
 export function useVisualViewportRect(): ViewportRect | null {
   const [rect, setRect] = useState<ViewportRect | null>(null);
 
