@@ -891,10 +891,12 @@ function AdminChatArea({
   call,
   sidebarView,
   onSidebarViewChange,
+  keyboardInset,
 }: {
   call: ReturnType<typeof useApi>["call"];
   sidebarView: "channels" | "members";
   onSidebarViewChange: (view: "channels" | "members") => void;
+  keyboardInset: number;
 }) {
   const { channel, setActiveChannel } = useChatContext();
   const hasActiveChannel = !!channel;
@@ -1013,8 +1015,21 @@ function AdminChatArea({
                     <ChannelHeader Avatar={() => null} />
                   </div>
                 </div>
-                <MessageList />
-                <MessageComposer />
+                {/* 🔧 [버그 수정, 2026-09-20 사용자 지시: "이제 이렇게
+                    되는데 이게 개선이 된건가..?" — 채팅 박스 전체에
+                    translateY를 걸었더니 입력창은 키보드 위에 붙었지만
+                    바로 위 헤더(상대방 이름, 채팅목록/회원목록 탭)까지
+                    함께 밀려 화면 밖으로 나갔다] — 카카오톡처럼 헤더는
+                    화면에 고정하고, 그 아래(메시지 리스트+입력창)만
+                    감싸서 이 wrapper에만 translateY를 건다 — 헤더는
+                    keyboardInset과 무관하게 원래 위치 그대로 남는다. */}
+                <div
+                  className="flex min-h-0 flex-1 flex-col"
+                  style={{ transform: keyboardInset ? `translateY(${keyboardInset}px)` : undefined }}
+                >
+                  <MessageList />
+                  <MessageComposer />
+                </div>
               </Window>
               <Thread />
             </Channel>
@@ -1218,17 +1233,22 @@ export function ChatPage({ visible, tabBarCollapsed }: { visible: boolean; tabBa
   // 대신 "카메라"(visualViewport)를 문서 좌표계 안에서 키보드 높이만큼
   // 아래로 이동(offsetTop)시킨다 — 이 오프셋은 body를 position:fixed로
   // 완전히 잠가도(실측으로 확인, 문서 스크롤 자체가 원인이 아니었음)
-  // 그대로 발생한다. 그래서 박스는 높이를 줄이는 것(height calc)뿐
-  // 아니라, 그 오프셋만큼 자기 자신도 함께 아래로 옮겨야(translateY)
-  // 실제 카메라 안에 다시 들어온다 — 높이 축소량과 이동량은 같은
-  // 오프셋의 두 측면이라 항상 동일한 keyboardInset 값을 쓴다.
+  // 그대로 발생한다.
+  // 🔧 [버그 수정] 처음엔 이 최상위(헤더 탭+채팅 박스 전체를 담은)
+  // wrapper 자체에 translateY를 걸었는데, 그러면 채팅 박스 안의
+  // 채널 헤더("재희1" 이름 표시줄)와 상단 탭("채팅 목록"/"회원 목록")
+  // 까지 함께 아래로 밀려 화면 밖으로 넘어갔다(사용자 실측 스크린샷:
+  // "이제 이렇게 되는데 이게 개선이 된건가..?") — 카카오톡처럼 헤더는
+  // 화면에 고정되고 메시지 영역만 줄어들어야 한다. translateY는 헤더
+  // 아래(메시지 리스트+입력창)를 감싸는 wrapper에만 적용한다(아래
+  // "chat-message-area" div 참고) — 헤더는 원래 위치 그대로 남고, 그
+  // 아래 콘텐츠만 오프셋만큼 아래로 내려 키보드 바로 위에 오게 한다.
   return (
     <div
       hidden={!visible}
       className="flex w-full page-content flex-col gap-2"
       style={{
         height: `calc(100dvh - ${tabBarCollapsed ? "6.6rem" : "11.5rem"} - ${keyboardInset}px)`,
-        transform: keyboardInset ? `translateY(${keyboardInset}px)` : undefined,
       }}
     >
       {isAdmin && <ChatListHeader view={sidebarView} onViewChange={setSidebarView} />}
@@ -1267,15 +1287,28 @@ export function ChatPage({ visible, tabBarCollapsed }: { visible: boolean; tabBa
           // 2단 레이아웃(목록/대화창 스플릿, 활성 채널 여부에 따른
           // 자동 전환)은 AdminChatArea(<Chat> 자식, useChatContext로
           // 활성 채널을 구독해야 해서 별도 컴포넌트로 분리)가 담당한다.
-          <AdminChatArea call={call} sidebarView={sidebarView} onSidebarViewChange={setSidebarView} />
+          <AdminChatArea
+            call={call}
+            sidebarView={sidebarView}
+            onSidebarViewChange={setSidebarView}
+            keyboardInset={keyboardInset}
+          />
         ) : (
           // 회원 — 목록 없이 본인-관리자 채널로 바로 진입.
           <div className="chat-message-area h-full">
             <Channel channel={memberChannel ?? undefined}>
               <Window>
                 <ChannelHeader title="관리자에게 문의하기" Avatar={PersonAvatar} />
-                <MessageList />
-                <MessageComposer />
+                {/* 🔧 [버그 수정, 2026-09-20] AdminChatArea와 동일한 이유로
+                    헤더는 고정하고 이 아래(메시지 리스트+입력창)만
+                    translateY로 키보드 위에 맞춘다. */}
+                <div
+                  className="flex min-h-0 flex-1 flex-col"
+                  style={{ transform: keyboardInset ? `translateY(${keyboardInset}px)` : undefined }}
+                >
+                  <MessageList />
+                  <MessageComposer />
+                </div>
               </Window>
             </Channel>
           </div>
