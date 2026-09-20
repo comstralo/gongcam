@@ -1476,7 +1476,14 @@ export function ChatPage({
   // page-pt-safe 10px = 64px 근사)에 실측 safeAreaInsetTop을 그대로
   // 더해, safe-area 유무와 무관하게 항상 실제 헤더 높이를 따라가게
   // 한다.
-  const headerOffsetPx = viewportRect && viewportRect.top > 0 ? 0 : 74 + safeAreaInsetTop;
+  // 🔧 [버그 수정, 2026-09-20 사용자 재보고: "여전히 상위 쪽이 블러처럼
+  // 뿌옇고"] — page-pt-safe(index.css)에 iOS 상태바 blur 존을 확실히
+  // 벗어나기 위한 여유 14px를 추가로 더했다 — 그만큼 AppShell 헤더의
+  // 실제 총 높이도 늘었으므로 여기도 동일하게 반영해야 채팅 컨테이너가
+  // 다시 헤더 위로 겹치지 않는다.
+  const HEADER_BLUR_MARGIN_PX = 14;
+  const headerOffsetPx =
+    viewportRect && viewportRect.top > 0 ? 0 : 74 + safeAreaInsetTop + HEADER_BLUR_MARGIN_PX;
   // 🔧 [사용자 지시] "키보드가 떴 동안 하단 탭바는 덮여도 무방(카카오톡
   // 방식)" — 키보드가 없을 때(viewportRect.top === 0)는 하단 탭바가
   // 화면에 그대로 보이므로 그 실측 높이(펼침 89px/접힘 약 24px)만큼
