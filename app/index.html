@@ -22,7 +22,21 @@
          기기별 세이프에어리어를 반영하도록 한다 — 하단(TabBar 등)은 이미
          env(safe-area-inset-bottom)을 쓰는 코드가 있어 이 변경으로 함께
          정상 동작하게 된다(전엔 그쪽도 0으로 평가되고 있었다). -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- 🔧 [버그 수정, 2026-09-21 사용자 지시: "채팅에서 입력하다가
+         키보드를 닫으면 여백이 생긴다"] — 실기기(홈 화면에 추가한 PWA,
+         standalone, iOS 27) 디버그 배지로 실측 확인: visualViewport.
+         height는 정상(844)으로 돌아오는데 window.innerHeight(레이아웃
+         뷰포트)만 상단 안전영역만큼(47px) 줄어든 채(797) 원복되지
+         않았다. interactive-widget 뷰포트 속성이 없으면 WebKit이 키보드를
+         "오버레이"(레이아웃은 안 줄이고 visualViewport만 이동/축소)로
+         처리하는데, 이 처리 방식 자체에 이번 실측과 같은 원복 버그가
+         있는 것으로 보인다. resizes-content를 지정하면 브라우저가 키보드
+         등장/해제에 맞춰 레이아웃 뷰포트(즉 100vh, window.innerHeight)
+         자체를 정확히 리사이즈해주므로, 우리가 visualViewport를 수동으로
+         관찰해 흉내 내던 로직(useVisualViewportRect) 없이도 CSS 100vh/
+         100dvh 및 window.innerHeight 참조 코드 전부가 항상 올바른 값을
+         받게 된다 — iOS 16.4+ 지원. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <title>공부합시당 캠스터디</title>
     <link rel="manifest" href="manifest.json" />
     <link rel="icon" type="image/png" href="icons/favicon-32.png" />
