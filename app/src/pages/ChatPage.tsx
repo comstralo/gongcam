@@ -1502,10 +1502,14 @@ export function ChatPage({
   useEffect(() => {
     const scrollEl = containerRef.current?.querySelector<HTMLElement>(".str-chat__message-list-scroll");
     if (!scrollEl) return;
-    const distanceToBottom = scrollEl.scrollHeight - (scrollEl.scrollTop + scrollEl.clientHeight);
-    if (distanceToBottom < 200) {
-      scrollEl.scrollTop = scrollEl.scrollHeight;
-    }
+    // 🔧 [버그 수정, 2026-09-21 실기기 웹 인스펙터 실측] 컨테이너 height가
+    // 정상(672)으로 고쳐진 뒤에도 스크롤 위치(scrollTop)가 0(완전히
+    // 맨 위)까지 밀려나 있는 경우를 확인했다 — "이미 바닥 근처였을 때만
+    // 보정"(distanceToBottom < 200) 조건은 이렇게 스크롤이 큰 폭으로
+    // 흐트러진 경우를 놓친다. 대화창을 여는 이 시점엔 사용자가 이미
+    // 맨 아래(최신 메시지)를 보고 있었을 것이 거의 확실하므로, 조건 없이
+    // 컨테이너 리사이즈 때마다 무조건 맨 아래로 스크롤한다.
+    scrollEl.scrollTop = scrollEl.scrollHeight;
   }, [viewportRect?.top, viewportRect?.height, tabBarHeight]);
 
   if (error) {
