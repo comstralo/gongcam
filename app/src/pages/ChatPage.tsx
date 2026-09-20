@@ -1463,6 +1463,31 @@ export function ChatPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 🔧 [버그 수정, 2026-09-21 사용자 지시: "위로 스와이프하면 메시지가
+  // 더 나온다"로 확인] — 이 wrapper의 height는 정확히 계산되고 있었지만
+  // (디버그 배지로 실측: vpH/tabBarH 모두 정상), 그 height가 JS로
+  // 바뀔 때 Stream의 MessageList(useScrollLocationLogic.mjs 소스 확인)는
+  // 이 컨테이너 자체의 리사이즈를 감시하지 않는다 — 오직 메시지 개수가
+  // 바뀌거나 과거 메시지를 불러올 때만 스크롤을 재조정한다. 그 결과
+  // 키보드가 닫히며 이 컨테이너가 다시 커져도 이미 잡아둔 scrollTop은
+  // 그대로 남아, 늘어난 높이만큼 메시지 리스트 하단에 빈 공간이 생겼다.
+  // MessageListContext(scrollToBottom)는 MessageList 자기 자신의 자식
+  // 트리에만 노출되어 쓸 수 없으므로, DOM에서 실제 스크롤 컨테이너
+  // (.str-chat__message-list-scroll)를 찾아 바닥 근처였을 때만 다시
+  // 맨 아래로 스크롤시킨다.
+  // ⚠️ 이 훅은 아래 early return(error / loading) 앞에 있어야 한다 —
+  // 뒤에 두면 로딩→완료 전환 시 훅 개수가 달라져 "Rendered more hooks
+  // than during the previous render" 오류로 화면이 깨진다(실제 발생).
+  const containerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const scrollEl = containerRef.current?.querySelector<HTMLElement>(".str-chat__message-list-scroll");
+    if (!scrollEl) return;
+    const distanceToBottom = scrollEl.scrollHeight - (scrollEl.scrollTop + scrollEl.clientHeight);
+    if (distanceToBottom < 200) {
+      scrollEl.scrollTop = scrollEl.scrollHeight;
+    }
+  }, [viewportRect?.top, viewportRect?.height, tabBarHeight]);
+
   if (error) {
     return (
       <InfoCard className="flex flex-col items-center gap-1.5 bg-card py-6 text-center text-muted-foreground">
@@ -1598,36 +1623,6 @@ export function ChatPage({
   // 없으므로 앞으로 TabBar 쪽 스타일이 바뀌어도 자동으로 정합성이
   // 유지된다.
   const tabBarHeightPx = viewportRect && viewportRect.top > 0 ? 0 : (tabBarHeight ?? 0);
-  // 🔧 [버그 수정, 2026-09-21 사용자 지시: "위로 스와이프하면 메시지가
-  // 더 나온다"로 확인] — 이 wrapper의 height는 정확히 계산되고 있었지만
-  // (디버그 배지로 실측: vpH/tabBarH 모두 정상), 그 height가 JS로
-  // 바뀔 때 Stream의 MessageList(useScrollLocationLogic.mjs 소스 확인)는
-  // 이 컨테이너 자체의 리사이즈를 감시하지 않는다 — 오직 메시지 개수가
-  // 바뀌거나 과거 메시지를 불러올 때만 스크롤을 재조정한다. 그 결과
-  // 키보드가 닫히며 이 컨테이너가 다시 커져도 이미 잡아둔 scrollTop은
-  // 그대로 남아, 늘어난 높이만큼 메시지 리스트 하단에 빈 공간이 생겼다
-  // (실측: 그 빈 공간을 위로 스와이프하면 이미 로드된 메시지가 더
-  // 나옴 — 콘텐츠가 없는 게 아니라 스크롤이 안 따라간 것). Stream이
-  // MessageListContext(scrollToBottom)를 형제 컴포넌트에 노출하지
-  // 않아(Provider가 MessageList 자기 자신의 자식 트리에만 적용됨)
-  // 그 API를 직접 쓸 수 없으므로, DOM에서 실제 스크롤 컨테이너
-  // (.str-chat__message-list-scroll)를 찾아 이미 바닥 근처에 있었을
-  // 때만 다시 맨 아래로 스크롤시킨다.
-  const containerRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const scrollEl = container.querySelector<HTMLElement>(".str-chat__message-list-scroll");
-    if (!scrollEl) return;
-    // 이미 스크롤을 위로 올려 과거 메시지를 보고 있던 경우까지 강제로
-    // 맨 아래로 끌어내리면 사용자 스크롤 위치를 침범하므로, "리사이즈
-    // 직전에 바닥에서 가까웠던 경우"만 다시 바닥에 붙인다.
-    const distanceToBottom = scrollEl.scrollHeight - (scrollEl.scrollTop + scrollEl.clientHeight);
-    if (distanceToBottom < 200) {
-      scrollEl.scrollTop = scrollEl.scrollHeight;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewportRect?.height, tabBarHeightPx, headerOffsetPx]);
   return (
     <div
       ref={containerRef}
