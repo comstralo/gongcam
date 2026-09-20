@@ -166,17 +166,23 @@ function SafeAreaDebugBadge() {
     <div
       style={{
         position: "fixed",
-        top: 0,
+        // 🔧 [버그 수정] top:0은 이 배지 자체가 조사 대상인 문제(상단
+        // 콘텐츠가 상태바 뒤로 가려짐)와 똑같이 가려져 안 보였다 —
+        // env() 자체가 이 배지에도 안 먹힐 가능성까지 감안해, 고정
+        // 오프셋(60px, 웬만한 상태바+여유보다 확실히 큰 값)을 fallback
+        // 삼아 무조건 화면에 보이는 위치로 내린다.
+        top: "max(env(safe-area-inset-top, 60px), 60px)",
         left: 0,
         right: 0,
         zIndex: 99999,
-        background: "rgba(255,0,0,0.85)",
+        background: "rgba(255,0,0,0.95)",
         color: "white",
-        fontSize: 9,
-        padding: "2px 4px",
+        fontSize: 11,
+        padding: "4px 6px",
         fontFamily: "monospace",
         pointerEvents: "none",
         wordBreak: "break-all",
+        border: "2px solid yellow",
       }}
     >
       {info}
