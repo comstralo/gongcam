@@ -1616,6 +1616,16 @@ export function ChatPage({
             }
       }
     >
+      {/* 🔧 [임시 디버그, 2026-09-21] "여백 문제 여전한데" 재보고 원인
+          실측용 — 진단 끝나면 제거한다. */}
+      <div
+        className="fixed left-1 top-1 z-50 rounded bg-black/80 px-1.5 py-0.5 text-[10px] leading-tight text-white"
+        style={{ pointerEvents: "none" }}
+      >
+        vpTop={String(viewportRect?.top ?? "null")} vpH={String(viewportRect?.height ?? "null")}
+        <br />
+        tabBarH={String(tabBarHeight ?? "null")} collapsed={String(tabBarCollapsed)}
+      </div>
       {/* 🔧 [버그 수정, 2026-09-20 사용자 지시: "채팅 쪽이 폭이 더 좁게
           되어있잖아? 이 부분을 '제보'에 맞춰서 크기를 확장해줘"] — 이
           바깥 div의 px-2.5 sm:px-4는 화면 가장자리 여백(다른 페이지의
