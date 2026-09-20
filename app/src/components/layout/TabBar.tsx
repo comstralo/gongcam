@@ -118,10 +118,17 @@ export function TabBar({
       // 순수 여백을 거의 0에 가깝게 두고 실제 홈 인디케이터 안전영역
       // (env, 이미 34px로 충분히 여유로움)에만 의존한다. 순수 여백을
       // 4px까지 더 줄인다.
-      className={cn(
-        "fixed inset-x-0 z-20 flex justify-center gap-0.5 border-t bg-card px-2.5 pt-1.5 shadow-lift sm:gap-1",
-        viewportRect ? "pb-0" : "bottom-0 pb-[calc(4px+env(safe-area-inset-bottom,0px))]"
-      )}
+      // 🔧 [버그 수정, 2026-09-20 사용자 지시: "상식적으로 다른 곳
+      // 네비바랑 높이가 같아야지 다르면 되겠냐?"] — 채팅 화면(viewportRect
+      // 있음)만 pb-0을 써서 안전영역(env(safe-area-inset-bottom), 실측
+      // 34px) 패딩이 통째로 빠져 있었다. top을 visualViewport 기준으로
+      // 직접 계산하는 방식(bottom:0이 아님)으로 바뀌면서 "bottom:0
+      // 기준이 아니니 안전영역 패딩도 무의미하다"고 잘못 판단해 pb-0으로
+      // 처리했었는데, 실제로는 이 패딩이 있어야 navHeight(getBoundingClientRect
+      // 기준 실측값)에 그만큼 반영되어 top이 위로 올라가고, 그 결과
+      // 탭바가 화면 맨 끝이 아니라 다른 화면과 동일하게 안전영역 위에
+      // 떠 있게 된다 — pb를 다른 화면과 완전히 통일한다.
+      className="fixed inset-x-0 z-20 flex justify-center gap-0.5 border-t bg-card px-2.5 pt-1.5 pb-[calc(4px+env(safe-area-inset-bottom,0px))] shadow-lift sm:gap-1"
       style={
         viewportRect
           ? // 🔧 navHeight 실측 전(마운트 직후 첫 프레임) 잠깐은 top이
@@ -132,7 +139,7 @@ export function TabBar({
             navHeight !== null
             ? { top: viewportRect.top + viewportRect.height - navHeight }
             : { bottom: 0 }
-          : undefined
+          : { bottom: 0 }
       }
       aria-label="하단 탭 메뉴"
     >
