@@ -15,8 +15,21 @@ import { useEffect, useState } from "react";
 // 썼다가 iOS 주소창 자동 접힘 때문에 오히려 부정확해져 이 방식으로
 // 교체했다). 이 값을 반환해 채팅 박스 높이 계산에서 빼면, 키보드가 뜬
 // 만큼 박스가 줄어들어 입력창이 항상 키보드 바로 위에 붙는다.
+// 🔧 [임시 디버깅, 2026-09-20] 실기기(아이폰)에서 두 차례 수정에도
+// 계속 재현된 문제(처음엔 여백이 남고, 그다음엔 반대로 박스가 거의
+// 사라짐)의 정확한 원인을 알아내기 위해, visualViewport의 실측값 자체를
+// 화면에 노출한다. 원인이 확인되면 이 디버그 필드와 표시용 코드는
+// 제거한다.
+export type KeyboardInsetDebug = {
+  inset: number;
+  rawViewportHeight: number;
+  baselineHeight: number;
+  innerHeight: number;
+};
+
 export function useKeyboardInset() {
   const [inset, setInset] = useState(0);
+  const [debug, setDebug] = useState<KeyboardInsetDebug | null>(null);
 
   useEffect(() => {
     const viewport: VisualViewport | null = window.visualViewport;
@@ -48,6 +61,12 @@ export function useKeyboardInset() {
       }
       const heightDiff = baselineHeight - viewport.height;
       setInset(Math.max(0, Math.round(heightDiff)));
+      setDebug({
+        inset: Math.max(0, Math.round(heightDiff)),
+        rawViewportHeight: Math.round(viewport.height),
+        baselineHeight: Math.round(baselineHeight),
+        innerHeight: window.innerHeight,
+      });
     };
 
     update();
@@ -59,5 +78,5 @@ export function useKeyboardInset() {
     };
   }, []);
 
-  return inset;
+  return { inset, debug };
 }

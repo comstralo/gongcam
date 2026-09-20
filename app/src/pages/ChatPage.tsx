@@ -1034,7 +1034,7 @@ export function ChatPage({ visible, tabBarCollapsed }: { visible: boolean; tabBa
   const { call } = useApi();
   const { isAdmin } = useAuth();
   const { dark } = useTheme();
-  const keyboardInset = useKeyboardInset();
+  const { inset: keyboardInset, debug: keyboardInsetDebug } = useKeyboardInset();
   const [client, setClient] = useState<StreamChat | null>(null);
   const [memberChannel, setMemberChannel] = useState<StreamChannel | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1227,6 +1227,17 @@ export function ChatPage({ visible, tabBarCollapsed }: { visible: boolean; tabBa
         height: `calc(100dvh - ${tabBarCollapsed ? "6.6rem" : "11.5rem"} - ${keyboardInset}px)`,
       }}
     >
+      {/* 🔧 [임시 디버깅, 2026-09-20] 실기기(아이폰)에서 키보드 인셋
+          계산이 두 차례 모두 틀린 원인을 알아내기 위한 임시 표시 —
+          원인 확인 후 제거한다. */}
+      {keyboardInsetDebug && (
+        <div className="fixed top-14 right-2 z-50 rounded bg-black/80 p-1.5 font-mono text-[10px] leading-tight text-white">
+          <div>inset: {keyboardInsetDebug.inset}</div>
+          <div>raw: {keyboardInsetDebug.rawViewportHeight}</div>
+          <div>base: {keyboardInsetDebug.baselineHeight}</div>
+          <div>inH: {keyboardInsetDebug.innerHeight}</div>
+        </div>
+      )}
       {isAdmin && <ChatListHeader view={sidebarView} onViewChange={setSidebarView} />}
       <div className="flex w-full min-h-0 flex-1 flex-col overflow-hidden rounded-lg border">
       <Chat client={client} theme={dark ? "str-chat__theme-dark" : "str-chat__theme-light"}>
