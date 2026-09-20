@@ -1126,22 +1126,47 @@ export function ChatPage({ visible, tabBarCollapsed }: { visible: boolean; tabBa
   // 🔧 [버그 수정, 2026-09-20 사용자 지시: "여전히 아이폰에서 입력 시
   // 공백이 생겨" → 디버그 배지로 실측한 결과 100dvh는 키보드가 떠도
   // 전혀 줄지 않아(dvh 값이 base와 동일하게 유지) 채팅 박스 자체는
-  // calc() 그대로 정상 크기(예: 322px)로 남아 있었다. 그런데도 화면에서
-  // 박스가 거의 안 보였던 진짜 원인은 따로 있었다 — body/html이
-  // 스크롤 가능한 상태라, iOS Safari가 포커스된 textarea를 "보이는
-  // 영역까지" 자동으로 스크롤시키는 표준 동작이 문서 전체를 위로 밀어
-  // 올려 채팅 박스 윗부분(메시지 리스트 대부분)이 화면 밖으로
-  // 넘어갔다. 채팅 화면이 보이는 동안만 body 자체를 스크롤 불가능하게
-  // 고정하면, iOS가 스크롤할 대상이 없어져 이 자동 스크롤이 아예
-  // 발생하지 않는다 — 박스 안 메시지 리스트(자체 overflow-y-auto)만
-  // 정상적으로 스크롤된다. 다른 탭으로 돌아갈 때는 반드시 원복해야
-  // 다른 페이지가 다시 스크롤 가능해진다.
+  // calc() 그대로 정상 크기로 남아 있었다. 그런데도 화면에서 박스가
+  // 거의 안 보였던 진짜 원인은 따로 있었다 — body/html이 스크롤 가능한
+  // 상태라, iOS Safari가 포커스된 textarea를 "보이는 영역까지" 자동
+  // 스크롤시키는 표준 동작이 문서 전체를 위로 밀어 올렸다.
+  // 🔧 [버그 수정] body { overflow: hidden }만으로 시도했으나 여전히
+  // 재현됐다(사용자 재확인 스크린샷) — 이건 iOS Safari의 잘 알려진
+  // 특성으로, overflow:hidden은 데스크톱 브라우저에서는 스크롤을 확실히
+  // 막지만 iOS Safari는 포커스 시 자동 스크롤(및 바운스 스크롤)을 이
+  // 속성만으로 막지 못하는 경우가 많다. 모바일 웹에서 스크롤을 확실히
+  // 잠그는 표준 우회책은 body 자체를 position:fixed로 문서 흐름에서
+  // 완전히 빼버리는 것 — 이러면 "스크롤할 문서"라는 개념 자체가 없어져
+  // iOS의 자동 스크롤 로직이 개입할 여지가 없다. 진입 시점의 스크롤
+  // 위치를 저장해 top으로 고정하고, 나갈 때 그 위치로 되돌려 원래
+  // 화면이 있던 곳 그대로 복원한다(다른 화면은 hidden으로 유지되는
+  // 구조라 스크롤 위치를 잃으면 사용자가 놀랄 수 있음).
   useEffect(() => {
     if (!visible) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    const scrollY = window.scrollY;
+    const body = document.body;
+    const previous = {
+      position: body.style.position,
+      top: body.style.top,
+      left: body.style.left,
+      right: body.style.right,
+      width: body.style.width,
+      overflow: body.style.overflow,
+    };
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
+    body.style.left = "0";
+    body.style.right = "0";
+    body.style.width = "100%";
+    body.style.overflow = "hidden";
     return () => {
-      document.body.style.overflow = previousOverflow;
+      body.style.position = previous.position;
+      body.style.top = previous.top;
+      body.style.left = previous.left;
+      body.style.right = previous.right;
+      body.style.width = previous.width;
+      body.style.overflow = previous.overflow;
+      window.scrollTo(0, scrollY);
     };
   }, [visible]);
 
