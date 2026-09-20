@@ -373,51 +373,31 @@ function useUnreadOneBadge() {
 // 재사용한다 — 버블 UI 자체를 새로 만들 필요는 없다.
 // 🔧 [버그 수정, 2026-09-20 사용자 지시: "현재 상대방 메시지에 상대방의
 // 아이콘만 보이는 상황이잖아? 카카오톡처럼 아이콘과 이름을 출력하도록
-// 해줘"] — Stream의 MessageUI(소스 확인, MessageUI.mjs)는 발신자 이름을
-// str-chat__message-metadata 안에 memberCount > 2(그룹 채팅)일 때만
-// 렌더링한다. 이 앱은 1:1 DM(관리자-회원)만 쓰므로 memberCount가 항상
-// 2라 이름 자체가 애초에 렌더링되지 않았고, 설령 렌더링되어도
-// message-metadata 전체를 이미 display:none으로 숨겨(시간을 버블 옆에
-// 직접 그리기 위해, 위 주석 참고) 안 보였을 것이다. MessageUI를
-// 오버라이드할 수 없는(memberCount 하드코딩) 조건이라, 아바타 폭(md
-// 사이즈 32px)만큼 들여쓰기한 이름 텍스트를 버블 바로 위에 직접
-// 렌더링한다. 카카오톡처럼 같은 사람이 연속으로 보낸 메시지 그룹에서는
-// 첫 메시지에만 표시한다(firstOfGroup).
-// 🔧 [버그 수정] 이 Stream 버전의 MessageContext는 firstOfGroup/
-// endOfGroup/groupedByUser를 채우지 않는다(실측: 항상 undefined) — 대신
-// groupStyles(문자열 배열, 예: ["single"]/["top"]/["middle"]/["bottom"])로
-// 그룹 내 위치를 나타낸다. "top"(그룹 첫 메시지) 또는 "single"(그룹에
-// 메시지가 하나뿐)일 때만 그룹의 시작이므로, 이때만 이름을 보여준다.
-// ChatSenderName(실제 렌더링)과 SwipeableMessage(그만큼 여백 확보) 양쪽이
-// 같은 판단을 공유해야 하므로 훅으로 뽑는다.
+// 해줘" → (구현 후) "네가 구현한건 너무 균형이 안맞잖아 ... 아이콘,
+// 이름, 메시지 요소가 다 따로 노는 것 같아"] — 처음엔 Stream이 그리는
+// 아바타(MessageUI 내부, grid의 avatar 영역, align-self: end)는 그대로
+// 두고 이름만 position:absolute로 옆에 끼워 넣었는데, Stream의 grid
+// 자체 높이는 이름의 존재를 전혀 모르므로(이름이 grid 밖 오버레이라
+// 높이 계산에 기여하지 않음) 아바타가 항상 "버블 높이" 기준으로만
+// 정렬돼 이름과 나란해질 수 없는 구조적 한계가 있었다(실측: align-self
+// 를 start로 바꿔도 grid 높이 자체가 안 늘어나 아바타가 여전히 버블과
+// 같은 위치). Stream이 그리는 아바타를 완전히 숨기고(.str-chat__message
+// .str-chat__avatar { display: none }, chat-theme.css), 이 wrapper가
+// [아바타, {이름 위/버블 아래}] 레이아웃을 처음부터 직접 구성한다 —
+// 그러면 아바타와 이름이 모두 우리가 만든 같은 flex row의 자연스러운
+// 정렬 규칙을 따르므로 항상 정확히 나란하다.
 function useSenderNameToShow(): string | null {
   const { message, isMyMessage, groupStyles } = useMessageContext();
+  // 🔧 [버그 수정] 이 Stream 버전의 MessageContext는 firstOfGroup/
+  // endOfGroup/groupedByUser를 채우지 않는다(실측: 항상 undefined) —
+  // 대신 groupStyles(문자열 배열, 예: ["single"]/["top"]/["middle"]/
+  // ["bottom"])로 그룹 내 위치를 나타낸다. "top"(그룹 첫 메시지) 또는
+  // "single"(그룹에 메시지가 하나뿐)일 때만 그룹의 시작이므로, 이때만
+  // 이름을 보여준다(카카오톡처럼 같은 사람이 연속으로 보낸 메시지
+  // 그룹에서는 첫 메시지에만 표시).
   const isGroupStart = groupStyles?.includes("top") || groupStyles?.includes("single");
   if (isMyMessage() || !isGroupStart) return null;
   return message.user?.name || message.user?.id || null;
-}
-
-function ChatSenderName({ name }: { name: string }) {
-  // 🔧 [버그 수정, 2026-09-20 사용자 지시: "카카오톡처럼 해달라고 했는데
-  // 네가 구현한건 너무 균형이 안맞잖아"] — 처음엔 이 이름을 [아바타+
-  // 버블] flex row 전체보다 위에 별도 블록으로 얹었는데, 그 row가
-  // items-end(아바타를 하단 정렬해 버블과 맞추는 용도)라 아바타가
-  // 그 row 바닥에 붙는 반면 이름은 row 바깥 맨 위에 남아, 실측(28px)
-  // 만큼 아바타보다 위로 붕 떠 보였다 — 카카오톡은 아바타 "상단"과
-  // 이름이 나란한 구조다. position:absolute로 아바타 자리(높이 32px)
-  // 옆에 정확히 앉히고, SwipeableMessage가 그만큼(이름 줄 높이) flex
-  // row 자체에 padding-top을 줘서 버블이 이름과 겹치지 않게 한다 —
-  // 아바타는 Stream의 grid(align-self:end)가 계속 관리하므로 건드리지
-  // 않는다.
-  // 🔧 [버그 수정] start-[42px](아바타 32px + gap 10px)만 계산했다가
-  // 실측(53px)해보니 버블 시작 위치(61px)와 8px 어긋났다 —
-  // .str-chat__message--other의 padding-inline-start: 8px(chat-theme.css)
-  // 를 빠뜨렸다. 8 + 32 + 10 = 50px이 정확한 값이다.
-  return (
-    <div className="pointer-events-none absolute start-[50px] top-0 text-[12px] font-medium text-muted-foreground">
-      {name}
-    </div>
-  );
 }
 
 function SwipeableMessage() {
@@ -852,7 +832,6 @@ function SwipeableMessage() {
       onLostPointerCapture={endDrag}
       onContextMenu={handleContextMenu}
     >
-      {senderName && <ChatSenderName name={senderName} />}
       {/* 스와이프 중에만 드러나는 답장 아이콘 — 버블 뒤쪽(왼쪽)에 고정,
           당긴 만큼(비율) 서서히 진해지도록 opacity를 dragX에 연동한다. */}
       <div
@@ -867,23 +846,25 @@ function SwipeableMessage() {
           숨겼다(grid 레이아웃 재정의가 Stream 내부 규칙과 계속 충돌해
           실측대로 안 붙었음). 대신 여기서 버블(MessageUI)과 시간을 같은
           flex row에 직접 배치한다 — 내 메시지는 [시간, 버블] 순서로
-          시간이 왼쪽에, 상대 메시지는 [버블, 시간] 순서로 시간이
-          오른쪽에 오도록 해 항상 버블의 바깥쪽에 자연스럽게 붙는다.
-          items-end로 버블 하단에 시간을 맞춘다(사용자 요청: "좌측 하단"). */}
-      {/* 🔧 [버그 수정, 2026-09-20] senderName이 있으면(이 그룹의 첫
-          상대 메시지) 그 이름 한 줄(text-[12px], 실측 줄높이 약 16px +
-          여백 4px ≈ 20px) 높이만큼 이 row 전체에 위쪽 여백을 준다 —
-          이름은 absolute라 row의 실제 높이 계산에는 기여하지 않으므로,
-          이렇게 명시적으로 공간을 확보하지 않으면 버블/아바타가 이름과
-          겹친다. items-end라 이 padding-top만큼 전체 row가 위로
-          늘어나고, 아바타와 버블은 그대로 하단에 붙어 정확히 이름 아래
-          자리에 온다. */}
+          시간이 왼쪽에, 상대 메시지는 [아바타, {이름, 버블}, 시간]
+          순서로 시간이 오른쪽에 오도록 해 항상 버블의 바깥쪽에
+          자연스럽게 붙는다. items-end로 버블 하단에 시간을 맞춘다
+          (사용자 요청: "좌측 하단"). */}
+      {/* 🔧 [버그 수정, 2026-09-20 사용자 지시: "아이콘, 이름, 메시지
+          요소가 다 따로 노는 것 같아"] — Stream이 그리는 아바타(MessageUI
+          내부 grid, align-self:end)는 이름의 존재를 몰라 이름과 절대
+          나란해질 수 없는 구조였다(자세한 경위는 useSenderNameToShow
+          위 주석 참고). Stream 아바타는 완전히 숨기고(chat-theme.css의
+          .str-chat__avatar { display: none }), 이 row에서 우리가
+          [아바타, {이름 위/버블 아래를 세로로 쌓은 flex-col}]을 직접
+          그린다 — 아바타(PersonAvatar, size="md"로 Stream과 동일한
+          32px)와 이름 모두 이 같은 row/컬럼의 자연스러운 정렬을
+          따르므로 항상 정확히 나란하다. */}
       <div
         className={cn("flex items-end gap-0", isMyMessage() ? "justify-end" : "justify-start")}
         style={{
           transform: `translateX(${dragX}px)`,
           transition: dragging ? "none" : "transform 150ms ease-out",
-          paddingTop: senderName ? 20 : undefined,
         }}
       >
         {/* 🔧 [사용자 지시, 2026-09-19] "시간/배지를 버블과 좀 더
@@ -899,7 +880,23 @@ function SwipeableMessage() {
             <span>{formatMessageDate(thisCreatedAt)}</span>
           </div>
         )}
+        {!isMyMessage() &&
+          (senderName ? (
+            // 🔧 [버그 수정] 부모 row가 items-end라 self 지정이 없으면
+            // 아바타도 row 바닥(버블 위치)에 맞춰져 이름과 나란해질 수
+            // 없었다 — self-start로 이 아바타만 상단 정렬해 이름과
+            // 나란한 카카오톡 구조를 만든다.
+            <PersonAvatar size="md" className="me-2.5 shrink-0 self-start" />
+          ) : (
+            // 그룹 중간/마지막 메시지는 카카오톡처럼 아바타 자리를
+            // 비워 버블 시작 위치를 그룹 첫 메시지와 맞춘다(아바타
+            // 폭 32px + gap 10px).
+            <div className="me-2.5 w-8 shrink-0" />
+          ))}
         <div className="min-w-0">
+          {senderName && (
+            <div className="mb-1 ms-1 text-[12px] font-medium text-muted-foreground">{senderName}</div>
+          )}
           <MessageUI />
         </div>
         {!isMyMessage() && showTimestamp && thisCreatedAt && (
@@ -1228,50 +1225,21 @@ export function ChatPage({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewportRect?.top]);
-  // 🔧 [버그 수정, 2026-09-20 사용자 지시: "채팅창에 손가락을 아래 → 위로
-  // 스크롤 하면 화면이 움직여 ... 놓으면 제자리가 되긴 하는데, 저렇게
-  // 쓸데없이 움직이지 않게 하고 싶어"] — 채팅 컨테이너 자체는
-  // position:fixed + visualViewport 좌표로 화면에 고정돼 있지만, 정작
-  // body/html은 여전히 일반 문서 흐름(overflow: visible, position:
-  // static)이라 스크롤 가능한 상태로 남아 있었다. 메시지 리스트 안에서
-  // 위/아래로 스와이프하면 iOS Safari가 그 제스처를 body의 러버밴드
-  // 오버스크롤(당기면 화면 전체가 딸려 움직였다 놓으면 튕겨 돌아오는
-  // 바운스 애니메이션)로도 함께 처리해, 헤더가 통째로 밀렸다 돌아오는
-  // 것처럼 보였다(스크린샷: 헤더가 사라지고 리스트가 위로 당겨짐). body의
-  // 기존 overscroll-behavior-y: contain(index.css)은 스크롤 체이닝(부모로
-  // 전파)만 막을 뿐, body 자신이 스크롤 가능한 콘텐츠일 때 발생하는
-  // 바운스 자체는 막지 못한다. 채팅 화면이 이 fixed 레이아웃으로 전환된
-  // 동안(viewportRect가 있고 실제로 보이는 동안)만 body를 완전히
-  // 스크롤 불가능하게 잠가, 리스트 내부 스크롤이 body로 전파될 일
-  // 자체를 없앤다 — 채팅 탭을 벗어나면(hidden) 원래 상태로 복원해 다른
-  // 페이지의 스크롤에 영향을 주지 않는다.
-  const hasViewportRect = viewportRect !== null;
-  useEffect(() => {
-    if (!visible || !hasViewportRect) return;
-    // 🔧 [버그 수정, 2026-09-20 사용자 지시: "이렇게 상단의 제목 부분이
-    // 잘려버려"] — body를 position:fixed로 잠글 때 top을 지정하지
-    // 않으면 기본값 auto가 되는데, 이 시점에 body가 이미 얼마간
-    // 스크롤되어 있었다면(scrollY > 0) fixed 전환 즉시 그 스크롤된
-    // 위치가 시각적으로 "body 전체가 위로 튀어 오른" 것처럼 보이게
-    // 만든다 — 채팅 헤더(AppShell)는 이 채팅 컨테이너보다 앞서 문서
-    // 흐름에 그려지는 요소라 그만큼 위로 밀려 잘려 보였다. 잠그기
-    // 직전의 실제 scrollY를 top에 음수로 박아 넣어 시각적 위치를
-    // 그대로 유지시키고, 해제 시 그 값으로 되돌린다(표준 iOS body-lock
-    // 패턴).
-    const scrollY = window.scrollY;
-    const { overflow, position, width, top } = document.body.style;
-    document.body.style.overflow = "hidden";
-    document.body.style.position = "fixed";
-    document.body.style.top = `-${scrollY}px`;
-    document.body.style.width = "100%";
-    return () => {
-      document.body.style.overflow = overflow;
-      document.body.style.position = position;
-      document.body.style.top = top;
-      document.body.style.width = width;
-      window.scrollTo(0, scrollY);
-    };
-  }, [visible, hasViewportRect]);
+  // 🔧 [버그 수정, 2026-09-20] "채팅창에 손가락을 아래 → 위로 스크롤
+  // 하면 화면이 움직여" 문제를 body를 position:fixed로 잠가 해결하려
+  // 했으나, 그 직후 "상단의 제목 부분이 잘려버려"라는 새 문제가
+  // 생겼고, top을 scrollY로 보정해도 여전히 해결되지 않았다 — 근본
+  // 원인은 body를 건드리는 방식 자체였다: body의 position을 바꾸면
+  // iOS Safari가 그 순간 주소창을 다시 나타내거나 뷰포트 측정을 다시
+  // 하는 부작용이 있어, 이 채팅 컨테이너가 매 프레임 구독하는
+  // window.visualViewport(useVisualViewportRect)의 top/height 값 자체가
+  // 흔들렸다. 그 결과 "키보드가 떠서 카메라가 이동한 상태"로 잘못
+  // 판정되어 headerOffsetPx가 0으로 계산돼, 채팅 컨테이너가 헤더가
+  // 있어야 할 공간을 확보하지 않은 채 그 위에 겹쳐 올라가 헤더가
+  // 잘린 것으로 보인다. body는 전혀 건드리지 않고, 실제 스크롤이
+  // 일어나는 메시지 리스트 자체(.str-chat__message-list, chat-theme.css)
+  // 에 overscroll-behavior: none을 걸어 그 컨테이너의 바운스가 body로
+  // 전파되는 것 자체를 막는, 훨씬 국소적인 방식으로 대체한다.
   const [client, setClient] = useState<StreamChat | null>(null);
   const [memberChannel, setMemberChannel] = useState<StreamChannel | null>(null);
   const [error, setError] = useState<string | null>(null);

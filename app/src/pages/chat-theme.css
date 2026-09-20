@@ -280,8 +280,17 @@
    여백만 줄이려던 것이라 아바타 쪽은 애초에 건드릴 필요가 없었다.
    상대 메시지(아바타가 실제로 렌더링되는 유일한 경우)에서만 gap을
    되살린다. */
-.str-chat__message.str-chat__message--other.str-chat__message--with-avatar {
-  column-gap: 10px !important;
+/* 🔧 [버그 수정, 2026-09-20 사용자 지시: "카카오톡처럼 해달라고
+   했는데 네가 구현한건 너무 균형이 안맞잖아 ... 아이콘, 이름, 메시지
+   요소가 다 따로 노는 것 같아"] — Stream이 그리는 아바타(grid area,
+   align-self: end)는 이름의 존재를 모르는 채로 항상 "버블 높이" 기준
+   하단에만 정렬되어, 이름을 옆에 별도로 얹어도 절대 나란해질 수 없는
+   구조적 한계가 있었다(ChatPage.tsx의 useSenderNameToShow 위 주석
+   참고). Stream 아바타는 완전히 숨기고, SwipeableMessage(ChatPage.tsx)
+   가 아바타/이름/버블을 처음부터 하나의 flex 레이아웃으로 직접
+   그린다 — 그러면 셋 모두 같은 정렬 규칙을 따르므로 항상 나란하다. */
+.str-chat__message .str-chat__avatar {
+  display: none !important;
 }
 /* 🔧 [사용자 지시, 2026-09-19] "메시지 우측에 여백이 너무 없어서
    답답해 보인다" — 바로 위 규칙으로 .str-chat__message의 좌우 패딩을
@@ -477,4 +486,18 @@
    Stream 쪽은 완전히 불필요한 중복이므로 없앤다. */
 .str-chat__channel-list {
   border-inline-end: none;
+}
+
+/* 🔧 [버그 수정, 2026-09-20 사용자 지시: "채팅창에 손가락을 아래 → 위로
+   스크롤 하면 화면이 움직여" → (body-lock 시도 후) "상단의 제목 부분이
+   잘려버려"] — body를 position:fixed로 잠가 스크롤 바운스를 막으려던
+   시도가 iOS Safari의 visualViewport 측정을 흔들어 헤더 오프셋 계산을
+   깨뜨리는 부작용을 냈다(자세한 경위는 ChatPage.tsx 근처 주석 참고).
+   body는 전혀 건드리지 않고, 실제로 스크롤이 일어나는 이 메시지 리스트
+   자체에만 overscroll-behavior: none을 걸어 리스트 끝에서 더 당겼을 때
+   그 제스처가 body의 러버밴드 바운스로 전파되는 것을 막는다 — 이 앱은
+   메시지 리스트에 pull-to-refresh 등 다른 오버스크롤 용도가 없으므로
+   contain이 아니라 완전히 꺼도 무방하다. */
+.str-chat__message-list {
+  overscroll-behavior: none;
 }
