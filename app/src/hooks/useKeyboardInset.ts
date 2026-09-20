@@ -77,10 +77,6 @@ function useSafeAreaInset(side: "top" | "bottom"): number {
   return inset;
 }
 
-export function useSafeAreaInsetBottom(): number {
-  return useSafeAreaInset("bottom");
-}
-
 export function useVisualViewportRect(): ViewportRect | null {
   const [rect, setRect] = useState<ViewportRect | null>(null);
 

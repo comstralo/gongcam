@@ -35,7 +35,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/lib/auth/useAuth";
 import { useTheme } from "@/hooks/useTheme";
-import { useVisualViewportRect, useSafeAreaInsetTop, useSafeAreaInsetBottom } from "@/hooks/useKeyboardInset";
+import { useVisualViewportRect, useSafeAreaInsetTop } from "@/hooks/useKeyboardInset";
 import { ICON_STROKE, cn } from "@/lib/utils";
 import type { AdminMembersResponse, ChatTokenResponse } from "@/lib/api/types";
 
@@ -1209,17 +1209,26 @@ export function ChatPage({
   visible,
   tabBarCollapsed,
   onTabBarCollapsedChange,
+  tabBarHeight,
 }: {
   visible: boolean;
   tabBarCollapsed?: boolean;
   onTabBarCollapsedChange?: (collapsed: boolean) => void;
+  /**
+   * 🔧 [버그 수정, 2026-09-20 사용자 지시: "채팅에서는 여전히 네비바
+   * 위치가 이상해"] — AppShell이 ResizeObserver로 실측한 하단 바
+   * (TabBar 또는 접힘 버튼)의 실제 화면 상 높이. 예전엔 이 값을
+   * 매직넘버(89, 24 등)로 추측했는데 TabBar 쪽 padding/env 계산이
+   * 바뀔 때마다 계속 어긋났다 — 이제 실측값을 그대로 받아쓰므로
+   * 어긋날 여지가 없다.
+   */
+  tabBarHeight?: number;
 }) {
   const { call } = useApi();
   const { isAdmin } = useAuth();
   const { dark } = useTheme();
   const viewportRect = useVisualViewportRect();
   const safeAreaInsetTop = useSafeAreaInsetTop();
-  const safeAreaInsetBottom = useSafeAreaInsetBottom();
   // 🔧 [버그 수정, 2026-09-20 사용자 지시: "네비바 올라온 상태에서 입력
   // 모드로 가면 이렇게 되는데, 자연히 접히도록 해줘"] — 사용자가 탭바를
   // 수동으로 펼쳐둔 채(tabBarCollapsed=false) 입력창을 탭하면, 펼쳐진
@@ -1492,26 +1501,15 @@ export function ChatPage({
   // 자체가 이미 카메라(visualViewport) 밖으로 밀려나 안 보이므로, 그
   // 자리까지 채팅 박스가 채워도 무방(오히려 그래야 입력창이 키보드
   // 바로 위까지 정확히 내려온다).
-  // 🔧 [버그 수정, 2026-09-20 사용자 지시: "v 표시가 너무 메시지 보내기
-  // 영역이랑 붙어있어"] — 펼침 상태에서는 TabBar 안의 접기(v) 버튼이
-  // nav 상단 경계 위로 튀어나와(TabBar.tsx의 -top-6, 버튼 높이 14px)
-  // 떠 있는데, TabBar 실제 높이만 뺐을 뿐 그 튀어나온 부분은 고려하지
-  // 않아 채팅 박스 하단이 이 버튼과 겹쳤다. 튀어나온 순수 부분(14px)을
-  // 더해 겹치지 않게 한다.
-  // 🔧 [버그 수정, 2026-09-20 사용자 지시: "네비바 하단에 여백이
-  // 가득한데" → "다른 앱의 높이를 참고해서 조정해줘"] — 펼침/접힘 모두
-  // env(safe-area-inset-bottom)이 0이던 시절의 순수 하드코딩값이었다.
-  // TabBar.tsx의 pb를 22px→4px로 줄인 것과 정합성을 맞춰, "env가 0일
-  // 때의 순수 부분"만 하드코딩하고(펼침: TabBar 순수높이 71 + 접기버튼
-  // 튀어나온 순수분 14 = 85, 접힘: AppShell 접기버튼 아이콘 20 + 순수
-  // padding 4 = 24, 이쪽은 변경 없음), 실제 안전영역은 훅으로 실측해
-  // 한 번만 더한다.
-  const tabBarHeightPx =
-    viewportRect && viewportRect.top > 0
-      ? 0
-      : tabBarCollapsed
-        ? 24 + safeAreaInsetBottom
-        : 85 + safeAreaInsetBottom;
+  // 🔧 [버그 수정, 2026-09-20 사용자 지시: "채팅에서는 여전히 네비바
+  // 위치가 이상해"] — 펼침/접힘 각각의 실제 높이를 매직넘버(89, 24
+  // 등)로 추측해왔는데, TabBar/AppShell 쪽 padding·env 계산이 바뀔
+  // 때마다 계속 어긋났다(v버튼 튀어나온 부분, safe-area 여백 등을
+  // 손으로 다시 맞춰야 했음). App.tsx가 AppShell의 onBarHeightChange로
+  // 실측해 내려주는 tabBarHeight(prop)를 그대로 쓴다 — 매직넘버 자체가
+  // 없으므로 앞으로 TabBar 쪽 스타일이 바뀌어도 자동으로 정합성이
+  // 유지된다.
+  const tabBarHeightPx = viewportRect && viewportRect.top > 0 ? 0 : (tabBarHeight ?? 0);
   return (
     <div
       hidden={!visible}

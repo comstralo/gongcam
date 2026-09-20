@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { ChevronUp } from "lucide-react";
 import { TabBar } from "./TabBar";
@@ -37,7 +37,28 @@ type AppShellProps = {
    * 상태를 여기 로컬로 두면 공유할 방법이 없다.
    */
   collapsibleTabBar?: { collapsed: boolean; onCollapsedChange: (collapsed: boolean) => void };
+  /**
+   * 🔧 [버그 수정, 2026-09-20 사용자 지시: "채팅에서는 여전히 네비바
+   * 위치가 이상해"] — ChatPage가 "탭바(또는 접힘 버튼)가 화면 하단에서
+   * 차지하는 실제 높이"를 매직넘버로 추측해 자기 높이를 계산해왔는데,
+   * TabBar 쪽 padding/env 계산이 바뀔 때마다 계속 어긋났다. 이 화면
+   * 하단 영역(펼침 TabBar / 접힘 버튼 / 키보드가 떠 아예 없음, 세 경우
+   * 모두)의 실제 렌더링 높이를 ResizeObserver로 실측해 그대로
+   * 올려보낸다 — collapsibleTabBar를 쓰는 화면(현재 채팅)에서만
+   * 의미가 있다.
+   */
+  onBarHeightChange?: (height: number) => void;
 };
+
+// 🔧 렌더링(JSX 반환) 도중에 곧바로 onBarHeightChange(0)을 호출하면
+// "렌더링 중 다른 컴포넌트의 setState를 트리거"하는 경고가 난다 —
+// 아무것도 그리지 않는 이 자리에서 effect로만 안전하게 보고한다.
+function ReportZeroHeight({ onBarHeightChange }: { onBarHeightChange?: (height: number) => void }) {
+  useEffect(() => {
+    onBarHeightChange?.(0);
+  }, [onBarHeightChange]);
+  return null;
+}
 
 export function AppShell({
   children,
@@ -46,9 +67,21 @@ export function AppShell({
   hideEyebrow,
   fitToScreen,
   collapsibleTabBar,
+  onBarHeightChange,
 }: AppShellProps) {
   const { session } = useAuth();
   const tabBarCollapsed = collapsibleTabBar?.collapsed ?? false;
+  const collapseButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const button = collapseButtonRef.current;
+    if (!button || !onBarHeightChange) return;
+    const report = () => onBarHeightChange(button.getBoundingClientRect().height);
+    report();
+    const observer = new ResizeObserver(report);
+    observer.observe(button);
+    return () => observer.disconnect();
+  }, [onBarHeightChange]);
   // 🔧 [사용자 지시, 2026-09-20] "키보드 입력 상태에서 ^ 표시가 보이는것도
   // 이상하고" — 이 접기 버튼(펼치기 힌트)이 fixed bottom:0(레이아웃
   // 뷰포트 기준)이라, 키보드가 떠도 레이아웃 뷰포트 자체는 안 줄어드는
@@ -151,7 +184,13 @@ export function AppShell({
         // 가운데 경우를 표현할 수 없어(접힘 조건이 그대로면 else가
         // TabBar를 펼쳐버리는 부작용) 3분기 함수로 바꿨다.
         const keyboardUp = !!(viewportRect && viewportRect.top > 0);
-        if (collapsibleTabBar && tabBarCollapsed && keyboardUp) return null;
+        if (collapsibleTabBar && tabBarCollapsed && keyboardUp) {
+          // 🔧 이 분기는 실제로 아무것도 렌더링하지 않으므로(그 자리는
+          // ChatPage의 채팅 컨테이너가 그대로 이어받음) 높이 0을
+          // 보고한다 — useEffect 밖(렌더링 시점)에서 직접 호출하면
+          // "렌더링 중 setState" 경고가 나므로 별도 effect로 분리.
+          return <ReportZeroHeight onBarHeightChange={onBarHeightChange} />;
+        }
         if (collapsibleTabBar && tabBarCollapsed) {
           // 🔧 [사용자 지시, 2026-09-20] "접힌 상태를 아이콘으로 표시하고
           // 누르면 다시 복구되도록" — TabBar 자리를 완전히 비우지 않고
@@ -159,6 +198,7 @@ export function AppShell({
           // "숨겨졌을 뿐 여전히 여기 있다"는 걸 알 수 있게 한다.
           return (
             <button
+              ref={collapseButtonRef}
               type="button"
               onClick={() => collapsibleTabBar.onCollapsedChange(false)}
               aria-label="하단 탭 메뉴 펼치기"
@@ -196,6 +236,7 @@ export function AppShell({
                 }
               }
               viewportRect={collapsibleTabBar ? viewportRect : undefined}
+              onHeightChange={onBarHeightChange}
             />
           </div>
         );

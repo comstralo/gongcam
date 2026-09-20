@@ -1,10 +1,9 @@
+import { useEffect, useRef, useState } from "react";
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, Flag, Bell, ScanLine, Settings, ShieldCheck, MessageCircle, ChevronDown, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, Flag, ScanLine, Settings, ShieldCheck, MessageCircle, ChevronDown, type LucideIcon } from "lucide-react";
 import { cn, ICON_STROKE } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/useAuth";
-import { useUnreadNotificationCount } from "@/lib/notifications/notifications";
 import type { ViewportRect } from "@/hooks/useKeyboardInset";
-import { useSafeAreaInsetBottom } from "@/hooks/useKeyboardInset";
 
 type Tab = {
   to: string;
@@ -14,7 +13,6 @@ type Tab = {
 };
 
 const TABS: Tab[] = [
-  { to: "/notifications", label: "알림", icon: Bell },
   { to: "/", label: "대시보드", icon: LayoutDashboard },
   { to: "/report", label: "제보", icon: Flag },
   { to: "/chat", label: "채팅", icon: MessageCircle },
@@ -38,6 +36,7 @@ const TABS: Tab[] = [
 export function TabBar({
   collapseButton,
   viewportRect,
+  onHeightChange,
 }: {
   collapseButton?: { onClick: () => void };
   /**
@@ -51,30 +50,57 @@ export function TabBar({
    * 페이지는 그런 문제가 없어 생략하면 기존 bottom:0 그대로 동작한다.
    */
   viewportRect?: ViewportRect | null;
+  /**
+   * 🔧 [버그 수정, 2026-09-20 사용자 지시: "채팅에서는 여전히 네비바
+   * 위치가 이상해"] — 이 탭바의 실제 화면 상 총 높이(v버튼이 nav
+   * 경계 위로 튀어나온 부분까지 포함)를 ChatPage가 매직넘버로
+   * 추측해왔는데(85px, 안전영역을 EnvSafeAreaBottom 훅으로 별도 실측
+   * 후 더함), TabBar 자신의 padding/env 계산이 바뀔 때마다 그
+   * 추측값과 계속 어긋났다(실측 없이 몇 차례 조정해도 재발). TabBar가
+   * 실제 렌더링된 자신의 높이를 ResizeObserver로 직접 측정해 콜백으로
+   * 올려보내, ChatPage가 항상 "지금 이 순간 실제 렌더링된 값"만
+   * 쓰게 한다 — 매직넘버 자체가 존재하지 않으므로 어긋날 여지가
+   * 없다.
+   */
+  onHeightChange?: (height: number) => void;
 }) {
   const { session, isAdmin, isCoReviewer } = useAuth();
-  const unreadCount = useUnreadNotificationCount();
-  // 🔧 [버그 수정, 2026-09-20 사용자 지시: "네비바 하단에 여백이
-  // 가득한데"] — 이 상수가 순수 하드코딩(89, env=0이던 시절의
-  // pt-1.5+콘텐츠+pb-22px 실측 합)이던 시절엔 실제
-  // env(safe-area-inset-bottom)을 반영하지 못해, 위 pb-[calc(...)] (CSS,
-  // 브라우저가 자동으로 정확히 계산)와 이 JS 상수(수동으로 맞춰야 함)
-  // 사이에 정합성이 계속 깨졌다. "env가 0이었을 때의 순수 부분"만
-  // 분리해 하드코딩하고(다른 앱과 실측 비교해 최종 pb 4px 기준: 89 -
-  // 기존 pb 22 + 새 pb 4 = 71), 실제 안전영역은 훅으로 실측해 더한다
-  // — 이제 이 값은 항상 위 className의 계산식과 자동으로 일치한다.
-  // 훅은 조건부 return(!session) 이전에 호출해야 하므로 여기
-  // 최상단에 둔다.
-  const safeAreaInsetBottom = useSafeAreaInsetBottom();
+  const navRef = useRef<HTMLElement>(null);
+  // 🔧 [버그 수정] navRef.current를 렌더링(JSX의 style 계산) 중에 직접
+  // 읽으면 첫 렌더링 시점엔 아직 null이라 즉시 오류가 난다 — 실측값을
+  // state로 보관해, ResizeObserver가 실제로 측정을 마친 뒤에야
+  // top 계산에 반영되도록(그 전까지는 undefined로 기존 bottom:0
+  // 동작 유지) 분리한다.
+  const [navHeight, setNavHeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    const report = () => {
+      const height = nav.getBoundingClientRect().height;
+      setNavHeight(height);
+      // 🔧 v버튼(collapseButton)이 -top-6(24px)만큼 nav 상단 경계 위로
+      // 튀어나오므로, nav 자신의 높이만으로는 "화면에서 실제로 이
+      // 탭바 영역 전체가 차지하는 높이"를 알 수 없다 — 버튼이 있으면
+      // 그만큼(24px) 더해 보고한다.
+      onHeightChange?.(height + (collapseButton ? 24 : 0));
+    };
+    report();
+    const observer = new ResizeObserver(report);
+    observer.observe(nav);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!collapseButton, onHeightChange]);
+
   if (!session) return null;
 
   // 🔧 2026-09: 부스터디장(공동 검토자)도 "관리자" 탭을 볼 수 있다 —
   // 실제로 들어가면 AdminPage가 "송출 P 대상 처리"만 제한적으로 보여준다.
   const tabs = TABS.filter((t) => !t.adminOnly || isAdmin || isCoReviewer);
-  const tabBarHeight = 71 + safeAreaInsetBottom; // 실측 순수 높이(pt-1.5 + 콘텐츠 + pb-4px) + 실측 안전영역.
 
   return (
     <nav
+      ref={navRef}
       // 🔧 2026-09: index.html의 viewport meta에 viewport-fit=cover가 없던
       // 시절엔 env(safe-area-inset-bottom)이 항상 0으로 평가돼(홈
       // 인디케이터 영역 아래로 콘텐츠를 확장하는 옵트인이 없으면 이 값
@@ -96,7 +122,18 @@ export function TabBar({
         "fixed inset-x-0 z-20 flex justify-center gap-0.5 border-t bg-card px-2.5 pt-1.5 shadow-lift sm:gap-1",
         viewportRect ? "pb-0" : "bottom-0 pb-[calc(4px+env(safe-area-inset-bottom,0px))]"
       )}
-      style={viewportRect ? { top: viewportRect.top + viewportRect.height - tabBarHeight } : undefined}
+      style={
+        viewportRect
+          ? // 🔧 navHeight 실측 전(마운트 직후 첫 프레임) 잠깐은 top이
+            // 없어 fixed 요소가 문서 흐름상 원래 위치로 튈 수 있으므로,
+            // 그 짧은 순간엔 화면 최하단(bottom:0)에 붙여 안전하게
+            // 폴백한다 — ResizeObserver가 실제 높이를 보고하는 즉시
+            // top 기반 계산으로 넘어간다.
+            navHeight !== null
+            ? { top: viewportRect.top + viewportRect.height - navHeight }
+            : { bottom: 0 }
+          : undefined
+      }
       aria-label="하단 탭 메뉴"
     >
       {collapseButton && (
@@ -117,7 +154,6 @@ export function TabBar({
       )}
       {tabs.map((tab) => {
         const Icon = tab.icon;
-        const showUnreadHint = tab.to === "/notifications" && unreadCount > 0;
         return (
           <NavLink
             key={tab.to}
@@ -130,30 +166,8 @@ export function TabBar({
               )
             }
           >
-            {({ isActive }) => (
-              <>
-                <span className="relative flex">
-                  <Icon
-                    className={cn(
-                      "size-5.5 shrink-0 sm:size-5",
-                      // 🔧 2026-09: 안 읽은 알림이 있을 때 탭바를 훑다가도
-                      // 눈에 띄도록 아이콘 자체에 은은한 펄스 + 글로우를
-                      // 건다. 이미 그 화면을 보고 있는 동안(isActive)까지
-                      // 계속 흔들리면 오히려 거슬리므로 그때는 끈다.
-                      showUnreadHint && !isActive && "animate-notif-pulse text-primary"
-                    )}
-                    strokeWidth={ICON_STROKE.default}
-                  />
-                  {showUnreadHint && (
-                    <span className="absolute -top-0.5 -right-1 flex size-2.25">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive opacity-75" />
-                      <span className="relative inline-flex size-2.25 rounded-full bg-destructive ring-2 ring-card" />
-                    </span>
-                  )}
-                </span>
-                <span className="max-w-full truncate text-micro font-semibold sm:text-sm">{tab.label}</span>
-              </>
-            )}
+            <Icon className="size-5.5 shrink-0 sm:size-5" strokeWidth={ICON_STROKE.default} />
+            <span className="max-w-full truncate text-micro font-semibold sm:text-sm">{tab.label}</span>
           </NavLink>
         );
       })}

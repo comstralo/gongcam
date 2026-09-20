@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { HashRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
-import { LayoutDashboard, ScanLine, Bell, Settings, ShieldCheck, MessageCircle } from "lucide-react";
+import { LayoutDashboard, ScanLine, Settings, ShieldCheck, MessageCircle } from "lucide-react";
 import { AuthProvider } from "@/lib/auth/AuthContext";
 import { useAuth } from "@/lib/auth/useAuth";
 import { MyStatusProvider } from "@/lib/status/MyStatusContext";
@@ -14,13 +14,12 @@ import { CheckerPage } from "@/pages/CheckerPage";
 import { ReportPage } from "@/pages/ReportPage";
 import { ChatPage } from "@/pages/ChatPage";
 import { DashboardPage } from "@/pages/DashboardPage";
-import { NotificationsPage } from "@/pages/NotificationsPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { AdminPage } from "@/pages/AdminPage";
 import { useVersionCheck } from "@/hooks/useVersionCheck";
 
-type MainView = "/" | "/report" | "/chat" | "/notifications" | "/settings" | "/admin";
-const MAIN_VIEWS: MainView[] = ["/", "/report", "/chat", "/notifications", "/settings", "/admin"];
+type MainView = "/" | "/report" | "/chat" | "/settings" | "/admin";
+const MAIN_VIEWS: MainView[] = ["/", "/report", "/chat", "/settings", "/admin"];
 
 // 로그인 후 오가는 5개 메인 페이지(대시보드/제보/링크/설정/관리자)는 예전
 // react-router <Routes>처럼 경로가 바뀔 때마다 언마운트/재마운트되면, 각
@@ -39,7 +38,6 @@ function MainViews() {
     "/": false,
     "/report": false,
     "/chat": false,
-    "/notifications": false,
     "/settings": false,
     "/admin": false,
   });
@@ -54,6 +52,11 @@ function MainViews() {
   // 계속 마운트 유지되는 구조라) 그 선택은 그대로 남는다 — 매번 다시
   // 접히면 "펼쳐 두고 싶다"는 선택 자체를 무시하는 셈이라 부자연스럽다.
   const [chatTabBarCollapsed, setChatTabBarCollapsed] = useState(true);
+  // 🔧 [버그 수정, 2026-09-20 사용자 지시: "채팅에서는 여전히 네비바
+  // 위치가 이상해"] — AppShell이 실측한 하단 바(TabBar 또는 접힘 버튼)
+  // 의 실제 높이를 받아 ChatPage에 그대로 전달한다 — 매직넘버 계산
+  // 대신 이 실측값 하나로 항상 정확히 정합성이 맞는다.
+  const [chatBarHeight, setChatBarHeight] = useState(0);
 
   if (!session) return <Navigate to="/login" replace />;
   if (!MAIN_VIEWS.includes(path)) return <Navigate to="/" replace />;
@@ -95,19 +98,14 @@ function MainViews() {
             title="채팅"
             titleIcon={MessageCircle}
             collapsibleTabBar={{ collapsed: chatTabBarCollapsed, onCollapsedChange: setChatTabBarCollapsed }}
+            onBarHeightChange={setChatBarHeight}
           >
             <ChatPage
               visible={path === "/chat"}
               tabBarCollapsed={chatTabBarCollapsed}
               onTabBarCollapsedChange={setChatTabBarCollapsed}
+              tabBarHeight={chatBarHeight}
             />
-          </AppShell>
-        )}
-      </div>
-      <div hidden={path !== "/notifications"} className="animate-tab-enter">
-        {everVisited.current["/notifications"] && (
-          <AppShell title="알림" titleIcon={Bell}>
-            <NotificationsPage />
           </AppShell>
         )}
       </div>
