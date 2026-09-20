@@ -84,11 +84,34 @@ export function useVisualViewportRect(): ViewportRect | null {
     const viewport: VisualViewport | null = window.visualViewport;
     if (!viewport) return;
 
+    // 🔧 [버그 수정, 2026-09-21 사용자 지시: "키보드가 올라왔다가
+    // 내려가면 ^ 위치가 달라지잖아"] — 실기기 디버그 배지로 실측한
+    // 결과, 키보드를 닫는 순간 visualViewport의 resize 이벤트가 최종
+    // 안정값(예: 797, 홈 인디케이터 안전영역을 뺀 값) 이전에 과도값
+    // (예: 844, 안전영역을 아직 안 뺀 전체 화면 높이로 보임 — iOS가
+    // 키보드 축소 애니메이션 도중 레이아웃 뷰포트를 살짝 다르게
+    // 보고하는 것으로 추정)을 먼저 한 번 쏘고, 그 뒤 안정값으로 다시
+    // resize 이벤트가 오는데 이 두 번째 이벤트가 누락되거나 늦게
+    // 도착해 화면엔 과도값 기준 레이아웃(컨테이너가 실제보다 커져
+    // 하단에 빈 여백)이 그대로 남는 현상이 있었다. resize/scroll
+    // 이벤트로 값이 바뀔 때마다 그 값을 즉시 반영하는 대신, 짧게
+    // (120ms) 디바운스해 마지막 값만 반영한다 — 과도값→안정값으로
+    // 이어지는 연속 이벤트 중 마지막(안정값) 것만 실제로 렌더링에
+    // 쓰이므로, 두 번째 이벤트가 누락되는 경우와 무관하게 항상 최신
+    // 값으로 수렴한다. 120ms는 사람이 인지하기엔 짧아 지연으로
+    // 느껴지지 않으면서, 연속으로 오는 과도값들을 충분히 걸러낸다.
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const update = () => {
+      if (debounceTimer !== null) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        setRect({ top: viewport.offsetTop, height: viewport.height });
+      }, 120);
+    };
+    const updateImmediate = () => {
       setRect({ top: viewport.offsetTop, height: viewport.height });
     };
 
-    update();
+    updateImmediate();
     viewport.addEventListener("resize", update);
     viewport.addEventListener("scroll", update);
     // 🔧 [버그 수정] 데스크톱에서 브라우저 창 크기를 조절하면
@@ -101,6 +124,7 @@ export function useVisualViewportRect(): ViewportRect | null {
     // 무해하다.
     window.addEventListener("resize", update);
     return () => {
+      if (debounceTimer !== null) clearTimeout(debounceTimer);
       viewport.removeEventListener("resize", update);
       viewport.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
