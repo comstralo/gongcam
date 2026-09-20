@@ -84,34 +84,36 @@ export function useVisualViewportRect(): ViewportRect | null {
     const viewport: VisualViewport | null = window.visualViewport;
     if (!viewport) return;
 
-    // 🔧 [버그 수정, 2026-09-21 사용자 지시: "키보드가 올라왔다가
-    // 내려가면 ^ 위치가 달라지잖아"] — 실기기 디버그 배지로 실측한
-    // 결과, 키보드를 닫는 순간 visualViewport의 resize 이벤트가 최종
-    // 안정값(예: 797, 홈 인디케이터 안전영역을 뺀 값) 이전에 과도값
-    // (예: 844, 안전영역을 아직 안 뺀 전체 화면 높이로 보임 — iOS가
-    // 키보드 축소 애니메이션 도중 레이아웃 뷰포트를 살짝 다르게
-    // 보고하는 것으로 추정)을 먼저 한 번 쏘고, 그 뒤 안정값으로 다시
-    // resize 이벤트가 오는데 이 두 번째 이벤트가 누락되거나 늦게
-    // 도착해 화면엔 과도값 기준 레이아웃(컨테이너가 실제보다 커져
-    // 하단에 빈 여백)이 그대로 남는 현상이 있었다. resize/scroll
-    // 이벤트로 값이 바뀔 때마다 그 값을 즉시 반영하는 대신, 짧게
-    // (120ms) 디바운스해 마지막 값만 반영한다 — 과도값→안정값으로
-    // 이어지는 연속 이벤트 중 마지막(안정값) 것만 실제로 렌더링에
-    // 쓰이므로, 두 번째 이벤트가 누락되는 경우와 무관하게 항상 최신
-    // 값으로 수렴한다. 120ms는 사람이 인지하기엔 짧아 지연으로
-    // 느껴지지 않으면서, 연속으로 오는 과도값들을 충분히 걸러낸다.
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    // 🔧 [버그 수정, 2026-09-21] 실기기(홈 화면에 추가한 PWA, standalone
+    // 모드) 디버그 배지로 실측 확인: 키보드를 닫은 뒤
+    // visualViewport.height가 키보드 뜨기 전 원래값(예: 844)으로
+    // 돌아오지 못하고 상단 안전영역만큼 줄어든 값(예: 797 = 844-47)에
+    // 머무는 경우가 있었다 — iOS PWA standalone에서 널리 보고된 버그로,
+    // resize를 아무리 다시 구독하거나 디바운스해도 애초에 브라우저가
+    // 잘못된 값을 보고하는 것이라 고쳐지지 않는다(실측: 여러 초 기다려도
+    // 797에 고정). 대신 "키보드가 없을 때 관측된 값 중 최댓값"을
+    // 별도로 기억해뒀다가, offsetTop이 0(키보드 없음)인데 방금 관측된
+        // height가 그 최댓값보다 작으면 iOS가 원복에 실패한 것으로 보고
+    // 최댓값을 그대로 쓴다 — 화면 회전 등으로 실제 화면 크기 자체가
+    // 바뀌는 경우엔 그 즉시 새 값이 이전 최댓값을 넘어서므로 자연히
+    // 새 최댓값으로 갱신된다.
+    let maxHeightWithoutKeyboard = 0;
     const update = () => {
-      if (debounceTimer !== null) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        setRect({ top: viewport.offsetTop, height: viewport.height });
-      }, 120);
-    };
-    const updateImmediate = () => {
-      setRect({ top: viewport.offsetTop, height: viewport.height });
+      const offsetTop = viewport.offsetTop;
+      let height = viewport.height;
+      if (offsetTop === 0) {
+        if (height > maxHeightWithoutKeyboard) {
+          maxHeightWithoutKeyboard = height;
+        } else if (maxHeightWithoutKeyboard - height <= 60) {
+          // 60px 이내 차이만 "원복 실패"로 간주해 보정한다 — 그보다 큰
+          // 차이는 실제 화면 크기 변화(회전 등)일 가능성이 높다.
+          height = maxHeightWithoutKeyboard;
+        }
+      }
+      setRect({ top: offsetTop, height });
     };
 
-    updateImmediate();
+    update();
     viewport.addEventListener("resize", update);
     viewport.addEventListener("scroll", update);
     // 🔧 [버그 수정] 데스크톱에서 브라우저 창 크기를 조절하면
@@ -124,7 +126,6 @@ export function useVisualViewportRect(): ViewportRect | null {
     // 무해하다.
     window.addEventListener("resize", update);
     return () => {
-      if (debounceTimer !== null) clearTimeout(debounceTimer);
       viewport.removeEventListener("resize", update);
       viewport.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
