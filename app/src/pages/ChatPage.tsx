@@ -26,7 +26,7 @@ import {
 } from "stream-chat-react";
 import "stream-chat-react/dist/css/index.css";
 import "@/pages/chat-theme.css";
-import { MessageCircle, UserPlus, PanelLeftClose, PanelLeftOpen, User, Reply, ImagePlus } from "lucide-react";
+import { MessageCircle, UserPlus, X, User, Reply, ImagePlus } from "lucide-react";
 import { InfoCard } from "@/components/dashboard/shared";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -762,9 +762,12 @@ function SwipeableMessage() {
 // 🔧 [사용자 지시] "탭 전환 디자인을 참고해서" — ReportPage(화각 불량
 // 제보/PUSH 알림 전송/내 제보 확인)와 동일한 알약형 Tabs 패턴(공용 Tabs,
 // rounded-full bg-secondary p-1, 선택 시 흰 배경+그림자)을 그대로 재사용해
-// 앱 전체 디자인 언어와 통일한다. 우측 대화창 헤더(chat-theme.css에서
-// 48px로 축소함)와 높이를 맞추기 위해 상하 패딩을 좁혀 이 탭 바 전체
-// 높이도 48px로 정렬한다(사용자 지적: "우측 단의 상단 높이랑 어긋나잖아").
+// 앱 전체 디자인 언어와 통일한다.
+// 🔧 [사용자 지시, 2026-09-20] "'채팅 목록'/'회원 목록' 토글을 다른
+// 메뉴들처럼 상단에 올려줘" — 좌측 사이드바 안(48px 높이, 우측 대화창
+// 헤더와 나란히 맞춤)에 있던 걸 페이지 최상단으로 옮겼다. 더 이상 그
+// 헤더와 높이를 맞출 필요가 없어져, ReportPage의 실제 패딩(py-2.5)과
+// 동일하게 키우고 페이지 좌우 여백에 맞춰 하단 구분선만 남긴다.
 function ChatListHeader({
   view,
   onViewChange,
@@ -773,13 +776,13 @@ function ChatListHeader({
   onViewChange: (view: "channels" | "members") => void;
 }) {
   return (
-    <div className="flex h-12 items-center border-b px-2">
+    <div className="shrink-0 border-b p-2">
       <Tabs value={view} onValueChange={(v) => onViewChange(v as "channels" | "members")} className="w-full">
         <TabsList className="h-auto w-full rounded-full bg-secondary p-1">
-          <TabsTrigger value="channels" className="h-auto flex-1 rounded-full py-1 text-xs data-active:shadow-sm">
+          <TabsTrigger value="channels" className="h-auto flex-1 rounded-full py-2 text-xs data-active:shadow-sm">
             채팅 목록
           </TabsTrigger>
-          <TabsTrigger value="members" className="h-auto flex-1 rounded-full py-1 text-xs data-active:shadow-sm">
+          <TabsTrigger value="members" className="h-auto flex-1 rounded-full py-2 text-xs data-active:shadow-sm">
             회원 목록
           </TabsTrigger>
         </TabsList>
@@ -862,6 +865,143 @@ function AdminMemberList({
   );
 }
 
+// 🔧 [사용자 지시, 2026-09-20] "채팅 화면에 접속하면 목록만 보이고,
+// 눌렀을 때 개별 채팅창이 스플릿 돼서 보이도록" — 모바일 메신저 앱과
+// 같은 패턴: 아직 대화를 선택하지 않았으면 목록이 전체 폭을 차지하고,
+// 회원/채널을 클릭해 활성 채널이 생기면 그때부터 목록(좁게)+대화창
+// 2단 스플릿으로 전환된다. 활성 채널 여부(useChatContext().channel)를
+// 구독해야 하는데, 이건 <Chat> 컴포넌트의 자식에서만 쓸 수 있는
+// 컨텍스트라 ChatPage 최상위 함수 본체에서는 읽을 수 없다 — <Chat> 안에
+// 렌더링되는 이 컴포넌트로 관리자 화면 전체를 옮겼다.
+function AdminChatArea({
+  call,
+  sidebarView,
+  onSidebarViewChange,
+}: {
+  call: ReturnType<typeof useApi>["call"];
+  sidebarView: "channels" | "members";
+  onSidebarViewChange: (view: "channels" | "members") => void;
+}) {
+  const { channel, setActiveChannel } = useChatContext();
+  const hasActiveChannel = !!channel;
+
+  return (
+    <div className="flex h-full flex-col">
+      <ChatListHeader view={sidebarView} onViewChange={onSidebarViewChange} />
+      <div className="flex min-h-0 flex-1">
+        <div
+          className={cn(
+            "flex w-full shrink-0 flex-col overflow-hidden transition-[width,opacity] duration-200",
+            hasActiveChannel && "max-w-70 border-r opacity-100",
+            // 아직 대화를 선택하지 않았으면 항상 전체 폭 — max-w-70 제약
+            // 자체를 없앤다. (🔧 버그 수정: w-full이 hasActiveChannel
+            // 분기 안에만 있어, 채널이 없을 때는 max-w-none만 걸리고
+            // w-full이 빠져 flex 아이템이 shrink-to-fit 폭(자식인
+            // ChannelList의 고정 280px)으로만 렌더링됐다 — 실측: "목록으로
+            // 돌아가기" 버튼을 눌러도 목록이 여전히 280px로 좁게 남는
+            // 버그로 발견.)
+            !hasActiveChannel && "max-w-none"
+          )}
+        >
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {sidebarView === "channels" ? (
+              // 🔧 [사용자 지시, 2026-09-20] "목록만 보이고, 눌렀을 때
+              // 개별 채팅창이 스플릿 돼서 보이도록" — Stream의
+              // ChannelList는 setActiveChannelOnMount 기본값이 true라,
+              // 목록에 채널이 하나라도 있으면 마운트 즉시 그 중 최신
+              // 채널을 자동으로 열어버려(실측: 목록 화면 대신 곧바로
+              // 2단 스플릿으로 시작) 의도한 "목록 우선" 진입이 무너졌다.
+              // 명시적으로 꺼서, 사용자가 실제로 채널을 클릭해야만
+              // hasActiveChannel이 true가 되게 한다.
+              <ChannelList
+                filters={{ type: "messaging", members: { $in: ["admin"] } }}
+                sort={{ last_message_at: -1 }}
+                setActiveChannelOnMount={false}
+              />
+            ) : (
+              <AdminMemberList call={call} onOpened={() => onSidebarViewChange("channels")} />
+            )}
+          </div>
+        </div>
+        {/* 🔧 [버그 수정, 2026-09-19 사용자 지시: "박스에 불필요한
+            여백이 있어"] Channel(Stream 컴포넌트)이 flex 부모 안에서
+            flex-basis 기본값(auto, 콘텐츠 고유 크기)만큼만 잡혀
+            오른쪽에 빈 공간이 크게 남았다 — flex-1과 min-w-0(flex
+            아이템 기본 min-width:auto가 축소를 막는 문제) 둘 다
+            줘야 남는 공간을 실제로 채운다. */}
+        {/* 🔧 [사용자 지시, 2026-09-19] "내가 보낸 메시지가 차지하는
+            폭이 대화창 폭 대비 너무 크다" — 버블 최대폭을 고정
+            280px로 두면 넓은 대화창에서는 적당하지만, 좌측 채널
+            목록이 펼쳐져 대화창 자체가 좁아진 경우(실측 스크린샷
+            비교로 확인) 여전히 대화창 폭 대비 상대적으로 커 보였다.
+            뷰포트 기준(vw)이나 grid 트랙 자체의 %(순환 참조 버그)는
+            모두 이 "대화창의 실제 남은 폭"을 반영하지 못했던 반면,
+            container query(cqw)는 이 div 자체의 실제 렌더 폭을
+            기준으로 하므로 채널 목록이 펼쳐지든 접히든 항상 정확히
+            반응한다. */}
+        {/* 🔧 [사용자 지시, 2026-09-20] 아직 대화를 선택하지 않았으면
+            목록이 전체 폭을 차지해야 하므로 대화창 영역 자체를 렌더링
+            하지 않는다 — Channel을 항상 마운트해두고 CSS로만 숨기면
+            activeChannel이 없는 상태에서 Channel/Window가 빈 화면을
+            그리려 시도해 불필요하다(Stream 관례상 Channel은 활성
+            채널이 있을 때만 의미 있는 컴포넌트). */}
+        {hasActiveChannel && (
+          <div className="chat-message-area min-w-0 flex-1">
+            <Channel>
+              <Window>
+                {/* 🔧 [버그 수정, 2026-09-19] 원래는 이 wrapper의 border-b와
+                    ChannelHeader 자체 구분선(.str-chat__channel-header,
+                    Stream 기본 스타일)이 겹쳐 두 겹으로 두꺼워 보이고
+                    (사용자 지적: "바가 두꺼워서 이상한데"), 두 선의 시작
+                    x좌표도 달라(wrapper는 접기 버튼부터, Stream 쪽은 그
+                    오른쪽부터 시작) 왼쪽이 비어 보였다. Stream 쪽 border는
+                    "[&_.str-chat__channel-header]:border-b-0"로 꺼서
+                    완전히 없애고, 접기 버튼까지 포함한 wrapper 전체 폭에
+                    선을 한 겹만 그어 끝까지 이어지게 한다(사용자 지시:
+                    "얇은 선은 끝까지 차도록"). */}
+                <div className="flex h-12 shrink-0 items-center overflow-hidden border-b [&_.str-chat__channel-header]:border-b-0">
+                  {/* 🔧 [사용자 지시, 2026-09-20] "이 버튼은 채팅 닫고
+                      목록으로 돌아가는 버튼이 되어야 하지 않겠니?" —
+                      목록 우선 진입(위 AdminChatArea 주석 참고) 방식으로
+                      바뀌면서, 이 버튼의 기존 역할("목록 좁게 접기/펴기")은
+                      더 이상 맞지 않는다 — 목록은 이미 활성 채널이 있는 동안
+                      항상 좁게(max-w-70) 떠 있으므로, 접어도 얻는 실익이
+                      없고 오히려 "목록으로 돌아가기"라는 더 자연스러운
+                      모바일 메신저 관례를 이 자리가 대신해야 한다.
+                      activeChannel을 해제하면 hasActiveChannel이 false가
+                      되어 목록이 다시 전체 폭으로 돌아간다. */}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="ml-1 shrink-0"
+                    onClick={() => setActiveChannel(undefined)}
+                    aria-label="목록으로 돌아가기"
+                    title="목록으로 돌아가기"
+                  >
+                    <X className="size-5" strokeWidth={ICON_STROKE.default} />
+                  </Button>
+                  <div className="min-w-0 flex-1">
+                    {/* 🔧 [사용자 지시, 2026-09-19] "헤더 우측 사람 아이콘
+                        (아바타) 제거" — ChannelHeader는 ComponentContext의
+                        Avatar가 아니라 자체 Avatar prop을 직접 받는 구조라
+                        (상속 안 받음) 빈 컴포넌트를 명시적으로 넘겨 렌더링
+                        자체를 없앤다. */}
+                    <ChannelHeader Avatar={() => null} />
+                  </div>
+                </div>
+                <MessageList />
+                <MessageComposer />
+              </Window>
+              <Thread />
+            </Channel>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // 🔧 [사용자 지시] 매번 새 WebSocket 연결을 만들지 않도록 StreamChat
 // 인스턴스를 모듈 스코프에 캐싱한다(getInstance는 같은 apiKey면 기존
 // 인스턴스를 그대로 반환하는 싱글턴 팩토리라 실제로는 안전망에 가깝다).
@@ -875,11 +1015,6 @@ export function ChatPage({ visible }: { visible: boolean }) {
   const [memberChannel, setMemberChannel] = useState<StreamChannel | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  // 🔧 [사용자 지시] "좌측 단을 접을 수 있도록" — 관리자가 이미 어느
-  // 회원과 대화 중인지 확인한 뒤에는 목록을 잠깐 접어 대화창을 넓게 볼 수
-  // 있게 한다. 2단 레이아웃 자체(목록+대화창)는 그대로 유지한다(사용자
-  // 확정: "지금처럼 하되").
-  const [listCollapsed, setListCollapsed] = useState(false);
   // 🔧 [사용자 지시, 2026-09-19] "채팅 목록"(대화 중인 채널들)과 "회원
   // 목록"(전체 회원, 새 대화 시작용)을 전환하는 버튼 — 기존에는 상단에
   // 드롭다운(새 대화 시작할 회원 선택)과 채널 목록이 동시에 늘 보였지만,
@@ -1053,90 +1188,16 @@ export function ChatPage({ visible }: { visible: boolean }) {
         >
         {isAdmin ? (
           // 관리자 — 지금까지 문의가 들어온 모든 회원과의 채널 목록.
-          <div className="flex h-full">
-            {/* 🔧 [사용자 지시] "좌측 단을 접을 수 있도록" — 접혔을 때는
-                width/opacity를 0으로 줄여 대화창이 그만큼 넓어지게 하되,
-                DOM에서 완전히 제거하지는 않는다(ChannelList의 활성 채널
-                구독/실시간 갱신을 접었다 펴도 그대로 이어가기 위함 —
-                언마운트했다가 다시 마운트하면 목록을 처음부터 다시
-                불러온다). */}
-            <div
-              className={cn(
-                "flex shrink-0 flex-col overflow-hidden border-r transition-[width,opacity] duration-200",
-                listCollapsed ? "w-0 opacity-0" : "w-full max-w-70 opacity-100"
-              )}
-            >
-              <ChatListHeader view={sidebarView} onViewChange={setSidebarView} />
-              <div className="min-h-0 flex-1 overflow-y-auto">
-                {sidebarView === "channels" ? (
-                  <ChannelList filters={{ type: "messaging", members: { $in: ["admin"] } }} sort={{ last_message_at: -1 }} />
-                ) : (
-                  <AdminMemberList call={call} onOpened={() => setSidebarView("channels")} />
-                )}
-              </div>
-            </div>
-            {/* 🔧 [버그 수정, 2026-09-19 사용자 지시: "박스에 불필요한
-                여백이 있어"] Channel(Stream 컴포넌트)이 flex 부모 안에서
-                flex-basis 기본값(auto, 콘텐츠 고유 크기)만큼만 잡혀
-                오른쪽에 빈 공간이 크게 남았다 — flex-1과 min-w-0(flex
-                아이템 기본 min-width:auto가 축소를 막는 문제) 둘 다
-                줘야 남는 공간을 실제로 채운다. */}
-            {/* 🔧 [사용자 지시, 2026-09-19] "내가 보낸 메시지가 차지하는
-                폭이 대화창 폭 대비 너무 크다" — 버블 최대폭을 고정
-                280px로 두면 넓은 대화창에서는 적당하지만, 좌측 채널
-                목록이 펼쳐져 대화창 자체가 좁아진 경우(실측 스크린샷
-                비교로 확인) 여전히 대화창 폭 대비 상대적으로 커 보였다.
-                뷰포트 기준(vw)이나 grid 트랙 자체의 %(순환 참조 버그)는
-                모두 이 "대화창의 실제 남은 폭"을 반영하지 못했던 반면,
-                container query(cqw)는 이 div 자체의 실제 렌더 폭을
-                기준으로 하므로 채널 목록이 펼쳐지든 접히든 항상 정확히
-                반응한다. */}
-            <div className="chat-message-area min-w-0 flex-1">
-            <Channel>
-              <Window>
-                {/* 🔧 [버그 수정, 2026-09-19] 원래는 이 wrapper의 border-b와
-                    ChannelHeader 자체 구분선(.str-chat__channel-header,
-                    Stream 기본 스타일)이 겹쳐 두 겹으로 두꺼워 보이고
-                    (사용자 지적: "바가 두꺼워서 이상한데"), 두 선의 시작
-                    x좌표도 달라(wrapper는 접기 버튼부터, Stream 쪽은 그
-                    오른쪽부터 시작) 왼쪽이 비어 보였다. Stream 쪽 border는
-                    "[&_.str-chat__channel-header]:border-b-0"로 꺼서
-                    완전히 없애고, 접기 버튼까지 포함한 wrapper 전체 폭에
-                    선을 한 겹만 그어 끝까지 이어지게 한다(사용자 지시:
-                    "얇은 선은 끝까지 차도록"). */}
-                <div className="flex h-12 shrink-0 items-center overflow-hidden border-b [&_.str-chat__channel-header]:border-b-0">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="ml-1 shrink-0"
-                    onClick={() => setListCollapsed((v) => !v)}
-                    aria-label={listCollapsed ? "회원 목록 펼치기" : "회원 목록 접기"}
-                    aria-pressed={listCollapsed}
-                    title={listCollapsed ? "회원 목록 펼치기" : "회원 목록 접기"}
-                  >
-                    {listCollapsed ? (
-                      <PanelLeftOpen className="size-5" strokeWidth={ICON_STROKE.default} />
-                    ) : (
-                      <PanelLeftClose className="size-5" strokeWidth={ICON_STROKE.default} />
-                    )}
-                  </Button>
-                  <div className="min-w-0 flex-1">
-                    {/* 🔧 [사용자 지시, 2026-09-19] "헤더 우측 사람 아이콘
-                        (아바타) 제거" — ChannelHeader는 ComponentContext의
-                        Avatar가 아니라 자체 Avatar prop을 직접 받는 구조라
-                        (상속 안 받음) 빈 컴포넌트를 명시적으로 넘겨 렌더링
-                        자체를 없앤다. */}
-                    <ChannelHeader Avatar={() => null} />
-                  </div>
-                </div>
-                <MessageList />
-                <MessageComposer />
-              </Window>
-              <Thread />
-            </Channel>
-            </div>
-          </div>
+          // 🔧 [사용자 지시, 2026-09-20] "'채팅 목록'/'회원 목록' 토글을
+          // 다른 메뉴들처럼 상단에 올려줘" — 예전엔 좌측 사이드바 안에
+          // 있어(ChatListHeader) 사이드바를 접으면 토글 자체도 함께
+          // 사라졌다. ReportPage(화각 불량 제보/PUSH 알림 전송/내 제보
+          // 확인)처럼 페이지 최상단에 항상 보이는 위치로 옮긴다 — 이제
+          // 사이드바 접힘 여부와 무관하게 뷰 전환이 가능하다. 실제
+          // 2단 레이아웃(목록/대화창 스플릿, 활성 채널 여부에 따른
+          // 자동 전환)은 AdminChatArea(<Chat> 자식, useChatContext로
+          // 활성 채널을 구독해야 해서 별도 컴포넌트로 분리)가 담당한다.
+          <AdminChatArea call={call} sidebarView={sidebarView} onSidebarViewChange={setSidebarView} />
         ) : (
           // 회원 — 목록 없이 본인-관리자 채널로 바로 진입.
           <div className="chat-message-area h-full">
