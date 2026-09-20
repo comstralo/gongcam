@@ -270,9 +270,35 @@ if __name__ == "__main__":
 
 ### 10.4 "내 화각 점검" 삭제
 
-`POST /my-captures/delete`(Worker) → 봇의 `/captures/delete`가
-`capture_manifest.delete_capture(capture_id)`를 그대로 재사용한다. 벌점/페널티
-판정 대상이 아닌 셀프 확인 기록이라 시트 되돌림 없이 manifest 기록만 지운다.
+🔧 **[2026-09-19 갱신]** 완전 삭제(manifest 엔트리 자체를 지움)에서 **논리적
+삭제**(trash로 이동 + 플래그만 세움, 목록엔 그대로 남음)로 동작이 바뀌었다.
+
+`POST /my-captures/delete`(Worker, `handleMyCaptureDelete`, report-review.js) →
+본인 신원(`item.selfCheck`이고 `reporterEmail`이 로그인 이메일과 일치)을
+확인한 뒤 봇의 **`POST /captures/self-check-delete`**(구 `/captures/delete`가
+아니다 — 그건 이제 관리자 "폐기" 전용)를 호출한다. 봇은
+`capture_manifest.mark_self_check_deleted(capture_id)`로 해당 엔트리에
+`deleted: true`/`deletedAt`/`deletedReason: "manual"`만 세팅하고, 실제 파일은
+`runtime/captures/trash/`(파일)와 `trash/manifest.json`(메타)으로 옮긴다
+(`_move_to_trash_locked`) — manifest 엔트리 자체는 목록에서 지워지지 않는다.
+프론트(`MyOutputPenSection.tsx`)는 이 플래그를 보고 스크린샷/영상 영역에
+"삭제처리 되었습니다." 오버레이를 덮어 표시한다.
+
+관리자 "폐기"(`handleAdminCaptureDelete` → 봇의 `/captures/delete` →
+`capture_manifest.delete_capture`)는 여전히 별도 기능으로 남아있는데, 이름과
+달리 이제 이것도 완전 말소가 아니라 **같은 `_move_to_trash_locked`를
+호출**한다 — 다만 manifest 엔트리 자체를 그 자리에서 지워버리므로("del
+data[capture_id]") 목록에서는 완전히 사라진다는 점에서 셀프 삭제(플래그만
+세움, 목록엔 남음)와 최종 사용자 경험이 다르다.
+
+**10일 경과 자동 논리적 삭제**: 매일 07:12 크론(`scheduling.py`의
+`run_capture_expiry_cleanup`)이 `CAPTURE_EXPIRE_DAYS`(10일)보다 오래된
+캡처(`item.ts` 기준, 셀프 확인/수신/발신 제보 모두 대상)를
+`capture_manifest.mark_expired_captures(cutoff_ms)`로 일괄 처리한다 — 로직은
+`mark_self_check_deleted`와 동일(플래그 세팅 + trash 이동)하되
+`deletedReason: "expired"`로 남겨, 프론트가 "10일 초과로 삭제처리
+되었습니다." 문구를 수동 삭제("삭제처리 되었습니다.")와 구분해 보여줄 수
+있게 한다. 이미 `deleted`인 항목은 건너뛴다.
 
 ### 10.5 캡처 완료 알림 → 20분 쿨다운 재시작
 

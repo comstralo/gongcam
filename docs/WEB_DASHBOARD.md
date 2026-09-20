@@ -670,6 +670,12 @@ computedMerit = max(0, round4((studyTimeMerit + reportMerit(조건부)) × multi
   (WEB_REPORT/WEB_SETTINGS/WEB_ADMIN/WEB_DASHBOARD/HELPERBOT) 어디에도
   본문 절이 없다 — 새로 다룰 화면을 문서화한다면 별도 섹션이 필요하다.
   `docs/WEB_ADMIN.md` §7에도 동일 사실이 교차 기록되어 있다.
+  🔧 [2026-09-20 발견 → 해결됨] **"채팅" 탭도 같은 사각지대에 있었다** —
+  `TabBar.tsx`에 `/chat`(MessageCircle 아이콘, "채팅" 라벨) 탭이 신설되고
+  `App.tsx`의 `MainView`에도 라우트가 등록됐지만(관리자-회원 1:1 문의방,
+  Stream Chat 기반, `app/src/pages/ChatPage.tsx`), 이 기능 역시 위 5개
+  설계 문서 어디에도 본문 절이 없었다 — 이제 별도 문서
+  `docs/WEB_CHAT.md`로 작성 완료.
 - **KST 계산이 프론트/백엔드에서 서로 다른 방식으로 두 번 구현되어 있다.** 백엔드
   (Cloudflare Workers, 로컬 타임존 항상 UTC)는 `Date.now() + 9시간` 트릭 +
   `getUTC*()` 게터. 프론트(브라우저, 로컬 타임존 임의)는

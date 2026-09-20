@@ -1041,16 +1041,25 @@ applyAutoRecognitionForExpired`로 고치고 index.js가 9~11차와 동일한
 정상 재작성) 간에 차이가 있어 — "로직 변경 없이 그대로 옮긴다"
 원칙에 따라 원본의 오타까지 그대로 재현해 완전 일치를 달성했다.
 
-**통합 테스트 3개 파일(59개 케이스)**:
+**통합 테스트 3개 파일(67개 케이스)**: 🔧 [2026-09-19 갱신] 개수는 실측
+(`grep -c "it(" <파일>`) 기준으로 다시 세었다 — 아래 서술이 실제 코드와
+달라지면 이 개수부터 다시 세어 갱신할 것.
 - `test/report-submit.test.js`(18개) — 접수/쿨다운/안전망 큐.
   봇 오프라인(BOT_URL 미설정 → `proxyToBotDashboard`가 fetch 없이
   즉시 null) 경로를 mock 없이 자연스럽게 검증.
-- `test/report-captures-list.test.js`(22개) — 관리자/본인 캡처
+- `test/report-captures-list.test.js`(27개) — 관리자/본인 캡처
   목록·삭제·응답·투표·파일·상태 조회. `handleAdminCaptureVote`가
   `requireAdminOrCoReviewer`로 역할부터 검증하는 순서라, "severity
   값이 잘못되면 400" 케이스는 실제 coReviewer 세션(부스터디장 시트
   L3 값 mock)까지 갖춰야 도달함을 확인해 mock을 보강했다.
-- `test/report-decide.test.js`(19개) — 승인/취소/삭제/반려취소.
+  🔧 [수신/발신 통합, 2026-09-19] "내 화각 불량 제보"가 대상자로
+  지목된 수신 건뿐 아니라 본인이 제보한 발신 건도 함께 보여주도록
+  확장되면서(`handleMyOutputPen`), 그 판정을 담당하는 순수 함수
+  `isVisibleForMyOutputPen`/`myOutputPenDirection`(report-review.js)에
+  대한 별도 `describe` 블록 5개 케이스가 추가됐다 — selfCheck 기록
+  제외, 수신("nickname"이 본인)/발신("reporterEmail"이 본인) 각각의
+  판정, 그리고 둘 다 아닌 경우 `false`를 반환하는지 확인한다.
+- `test/report-decide.test.js`(22개) — 승인/취소/삭제/반려취소.
   `applyOutputPenalty`/`applyReportMerit`가 실제로 "데이터" 시트
   F~K(벌점)/R~V(제보상점) 슬롯에 쓰는지까지 fetch mock으로 검증했다.
   최초 작성 시 슬롯 셀 위치를 `번호` 그대로(F5) 잘못 가정했으나

@@ -42,6 +42,19 @@
 > (3) 제보 대상자를 고르면 그 사람의 "전자기기 상태 메시지"를 보여주는
 > 기능(`GET /member-status-message`)이 §2/§5/§8 어디에도 없었다 — 이번에
 > 추가.
+>
+> 🔧 **[2026-09-19 갱신 2]** "내 제보 확인" 탭이 **수신+발신 통합**으로
+> 확장됐다(§3.4) — `GET /my-output-pen`이 기존에는 "나를 대상으로 한
+> 제보"(수신)만 내려줬는데, 이제 "내가 제보한 건"(발신)도 함께 내려준다.
+> `MyOutputPenItem`에 `direction: "received"|"sent"`/`targetName` 필드가
+> 신설됐고, 발신 건은 대상자 응답 버튼이 없는 읽기 전용이며 처리현황도
+> 관리자 화면과 공유하는 세부 `statusLabel` 대신 단순화된
+> `sentStatusLabel`("검토 중"/"검토 완료 (위반 인정·미인정)")만 노출한다.
+> 이 변경과 함께 `report-review.js`의 문구 함수(`statusLabel`/`actionLabel`/
+> `occurrenceLabel`/`weeklyImpactLabel`/`formatDeductedTime`)가
+> `MyOutputPenSection.tsx`에서 완전히 빠지고 `components/admin/shared.tsx`의
+> 공용 함수를 그대로 import해 쓰도록 바뀌었다(`docs/WEB_ADMIN.md` §6 참고 —
+> 그쪽 문서에도 같은 날 반영).
 
 ## 1. 범위 정의 — "제보" 탭이란
 
@@ -245,9 +258,28 @@ ReportPage (app/src/pages/ReportPage.tsx)
 > 전혀 안 바뀌었다 — 아래 서술 내용은 여전히 그대로 유효하다.
 
 이제 "내 제보 확인" 탭 하나를 통째로 차지하는 컴포넌트. "내 화각 점검"(본인이
-셀프로 찍은 기록,
-`GET /my-captures`)과 "받은 제보"(자신이 대상으로 지목된 일반 제보,
-`GET /my-output-pen`)를 요일별 아코디언으로 합쳐 보여준다. 두 API 모두 상단
+셀프로 찍은 기록, `GET /my-captures`)과 "제보 목록"(`GET /my-output-pen`)을
+요일별 아코디언으로 합쳐 보여준다.
+
+🔧 **[수신/발신 통합, 2026-09-19]** "제보 목록"(`kind: "outputPen"`, 예전
+이름 "받은 제보"에서 개명 — 더 이상 수신 건만 뜻하지 않으므로)은 **본인이
+대상자인 수신 건과 본인이 제보자인 발신 건을 모두 포함**한다.
+`GET /my-output-pen`이 내려주는 각 항목의 `direction`(`"received"|"sent"`)과
+`targetName`(발신 건의 대상자 이름)으로 구분한다:
+
+- **수신**(`direction: "received"`, `item.nickname`이 본인) — 기존과 동일하게
+  대상자 응답(위반인정/이의제기) 버튼이 있고, 관리자 화면과 공유하는 세부
+  `statusLabel`(반려/유예/경고/벌점/페널티까지 노출)을 그대로 쓴다.
+- **발신**(`direction: "sent"`, `item.reporterEmail`이 본인) — 완전히
+  읽기 전용이다(응답 버튼 없음). 처리현황도 세부 `statusLabel` 대신
+  `sentStatusLabel()`이라는 단순화된 문구만 보여준다 — `reviewStatus`가
+  `pending`이면 "검토 중", 아니면 `rejected`(제보 자체가 반려)만 "검토 완료
+  (위반 미인정)", 나머지(승인/유예/반려_인정 — 유예도 제보상점은 지급되므로
+  "인정"에 포함)는 "검토 완료 (위반 인정)"으로만 보여준다. 목적은 "제보자와
+  대상자에게 내려진 세부 조치(몇 차 벌점인지, 페널티 여부 등)까지 자세히
+  공유할 필요는 없다"는 것.
+
+두 API 모두 상단
 `CycleSwitcher`로 고른 사이클(`?cycle=` 쿼리, 없으면 현재 진행 중인 주)에 맞춰
 그 주(월~일, KST) 데이터를 조회한다 — `docs/WEB_DASHBOARD.md` §6의 사이클 토글
 패턴을 그대로 재사용한 것이다. **이 화면의 재조회 폴링은 다른 화면들과 역할이
@@ -319,9 +351,12 @@ manifest를 실시간 프록시 조회하므로("TTL이 지나야 갱신"이라�
   승인했는지까지 상세하게 나눠 보여주는 역할 분담이다. 확정/유예 뱃지 옆에는
   차수("N차 (조치명)", 노란색)·확정 차감시간 뱃지도 추가로 붙는다(펼치지
   않아도 바로 보이도록) — 반려에는 붙지 않는다(실제로 아무것도 부여되지
-  않으므로 단순 "반려"만 표시). 이 `statusLabel`/`statusInfo` 로직은 관리자
-  화면(`docs/WEB_ADMIN.md` §3.1의 "처리현황")에도 완전히 동일하게 이식되어
-  있다(함수 사본이 두 파일에 있지만 로직은 한 글자도 다르지 않다).
+  않으므로 단순 "반려"만 표시). 🔧 [2026-09-19 갱신] 이 `statusLabel`(수신
+  건 전용, 위 참고)/`statusInfo` 로직은 관리자 화면(`docs/WEB_ADMIN.md`
+  §3.1의 "처리현황")과 완전히 동일한데, 예전엔 두 파일에 각각 사본으로
+  존재했으나 이제 `components/admin/shared.tsx`의 공용 함수를 양쪽 다
+  import해서 쓴다(`docs/WEB_ADMIN.md` §6 참고) — 사본이 아니라 단일
+  구현이다.
 - **학습시간 차감**(예전 이름 "시간 차감"): "응답일시"(대상자가 응답한 시각,
   없으면 "대상자 응답 대기 중")와 확정 여부에 따라 라벨이 전환되는 차감시간
   SubRow를 함께 보여준다. 🔧 2026-09: 라벨이 "예상차감" 고정에서 **"예상
@@ -433,8 +468,8 @@ manifest를 실시간 프록시 조회하므로("TTL이 지나야 갱신"이라�
 | GET | `/reports` | `handleListReports` | 봇 전용, 읽으면서 즉시 삭제(소비 큐) |
 | POST | `/reports/requeue` | `handleRequeueReport` | 봇 전용. 안전망 폴링에서 스킵된 항목을 남은 TTL만큼 재등록(원 접수 후 12시간 지났으면 포기) |
 | GET | `/my-captures` | `handleMyCaptures` | 내 화각 점검 목록(`?cycle=` 지원) |
-| POST | `/my-captures/delete` | `handleMyCaptureDelete` | 본인 화각 점검 기록 삭제 |
-| GET | `/my-output-pen` | `handleMyOutputPen` | 받은 제보 목록(`?cycle=` 지원) |
+| POST | `/my-captures/delete` | `handleMyCaptureDelete` | 본인 화각 점검 기록 논리적 삭제(🔧 2026-09-19: 완전 삭제→trash 이동+`deleted` 플래그, `docs/HELPERBOT.md` §10.4) |
+| GET | `/my-output-pen` | `handleMyOutputPen` | 🔧 [2026-09-19] 제보 목록(수신+발신 통합, `?cycle=` 지원) — 예전엔 받은 제보만 |
 | POST | `/captures/target-respond` | `handleCaptureTargetRespond` | 당사자 "위반인정"/"이의제기" 제출 |
 | POST | `/push/send-to-member` | `handlePushSendToMember` | |
 | GET | `/push/subscription-status` | `handlePushSubscriptionStatus` | 전 회원 구독 여부 배치 조회 |
@@ -582,7 +617,7 @@ DO 자체의 한도(무료 플랜 기준 하루 요청 10만 회, 실행시간 1
 |---|---|---|
 | `ParticipantsResponse` | `members: string[]`, `stale: boolean` | `/participants` |
 | `ActiveCooldownItem` / `ReportCooldownsResponse` | `nickname`, `mode`, `startedAt`, `capturedAt`, `expiresAt` / `items[]` | `/report-cooldowns` |
-| `MyOutputPenItem` / `MyOutputPenResponse` | `id`, `reason`, `mode`, `ts`, `reviewStatus`, `targetResponse`, `targetRespondedAt`, `targetResponseAuto`, `nextOccurrence`, `weeklyMinorPenaltyCount`, `deferOccurrence`, `penalty`, `merit`, `timeDeduction` / `items[]` | `/my-output-pen`. `deferOccurrence`/`timeDeduction`은 🔧 2026-09 신설(유예 관련) |
+| `MyOutputPenItem` / `MyOutputPenResponse` | `id`, `reason`, `mode`, `ts`, `reviewStatus`, `targetResponse`, `targetRespondedAt`, `targetResponseAuto`, `nextOccurrence`, `weeklyMinorPenaltyCount`, `deferOccurrence`, `penalty`, `merit`, `timeDeduction`, `direction`("received"\|"sent"), `targetName`, `deleted`, `deletedReason` / `items[]` | `/my-output-pen`. `deferOccurrence`/`timeDeduction`은 🔧 2026-09 신설(유예 관련), `direction`/`targetName`은 🔧 2026-09-19 신설(수신/발신 통합, §3.4), `deleted`/`deletedReason`은 🔧 2026-09-19 신설(10일 경과 자동 논리적 삭제, `docs/HELPERBOT.md` §10.4) |
 | `MyCaptureItem` / `MyCapturesResponse` | `id`, `ts`, ... / `items[]` | `/my-captures` |
 | `TargetRespondResponse` | `ok: true` | `/captures/target-respond` |
 | `PushSubscriptionStatusItem` / `...Response` | `name`, `subscribed` / `items[]` | `/push/subscription-status` |

@@ -272,10 +272,14 @@ components/admin/shared.tsx — 공용 프리미티브(§6): SectionCard/Section
   위반인정 자동 제출 (검토 중)"), 관리자가 처리를 마쳤으면 "이의제기 승인
   (반려)"/"이의제기 미승인 (확정)"/"위반인정 승인 (확정)"/"위반인정 미승인
   (반려)"처럼 응답 종류 + 승인 여부 + 결과(확정/유예/반려)를 모두 풀어서
-  보여준다. `docs/WEB_REPORT.md` §3.4의 "내 화각 불량 제보"에 이미 있던
-  로직(`statusLabel`)을 관리자 화면에도 그대로 이식한 것 — 함수 사본이
-  두 파일(`ReportReviewList.tsx`/`MyOutputPenSection.tsx`)에 각각 있지만
-  로직은 완전히 동일하다.
+  보여준다. `docs/WEB_REPORT.md` §3.4의 "내 화각 불량 제보"(수신 건)에 이미
+  있던 로직(`statusLabel`)을 관리자 화면에도 그대로 이식한 것. 🔧 [2026-09-19
+  갱신] 예전엔 `ReportReviewList.tsx`/`MyOutputPenSection.tsx` 두 파일에
+  사본으로 각각 있었으나, 이제 `statusLabel`/`actionLabel`/
+  `occurrenceLabel`/`penaltyCategoryLabel`/`weeklyImpactLabel`/
+  `formatDeductedTime`/`DottedValue`가 전부 `components/admin/shared.tsx`
+  (§6)로 이동해 두 파일 다 그 공용 함수를 import해서 쓴다 — 사본이 아니라
+  단일 구현.
 - **응답일시**(🔧 2026-09 신설): 대상자가 "위반인정"/"이의제기"를 제출한 시각
   (`targetRespondedAt`). 아직 응답이 없으면 "대상자 응답 대기 중".
 - **학습시간 차감**(🔧 2026-09: "시간 차감"에서 개명): 관리자가 화각 요청
@@ -830,14 +834,16 @@ Select로 전환되는 한 뷰다(§2).
   `displayName()`으로 표시용으로만 제거하고, `InfoCard` 기본 배경
   (`bg-muted`, 회색)은 다른 화면에 영향 없이 이 화면 4개 카드에만
   `bg-card`(흰색)로 오버라이드했다.
-- 🔧 2026-09: **이름 검색 필터 추가.** 목록 상단에 `Input` + `Search`
-  아이콘으로 검색창을 두고, `displayName()`으로 `"(퇴실)"` 접미사를 뗀
-  이름 기준·대소문자 구분 없이 부분 일치(`includes`)로 필터링한다
-  (`useMemo`로 `members`/`query`가 바뀔 때만 재계산, 별도 API 호출
-  없음 — 이미 불러온 목록을 클라이언트에서만 거른다). 검색어와 일치하는
-  항목이 없으면 `"{검색어}"와 일치하는 퇴실 스터디원이 없습니다`를,
-  애초에 퇴실자 자체가 없으면 기존 `"퇴실한 스터디원이 없습니다"`를
-  보여줘 두 빈 상태를 구분한다.
+- 🔧 2026-09: **이름 검색 필터 추가.** 목록 상단에 검색창을 두고,
+  `displayName()`으로 `"(퇴실)"` 접미사를 뗀 이름 기준·대소문자 구분 없이
+  부분 일치(`includes`)로 필터링한다(`useMemo`로 `members`/`query`가
+  바뀔 때만 재계산, 별도 API 호출 없음 — 이미 불러온 목록을 클라이언트에서만
+  거른다). 검색어와 일치하는 항목이 없으면 `"{검색어}"와 일치하는 퇴실
+  스터디원이 없습니다`를, 애초에 퇴실자 자체가 없으면 기존 `"퇴실한
+  스터디원이 없습니다"`를 보여줘 두 빈 상태를 구분한다. 🔧 [2026-09-19
+  갱신] 검색창 마크업 자체(`Input`+`Search` 아이콘)는 이제 원시
+  구현이 아니라 공용 컴포넌트 `AdminSearchInput`(§6)을 호출한다 —
+  `MemberRosterList`(§3.5, 재직자 목록)도 같은 컴포넌트를 쓴다.
 
 > 🔧 2026-09: **`kindStr`이 "강제 퇴실자"/"직권 퇴실자"를 "강제 퇴실자"
 > 하나로 통일했다**(`computeExitResult`, 🔧 [2026-09-17] 구조 개선으로
@@ -1598,6 +1604,22 @@ Cloudflare Tunnel로 노출한 로컬 상태 서버를 그때그때 프록시한
     렌더를 결정하도록 바꿔, 재조회 중엔 이전 화면을 그대로 유지한다 —
     "로딩 중" 표시는 `SectionHeader`의 새로고침 아이콘 회전만으로 충분.
     (`docs/CACHING_POLICY.md` §19)
+- **`AdminSearchInput`**(🔧 2026-09-19 신설): 이름 검색창 공용 컴포넌트
+  (`Input` + `Search` 아이콘 마크업을 감쌈). `MemberRosterList`(§3.5)와
+  `ExitedMemberRosterView`(§3.5.1) 두 곳이 각자 원시 마크업으로 구현하던
+  것을 이 컴포넌트 하나로 통일했다.
+- **`DayGroupHeader`**(🔧 2026-09-19 신설): 제보/사유반휴 검토 등에서 쓰는
+  "요일 그룹 1차 토글" 바깥 골격(제목 행 + 펼침 chevron)을 공용화한 것 —
+  1차 토글 자체의 스타일(무배경·무테두리, 헤더 행 전체 클릭 가능)을 여러
+  목록 화면이 동일하게 재사용한다.
+- **제보 처리 문구 함수 묶음**(🔧 2026-09-19 신설, `docs/WEB_REPORT.md`
+  §3.4와 공유): `statusLabel`/`actionLabel`/`occurrenceLabel`/
+  `penaltyCategoryLabel`/`weeklyImpactLabel`/`formatDeductedTime`/
+  `DottedValue` — 예전엔 `ReportReviewList.tsx`(관리자)와
+  `MyOutputPenSection.tsx`(회원, 수신 건)에 각각 사본으로 있던 "처리현황"
+  관련 로직을 이곳으로 옮겨 두 파일이 공용으로 import한다. `MyOutputPenSection`
+  의 발신 건은 이 공용 `statusLabel` 대신 자체 `sentStatusLabel`(단순화된
+  문구)을 따로 쓴다 — `docs/WEB_REPORT.md` §3.4 참고.
 
 ---
 
@@ -1635,7 +1657,15 @@ Cloudflare Tunnel로 노출한 로컬 상태 서버를 그때그때 프록시한
   내용은 없다** — "단체 채팅방"/"스터디 규정"/"원본 시트"/"공지사항" 4개
   항목 전부 `href: "#"` 플레이스홀더다("링크 값은 추후 실제 URL로 교체
   예정" 주석 있음). 눌러도 아무 데로도 이동하지 않는다. 이 탭도 관리자
-  탭 범위 밖이라 5개 설계 문서 중 어디에도 다뤄지지 않았다.
+  탭 범위 밖이라 5개 설계 문서 중 어디에도 다뤄지지 않았다. (이 "단체
+  채팅방" 플레이스홀더는 실제 채팅 기능과 무관하다 — 아래 항목 참고.)
+- **[2026-09-19 발견 → 2026-09-20 해결됨] "채팅" 하단 탭(`ChatPage`)도
+  관리자 탭 범위 밖이라 5개 설계 문서 어디에도 정식 절이 없었다** — 위
+  "알림"/"링크" 탭과 달리 이건 더미가 아니라 실제로 동작하는 기능(Stream
+  Chat 기반 관리자-회원 1:1 문의방, `/chat/token`·`/chat/ensure-user`·
+  `/chat/configure-uploads` 백엔드가 이미 존재)인데도 문서화가 통째로
+  누락되어 있었다 — 이제 별도 문서 `docs/WEB_CHAT.md`로 작성 완료. 상세는
+  `docs/WEB_DASHBOARD.md` §11에 교차 기록.
 - **PEN · Money 탭 "벌금 납부 처리" 목록의 "직권 P" 버튼(§4.1)과
   Account 탭 `MemberRosterList`의 "퇴실 처리 (직권 P)" 버튼(§3.5)은 서로
   다른 탭에서 같은 `ExitProcessDialog(lockKind="admin_forced")`를 각자
