@@ -386,3 +386,34 @@
   right: 0;
   z-index: 1;
 }
+
+/* 🔧 [버그 수정, 2026-09-20 사용자 지시: "모바일에서 채팅 목록이 안
+   보인다"] — Stream 기본 CSS(index.css)는 767px 이하에서
+   .str-chat__channel-list를 "네비게이션이 열렸을 때만 나타나는 모바일
+   오버레이 사이드바"로 취급해 기본값을 visibility:hidden +
+   position:absolute + translateX(-8px)로 숨겨둔다(Stream 자체
+   ChatView/네비게이션 토글 컴포넌트가 열림 상태일 때 별도 클래스로
+   이 값을 되돌려주는 구조, 실측: computed style로 visibility:hidden
+   확인). 이 앱은 그 Stream ChatView를 쓰지 않고 AdminChatArea
+   (ChatPage.tsx)가 직접 목록/대화창 2단 레이아웃과 "목록 우선 진입"
+   전환을 관리하므로, 그 열림/닫힘 토글 자체가 존재하지 않아 목록이
+   항상 숨겨진 채로 굳어 있었다. 767px 이하에서 이 Stream 모바일 오버레이
+   기본값을 완전히 무효화하고, AdminChatArea의 flex 레이아웃대로 정상
+   문서 흐름에 놓이게 한다. */
+@media (max-width: 767px) {
+  .str-chat__channel-list {
+    box-shadow: none;
+    flex-basis: auto;
+    inset-inline-start: auto;
+    max-width: none;
+    min-width: 0;
+    pointer-events: auto;
+    position: static;
+    top: auto;
+    bottom: auto;
+    transform: none;
+    visibility: visible;
+    width: 100%;
+    z-index: auto;
+  }
+}
