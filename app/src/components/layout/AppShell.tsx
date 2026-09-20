@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { ChevronUp } from "lucide-react";
 import { TabBar } from "./TabBar";
@@ -99,6 +99,13 @@ export function AppShell({
     safeAreaInsetBottomRef.current = safeAreaInsetBottom;
     collapseButtonResizeListenerRef.current?.();
   }, [safeAreaInsetBottom]);
+  // 🔧 [버그 수정, 2026-09-21 사용자 재보고: "^가 메시지 보내기 영역
+  // 위에 얹혀있다"] — 버튼의 총 점유 높이(tabBarHeight, onBarHeightChange로
+  // 부모에 보고)와 별개로, 이 버튼 "자신"의 렌더링 높이(아이콘 크기)를
+  // state로도 노출한다. 버튼의 화면상 위치(style.top)를 이제 bottom
+  // 오프셋이 아니라 viewportRect 기준으로 직접 계산해야 하는데, 그
+  // 계산에는 버튼 자신의 높이가 필요하다 — 아래 collapseButtonHeight.
+  const [collapseButtonHeight, setCollapseButtonHeight] = useState(0);
 
   const collapseButtonRef = useCallback(
     (button: HTMLButtonElement | null) => {
@@ -107,7 +114,9 @@ export function AppShell({
       collapseButtonResizeListenerRef.current = null;
       if (!button || !onBarHeightChange) return;
       const report = () => {
-        onBarHeightChange(button.getBoundingClientRect().height + safeAreaInsetBottomRef.current / 2);
+        const height = button.getBoundingClientRect().height;
+        setCollapseButtonHeight(height);
+        onBarHeightChange(height + safeAreaInsetBottomRef.current / 2);
       };
       report();
       const observer = new ResizeObserver(report);
@@ -255,8 +264,29 @@ export function AppShell({
               // 인디케이터 안전영역(env(safe-area-inset-bottom))인데,
               // bottom을 그 절반만큼 올려 아이콘이 그 여백 구간의
               // 세로 중앙 부근에 오도록 한다.
+              // 🔧 [버그 수정, 2026-09-21 사용자 재보고: "^가 메시지
+              // 보내기 영역 위에 얹혀있다"] — 웹 인스펙터 실측: position:
+              // fixed의 bottom 오프셋은 "레이아웃 뷰포트(window.innerHeight)
+              // 아래쪽 경계"를 기준으로 계산되는데, 이 값이 iOS PWA에서
+              // 키보드를 닫은 뒤 안전영역만큼(47px) 줄어든 채 원복되지
+              // 않는 문제가 있었다(useVisualViewportRect 주석 참고).
+              // 채팅 컨테이너는 이미 viewportRect(보정된 값)로 top/height를
+              // 직접 계산해 그 버그를 우회하는데, 이 버튼만 bottom
+              // 오프셋(브라우저의 잘못된 innerHeight 기준)에 그대로
+              // 의존해, 컨테이너는 정상 크기(844 기준)로 커졌는데 이
+              // 버튼만 여전히 낡은 뷰포트(797) 기준 위치에 남아 컨테이너
+              // 안쪽(입력창 영역)에 파묻혀 보였다(실측: composer
+              // top:754~bottom:806인데 버튼 top:760~bottom:780로 겹침).
+              // collapsibleTabBar가 켜진 화면(채팅)에서는 TabBar와 동일한
+              // 방식으로 bottom 대신 viewportRect 기준 top을 직접
+              // 계산해, 뷰포트 버그와 무관하게 항상 화면 맨 아래에
+              // 정확히 붙게 한다.
               className="fixed inset-x-0 z-20 mx-auto flex justify-center text-muted-foreground"
-              style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) / 2)" }}
+              style={
+                viewportRect && collapseButtonHeight > 0
+                  ? { top: viewportRect.top + viewportRect.height - collapseButtonHeight - safeAreaInsetBottom / 2 }
+                  : { bottom: "calc(env(safe-area-inset-bottom, 0px) / 2)" }
+              }
             >
               {/* 🔧 [사용자 지시, 2026-09-20] "네비바가 접혔다는걸
                   알도록 힌트 효과를 줄 수 있을까?" — 버튼을 최소화하면서
