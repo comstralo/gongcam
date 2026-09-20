@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { HashRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
 import { LayoutDashboard, ScanLine, Bell, Settings, ShieldCheck, MessageCircle } from "lucide-react";
 import { AuthProvider } from "@/lib/auth/AuthContext";
@@ -135,12 +135,63 @@ function MainViews() {
   );
 }
 
+// 🔧 [임시 디버그, 2026-09-20] "하단 바는 여전히 해결되지 않았어" 재조사용
+// — TabBar의 실제 DOM 높이/위치, env(safe-area-inset-bottom) 실측값,
+// 화면(뷰포트) 바닥까지 남는 여백을 화면 최하단 한 줄에 작게 표시한다.
+// 탭바 자체를 가리지 않도록 탭바보다 아래(화면 맨 끝)에 둔다. 원인
+// 확정 후 반드시 제거할 것.
+function BottomDebugBadge() {
+  const [info, setInfo] = useState("측정 중...");
+  useEffect(() => {
+    const id = setInterval(() => {
+      const probe = document.createElement("div");
+      probe.style.position = "fixed";
+      probe.style.bottom = "0";
+      probe.style.paddingBottom = "env(safe-area-inset-bottom, -1px)";
+      probe.style.visibility = "hidden";
+      document.body.appendChild(probe);
+      const envBottom = getComputedStyle(probe).paddingBottom;
+      document.body.removeChild(probe);
+
+      const nav = document.querySelector<HTMLElement>('nav[aria-label="하단 탭 메뉴"]');
+      const navRect = nav ? nav.getBoundingClientRect() : null;
+      const navPB = nav ? getComputedStyle(nav).paddingBottom : "no nav";
+
+      setInfo(
+        `env-bottom:${envBottom} nav-bottom:${navRect ? Math.round(navRect.bottom) : "n/a"} nav-pb:${navPB} winH:${window.innerHeight} gapBelowNav:${navRect ? Math.round(window.innerHeight - navRect.bottom) : "n/a"}`
+      );
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <div
+      style={{
+        position: "fixed",
+        bottom: 0,
+        left: 0,
+        right: 0,
+        zIndex: 99999,
+        background: "rgba(0,0,255,0.95)",
+        color: "white",
+        fontSize: 9,
+        padding: "2px 4px",
+        fontFamily: "monospace",
+        pointerEvents: "none",
+        wordBreak: "break-all",
+      }}
+    >
+      {info}
+    </div>
+  );
+}
+
 export default function App() {
   useVersionCheck();
 
   return (
     <AuthProvider>
       <PeriodAlarmProvider>
+        <BottomDebugBadge />
         <IdleOverlay />
         <HashRouter>
           {/* 🔧 MyStatusProvider는 이제 MainViews 내부(useLocation을 쓸 수
