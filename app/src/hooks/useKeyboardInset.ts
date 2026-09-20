@@ -39,19 +39,32 @@ export type ViewportRect = { top: number; height: number };
 // px 숫자로 노출한다 — 회전 등으로 값이 바뀔 수 있어 resize에도
 // 반응한다.
 export function useSafeAreaInsetTop(): number {
+  return useSafeAreaInset("top");
+}
+
+// 🔧 [버그 수정, 2026-09-20 사용자 지시: "네비바 하단에 여백이
+// 가득한데"] — 하단도 같은 문제였다: TabBar/AppShell 여러 곳에 흩어진
+// 하드코딩 여백(22px 등)이 전부 "env(safe-area-inset-bottom)이 항상
+// 0으로 평가되던 시절"의 순수 시각적 여백이었는데, viewport-fit=cover
+// 추가로 그 env 값이 실제로 채워지면서(실측 34px) 각 자리에 중복으로
+// 더해져 여백이 과해졌다. top/bottom 모두 같은 프로브 패턴을 쓰므로
+// 방향을 매개변수로 받는 공용 훅으로 합쳐, 앞으로 이런 값이 필요한
+// 곳은 전부 이 훅에서 실측하게 한다.
+function useSafeAreaInset(side: "top" | "bottom"): number {
   const [inset, setInset] = useState(0);
 
   useEffect(() => {
     const probe = document.createElement("div");
     probe.style.position = "fixed";
-    probe.style.top = "0";
-    probe.style.paddingTop = "env(safe-area-inset-top, 0px)";
+    probe.style[side] = "0";
+    probe.style[side === "top" ? "paddingTop" : "paddingBottom"] = `env(safe-area-inset-${side}, 0px)`;
     probe.style.visibility = "hidden";
     probe.style.pointerEvents = "none";
     document.body.appendChild(probe);
 
     const update = () => {
-      setInset(parseFloat(getComputedStyle(probe).paddingTop) || 0);
+      const value = side === "top" ? getComputedStyle(probe).paddingTop : getComputedStyle(probe).paddingBottom;
+      setInset(parseFloat(value) || 0);
     };
     update();
     window.addEventListener("resize", update);
@@ -59,9 +72,13 @@ export function useSafeAreaInsetTop(): number {
       window.removeEventListener("resize", update);
       document.body.removeChild(probe);
     };
-  }, []);
+  }, [side]);
 
   return inset;
+}
+
+export function useSafeAreaInsetBottom(): number {
+  return useSafeAreaInset("bottom");
 }
 
 export function useVisualViewportRect(): ViewportRect | null {

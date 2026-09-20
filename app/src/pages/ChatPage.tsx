@@ -35,7 +35,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/lib/auth/useAuth";
 import { useTheme } from "@/hooks/useTheme";
-import { useVisualViewportRect, useSafeAreaInsetTop } from "@/hooks/useKeyboardInset";
+import { useVisualViewportRect, useSafeAreaInsetTop, useSafeAreaInsetBottom } from "@/hooks/useKeyboardInset";
 import { ICON_STROKE, cn } from "@/lib/utils";
 import type { AdminMembersResponse, ChatTokenResponse } from "@/lib/api/types";
 
@@ -1219,6 +1219,7 @@ export function ChatPage({
   const { dark } = useTheme();
   const viewportRect = useVisualViewportRect();
   const safeAreaInsetTop = useSafeAreaInsetTop();
+  const safeAreaInsetBottom = useSafeAreaInsetBottom();
   // 🔧 [버그 수정, 2026-09-20 사용자 지시: "네비바 올라온 상태에서 입력
   // 모드로 가면 이렇게 되는데, 자연히 접히도록 해줘"] — 사용자가 탭바를
   // 수동으로 펼쳐둔 채(tabBarCollapsed=false) 입력창을 탭하면, 펼쳐진
@@ -1486,19 +1487,32 @@ export function ChatPage({
     viewportRect && viewportRect.top > 0 ? 0 : 74 + safeAreaInsetTop + HEADER_BLUR_MARGIN_PX;
   // 🔧 [사용자 지시] "키보드가 떴 동안 하단 탭바는 덮여도 무방(카카오톡
   // 방식)" — 키보드가 없을 때(viewportRect.top === 0)는 하단 탭바가
-  // 화면에 그대로 보이므로 그 실측 높이(펼침 89px/접힘 약 24px)만큼
-  // 채팅 박스 아래를 비워둬야 겹치지 않는다. 키보드가 떠 있을 때
-  // (viewportRect.top > 0)는 탭바 자체가 이미 카메라(visualViewport)
-  // 밖으로 밀려나 안 보이므로, 그 자리까지 채팅 박스가 채워도 무방
-  // (오히려 그래야 입력창이 키보드 바로 위까지 정확히 내려온다).
+  // 화면에 그대로 보이므로 그 실측 높이만큼 채팅 박스 아래를 비워둬야
+  // 겹치지 않는다. 키보드가 떠 있을 때(viewportRect.top > 0)는 탭바
+  // 자체가 이미 카메라(visualViewport) 밖으로 밀려나 안 보이므로, 그
+  // 자리까지 채팅 박스가 채워도 무방(오히려 그래야 입력창이 키보드
+  // 바로 위까지 정확히 내려온다).
   // 🔧 [버그 수정, 2026-09-20 사용자 지시: "v 표시가 너무 메시지 보내기
   // 영역이랑 붙어있어"] — 펼침 상태에서는 TabBar 안의 접기(v) 버튼이
   // nav 상단 경계 위로 튀어나와(TabBar.tsx의 -top-6, 버튼 높이 14px)
-  // 떠 있는데, 여기서는 TabBar 실제 높이(89px)만 뺐을 뿐 그 튀어나온
-  // 부분은 고려하지 않아 채팅 박스 하단이 이 버튼과 9px 겹쳤다(실측:
-  // 박스 bottom 755, 버튼 bottom 746). 튀어나온 만큼(24+14=38px)을
+  // 떠 있는데, TabBar 실제 높이만 뺐을 뿐 그 튀어나온 부분은 고려하지
+  // 않아 채팅 박스 하단이 이 버튼과 겹쳤다. 튀어나온 순수 부분(14px)을
   // 더해 겹치지 않게 한다.
-  const tabBarHeightPx = viewportRect && viewportRect.top > 0 ? 0 : tabBarCollapsed ? 24 : 89 + 38;
+  // 🔧 [버그 수정, 2026-09-20 사용자 지시: "네비바 하단에 여백이
+  // 가득한데"] — 펼침(구 89px)/접힘(구 24px) 모두 env(safe-area-inset-
+  // bottom)이 0이던 시절의 순수 하드코딩값이라, TabBar.tsx의 pb를
+  // 22px→8px로 줄인 것과 정합성이 깨질 뻔했다. TabBar와 동일하게
+  // "env가 0일 때의 순수 부분"만 하드코딩하고(펼침: TabBar 순수높이
+  // 75 + 접기버튼 튀어나온 순수분 14 = 89, 접힘: AppShell 접기버튼
+  // 아이콘 20 + 순수 padding 4 = 24 — 우연히 구 값과 숫자가 같지만
+  // 이제 이 아래에서 실측 안전영역을 명시적으로 더한다는 점이 다르다),
+  // 실제 안전영역은 훅으로 실측해 한 번만 더한다.
+  const tabBarHeightPx =
+    viewportRect && viewportRect.top > 0
+      ? 0
+      : tabBarCollapsed
+        ? 24 + safeAreaInsetBottom
+        : 89 + safeAreaInsetBottom;
   return (
     <div
       hidden={!visible}

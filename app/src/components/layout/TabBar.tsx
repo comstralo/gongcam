@@ -4,6 +4,7 @@ import { cn, ICON_STROKE } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/useAuth";
 import { useUnreadNotificationCount } from "@/lib/notifications/notifications";
 import type { ViewportRect } from "@/hooks/useKeyboardInset";
+import { useSafeAreaInsetBottom } from "@/hooks/useKeyboardInset";
 
 type Tab = {
   to: string;
@@ -53,27 +54,43 @@ export function TabBar({
 }) {
   const { session, isAdmin, isCoReviewer } = useAuth();
   const unreadCount = useUnreadNotificationCount();
+  // 🔧 [버그 수정, 2026-09-20 사용자 지시: "네비바 하단에 여백이
+  // 가득한데"] — 이 상수가 순수 하드코딩(89, env=0이던 시절의
+  // pt-1.5+콘텐츠+pb-22px 실측 합)이던 시절엔 실제
+  // env(safe-area-inset-bottom)을 반영하지 못해, 위 pb-[calc(...)] (CSS,
+  // 브라우저가 자동으로 정확히 계산)와 이 JS 상수(수동으로 맞춰야 함)
+  // 사이에 정합성이 계속 깨졌다(이번에도 pb를 22→8로 줄였는데 이 값을
+  // 안 고쳤으면 다시 어긋날 뻔했다). "env가 0이었을 때의 순수 부분"만
+  // 분리해 하드코딩하고(89 - 기존 pb 22 + 새 pb 8 = 75), 실제
+  // 안전영역은 훅으로 실측해 더한다 — 이제 이 값은 항상 위 className의
+  // 계산식과 자동으로 일치한다. 훅은 조건부 return(!session) 이전에
+  // 호출해야 하므로 여기 최상단에 둔다.
+  const safeAreaInsetBottom = useSafeAreaInsetBottom();
   if (!session) return null;
 
   // 🔧 2026-09: 부스터디장(공동 검토자)도 "관리자" 탭을 볼 수 있다 —
   // 실제로 들어가면 AdminPage가 "송출 P 대상 처리"만 제한적으로 보여준다.
   const tabs = TABS.filter((t) => !t.adminOnly || isAdmin || isCoReviewer);
-  const tabBarHeight = 89; // 실측 높이(pt-1.5 + 콘텐츠 + pb-22px 등 포함).
+  const tabBarHeight = 75 + safeAreaInsetBottom; // 실측 순수 높이(pt-1.5 + 콘텐츠 + pb-8px) + 실측 안전영역.
 
   return (
     <nav
-      // 🔧 2026-09: index.html의 viewport meta에 viewport-fit=cover가 없어
-      // env(safe-area-inset-bottom)이 항상 0으로 평가된다(홈 인디케이터
-      // 영역 아래로 콘텐츠를 확장하는 옵트인이 없으면 이 값 자체가 없음) —
-      // 그래서 실제 여백은 6px→16px로 늘렸던 것도 여전히 부족해 보여
-      // (사용자 지적) 22px로 한 번 더 늘렸다. viewport-fit=cover를
-      // 추가하는 건 상단 세이프에어리어(노치/상태바) 대응까지 함께
-      // 손봐야 하는 더 큰 변경이라, 우선 이 하단 여백 자체를 계속
-      // 조정하는 쪽으로 처리 — env() 항은 나중에 viewport-fit=cover가
-      // 추가돼도 자연히 더해지도록 그대로 남겨둔다.
+      // 🔧 2026-09: index.html의 viewport meta에 viewport-fit=cover가 없던
+      // 시절엔 env(safe-area-inset-bottom)이 항상 0으로 평가돼(홈
+      // 인디케이터 영역 아래로 콘텐츠를 확장하는 옵트인이 없으면 이 값
+      // 자체가 없음), 실제 여백은 6px→16px→22px로 순수 하드코딩만
+      // 계속 늘려왔다.
+      // 🔧 [버그 수정, 2026-09-20 사용자 재보고: "네비바 하단에 여백이
+      // 가득한데"] — viewport-fit=cover 추가 이후 env(safe-area-inset-
+      // bottom)이 실제로 채워지면서(실측: 34px) 그 22px 위에 그대로
+      // 더해져 탭 아이콘 아래로 56px(22+34)나 되는 빈 공간이 생겼다.
+      // 이 22px는 애초에 "env가 항상 0이라 대신 채워 넣은 값"이었지
+      // env와 별개로 필요한 순수 여백이 아니었으므로, 이제 env가 실제
+      // 홈 인디케이터 영역을 정확히 알려주는 지금은 최소한의 시각적
+      // 여백(8px)만 남기고 나머지는 실측 안전영역에 맡긴다.
       className={cn(
         "fixed inset-x-0 z-20 flex justify-center gap-0.5 border-t bg-card px-2.5 pt-1.5 shadow-lift sm:gap-1",
-        viewportRect ? "pb-0" : "bottom-0 pb-[calc(22px+env(safe-area-inset-bottom,0px))]"
+        viewportRect ? "pb-0" : "bottom-0 pb-[calc(8px+env(safe-area-inset-bottom,0px))]"
       )}
       style={viewportRect ? { top: viewportRect.top + viewportRect.height - tabBarHeight } : undefined}
       aria-label="하단 탭 메뉴"
