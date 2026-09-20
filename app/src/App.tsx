@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { HashRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
 import { LayoutDashboard, ScanLine, Bell, Settings, ShieldCheck, MessageCircle } from "lucide-react";
 import { AuthProvider } from "@/lib/auth/AuthContext";
@@ -135,68 +135,12 @@ function MainViews() {
   );
 }
 
-// 🔧 [임시 디버그, 2026-09-20] "헤더 잘림이 개선 안 됐다" 재현 조사용 —
-// env(safe-area-inset-top/bottom)이 실제 이 기기에서 어떤 값으로
-// 평가되는지, 그리고 AppShell 헤더의 실제 padding-top 계산 결과를
-// 화면에 직접 찍어 확인한다. 원인 확정 후 반드시 제거할 것.
-function SafeAreaDebugBadge() {
-  const [info, setInfo] = useState("측정 중...");
-  useEffect(() => {
-    const probe = document.createElement("div");
-    probe.style.position = "fixed";
-    probe.style.top = "0";
-    probe.style.paddingTop = "env(safe-area-inset-top, -1px)";
-    probe.style.paddingBottom = "env(safe-area-inset-bottom, -1px)";
-    probe.style.visibility = "hidden";
-    document.body.appendChild(probe);
-    const cs = getComputedStyle(probe);
-    const envTop = cs.paddingTop;
-    const envBottom = cs.paddingBottom;
-    document.body.removeChild(probe);
-
-    const header = document.querySelector<HTMLElement>(".page-pt-safe");
-    const headerStyle = header ? getComputedStyle(header) : null;
-    const headerPaddingTop = headerStyle ? headerStyle.paddingTop : "no .page-pt-safe found";
-
-    setInfo(
-      `env-top:${envTop} env-bottom:${envBottom} header-pt:${headerPaddingTop} vv:${window.visualViewport?.height ?? "n/a"} standalone:${window.matchMedia("(display-mode: standalone)").matches}`
-    );
-  }, []);
-  return (
-    <div
-      style={{
-        position: "fixed",
-        // 🔧 [버그 수정] top:0은 이 배지 자체가 조사 대상인 문제(상단
-        // 콘텐츠가 상태바 뒤로 가려짐)와 똑같이 가려져 안 보였다 —
-        // env() 자체가 이 배지에도 안 먹힐 가능성까지 감안해, 고정
-        // 오프셋(60px, 웬만한 상태바+여유보다 확실히 큰 값)을 fallback
-        // 삼아 무조건 화면에 보이는 위치로 내린다.
-        top: "max(env(safe-area-inset-top, 60px), 60px)",
-        left: 0,
-        right: 0,
-        zIndex: 99999,
-        background: "rgba(255,0,0,0.95)",
-        color: "white",
-        fontSize: 11,
-        padding: "4px 6px",
-        fontFamily: "monospace",
-        pointerEvents: "none",
-        wordBreak: "break-all",
-        border: "2px solid yellow",
-      }}
-    >
-      {info}
-    </div>
-  );
-}
-
 export default function App() {
   useVersionCheck();
 
   return (
     <AuthProvider>
       <PeriodAlarmProvider>
-        <SafeAreaDebugBadge />
         <IdleOverlay />
         <HashRouter>
           {/* 🔧 MyStatusProvider는 이제 MainViews 내부(useLocation을 쓸 수
