@@ -94,6 +94,52 @@ function useSafeAreaInset(side: "top" | "bottom"): number {
   return inset;
 }
 
+// 🔧 [버그 수정, 2026-09-21 웹 인스펙터 실측] useVisualViewportRect의
+// screen.height 보정은 React state(viewportRect)로는 정확한 값(844)을
+// 만들어내지만, position:fixed 요소가 실제로 그려지는 브라우저의 렌더링
+// 캔버스 자체(document.documentElement.clientHeight, getComputedStyle
+// height, 100dvh 프로브 모두 동일하게 797로 실측)는 React가 전혀 건드릴
+// 수 없는 영역이다 — 이 문서 캔버스 자체가 797로 줄어든 채 원복되지
+// 않으면, top:807 같은 좌표를 계산해 그 위치에 요소를 배치해도 이미
+// 문서의 렌더링 가능 영역(0~797) 밖이라 화면에서 잘려 보이지 않는다.
+// html/body에 인라인으로 height를 직접 강제하면(브라우저가 그 값을
+// 실제 문서 캔버스 크기로 다시 채택) 이 문제를 근본적으로 해결할 수
+// 있다 — screen.height(이 버그의 영향을 받지 않음이 실측 확인됨)를
+// 키보드가 없을 때 강제로 적용한다.
+export function useDocumentHeightFix(): void {
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    const update = () => {
+      const offsetTop = viewport.offsetTop;
+      if (offsetTop > 0) {
+        // 키보드가 떠 있는 동안은 강제 높이를 풀어 Stream 등 다른
+        // 로직(visualViewport 기준 fixed 컨테이너)이 정상 동작하게 둔다.
+        document.documentElement.style.removeProperty("height");
+        document.body.style.removeProperty("height");
+        return;
+      }
+      const isLandscape = window.innerWidth > window.screen.width;
+      const screenHeight = isLandscape ? window.screen.width : window.screen.height;
+      document.documentElement.style.height = `${screenHeight}px`;
+      document.body.style.height = `${screenHeight}px`;
+    };
+
+    update();
+    viewport.addEventListener("resize", update);
+    viewport.addEventListener("scroll", update);
+    window.addEventListener("resize", update);
+    return () => {
+      viewport.removeEventListener("resize", update);
+      viewport.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+      document.documentElement.style.removeProperty("height");
+      document.body.style.removeProperty("height");
+    };
+  }, []);
+}
+
 export function useVisualViewportRect(): ViewportRect | null {
   const [rect, setRect] = useState<ViewportRect | null>(null);
 

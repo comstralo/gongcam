@@ -6,7 +6,7 @@ import { ThemeToggleButton } from "./ThemeToggleButton";
 import { PeriodAlarmToggleButton } from "./PeriodAlarmToggleButton";
 import { LinksHeaderButton } from "./LinksHeaderButton";
 import { useAuth } from "@/lib/auth/useAuth";
-import { useVisualViewportRect, useSafeAreaInsetBottom } from "@/hooks/useKeyboardInset";
+import { useVisualViewportRect, useSafeAreaInsetBottom, useDocumentHeightFix } from "@/hooks/useKeyboardInset";
 import { cn, ICON_STROKE } from "@/lib/utils";
 
 type AppShellProps = {
@@ -70,6 +70,7 @@ export function AppShell({
   onBarHeightChange,
 }: AppShellProps) {
   const { session } = useAuth();
+  useDocumentHeightFix();
   const tabBarCollapsed = collapsibleTabBar?.collapsed ?? false;
   const collapseButtonObserverRef = useRef<ResizeObserver | null>(null);
 
