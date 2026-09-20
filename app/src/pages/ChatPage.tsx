@@ -19,10 +19,12 @@ import {
   useAttachmentSelectorContext,
   useComponentContextIcons,
   AttachmentSelector,
+  ContextMenu,
   ContextMenuButton,
   useContextMenuContext,
   QuotedMessagePreviewUI,
   ComponentProvider,
+  type ContextMenuProps,
 } from "stream-chat-react";
 import "stream-chat-react/dist/css/index.css";
 import "@/pages/chat-theme.css";
@@ -262,6 +264,37 @@ function ImagePlusButtonIcon() {
   return <ImagePlus className="str-chat__attachment-selector__menu-button__icon" strokeWidth={ICON_STROKE.default} />;
 }
 
+// 🔧 [버그 수정, 2026-09-20 사용자 지시: "가장 위에 메시지를 꾹 누르면
+// 메뉴가 안보이는 영역에 생성 돼"] — MessageActions.mjs가 이 메시지
+// 액션 메뉴에 넘기는 기본 placement는 "top-start"/"top-end"(메시지
+// 위쪽에 뜨도록)이고, floating-ui의 flip 미들웨어가 공간이 부족하면
+// 아래로 뒤집어주는 구조이긴 하다. 하지만 이 채팅 화면은 헤더를
+// position:fixed로 얹어 실제 콘텐츠 시작 지점이 뷰포트 맨 위(0)가
+// 아니라 그 아래(74px 등)인데, flip은 이 사실을 모르고 순수 뷰포트
+// 좌표만 기준으로 "위쪽에 공간이 있다"고 판단해버린다(실측: 리스트
+// 맨 위 근처 메시지를 꾹 누르면 메뉴가 헤더 뒤로 가려짐). 채팅 메시지
+// 리스트는 항상 아래로 스크롤되는 구조라 아래쪽엔(최소한 입력창까지는)
+// 항상 공간이 있으므로, 이 메뉴만큼은 애초에 top이 아니라 bottom을
+// 기준으로 열리도록 ComponentContext.ContextMenu 슬롯에서 placement를
+// 강제로 뒤집는다.
+//
+// 이 슬롯은 "+"(이미지 첨부) 메뉴에도 공유되는데(AttachmentSelector.mjs
+// 확인), 그건 입력창 바로 위에서 열려 이미 위쪽 공간이 충분하고
+// 강제로 아래로 뒤집으면 오히려 입력창을 가리게 된다 — className으로
+// 메시지 액션 메뉴("str-chat__message-actions-box")일 때만 좁힌다.
+function ChatActionsContextMenu(props: ContextMenuProps) {
+  const isMessageActionsMenu =
+    typeof props.className === "string" && props.className.includes("str-chat__message-actions-box");
+  const placement = !isMessageActionsMenu
+    ? props.placement
+    : props.placement === "top-start"
+      ? "bottom-start"
+      : props.placement === "top-end"
+        ? "bottom-end"
+        : props.placement;
+  return <ContextMenu {...props} placement={placement} />;
+}
+
 function ImageAttachmentAction() {
   const { IconAttachment } = useComponentContextIcons();
   const { fileInput } = useAttachmentSelectorContext();
@@ -338,6 +371,33 @@ function useUnreadOneBadge() {
 // 임계값을 넘었으면 해당 메시지를 인용 답장으로 설정한다. 실제 메시지
 // 렌더링(내용/아바타/시간 등)은 Stream 기본 MessageUI를 그대로 감싸서
 // 재사용한다 — 버블 UI 자체를 새로 만들 필요는 없다.
+// 🔧 [버그 수정, 2026-09-20 사용자 지시: "현재 상대방 메시지에 상대방의
+// 아이콘만 보이는 상황이잖아? 카카오톡처럼 아이콘과 이름을 출력하도록
+// 해줘"] — Stream의 MessageUI(소스 확인, MessageUI.mjs)는 발신자 이름을
+// str-chat__message-metadata 안에 memberCount > 2(그룹 채팅)일 때만
+// 렌더링한다. 이 앱은 1:1 DM(관리자-회원)만 쓰므로 memberCount가 항상
+// 2라 이름 자체가 애초에 렌더링되지 않았고, 설령 렌더링되어도
+// message-metadata 전체를 이미 display:none으로 숨겨(시간을 버블 옆에
+// 직접 그리기 위해, 위 주석 참고) 안 보였을 것이다. MessageUI를
+// 오버라이드할 수 없는(memberCount 하드코딩) 조건이라, 아바타 폭(md
+// 사이즈 32px)만큼 들여쓰기한 이름 텍스트를 버블 바로 위에 직접
+// 렌더링한다. 카카오톡처럼 같은 사람이 연속으로 보낸 메시지 그룹에서는
+// 첫 메시지에만 표시한다(firstOfGroup).
+function ChatSenderName() {
+  const { message, isMyMessage, groupStyles } = useMessageContext();
+  // 🔧 [버그 수정] 이 Stream 버전의 MessageContext는 firstOfGroup/
+  // endOfGroup/groupedByUser를 채우지 않는다(실측: 항상 undefined) —
+  // 대신 groupStyles(문자열 배열, 예: ["single"]/["top"]/["middle"]/
+  // ["bottom"])로 그룹 내 위치를 나타낸다. "top"(그룹 첫 메시지) 또는
+  // "single"(그룹에 메시지가 하나뿐)일 때만 그룹의 시작이므로, 이때만
+  // 이름을 보여준다.
+  const isGroupStart = groupStyles?.includes("top") || groupStyles?.includes("single");
+  if (isMyMessage() || !isGroupStart) return null;
+  const name = message.user?.name || message.user?.id;
+  if (!name) return null;
+  return <div className="mb-1 ms-[42px] text-[12px] font-medium text-muted-foreground">{name}</div>;
+}
+
 function SwipeableMessage() {
   const { message, isMyMessage } = useMessageContext();
   const messageComposer = useMessageComposerController();
@@ -769,6 +829,7 @@ function SwipeableMessage() {
       onLostPointerCapture={endDrag}
       onContextMenu={handleContextMenu}
     >
+      <ChatSenderName />
       {/* 스와이프 중에만 드러나는 답장 아이콘 — 버블 뒤쪽(왼쪽)에 고정,
           당긴 만큼(비율) 서서히 진해지도록 opacity를 dragX에 연동한다. */}
       <div
@@ -1077,7 +1138,21 @@ function AdminChatArea({
                     <ChannelHeader Avatar={() => null} />
                   </div>
                 </div>
-                <MessageList />
+                {/* 🔧 [버그 수정, 2026-09-20 사용자 지시: "메시지 확인이
+                    된 상태인데, 이전 메시지의 1 표시가 안사라지는
+                    버그가 있어"] — Stream의 useLastReadData(내부 훅,
+                    소스 확인)는 returnAllReadData가 기본값 false일 때
+                    "내가 보낸 메시지 중 가장 최근 것" 단 하나에
+                    대해서만 readBy를 계산한다. 우리 "1" 배지
+                    (useUnreadOneBadge, 위 정의)는 메시지별 readBy가
+                    비어 있으면 무조건 "안 읽음"으로 간주하므로, 상대가
+                    실제로 다 읽었어도 최신 메시지보다 이전에 보낸
+                    메시지들은 readBy 자체가 계산되지 않아 "1"이 영원히
+                    안 사라졌다(실측: 최신 메시지만 정상 갱신, 그 이전
+                    메시지 2개는 계속 "1" 표시). MessageList에
+                    returnAllReadData를 켜면 이 계산이 메시지 전체로
+                    확장된다. */}
+                <MessageList returnAllReadData />
                 <MessageComposer />
               </Window>
               <Thread />
@@ -1121,6 +1196,36 @@ export function ChatPage({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewportRect?.top]);
+  // 🔧 [버그 수정, 2026-09-20 사용자 지시: "채팅창에 손가락을 아래 → 위로
+  // 스크롤 하면 화면이 움직여 ... 놓으면 제자리가 되긴 하는데, 저렇게
+  // 쓸데없이 움직이지 않게 하고 싶어"] — 채팅 컨테이너 자체는
+  // position:fixed + visualViewport 좌표로 화면에 고정돼 있지만, 정작
+  // body/html은 여전히 일반 문서 흐름(overflow: visible, position:
+  // static)이라 스크롤 가능한 상태로 남아 있었다. 메시지 리스트 안에서
+  // 위/아래로 스와이프하면 iOS Safari가 그 제스처를 body의 러버밴드
+  // 오버스크롤(당기면 화면 전체가 딸려 움직였다 놓으면 튕겨 돌아오는
+  // 바운스 애니메이션)로도 함께 처리해, 헤더가 통째로 밀렸다 돌아오는
+  // 것처럼 보였다(스크린샷: 헤더가 사라지고 리스트가 위로 당겨짐). body의
+  // 기존 overscroll-behavior-y: contain(index.css)은 스크롤 체이닝(부모로
+  // 전파)만 막을 뿐, body 자신이 스크롤 가능한 콘텐츠일 때 발생하는
+  // 바운스 자체는 막지 못한다. 채팅 화면이 이 fixed 레이아웃으로 전환된
+  // 동안(viewportRect가 있고 실제로 보이는 동안)만 body를 완전히
+  // 스크롤 불가능하게 잠가, 리스트 내부 스크롤이 body로 전파될 일
+  // 자체를 없앤다 — 채팅 탭을 벗어나면(hidden) 원래 상태로 복원해 다른
+  // 페이지의 스크롤에 영향을 주지 않는다.
+  const hasViewportRect = viewportRect !== null;
+  useEffect(() => {
+    if (!visible || !hasViewportRect) return;
+    const { overflow, position, width } = document.body.style;
+    document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.width = "100%";
+    return () => {
+      document.body.style.overflow = overflow;
+      document.body.style.position = position;
+      document.body.style.width = width;
+    };
+  }, [visible, hasViewportRect]);
   const [client, setClient] = useState<StreamChat | null>(null);
   const [memberChannel, setMemberChannel] = useState<StreamChannel | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1359,8 +1464,8 @@ export function ChatPage({
     <div
       hidden={!visible}
       className={cn(
-        "w-full page-content flex-col gap-2 px-2.5 sm:px-4",
-        viewportRect ? "fixed left-1/2 flex -translate-x-1/2" : "flex"
+        "w-full px-2.5 sm:px-4 flex",
+        viewportRect ? "fixed left-1/2 -translate-x-1/2" : "justify-center"
       )}
       style={
         viewportRect
@@ -1373,8 +1478,32 @@ export function ChatPage({
             }
       }
     >
-      {isAdmin && <ChatListHeader view={sidebarView} onViewChange={setSidebarView} />}
-      <div className="flex w-full min-h-0 flex-1 flex-col overflow-hidden rounded-lg border">
+      {/* 🔧 [버그 수정, 2026-09-20 사용자 지시: "채팅 쪽이 폭이 더 좁게
+          되어있잖아? 이 부분을 '제보'에 맞춰서 크기를 확장해줘"] — 이
+          바깥 div의 px-2.5 sm:px-4는 화면 가장자리 여백(다른 페이지의
+          AppShell이 주는 것과 동일한 역할)이지, 콘텐츠 자체를 좁히려는
+          의도가 아니었다. 그런데 이전엔 이 padding과 "page-content"
+          (max-width 28rem→40rem→48rem)를 같은 요소에 함께 걸어서,
+          ReportPage 등 다른 페이지(바깥 padding은 AppShell이 담당하고
+          자기 자신은 순수 page-content만 갖는 구조)보다 탭바/채팅
+          박스가 좌우로 padding만큼(sm 이상에서 32px) 더 좁게 보였다
+          (실측: 640px 뷰포트에서 탭바 608px vs 제보 640px). page-content
+          max-width는 이 padding 안쪽의 실제 콘텐츠 폭 요소로 옮겨,
+          ReportPage와 동일하게 "바깥 여백은 이 wrapper, 실제 최대폭은
+          안쪽 콘텐츠"로 역할을 분리한다. */}
+      {/* 🔧 [버그 수정, 2026-09-20 사용자 지시: "여긴 또 왜 틀어진거야?"]
+          — 넓은 화면(예: 880px, page-content max-width가 실제 뷰포트보다
+          좁아지는 시점)에서 채팅 박스가 화면 왼쪽에 붙어버렸다. 이전
+          구조는 max-width(page-content)와 "left-1/2 -translate-x-1/2로
+          정중앙 배치"가 같은 요소에 함께 걸려 있어, max-width가 폭을
+          줄여도 translate가 그 줄어든 폭의 절반만큼 자동으로 다시
+          당겨줘 항상 중앙에 고정됐다. 방금 위에서 이 둘을 서로 다른
+          요소로 분리하면서(바깥은 padding+중앙 배치, 안쪽은 순수
+          max-width) 그 자동 중앙 정렬 메커니즘이 함께 끊어졌다 —
+          안쪽 요소에 mx-auto를 명시해 같은 효과를 되살린다. */}
+      <div className="w-full page-content min-h-0 flex-1 flex-col gap-2 flex mx-auto">
+        {isAdmin && <ChatListHeader view={sidebarView} onViewChange={setSidebarView} />}
+        <div className="flex w-full min-h-0 flex-1 flex-col overflow-hidden rounded-lg border">
       <Chat client={client} theme={dark ? "str-chat__theme-dark" : "str-chat__theme-light"}>
         {/* 🔧 [사용자 지시] "상대방 아이콘을 사람 모양을 한 그림 형태로" —
             ChannelList(채널 목록)와 Channel(대화창) 둘 다 이 컴포넌트
@@ -1396,6 +1525,7 @@ export function ChatPage({
             AttachmentSelectorInitiationButtonContents: ImagePlusButtonIcon,
             DateSeparator: ChatDateSeparator,
             QuotedMessage: ChatQuotedMessage,
+            ContextMenu: ChatActionsContextMenu,
           }}
         >
         {isAdmin ? (
@@ -1416,7 +1546,10 @@ export function ChatPage({
             <Channel channel={memberChannel ?? undefined}>
               <Window>
                 <ChannelHeader title="관리자에게 문의하기" Avatar={PersonAvatar} />
-                <MessageList />
+                {/* 🔧 [버그 수정, 2026-09-20] 위 관리자용 MessageList와
+                    동일한 이유로 returnAllReadData를 켠다 — 자세한 경위는
+                    그쪽 주석 참고. */}
+                <MessageList returnAllReadData />
                 <MessageComposer />
               </Window>
             </Channel>
@@ -1424,6 +1557,7 @@ export function ChatPage({
         )}
         </ComponentProvider>
       </Chat>
+        </div>
       </div>
     </div>
   );

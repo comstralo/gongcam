@@ -2,7 +2,27 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- 🔧 [버그 수정, 2026-09-20 사용자 지시: "아이폰 PWA는 상단에 약간
+         블러효과랑 중첩되면서 이렇게 보여져(사파리 PWA의 특징인듯) 근데
+         아이패드에서는 블러로 안보여"] — apple-mobile-web-app-status-bar-
+         style=black-translucent(아래)는 iOS 상태바를 반투명 오버레이로
+         콘텐츠 위에 얹어, 콘텐츠가 상태바 영역까지 올라오면 그 아래로
+         비쳐 흐릿하게 보인다. index.css의 page-pt-safe 유틸리티가 이미
+         env(safe-area-inset-top)만큼 상단 padding을 더해 이걸 막으려 하고
+         있었지만, viewport-fit=cover가 이 viewport meta에 없으면 스펙상
+         env(safe-area-inset-*)는 항상 0으로 평가된다(웹뷰가 세이프에어리어
+         바깥을 애초에 쓰지 않는 모드라 그 값 자체가 무의미해짐) — 즉
+         지금까지 이 padding은 실질적으로 아무 효과가 없었다. 일반 Safari
+         탭에서는 주소창이 이미 상단을 차지해 콘텐츠가 상태바와 겹칠 일이
+         없어 안 보이다가, PWA(standalone, 홈 화면 추가) 모드는 주소창이
+         없어 콘텐츠가 화면 맨 위(상태바 바로 아래)부터 시작하려 하면서
+         이 문제가 드러난다 — 아이패드는 상태바 침범이 아이폰보다 덜
+         두드러져(노치 없음, 화면도 넓음) 육안으로 덜 띄었을 뿐 근본
+         원인은 동일하다. viewport-fit=cover를 추가해 env() 값이 실제
+         기기별 세이프에어리어를 반영하도록 한다 — 하단(TabBar 등)은 이미
+         env(safe-area-inset-bottom)을 쓰는 코드가 있어 이 변경으로 함께
+         정상 동작하게 된다(전엔 그쪽도 0으로 평가되고 있었다). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>공부합시당 캠스터디</title>
     <link rel="manifest" href="manifest.json" />
     <link rel="icon" type="image/png" href="icons/favicon-32.png" />

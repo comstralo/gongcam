@@ -38,7 +38,16 @@ export const IDLE_WAKE_EVENT = "app:idle-wake";
 const ACTIVITY_EVENTS = ["mousemove", "keydown", "click", "scroll", "touchstart"] as const;
 // 유휴 진입/해제 판정 자체는 폴링과 무관하게 이 주기로만 확인한다 —
 // 임계값(5분)보다 충분히 짧아 전환 시점을 몇 초 오차 안에서 잡아낸다.
-const CHECK_INTERVAL_MS = 5_000;
+// 🔧 [버그 수정, 2026-09-20 사용자 지시: "자동 새로고침을 멈췄어요
+// 상태일 때, 터치하거나 해도 바로 전환되는게 아니라 한 5초는 기다려야
+// 되는데 이거 텀을 좀 짧게 할게. 1~2초로"] — setInterval 주기 자체가
+// 곧 "유휴 해제(WAKE)를 감지하기까지 걸리는 최대 지연"이었다(막 조작을
+// 시작한 시점과 다음 틱 사이 최대 5초 어긋남). IdleOverlay는 이 WAKE
+// 이벤트만 보고 사라지므로, 사용자 체감상 "눌러도 한동안 안 없어지는"
+// 것으로 느껴졌다. 1.5초로 낮춰 그 지연을 확실히 1~2초 범위 안으로
+// 줄인다 — 유휴 임계값(5분) 자체나 폴링 훅 동작과는 무관, 오직 이
+// 판정-이벤트 발행 주기만 조정한다.
+const CHECK_INTERVAL_MS = 1_500;
 
 let lastActivityAt = Date.now();
 let wasIdle = false;

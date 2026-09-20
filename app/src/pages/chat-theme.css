@@ -269,6 +269,20 @@
   padding-inline: 0 !important;
   column-gap: 0 !important;
 }
+/* 🔧 [버그 수정, 2026-09-20 사용자 지시: "아이콘이 메시지와 너무
+   여백없이 붙어있는 부분도 수정해줘"] — 바로 위 규칙이 .str-chat__message
+   의 column-gap을 전역적으로 0으로 강제한 게, 상대 메시지의
+   grid-template-columns: auto 1fr(아바타 컬럼 | 메시지 컬럼) 사이 간격도
+   함께 0으로 만들어버려 아바타가 버블에 완전히 맞닿아 보였다(실측
+   스크린샷으로 확인) — 원래 이 규칙의 의도는 "시간 배지 쪽"(같은
+   .str-chat__message가 시간이 아니라 실제로는 grid-column이 아니라
+   ChatPage.tsx가 만드는 바깥 flex row의 gap이었음, 위 268행 주석 참고)
+   여백만 줄이려던 것이라 아바타 쪽은 애초에 건드릴 필요가 없었다.
+   상대 메시지(아바타가 실제로 렌더링되는 유일한 경우)에서만 gap을
+   되살린다. */
+.str-chat__message.str-chat__message--other.str-chat__message--with-avatar {
+  column-gap: 10px !important;
+}
 /* 🔧 [사용자 지시, 2026-09-19] "메시지 우측에 여백이 너무 없어서
    답답해 보인다" — 바로 위 규칙으로 .str-chat__message의 좌우 패딩을
    완전히 0으로 없앴더니 버블이 채팅창 우측 끝(내 메시지)/좌측 끝
