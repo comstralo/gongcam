@@ -103,6 +103,17 @@
   padding: 6px;
 }
 
+/* 🔧 [사용자 지시, 2026-09-20] "메시지 보내기 영역 위에 박스 구분선
+   있잖아? 이거 없애주라. 없는게 깔끔한 것 같아" — Stream 기본
+   .str-chat__message-composer-container는 메시지 리스트와의 경계로
+   border-top(1px, index.css 6340행)을 항상 그린다. 이 앱은 채팅
+   전체가 이미 하나의 카드(rounded-lg border, ChatPage.tsx)로 감싸여
+   있어 굳이 내부에 한 번 더 구분선을 그을 필요가 없다는 사용자 판단 —
+   완전히 제거한다. */
+.str-chat .str-chat__message-composer-container {
+  border-top: none;
+}
+
 /* 🔧 [버그 수정, 2026-09-19 사용자 지시: "균형이 안 맞는다"] 실측 결과,
    좌측 "+"(첨부) 원형 버튼은 여전히 50×50px(--str-chat__button-padding-y-lg
    /-x-icon-only-lg가 각 14px — --str-chat__button-visual-height-lg를
