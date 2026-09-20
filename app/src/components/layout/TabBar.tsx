@@ -79,12 +79,17 @@ export function TabBar({
       aria-label="하단 탭 메뉴"
     >
       {collapseButton && (
+        // 🔧 [버그 수정, 2026-09-20 사용자 지시: "v 표시가 너무 메시지
+        // 보내기 영역이랑 붙어있어. 살짝만 띄울 필요가 있어보여"] —
+        // -top-3.5(-14px)는 nav(TabBar) 상단 경계에 거의 딱 걸쳐 있어,
+        // 바로 위 채팅 박스(입력창)와 시각적으로 거의 맞닿아 보였다.
+        // -top-6(-24px)로 더 띄워 둘 사이에 여백을 준다.
         <button
           type="button"
           onClick={collapseButton.onClick}
           aria-label="하단 탭 메뉴 접기"
           title="하단 탭 메뉴 접기"
-          className="absolute inset-x-0 -top-3.5 z-10 mx-auto flex justify-center text-muted-foreground"
+          className="absolute inset-x-0 -top-6 z-10 mx-auto flex justify-center text-muted-foreground"
         >
           <ChevronDown className="size-3.5" strokeWidth={ICON_STROKE.default} />
         </button>

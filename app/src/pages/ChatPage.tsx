@@ -1247,7 +1247,13 @@ export function ChatPage({ visible, tabBarCollapsed }: { visible: boolean; tabBa
   // 있었을 자리"만큼 카메라 상단에 쓸모없는 빈 공간이 남는다 — 키보드가
   // 떴을 때는 헤더를 위한 공간 자체를 없애 채팅 목록/회원 목록 탭이
   // 카메라 맨 위(viewportRect.top)에 바로 붙게 한다.
-  const headerOffsetPx = viewportRect && viewportRect.top > 0 ? 0 : 88;
+  // 🔧 [버그 수정, 2026-09-20 사용자 지시: "채팅에서의 툴바 위치가 다른
+  // 메뉴에서의 툴바 시작 높이랑 차이가 있어 ... 더 낮아서 공백이
+  // 넓은걸 확인"] — 88px는 추측값이었다. ReportPage(다른 메뉴의 탭
+  // 전환 UI)에서 실측한 탭 시작 y좌표는 74px였는데, 여기서는 88px를
+  // 써서 그 차이(14px)만큼 채팅 탭이 더 아래에서 시작해 불필요한
+  // 공백이 있었다 — 74px로 실측값에 맞춘다.
+  const headerOffsetPx = viewportRect && viewportRect.top > 0 ? 0 : 74;
   // 🔧 [사용자 지시] "키보드가 떴 동안 하단 탭바는 덮여도 무방(카카오톡
   // 방식)" — 키보드가 없을 때(viewportRect.top === 0)는 하단 탭바가
   // 화면에 그대로 보이므로 그 실측 높이(펼침 89px/접힘 약 24px)만큼
@@ -1255,7 +1261,14 @@ export function ChatPage({ visible, tabBarCollapsed }: { visible: boolean; tabBa
   // (viewportRect.top > 0)는 탭바 자체가 이미 카메라(visualViewport)
   // 밖으로 밀려나 안 보이므로, 그 자리까지 채팅 박스가 채워도 무방
   // (오히려 그래야 입력창이 키보드 바로 위까지 정확히 내려온다).
-  const tabBarHeightPx = viewportRect && viewportRect.top > 0 ? 0 : tabBarCollapsed ? 24 : 89;
+  // 🔧 [버그 수정, 2026-09-20 사용자 지시: "v 표시가 너무 메시지 보내기
+  // 영역이랑 붙어있어"] — 펼침 상태에서는 TabBar 안의 접기(v) 버튼이
+  // nav 상단 경계 위로 튀어나와(TabBar.tsx의 -top-6, 버튼 높이 14px)
+  // 떠 있는데, 여기서는 TabBar 실제 높이(89px)만 뺐을 뿐 그 튀어나온
+  // 부분은 고려하지 않아 채팅 박스 하단이 이 버튼과 9px 겹쳤다(실측:
+  // 박스 bottom 755, 버튼 bottom 746). 튀어나온 만큼(24+14=38px)을
+  // 더해 겹치지 않게 한다.
+  const tabBarHeightPx = viewportRect && viewportRect.top > 0 ? 0 : tabBarCollapsed ? 24 : 89 + 38;
   return (
     <div
       hidden={!visible}
