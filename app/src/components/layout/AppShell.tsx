@@ -285,8 +285,17 @@ export function AppShell({
               className="fixed inset-x-0 z-20 mx-auto flex justify-center text-muted-foreground"
               style={
                 viewportRect && collapseButtonHeight > 0
-                  ? { top: viewportRect.top + viewportRect.height - collapseButtonHeight - safeAreaInsetBottom / 2 }
-                  : { bottom: "calc(env(safe-area-inset-bottom, 0px) / 2)" }
+                  ? {
+                      // 🔧 [버그 수정, 2026-09-21 사용자 지시: "^ 기호가
+                      // 보이질 않아, 잘려"] — 데스크톱(safeAreaInsetBottom
+                      // 이 0)에서는 이 계산이 버튼 하단을 뷰포트 경계에
+                      // 정확히(오차 0px) 맞춰, 브라우저 스크롤바 유무 등
+                      // 미세한 오차만으로도 버튼이 화면 밖으로 잘렸다 —
+                      // TabBar의 하단 패딩(pb-[calc(4px+env(...))])과
+                      // 동일하게 최소 4px 여백을 더해 그 오차를 흡수한다.
+                      top: viewportRect.top + viewportRect.height - collapseButtonHeight - Math.max(safeAreaInsetBottom / 2, 4),
+                    }
+                  : { bottom: "max(calc(env(safe-area-inset-bottom, 0px) / 2), 4px)" }
               }
             >
               {/* 🔧 [사용자 지시, 2026-09-20] "네비바가 접혔다는걸
