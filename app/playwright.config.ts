@@ -1,5 +1,16 @@
-import { defineConfig, devices } from "@playwright/test";
+import { defineConfig, devices, type PlaywrightTestOptions } from "@playwright/test";
 import { existsSync, readFileSync } from "node:fs";
+
+// 🔧 Playwright의 DeviceDescriptor/PlaywrightTestOptions 타입 선언
+// 어디에도 screen 필드가 없지만(playwright-core/types/types.d.ts,
+// playwright/types/test.d.ts 둘 다 확인), 런타임 devices 객체와
+// BrowserContextOptions 둘 다 이 필드를 실제로 갖고/받는다 — 순수
+// 타입 선언 누락이다(Node 콘솔로 devices["iPhone 14"].screen이 실제
+// 값을 반환함을 확인). 아래 landscape 프리셋 2곳이 이 필드를 읽고
+// 뒤집어 다시 쓰므로, 그 값을 담을 넓은 타입을 여기서 한 번만 정의한다.
+type ScreenSize = { width: number; height: number };
+type DeviceWithScreen = (typeof devices)[string] & { screen?: ScreenSize };
+const devicesWithScreen = devices as unknown as Record<string, DeviceWithScreen>;
 
 // .env.test(gitignore, 로컬 전용)가 있으면 여기서 process.env에 로드한다 —
 // 별도 dotenv 의존성을 추가하지 않고 "KEY=VALUE" 줄만 읽는 최소 파서.
@@ -105,22 +116,43 @@ export default defineConfig({
       // "스크롤 여지 없음" 테스트가 이 프로젝트에서만 재현성 있게
       // 실패(scrollHeight-clientHeight=488)했다. screen도 viewport와
       // 동일하게 가로로 뒤집어야 실제 iOS 기기 회전과 같은 상태가 된다.
+      //
+      // 🔧 [2026-09-22 재확인] Playwright에 내장된 "iPhone 14 landscape"
+      // 프리셋이 실제로 존재하지만(devices["iPhone 14 landscape"]),
+      // 그 프리셋은 viewport만 뒤집고 screen은 세로값(390×844) 그대로
+      // 둔다 — useKeyboardInset.ts의 isLandscape 판정 주석("iOS는 회전
+      // 시 screen.width/height 값 자체를 서로 교체한다", 실기기 실측
+      // 근거)과 정면으로 다르다. 내장 프리셋을 썼다면 이 훅의 회전 판정
+      // 버그를 오히려 은폐했을 것 — 이 프로젝트의 실제 hook 계약에 맞게
+      // 계속 커스텀으로 뒤집은 값을 쓴다(devicesWithScreen은 파일 상단 참고).
       name: "mobile-iphone-landscape",
       use: {
-        ...devices["iPhone 14"],
-        viewport: { width: devices["iPhone 14"].viewport!.height, height: devices["iPhone 14"].viewport!.width },
-        screen: { width: devices["iPhone 14"].screen!.height, height: devices["iPhone 14"].screen!.width },
-      },
+        ...devicesWithScreen["iPhone 14"],
+        viewport: {
+          width: devicesWithScreen["iPhone 14"].viewport!.height,
+          height: devicesWithScreen["iPhone 14"].viewport!.width,
+        },
+        screen: {
+          width: devicesWithScreen["iPhone 14"].screen!.height,
+          height: devicesWithScreen["iPhone 14"].screen!.width,
+        },
+      } as Partial<PlaywrightTestOptions> & { screen: ScreenSize },
     },
     {
       // iPad (gen 7) 프리셋은 screen 필드가 아예 없다(Playwright가 없으면
       // viewport와 동일하게 취급) — viewport 자체를 기준으로 뒤집는다.
       name: "tablet-ipad-landscape",
       use: {
-        ...devices["iPad (gen 7)"],
-        viewport: { width: devices["iPad (gen 7)"].viewport!.height, height: devices["iPad (gen 7)"].viewport!.width },
-        screen: { width: devices["iPad (gen 7)"].viewport!.height, height: devices["iPad (gen 7)"].viewport!.width },
-      },
+        ...devicesWithScreen["iPad (gen 7)"],
+        viewport: {
+          width: devicesWithScreen["iPad (gen 7)"].viewport!.height,
+          height: devicesWithScreen["iPad (gen 7)"].viewport!.width,
+        },
+        screen: {
+          width: devicesWithScreen["iPad (gen 7)"].viewport!.height,
+          height: devicesWithScreen["iPad (gen 7)"].viewport!.width,
+        },
+      } as Partial<PlaywrightTestOptions> & { screen: ScreenSize },
     },
   ],
 });

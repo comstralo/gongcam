@@ -32,6 +32,11 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npx tsc -b
+      # 🔧 [2026-09-22 사용자 지시: "프론트엔드 테스트 도구도 정비해"] —
+      # vitest 단위 테스트(hooks/순수 로직)를 신설한 직후, worker job이
+      # 이미 npm test를 돌리는 것과 대칭을 맞춘다. lint/tsc처럼 실패하면
+      # 이 job 자체가 실패해 PR/main push를 막는다.
+      - run: npm test
 
   worker:
     runs-on: ubuntu-latest
