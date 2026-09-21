@@ -3,6 +3,7 @@ import { ListChecks, ChevronDown, CalendarDays, Image as ImageIcon, Trash2, File
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { InfoCard, SubRow, TintedPill, STATUS_DAYS, statusPillTone } from "@/components/dashboard/shared";
 import {
   SectionHeader,
@@ -602,6 +603,11 @@ export function MyOutputPenSection({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [respondingId, setRespondingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // 🔧 [UI 일관성, 2026-09-21] "기록 삭제" 확인을 브라우저 기본
+  // window.confirm() 대신 앱 다이얼로그로 받는다 — ReportReviewList의
+  // 관리자용 삭제 확인과 동일한 패턴(전수조사에서 발견, 되돌릴 수 없는
+  // 셀프서비스 삭제라도 위험도는 같음).
+  const [pendingDeleteItem, setPendingDeleteItem] = useState<MyCaptureItem | null>(null);
   // 🔧 [3주 사이클 토글] "현재 진행 중인 사이클"에서 어느 주(월~일, KST)를
   // 볼지 — null이면 현재(실시간), 아니면 CycleSwitcher가 넘긴 백업 fileId.
   // 사이클 밖(4주 이상 전)은 기존 CycleSwitcher와 마찬가지로 조회 대상이 아니다.
@@ -756,7 +762,6 @@ export function MyOutputPenSection({
   // 목록에서 항목을 제거하지 않고 deleted만 true로 반영해 오버레이가
   // 뜨도록 한다.
   function deleteSelfCheck(item: MyCaptureItem) {
-    if (!window.confirm("이 내 화각 점검 기록을 삭제할까요? 되돌릴 수 없습니다.")) return;
     // 🧪 목업 중엔 실제 삭제 API를 호출하지 않고 로컬 state만 갱신한다.
     if (showingDummy) {
       setSelfCheckItems((prev) => (prev ? prev.map((i) => (i.id === item.id ? { ...i, deleted: true } : i)) : prev));
@@ -786,6 +791,29 @@ export function MyOutputPenSection({
 
   return (
     <div className="flex flex-col gap-4">
+      <Dialog open={pendingDeleteItem !== null} onOpenChange={(open) => !open && setPendingDeleteItem(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>기록 삭제</DialogTitle>
+            <DialogDescription>이 내 화각 점검 기록을 삭제할까요? 되돌릴 수 없습니다.</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            <Button
+              variant="destructive"
+              className="w-full sm:h-11 sm:text-base"
+              onClick={() => {
+                if (pendingDeleteItem) deleteSelfCheck(pendingDeleteItem);
+                setPendingDeleteItem(null);
+              }}
+            >
+              삭제
+            </Button>
+            <Button variant="outline" className="w-full sm:h-11 sm:text-base" onClick={() => setPendingDeleteItem(null)}>
+              취소
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       {/* 🔧 [사용자 지시] 주차 전환 토글("내 화각 불량 제보"의 사이클
           전환)을 섹션 접힘 상태와 무관하게 항상 보이도록 카드 바깥으로
           뺐다 — 예전엔 CollapsiblePanel 안에 있어 섹션을 접으면 함께
@@ -1463,7 +1491,7 @@ export function MyOutputPenSection({
                                         variant="outline"
                                         className="text-destructive hover:bg-destructive/10 hover:text-destructive sm:h-11 sm:text-base"
                                         disabled={deletingId === item.id}
-                                        onClick={() => deleteSelfCheck(item.data as MyCaptureItem)}
+                                        onClick={() => setPendingDeleteItem(item.data as MyCaptureItem)}
                                       >
                                         <Trash2 className="size-3.5 shrink-0" strokeWidth={ICON_STROKE.default} />
                                         삭제
