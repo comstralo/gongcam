@@ -161,6 +161,49 @@ function MainViews() {
   );
 }
 
+// 🔧 [버그 수정, 2026-09-21 사용자 지시: "로그인 안 한 상태로 접속했을
+// 때 대시보드가 순간적으로 보였다가 로그인 페이지로 바뀐다, 방지해야"] —
+// AuthContext.tsx의 sessionVerified 설명 참고. 저장된 토큰의 실제 유효성이
+// 서버에서 확인될 때까지는 로그인 화면도 대시보드도(둘 다 "확정된 답"을
+// 전제로 한 라우팅 판단이므로) 렌더링하지 않고, 빈 화면 대신 짧은 로딩
+// 표시만 보여준다. 저장된 토큰이 아예 없는 절대다수의 경우 이 컴포넌트는
+// 첫 렌더에 이미 sessionVerified=true라 이 분기를 타지 않는다(체감상
+// 로딩 없이 즉시 로그인 화면) — 토큰이 있어 검증이 실제로 필요한
+// 경우에만 아주 짧게(보통 API 응답 1회 왕복) 나타난다.
+function AppRoutes() {
+  const { sessionVerified } = useAuth();
+
+  if (!sessionVerified) {
+    return (
+      <div className="flex min-h-dvh w-full items-center justify-center">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <HashRouter>
+      {/* 🔧 MyStatusProvider는 이제 MainViews 내부(useLocation을 쓸 수
+          있는 위치)로 옮겨, 대시보드/설정 화면을 보고 있을 때만 폴링이
+          돌도록 좁혔다 — 상세 이유는 MainViews의 주석 참고. /login,
+          /checker는 useMyStatus를 쓰지 않아(확인 완료) Provider 밖에
+          있어도 안전하다. */}
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route
+          path="/checker"
+          element={
+            <AppShell fitToScreen>
+              <CheckerPage />
+            </AppShell>
+          }
+        />
+        <Route path="/*" element={<MainViews />} />
+      </Routes>
+    </HashRouter>
+  );
+}
+
 export default function App() {
   useVersionCheck();
 
@@ -169,25 +212,7 @@ export default function App() {
       <PeriodAlarmProvider>
         <OfflineBanner />
         <IdleOverlay />
-        <HashRouter>
-          {/* 🔧 MyStatusProvider는 이제 MainViews 내부(useLocation을 쓸 수
-              있는 위치)로 옮겨, 대시보드/설정 화면을 보고 있을 때만 폴링이
-              돌도록 좁혔다 — 상세 이유는 MainViews의 주석 참고. /login,
-              /checker는 useMyStatus를 쓰지 않아(확인 완료) Provider 밖에
-              있어도 안전하다. */}
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route
-              path="/checker"
-              element={
-                <AppShell fitToScreen>
-                  <CheckerPage />
-                </AppShell>
-              }
-            />
-            <Route path="/*" element={<MainViews />} />
-          </Routes>
-        </HashRouter>
+        <AppRoutes />
       </PeriodAlarmProvider>
     </AuthProvider>
   );
