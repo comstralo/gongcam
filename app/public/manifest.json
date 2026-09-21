@@ -1,11 +1,14 @@
 {
   "name": "공부합시당 캠스터디",
   "short_name": "캠스터디",
+  "description": "캠스터디 스터디원용 출석 체커 · 제보 · 채팅 앱",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "background_color": "#fafaf9",
   "theme_color": "#ff5a36",
+  "lang": "ko",
+  "dir": "ltr",
   "icons": [
     {
       "src": "icons/icon-192.png",
@@ -24,6 +27,34 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "제보하기",
+      "short_name": "제보",
+      "description": "화면 촬영 제보 바로가기",
+      "url": "./#/report",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "채팅",
+      "short_name": "채팅",
+      "description": "관리자 1:1 문의 채팅 바로가기",
+      "url": "./#/chat",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
     }
   ]
 }
