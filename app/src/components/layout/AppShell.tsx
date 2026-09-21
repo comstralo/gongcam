@@ -420,9 +420,25 @@ export function AppShell({
               // 분기는 이제 PC에서 100% "bottom" 폴백만 타고 그 폴백은
               // 순수 CSS(env())라 서브픽셀 오차 자체가 발생할 수 없다
               // — 매직넘버 여백(4px)도 함께 제거한다.
+              // 🔧 [버그 수정, 2026-09-21 사용자 재보고: "아이패드가
+              // 아이폰보다 v버튼 아래 여백이 눈에 띄게 좁다"] — 기기별로
+              // 실측해 보정값을 추가하는 대신 근본 원인을 없앴다.
+              // viewportRect.height는 키보드가 없을 때(offsetTop===0)
+              // window.screen.height로 대체되는데(useVisualViewportRect
+              // 참고), 이 값은 iPhone에서만 실측 검증된 추정치라 화면
+              // 비율이 다른 iPad에서는 오차가 생길 수 있다 — 애초에 이
+              // JS 좌표계 우회 자체가 "키보드를 막 닫은 직후 bottom
+              // 오프셋이 낡은 값에 머무는" iOS 특정 버그(f7ca6bb 커밋
+              // 참고) 하나만을 위한 것이었지, 키보드가 아예 뜬 적 없는
+              // 평상시에는 필요 없었다. viewportRect.top(=visualViewport.
+              // offsetTop)이 0보다 클 때(키보드가 실제로 떠 있을 때)만
+              // JS 계산을 쓰고, 그 외(대부분의 경우, 지금 이 스크린샷
+              // 상황 포함)에는 항상 순수 CSS bottom 폴백을 쓴다 — 이
+              // 폴백은 기기 화면 크기·비율과 완전히 무관하게 항상
+              // 정확하다(PC와 동일한 검증된 경로).
               className="fixed inset-x-0 z-20 mx-auto flex justify-center text-muted-foreground"
               style={
-                viewportRect && collapseButtonHeight > 0
+                viewportRect && viewportRect.top > 0 && collapseButtonHeight > 0
                   ? { top: viewportRect.top + viewportRect.height - collapseButtonHeight - safeAreaInsetBottom / 2 }
                   : { bottom: "calc(env(safe-area-inset-bottom, 0px) / 2)" }
               }
