@@ -22,3 +22,12 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# 🔧 [2026-09-21] Playwright 회귀 테스트용 로컬 전용 자격 증명(개발자
+# 본인의 DEV_LOGIN_SECRET) — 절대 커밋하지 않는다. tests/e2e/README.md
+# 참고.
+.env.test
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
