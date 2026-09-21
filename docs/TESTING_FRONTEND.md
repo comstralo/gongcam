@@ -201,10 +201,44 @@ npm run test:watch  # watch 모드
 matcher를 전혀 안 써서 드러나지 않았던 문제. `vitest.setup.ts`를
 `tsconfig.app.json`의 `include`에 추가해 해결했다.
 
+## 네 번째 라운드 — useAuth/useNavigate 의존 컴포넌트 + 공용 테스트 헬퍼 (2026-09-22)
+
+3차가 상태 없는/단순 조건부 렌더링 컴포넌트에 그쳤던 것에 이어, 실제
+컨텍스트(`useAuth`)와 라우터(`useNavigate`/`Link`)에 의존하는
+컴포넌트를 다뤘다. 이 두 의존성을 가진 컴포넌트가 이미 10개 이상
+있음을 grep으로 확인해(`NewMemberForm`/`StatusView`/`TabBar`/
+`AppShell` 등), 매번 새로 배선하지 않도록 공용 헬퍼를 먼저 만들었다.
+2개 파일, 11개 케이스 추가(14개 파일 104케이스 → 16개 파일
+115케이스).
+
+- **`src/test-utils.tsx`**(신설, 테스트 파일 아님 — `.test.tsx`가
+  아니라 `test-utils.tsx`라 vitest의 `include` 패턴에 걸리지 않음을
+  `npx vitest list`로 확인) — `renderWithProviders()`가
+  `AuthContext.Provider`(실제 `AuthProvider`를 쓰면 `apiFetch("/me/role")`
+  호출까지 함께 딸려와 컴포넌트 테스트가 네트워크 mock에 얽매이므로,
+  대신 원하는 값을 직접 주입)와 `MemoryRouter`로 감싸 렌더링한다.
+  `LocationDisplay`(숨은 `useLocation()` 구독 컴포넌트)를 항상 함께
+  렌더링해두어, `navigate()` 호출 후 실제로 어느 경로로 이동했는지
+  `screen.getByTestId("location-display")`로 확인할 수 있게 했다.
+- **`src/components/session/SessionCard.test.tsx`**(7케이스) —
+  session 유무에 따른 스켈레톤/실제 카드 조건부 렌더링, `name` prop이
+  `session.name`보다 우선하는지, 로그아웃 클릭 시 `logout()`/
+  `onLogout()`이 모두 호출되고 실제로 `/login`으로 이동하는지(
+  `renderWithProviders`의 `LocationDisplay`로 확인)까지 검증했다.
+- **`src/components/layout/LinksHeaderButton.test.tsx`**(4케이스) —
+  `@base-ui/react`의 `Dialog`(모달)와 `react-router-dom`의 `Link`를
+  함께 쓰는 컴포넌트의 첫 테스트이자 스파이크 성격도 겸한다 — Dialog가
+  jsdom에서 실제로 열리고(`role="dialog"`) 닫히는지, `DialogClose`로
+  감싼 `Link`를 클릭하면 모달이 닫히며 실제 라우트가 바뀌는지
+  (`/checker`)까지 확인했다. `waitFor()`로 감싼 이유: `@base-ui/react`
+  Dialog의 마운트가 동기적이지 않을 수 있어(실측으로 필요성 확인) —
+  이후 Dialog 기반 컴포넌트 테스트가 참고할 선례.
+
 ## 다음 단계 (미착수)
 
 - `src/lib/checker/drawGrid.ts`(Canvas API 의존), `src/lib/push/vapid.ts`,
   `src/lib/periodAlarm/*`는 아직 미착수.
-- 컴포넌트 테스트는 아직 상태 없는/단순 조건부 렌더링 컴포넌트
-  4개뿐이다 — API 호출이나 폼 상태를 가진 더 복잡한 컴포넌트
-  (`SessionCard`, 대시보드 카드류 등)는 아직 다루지 않았다.
+- API 호출(`useApi`/`apiFetch`)에 의존하는 컴포넌트(대시보드 카드류,
+  폼 제출 등)는 아직 다루지 않았다 — `fetch` mock 전략(백엔드가
+  `vi.stubGlobal("fetch", ...)`로 이미 채택한 것과 같은 패턴)을
+  프론트에도 적용하는 것이 다음 자연스러운 단계.
