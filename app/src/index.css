@@ -55,17 +55,18 @@
    기기일수록) 여유분도 비례해서 커진다 — 실측(iPhone, inset≈59px):
    기존 14px 고정 방식은 총 83px이었는데, 1.5배 방식은 98.5px로
    오히려 더 커져 사용자가 "여전히 공백이 너무 크다"고 재보고했다.
-   🔧 [버그 수정, 2026-09-21 재수정] min(env(safe-area-inset-top,0px),
-   14px) 트릭으로 되돌린다 — env가 0(PC/Android)이면 결과도 0이라
-   여전히 여유가 안 붙고, env가 0보다 크면(노치가 있는 모든 iOS
-   기기) 노치 크기와 무관하게 항상 14px로 클램프된다. PC의 불필요한
-   여백 제거(이전 수정의 목표)와 iOS의 일정한 블러 회피 여유(원래
-   의도) 둘 다 동시에 만족하는 방식 — 노치 크기에 비례하지 않는다는
-   점이 배수 방식과의 핵심 차이. */
+   🔧 [버그 수정, 2026-09-21 재수정, 실수 발견] min(env(...),14px) 트릭
+   으로 "여유분"만 남기면서 env(safe-area-inset-top) 자체(노치의 순수
+   기하학적 높이 — 상태바를 가리지 않기 위한 필수값)를 실수로 빠뜨렸다.
+   그 결과 타이틀이 상태바에 그대로 붙어버렸다(사용자 재보고: "너무
+   올라가버린거 같은데", 스크린샷으로 확인). env(safe-area-inset-top)
+   을 다시 더하되, 블러 회피용 추가 여유분은 0으로 없앤다(사용자 결정:
+   "노치 높이만, 추가 여유 0") — blur가 실제로 재발하면 그때 다시
+   작은 값으로 추가한다. */
 @utility page-pt-safe {
-  padding-top: calc(0.625rem + min(env(safe-area-inset-top, 0px), 14px)); /* pt-2.5 */
+  padding-top: calc(0.625rem + env(safe-area-inset-top, 0px)); /* pt-2.5 */
   @variant sm {
-    padding-top: calc(1rem + min(env(safe-area-inset-top, 0px), 14px)); /* sm:pt-4 */
+    padding-top: calc(1rem + env(safe-area-inset-top, 0px)); /* sm:pt-4 */
   }
 }
 
