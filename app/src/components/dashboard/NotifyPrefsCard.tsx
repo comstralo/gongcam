@@ -286,6 +286,10 @@ export function NotifyPrefsCard({ name }: { name?: string }) {
               editingDeviceId === d.id ? (
                 <div key={d.id} className="flex items-center gap-2 pl-5 sm:pl-5.5">
                   <Input
+                    // 페이지 로드 시 자동 포커스가 아니라, 사용자가 방금 누른
+                    // 이름 변경 버튼에 대한 직접 응답으로 뜨는 입력창이라
+                    // autoFocus가 접근성 문제를 일으키지 않는다.
+                    // oxlint-disable-next-line jsx-a11y/no-autofocus
                     autoFocus
                     value={editingValue}
                     maxLength={30}

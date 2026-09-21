@@ -20,6 +20,10 @@ export function OfflineBanner() {
 
   return (
     <div
+      // <output>은 "폼 계산 결과"를 뜻하는 태그라 이 배너(네트워크 상태
+      // 변화를 스크린리더에게 즉시 알리는 라이브 리전)에는 맞지 않는다 —
+      // role="status"가 의도한 의미(상태 알림) 그대로다.
+      // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
       role="status"
       // 🔧 이 앱은 꽉 찬 destructive 배경(text-destructive-foreground
       // 토큰 자체가 index.css에 정의되어 있지 않음) 대신 옅은 배경(/10~20)

@@ -563,12 +563,20 @@ export function CheckerPage() {
         </div>
       </div>
 
-      {/* 주의사항 모달 — 반투명 오버레이, 배경 클릭 또는 X로 닫기 */}
+      {/* 주의사항 모달 — 반투명 오버레이, 배경 클릭/Esc 또는 X로 닫기.
+          키보드로 닫는 실제 수단은 X 버튼(아래, 진짜 <button>)과 Escape
+          키이므로, 배경 클릭은 마우스 사용자를 위한 부가 편의일 뿐 유일한
+          조작 수단이 아니다. */}
       {cautionOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
           onClick={() => setCautionOpen(false)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setCautionOpen(false);
+          }}
+          role="presentation"
         >
+          {/* oxlint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events */}
           <div
             className="flex w-full max-w-sm flex-col gap-2 rounded-lg border border-amber-600/30 bg-card p-4 shadow-lg dark:border-amber-400/30"
             onClick={(e) => e.stopPropagation()}

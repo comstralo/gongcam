@@ -669,6 +669,9 @@ export function CapturePreview({
   }
   if (isVideo) {
     return (
+      // 스터디원이 업로드한 제보 영상(사용자 생성 콘텐츠)이라 자막 트랙을
+      // 붙일 방법이 없다 — 관리자가 직접 화면 내용을 확인하는 용도.
+      // oxlint-disable-next-line jsx-a11y/media-has-caption
       <video
         src={blobUrl}
         controls

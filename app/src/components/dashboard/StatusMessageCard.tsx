@@ -73,6 +73,10 @@ export function StatusMessageCard() {
         {editing ? (
           <div className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2 focus-within:ring-3 focus-within:ring-ring/50">
             <Input
+              // 페이지 로드 시 자동 포커스가 아니라, 사용자가 방금 누른
+              // "편집" 버튼에 대한 직접 응답으로 뜨는 입력창이라 autoFocus가
+              // 접근성 문제를 일으키지 않는다.
+              // oxlint-disable-next-line jsx-a11y/no-autofocus
               autoFocus
               value={draft}
               maxLength={STATUS_MESSAGE_MAX_LENGTH}
