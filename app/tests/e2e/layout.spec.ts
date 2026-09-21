@@ -31,8 +31,14 @@ test.describe("로그인 후 메인 화면 — DEV_LOGIN_SECRET 필요 시에만
   for (const { path, label } of PAGES) {
     test(`${label}: 문서가 뷰포트를 넘지 않는다`, async ({ authedPage: page }) => {
       await page.goto(path);
-      // AppShell이 실측(ResizeObserver)으로 안정화될 시간을 짧게 준다 —
-      // 첫 프레임 매직넘버 폴백 직후 값이 바뀌는 경우를 피한다.
+      // 🔧 [버그 수정, 2026-09-21] AuthContext가 세션 유효성을 서버에서
+      // 확인(/me/role)한 뒤에야 라우트를 렌더링하도록 바뀌어(비로그인
+      // 상태 접속 시 대시보드가 순간 노출되는 문제 수정), 고정된 300ms
+      // 대기만으로는 그 네트워크 왕복까지 항상 따라잡지 못하는 경우가
+      // 생겼다 — 모든 메인 페이지가 공통으로 갖는 header(타이틀)가
+      // 나타남을 실제 로딩 완료 신호로 기다린 뒤, AppShell이 실측
+      // (ResizeObserver)으로 안정화될 시간만 짧게 추가로 둔다.
+      await page.locator("header").first().waitFor({ state: "attached" });
       await page.waitForTimeout(300);
       const { scrollHeight, innerHeight } = await page.evaluate(() => ({
         scrollHeight: document.body.scrollHeight,
@@ -56,10 +62,16 @@ test.describe("로그인 후 메인 화면 — DEV_LOGIN_SECRET 필요 시에만
 
   test("채팅: 하단 탭 메뉴 접기/펼치기 버튼이 화면 안에 있다(잘리지 않음)", async ({ authedPage: page }) => {
     await page.goto("#/chat");
-    await page.waitForTimeout(300);
-    const innerHeight = await page.evaluate(() => window.innerHeight);
     const collapseBtn = page.locator('button[aria-label="하단 탭 메뉴 펼치기"]');
     const expandBtn = page.locator('button[aria-label="하단 탭 메뉴 접기"]');
+    // 🔧 [버그 수정, 2026-09-21] AuthContext가 세션 유효성을 서버에서
+    // 확인(/me/role)한 뒤에야 라우트를 렌더링하도록 바뀌어(비로그인 상태
+    // 접속 시 대시보드가 순간 노출되는 문제 수정), 고정된 300ms 대기로는
+    // 그 네트워크 왕복(실측 약 265ms) + 페이지 자체 로딩을 항상 따라잡지
+    // 못하는 경우가 생겼다 — 매직넘버를 늘리는 대신 실제 로딩 완료
+    // 신호(둘 중 하나의 버튼이 나타남)를 기다린다.
+    await collapseBtn.or(expandBtn).first().waitFor({ state: "attached" });
+    const innerHeight = await page.evaluate(() => window.innerHeight);
     // 둘 중 하나는(접힘/펼침 상태에 따라) 반드시 화면 안에 있어야 한다.
     const collapseBox = (await collapseBtn.count()) > 0 ? await collapseBtn.boundingBox() : null;
     const expandBox = (await expandBtn.count()) > 0 ? await expandBtn.boundingBox() : null;
