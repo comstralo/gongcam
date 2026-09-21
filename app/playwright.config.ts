@@ -36,7 +36,16 @@ export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0,
+  // 🔧 [디버그 확인, 2026-09-22 사용자 지시: "여러 환경에서의 문제점을
+  // 테스트 단계에서 파악하고 싶다" 후속] — 프리셋을 5개→7개(가로모드
+  // 추가)로 늘린 뒤, 이 스위트가 실제 프로덕션(GitHub Pages)을 네트워크로
+  // 호출하는 구조라 로컬 8워커 병렬 실행에서 동시 요청이 늘어난 만큼
+  // page.goto 자체가 30초 타임아웃에 걸리는 경우가 실측됐다(격리
+  // 실행하면 항상 통과 — 앱/테스트 로직 문제가 아니라 순수 네트워크
+  // 부하 변동성). CI는 이미 retries:1이라 이런 산발적 실패가 자동
+  // 재시도로 흡수되지만(실제 배포 시 55개 전부 통과 확인됨), 로컬에서도
+  // 매번 수동으로 재실행할 필요 없이 최소 1회는 자동 재시도한다.
+  retries: process.env.CI ? 1 : 1,
   reporter: [["html", { open: "never" }]],
   use: {
     // 🔧 [버그 수정, 2026-09-21] baseURL 끝에 슬래시가 없으면
@@ -73,6 +82,45 @@ export default defineConfig({
     {
       name: "tablet-ipad",
       use: { ...devices["iPad (gen 7)"] },
+    },
+    // 🔧 [2026-09-22 사용자 지시: "여러 환경에서의 문제점을 테스트 단계에서
+    // 파악하고 싶다"] — 키보드 인셋/v버튼 위치 계산(useKeyboardInset.ts,
+    // AppShell.tsx)이 세로/가로 판정에 window.innerWidth와
+    // window.screen.width를 비교하는 로직을 갖고 있어(useVisualViewportRect
+    // 참고), 가로모드에서만 재현되는 회귀가 있을 수 있는데 지금까지
+    // 세로모드 프리셋만 있어 이 방향 자체가 전혀 실행되지 않았다.
+    // devices[...] 프리셋에 이미 있는 viewport를 가로로 뒤집어(w/h 교체)
+    // 등록한다 — AppShell.tsx의 fitToScreen(mobile-landscape: 브레이크포인트)
+    // 분기도 이 프로젝트에서만 실행된다.
+    {
+      // 🔧 [버그 수정, 2026-09-22 디버그 확인] 처음엔 viewport만 뒤집었는데,
+      // devices["iPhone 14"]는 viewport(390×664, 브라우저 크롬 제외한
+      // 실제 뷰포트)와 screen(390×844, 물리적 화면 전체) 값이 서로
+      // 다르다 — screen을 안 뒤집으면 useVisualViewportRect의
+      // isLandscape 판정(window.innerWidth > window.screen.width)은
+      // 664>390이라 맞게 true가 나오지만, 그 뒤 screenHeight =
+      // isLandscape ? window.screen.width : ... 에서 뒤집히지 않은
+      // screen.width(세로 기준 너비, 390)를 그대로 써 실제 세로 방향
+      // 화면 높이(844)와 전혀 다른 값이 된다 — 실측: 로그인/제보 페이지의
+      // "스크롤 여지 없음" 테스트가 이 프로젝트에서만 재현성 있게
+      // 실패(scrollHeight-clientHeight=488)했다. screen도 viewport와
+      // 동일하게 가로로 뒤집어야 실제 iOS 기기 회전과 같은 상태가 된다.
+      name: "mobile-iphone-landscape",
+      use: {
+        ...devices["iPhone 14"],
+        viewport: { width: devices["iPhone 14"].viewport!.height, height: devices["iPhone 14"].viewport!.width },
+        screen: { width: devices["iPhone 14"].screen!.height, height: devices["iPhone 14"].screen!.width },
+      },
+    },
+    {
+      // iPad (gen 7) 프리셋은 screen 필드가 아예 없다(Playwright가 없으면
+      // viewport와 동일하게 취급) — viewport 자체를 기준으로 뒤집는다.
+      name: "tablet-ipad-landscape",
+      use: {
+        ...devices["iPad (gen 7)"],
+        viewport: { width: devices["iPad (gen 7)"].viewport!.height, height: devices["iPad (gen 7)"].viewport!.width },
+        screen: { width: devices["iPad (gen 7)"].viewport!.height, height: devices["iPad (gen 7)"].viewport!.width },
+      },
     },
   ],
 });

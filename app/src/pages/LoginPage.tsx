@@ -87,8 +87,18 @@ export function LoginPage() {
   }, [session, login, navigate]);
 
   return (
-    <div className="flex min-h-dvh w-full flex-col items-center justify-center gap-6 p-4">
-      <div className="flex w-full page-content flex-col items-center gap-1 text-center">
+    // 🔧 [버그 수정, 2026-09-22 사용자 지시: "여러 환경에서의 문제점을
+    // 테스트 단계에서 파악하고 싶다" — E2E 가로모드 프리셋 추가로 발견]
+    // 이 페이지는 AppShell을 쓰지 않는 독립 레이아웃(min-h-dvh +
+    // justify-center)이라, 세로 공간이 극히 좁은 가로모드(iPhone을 눕힌
+    // 상태, 390px 안팎)에서는 타이틀+로그인 카드+체커 카드 3덩어리의
+    // 자연 높이가 뷰포트를 넘어 로그인 버튼이 첫 화면 밖으로 밀려났다
+    // (실측: scrollHeight 562px vs innerHeight 390px). 로그인은 이 화면의
+    // 핵심 행동이므로, 가로모드에서는 (1) 상하 여백/간격을 줄이고
+    // (2) 우선순위가 낮은 체커 카드를 숨겨(그 경로는 /checker로 항상
+    // 별도 접근 가능) 로그인 버튼까지 스크롤 없이 보이게 한다.
+    <div className="flex min-h-dvh w-full flex-col items-center justify-center gap-6 p-4 mobile-landscape:gap-2 mobile-landscape:p-2">
+      <div className="flex w-full page-content flex-col items-center gap-1 text-center mobile-landscape:hidden">
         <span className="text-xs font-semibold tracking-tight text-primary sm:text-sm">
           공부합시당 캠스터디
         </span>
@@ -96,33 +106,41 @@ export function LoginPage() {
       </div>
 
       <Card className="w-full page-content">
-        <CardContent className="flex flex-col gap-4">
-          <p className="text-sm leading-relaxed text-muted-foreground sm:text-base">
+        <CardContent className="flex flex-col gap-4 mobile-landscape:gap-2 mobile-landscape:p-3">
+          <p className="text-sm leading-relaxed text-muted-foreground sm:text-base mobile-landscape:hidden">
             아래 기능은 <strong className="text-foreground">참여자 명단(스프레드시트 열람 권한)</strong>에
             등록된 계정만 이용할 수 있습니다.
             <br />
             Google 계정으로 로그인하면 자동으로 확인됩니다.
           </p>
 
-          <RadioGroup value={mode} onValueChange={(v) => setMode(v as SessionMode)} className="gap-2">
+          <RadioGroup
+            value={mode}
+            onValueChange={(v) => setMode(v as SessionMode)}
+            className="gap-2 mobile-landscape:gap-1"
+          >
             <Label
               htmlFor="mode-persist"
-              className="flex items-start gap-2 rounded-lg border p-3 has-[[data-state=checked]]:border-primary sm:p-4"
+              className="flex items-start gap-2 rounded-lg border p-3 has-[[data-state=checked]]:border-primary sm:p-4 mobile-landscape:p-2"
             >
               <RadioGroupItem value="persist" id="mode-persist" className="mt-0.5" />
               <span className="flex flex-col gap-0.5">
                 <span className="text-sm font-semibold sm:text-base">로그인 상태 유지</span>
-                <span className="text-xs text-muted-foreground sm:text-sm">이 브라우저에서 30일 동안 자동 로그인</span>
+                <span className="text-xs text-muted-foreground sm:text-sm mobile-landscape:hidden">
+                  이 브라우저에서 30일 동안 자동 로그인
+                </span>
               </span>
             </Label>
             <Label
               htmlFor="mode-once"
-              className="flex items-start gap-2 rounded-lg border p-3 has-[[data-state=checked]]:border-primary sm:p-4"
+              className="flex items-start gap-2 rounded-lg border p-3 has-[[data-state=checked]]:border-primary sm:p-4 mobile-landscape:p-2"
             >
               <RadioGroupItem value="once" id="mode-once" className="mt-0.5" />
               <span className="flex flex-col gap-0.5">
                 <span className="text-sm font-semibold sm:text-base">1회성 로그인 (공공 PC)</span>
-                <span className="text-xs text-muted-foreground sm:text-sm">탭을 닫으면 즉시 로그아웃</span>
+                <span className="text-xs text-muted-foreground sm:text-sm mobile-landscape:hidden">
+                  탭을 닫으면 즉시 로그아웃
+                </span>
               </span>
             </Label>
           </RadioGroup>
@@ -140,7 +158,7 @@ export function LoginPage() {
         </CardContent>
       </Card>
 
-      <Card className="w-full page-content border-primary">
+      <Card className="w-full page-content border-primary mobile-landscape:hidden">
         <CardContent>
           <Link to="/checker" className="flex items-center gap-3.5">
             <span className="flex size-10 shrink-0 items-center justify-center rounded-full border bg-card sm:size-12">
