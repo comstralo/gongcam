@@ -45,14 +45,20 @@
    blur를 적용하는 영역이 safe-area-inset-top(다이나믹 아일랜드/노치의
    순수 기하학적 높이)보다 조금 더 아래까지 시각적으로 번지는 것으로
    보인다(아이패드는 노치가 없어 이 블러 존 자체가 없거나 훨씬 작아
-   재현되지 않음 — 사용자 확인). safe-area 값 자체에 추가 여유(14px)를
-   더해 그 블러 존 전체를 확실히 벗어나게 한다 — PC/Android/아이패드는
-   기존 순수 padding(10px/16px)에 이 여유가 그대로 더해지므로 약간
-   더 여유로워질 뿐 레이아웃이 깨지지 않는다. */
+   재현되지 않음 — 사용자 확인). safe-area 값 자체에 추가 여유를 더해
+   그 블러 존 전체를 확실히 벗어나게 한다.
+   🔧 [버그 수정, 2026-09-21 사용자 지시: "타이틀 위 공백을 줄여봐"] —
+   위 여유분이 14px 고정값이라 safe-area-inset-top이 0인 PC/Android
+   에서도 똑같이 14px가 그대로 더해져, 노치/블러와 무관한 환경까지
+   불필요하게 여백이 늘어나 있었다. 고정값 대신 env() 자체의 배수로
+   여유를 주면, safe-area가 0인 환경에서는 이 항도 자동으로 0이 되고
+   (기존 순수 padding만 남음), 실제 노치가 있는 기기에서만 그 크기에
+   비례해 여유가 붙는다 — PC에서 확인한 실측 30px(16px+14px) 여백이
+   16px로, iOS 쪽은 기존과 동일하게 노치 크기의 배수만큼 유지된다. */
 @utility page-pt-safe {
-  padding-top: calc(0.625rem + env(safe-area-inset-top, 0px) + 14px); /* pt-2.5 */
+  padding-top: calc(0.625rem + env(safe-area-inset-top, 0px) * 1.5); /* pt-2.5 */
   @variant sm {
-    padding-top: calc(1rem + env(safe-area-inset-top, 0px) + 14px); /* sm:pt-4 */
+    padding-top: calc(1rem + env(safe-area-inset-top, 0px) * 1.5); /* sm:pt-4 */
   }
 }
 
