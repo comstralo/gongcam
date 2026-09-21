@@ -97,18 +97,64 @@ npm run test:watch  # watch 모드
   이벤트를 직접 디스패치해 상태 전환과 언마운트 후 리스너 정리를
   검증한다 — 이후 hooks 테스트가 따를 기본 패턴이기도 하다.
 
+## 두 번째 라운드 — mock이 필요한 hooks + 나머지 순수 로직 (2026-09-22)
+
+사용자 지시 "프론트 도구도 보강 확실하게 하자"에 따라, 첫 라운드에서
+"다음 단계"로 남겨뒀던 두 훅(mock 설계 필요)과 손대지 않은 나머지
+순수 로직 파일을 마저 커버했다. 6개 파일, 47개 케이스 추가(4개
+파일 37케이스 → 10개 파일 84케이스).
+
+- **`src/hooks/useKeyboardInset.test.ts`**(15케이스) — 이 세션
+  전체에서 가장 많이 수정된 파일의 첫 자동 테스트. `window.matchMedia`
+  (`display-mode: standalone` 쿼리에만 응답)와 `window.visualViewport`
+  (offsetTop/height 필드 + addEventListener/removeEventListener만
+  구현한 최소 fake, `fire()`로 리스너를 직접 트리거)를 각각
+  `vi.stubGlobal`로 mock했다 — `tests/e2e/fixtures.ts`의
+  `injectPwaStandalone`/`injectKeyboardUp`이 검증한 것과 동일한 계약
+  (PWA standalone이 아니면 이 좌표계를 전혀 안 탐, 키보드가 뜨면
+  visualViewport.height를 그대로 씀, 없으면 screen 기반 추정치로
+  대체, 가로/세로 판정)을 브라우저 없이 재현한다.
+  `useSafeAreaInsetTop/Bottom`은 jsdom이 CSS `env()`를 해석하지
+  못해(Node 콘솔로 확인) 항상 0을 반환한다는 사실 자체를 테스트로
+  고정해뒀다 — "정상 동작 검증"이 아니라 "이 환경의 한계 표식"이며,
+  jsdom이 나중에 env()를 지원하게 되면 이 테스트가 깨지는 것 자체가
+  실제 안전영역 값을 검증하는 테스트로 교체할 신호가 된다.
+- **`src/hooks/useResizeObserver.test.ts`**(6케이스) — jsdom에
+  `ResizeObserver`가 없어(Node 콘솔로 확인) `observe`/`disconnect`
+  호출을 기록하고 `trigger()`로 콜백을 직접 호출할 수 있는 mock
+  클래스를 만들었다. 콜백 ref가 조건부 마운트/언마운트/재마운트에
+  안전한지(이전 observer를 정확히 disconnect한 뒤 새 요소를 observe),
+  `onResize`가 리렌더 후에도 항상 최신 함수를 참조하는지(ref 패턴)를
+  검증한다.
+- **`src/lib/push/endpointHash.test.ts`**(5케이스) — NIST SHA-256
+  표준 테스트 벡터("", "abc")로 `crypto.subtle.digest` 기반 구현이
+  정확한지 확인 — 서버(`handlePushSubscribe`)의 `sha256Hex`와 같은
+  해시를 내야 하는 함수라 표준 벡터 일치가 특히 중요하다. vitest의
+  jsdom 환경에서도 Node의 전역 `crypto.subtle`이 그대로 노출됨을
+  이 테스트로 실증했다(jsdom 자체는 `crypto.subtle`이 없음).
+- **`src/lib/utils.test.ts`**(7케이스) — `cn()` 유틸의 파일 상단
+  주석이 기록한 실제 프로덕션 버그("제목과 하위 항목 크기가 똑같아
+  보인다"는 지적의 근본 원인 — `extendTailwindMerge`로 커스텀 유틸
+  `text-micro`/`text-micro-lg`를 `font-size` 그룹에 등록하기 전에는
+  색상 클래스와 같은 충돌 그룹으로 오인돼 크기 클래스가 삭제됐다)를
+  회귀 테스트로 고정했다.
+- **`src/hooks/useTodayIndex.test.ts`**(6케이스) — `Intl.DateTimeFormat`
+  기반 KST 요일 계산(백엔드의 UTC+9 수동 계산과 다른 구현이라
+  독립 검증 필요), `vi.useFakeTimers()`로 KST 자정 경계에서 정확히
+  다음날 인덱스로 갱신되는지, 자정 타이머가 매번 다시 걸리는지
+  (연속 두 번의 자정을 모두 통과시켜 검증) 확인했다.
+- **`src/lib/idleTracker.test.ts`**(8케이스) — 이 모듈은 최상단
+  코드가 import 시점에 즉시 실행되어 전역 `setInterval`과 모듈
+  스코프 변수를 만드는 특이한 구조(파일 상단 주석: "React 생명주기와
+  무관하게 이 모듈이 로드되는 순간 단 한 번"이 의도된 설계)라, 매
+  테스트마다 `vi.resetModules()` + 동적 `import()`로 완전히 새
+  모듈 인스턴스를 받아 격리했다 — 그러지 않으면 이전 테스트의
+  `lastActivityAt`이 다음 테스트로 새어나간다.
+
 ## 다음 단계 (미착수)
 
-- **`useKeyboardInset.ts`**(이번 세션 전체에서 가장 많이 다룬 파일)
-  — `isStandalonePwa()`/`useVisualViewportRect()`는 `window.matchMedia`/
-  `window.visualViewport`/`navigator.standalone` 등 jsdom이 기본
-  제공하지 않는 API에 의존해 mock 설계가 필요하다. `tests/e2e/
-  fixtures.ts`의 `injectPwaStandalone`/`injectKeyboardUp`이 이미
-  Playwright용으로 이 값들을 흉내 내는 패턴을 만들어뒀으므로, 그
-  로직을 vitest용으로 이식하면 브라우저 전체를 띄우지 않고도(E2E보다
-  훨씬 빠르게) 같은 분기를 검증할 수 있다.
-- **`useResizeObserver.ts`** — jsdom에 `ResizeObserver`가 없어
-  전역 mock이 필요하다(`vi.stubGlobal("ResizeObserver", ...)`).
 - 컴포넌트 테스트(RTL의 `render`+`screen`) 자체는 아직 한 건도
-  없다 — 이번 라운드는 hooks/순수 로직에 한정했다(사용자 확인 없이
+  없다 — 두 라운드 모두 hooks/순수 로직에 한정했다(사용자 확인 없이
   범위를 임의로 넓히지 않음).
+- `src/lib/checker/drawGrid.ts`(Canvas API 의존), `src/lib/push/vapid.ts`,
+  `src/hooks/useTheme.ts`, `src/lib/periodAlarm/*`는 아직 미착수.
