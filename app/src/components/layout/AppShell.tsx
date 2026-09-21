@@ -283,7 +283,7 @@ export function AppShell({
           아무리 짧아도 문서가 뷰포트를 넘어설 수 없는 구조). */}
       {!collapsibleTabBar && !fitToScreen ? (
         <div
-          className="flex w-full min-h-0 flex-1 flex-col items-center gap-4.5"
+          className="flex w-full min-h-0 flex-1 flex-col items-center gap-4.5 overflow-y-auto"
           style={{
             paddingBottom:
               measuredTabBarHeight !== null
