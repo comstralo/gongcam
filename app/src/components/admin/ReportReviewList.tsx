@@ -1515,7 +1515,7 @@ export function ReportReviewList({
                                           />
                                           <Button
                                             variant="outline"
-                                            className="sm:h-11 sm:text-base"
+                                            className="sm:h-12 sm:text-base"
                                             disabled={votingId === item.id || !currentValue}
                                             onClick={() => currentValue && submitVote(item, currentValue)}
                                           >

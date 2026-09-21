@@ -812,7 +812,7 @@ function PrizeRecipientList({
         {effectiveSettlement && effectiveSettlement.length > 0 && (
           <Button
             variant="outline"
-            className="w-full sm:h-12 sm:text-base"
+            className="w-full sm:h-11 sm:text-base"
             disabled={!effectiveCanSettle || settling || settlementSettled}
             onClick={handleSettle}
           >
