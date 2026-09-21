@@ -169,6 +169,21 @@ export function useVisualViewportRect(): ViewportRect | null {
   const [rect, setRect] = useState<ViewportRect | null>(null);
 
   useEffect(() => {
+    // 🔧 [버그 수정, 2026-09-21 사용자 지시: "CSS 제어가 주먹구구식으로
+    // 개발되는 느낌, 전수조사해서 관리 전략을 세워라"] — 전수 조사로
+    // 확인: 이 훅은 iOS PWA standalone의 뷰포트 버그를 우회하기 위한
+    // 것인데, window.visualViewport는 데스크톱 Chrome에도 존재해 가드
+    // 없이는 PC에서도 그대로 실행됐다. PC는 이 버그 자체가 없으므로
+    // 순수 CSS(각 컴포넌트의 viewportRect===null 폴백 분기, 예:
+    // TabBar/AppShell의 bottom:0)만으로 완전히 정확하게 동작할 수
+    // 있는데, 이 훅이 항상 non-null을 반환해버려 모든 소비처가 불필요한
+        // JS 좌표계 경로를 타게 만들었다 — 그 경로에 낀 서브픽셀 반올림
+    // 오차가 "브라우저 줌 100%에서만 v버튼이 잘리는" 버그의 근본
+    // 원인이었다(AppShell.tsx 참고). useDocumentHeightFix와 동일한
+    // isStandalonePwa() 가드를 여기에도 걸어, PC/일반 브라우저 탭에서는
+    // 이 훅이 항상 null을 반환하고 아무 리스너도 등록하지 않게 한다 —
+    // "PC는 절대 이 JS 좌표계를 타지 않는다"를 훅 하나로 보장한다.
+    if (!isStandalonePwa()) return;
     const viewport: VisualViewport | null = window.visualViewport;
     if (!viewport) return;
 

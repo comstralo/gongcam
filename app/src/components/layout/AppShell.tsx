@@ -282,20 +282,26 @@ export function AppShell({
               // 방식으로 bottom 대신 viewportRect 기준 top을 직접
               // 계산해, 뷰포트 버그와 무관하게 항상 화면 맨 아래에
               // 정확히 붙게 한다.
+              // 🔧 [버그 수정, 2026-09-21 사용자 지시: "CSS 제어가
+              // 주먹구구식, 전수조사해서 관리 전략을 세워라"] — 이
+              // 계산은 원래 iOS PWA의 뷰포트 버그를 우회하기 위한
+              // 것인데, useVisualViewportRect가 가드 없이 PC에서도
+              // non-null을 반환해 PC까지 이 JS 좌표계를 타게 만들었다.
+              // 그 결과 PC(safeAreaInsetBottom=0)에서 버튼 하단이
+              // 뷰포트 경계에 오차 0px로 딱 맞아, 서브픽셀 반올림
+              // 오차만으로 브라우저 줌 100%에서 버튼이 화면 밖으로
+              // 잘렸다("Math.max(_, 4)"로 임시 여백을 더했지만 줌
+              // 배율마다 오차 크기가 달라 근본 해결이 아니었다).
+              // useVisualViewportRect 자체에 isStandalonePwa() 가드를
+              // 걸어 PC에서는 항상 null을 반환하게 고쳤으므로, 이 삼항
+              // 분기는 이제 PC에서 100% "bottom" 폴백만 타고 그 폴백은
+              // 순수 CSS(env())라 서브픽셀 오차 자체가 발생할 수 없다
+              // — 매직넘버 여백(4px)도 함께 제거한다.
               className="fixed inset-x-0 z-20 mx-auto flex justify-center text-muted-foreground"
               style={
                 viewportRect && collapseButtonHeight > 0
-                  ? {
-                      // 🔧 [버그 수정, 2026-09-21 사용자 지시: "^ 기호가
-                      // 보이질 않아, 잘려"] — 데스크톱(safeAreaInsetBottom
-                      // 이 0)에서는 이 계산이 버튼 하단을 뷰포트 경계에
-                      // 정확히(오차 0px) 맞춰, 브라우저 스크롤바 유무 등
-                      // 미세한 오차만으로도 버튼이 화면 밖으로 잘렸다 —
-                      // TabBar의 하단 패딩(pb-[calc(4px+env(...))])과
-                      // 동일하게 최소 4px 여백을 더해 그 오차를 흡수한다.
-                      top: viewportRect.top + viewportRect.height - collapseButtonHeight - Math.max(safeAreaInsetBottom / 2, 4),
-                    }
-                  : { bottom: "max(calc(env(safe-area-inset-bottom, 0px) / 2), 4px)" }
+                  ? { top: viewportRect.top + viewportRect.height - collapseButtonHeight - safeAreaInsetBottom / 2 }
+                  : { bottom: "calc(env(safe-area-inset-bottom, 0px) / 2)" }
               }
             >
               {/* 🔧 [사용자 지시, 2026-09-20] "네비바가 접혔다는걸
