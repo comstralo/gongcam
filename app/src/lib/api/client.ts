@@ -40,15 +40,26 @@ export async function apiFetch<T>(path: string, opts: ApiOptions = {}): Promise<
     finalBody = tokenInBody ? { ...body, token } : body;
   }
 
-  const res = await fetch(WORKER_BASE + path, {
-    method,
-    headers,
-    body: finalBody ? JSON.stringify(finalBody) : undefined,
-    // 백엔드가 지금은 Cache-Control을 안 주지만, 향후 실수로 추가되더라도
-    // 이 API 응답들은 항상 네트워크를 타야 한다 — useVersionCheck가 이미
-    // 같은 이유로 no-store를 쓰고 있는 것과 같은 방어책.
-    cache: "no-store",
-  });
+  let res: Response;
+  try {
+    res = await fetch(WORKER_BASE + path, {
+      method,
+      headers,
+      body: finalBody ? JSON.stringify(finalBody) : undefined,
+      // 백엔드가 지금은 Cache-Control을 안 주지만, 향후 실수로 추가되더라도
+      // 이 API 응답들은 항상 네트워크를 타야 한다 — useVersionCheck가 이미
+      // 같은 이유로 no-store를 쓰고 있는 것과 같은 방어책.
+      cache: "no-store",
+    });
+  } catch {
+    // 🔧 [버그 수정, 2026-09-21] 네트워크가 끊긴 상태에서 fetch 자체가
+    // TypeError("Failed to fetch")를 던지면, 이 함수를 부르는 42곳의
+    // catch(err instanceof Error ? err.message : ...) 패턴이 그 영어
+    // 원문을 그대로 사용자에게 보여줬다 — 각 호출부를 전부 고치는 대신
+    // 이 한 지점에서 항상 이해할 수 있는 한국어 메시지로 바꿔, 이미 있는
+    // catch 처리들이 자동으로 개선되게 한다.
+    throw new ApiError(0, "네트워크 연결을 확인해주세요.");
+  }
 
   const data = await res.json().catch(() => ({}));
 

@@ -9,6 +9,7 @@ import { AdminDeniedCard } from "@/lib/auth/AdminDeniedCard";
 import { AppShell } from "@/components/layout/AppShell";
 import { PullToRefreshIndicator } from "@/components/layout/PullToRefreshIndicator";
 import { IdleOverlay } from "@/components/layout/IdleOverlay";
+import { OfflineBanner } from "@/components/layout/OfflineBanner";
 import { LoginPage } from "@/pages/LoginPage";
 import { CheckerPage } from "@/pages/CheckerPage";
 import { ReportPage } from "@/pages/ReportPage";
@@ -140,6 +141,7 @@ export default function App() {
   return (
     <AuthProvider>
       <PeriodAlarmProvider>
+        <OfflineBanner />
         <IdleOverlay />
         <HashRouter>
           {/* 🔧 MyStatusProvider는 이제 MainViews 내부(useLocation을 쓸 수
