@@ -159,6 +159,14 @@ describe("handleSetExitRequest", () => {
     stubOauthFetch();
     const testEnv = makeTestEnv({ GOOGLE_SHEET_FILE_ID: "exit-req-set-ok" });
     const token = await makeMemberToken();
+    // 🔧 [버그 수정, 2026-09-21] exitDate가 "오늘부터 14일 이내"만
+    // 허용되는데(46번째 줄 handleSetExitRequest 검증) 이 값이 고정
+    // 날짜였다 — 실제 시각이 흘러 유효 범위를 벗어나면 이 테스트가
+    // 저절로 깨지는 시한부 테스트였다(실측: 2026-09-21에 실패 확인).
+    // 아래 경계값 테스트들과 동일하게 시각을 고정해 항상 같은 결과가
+    // 나오도록 한다.
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 8, 18));
     const req = makeRequest("https://worker/exit-request", {
       token,
       method: "POST",
@@ -423,6 +431,12 @@ describe("handleCancelExitRequest", () => {
     stubOauthFetch();
     const testEnv = makeTestEnv({ GOOGLE_SHEET_FILE_ID: "exit-req-cancel-self" });
     const token = await makeMemberToken({ memberNumber: "6" });
+    // 🔧 [버그 수정, 2026-09-21] 위 "유효한 요청이면..." 테스트와 동일한
+    // 시한부 고정 날짜 문제 — exitDate가 신청 시점 기준 14일을 넘기면
+    // 선행 handleSetExitRequest 자체가 400으로 실패해, 뒤이은 취소
+    // 검증까지 연쇄로 깨졌다.
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 8, 18));
     const setReq = makeRequest("https://worker/exit-request", {
       token,
       method: "POST",
@@ -550,6 +564,11 @@ describe("handleBotExitRequests", () => {
     stubOauthFetch();
     const testEnv = makeTestEnv({ GOOGLE_SHEET_FILE_ID: "exit-req-bot" });
     const token = await makeMemberToken({ memberNumber: "10" });
+    // 🔧 [버그 수정, 2026-09-21] 이 파일의 다른 시한부 테스트들과 동일한
+    // 문제 — exitDate가 고정 날짜라 시간이 흐르면 14일 범위를 벗어나
+    // 저절로 깨진다. 시각을 고정해 항상 같은 결과가 나오도록 한다.
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 8, 18));
     const setReq = makeRequest("https://worker/exit-request", {
       token,
       method: "POST",
