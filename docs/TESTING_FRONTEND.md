@@ -234,11 +234,40 @@ matcher를 전혀 안 써서 드러나지 않았던 문제. `vitest.setup.ts`를
   Dialog의 마운트가 동기적이지 않을 수 있어(실측으로 필요성 확인) —
   이후 Dialog 기반 컴포넌트 테스트가 참고할 선례.
 
+## 다섯 번째 라운드 — fetch 의존 컴포넌트 + fake timer 함정 (2026-09-22)
+
+`useApi`/`apiFetch`에 의존하는 첫 컴포넌트를 다뤘다. `apiFetch`는
+항상 `WORKER_BASE + path` 절대 URL로 전역 `fetch`를 호출하므로,
+백엔드(`frame-checker-worker`)가 이미 채택한 `vi.stubGlobal("fetch",
+...)` 패턴을 그대로 프론트에도 적용했다. 1개 파일, 6개 케이스
+추가(16개 파일 115케이스 → 17개 파일 121케이스).
+
+- **`src/test-utils.tsx`에 `stubApiFetch()` 추가** — 경로 접미사
+  (예: `"/push/recent-notices"`)를 키로 응답을 등록하는 라우팅
+  mock. `WORKER_BASE`를 신경 쓸 필요가 없고, 등록되지 않은 경로가
+  호출되면 즉시 에러를 던져 테스트가 실제로 어떤 API를 부르는지
+  놓치지 않게 한다.
+- **`src/components/report/RecentNoticesSection.test.tsx`**(6케이스)
+  — 항목 유무에 따른 렌더링, 경과 시간 포맷(`"방금 전"`/`"N분 전"`),
+  15초 폴링, `refreshSignal` prop 변경 시 즉시 재조회, API 실패 시
+  `catch(() => {})`로 조용히 무시되는지.
+
+**🔧 함정 발견·해결**: `vi.useFakeTimers()`를 켠 채
+`@testing-library/react`의 `waitFor()`를 쓰면 **전부 타임아웃났다**
+(30초 전부 소진, 6개 테스트 전멸을 실측으로 확인) — `waitFor`의 내부
+폴링이 실제 `setTimeout`에 의존하는데, fake timer가 그 시간 흐름
+자체를 멈춰버려 `fetch` 응답이 이미 resolve됐어도 `waitFor`가 다음
+체크를 하지 못한다. `vi.advanceTimersByTimeAsync()`(pending
+microtask/promise까지 함께 진행시키는 비동기 버전)로 시간을 흘려보낸
+직후 곧바로 동기 assertion을 쓰는 방식으로 전환해 해결했다 — **fake
+timer와 폴링(setInterval)이 함께 있는 컴포넌트를 테스트할 때는
+`waitFor` 대신 이 패턴을 표준으로 삼는다.**
+
 ## 다음 단계 (미착수)
 
 - `src/lib/checker/drawGrid.ts`(Canvas API 의존), `src/lib/push/vapid.ts`,
   `src/lib/periodAlarm/*`는 아직 미착수.
-- API 호출(`useApi`/`apiFetch`)에 의존하는 컴포넌트(대시보드 카드류,
-  폼 제출 등)는 아직 다루지 않았다 — `fetch` mock 전략(백엔드가
-  `vi.stubGlobal("fetch", ...)`로 이미 채택한 것과 같은 패턴)을
-  프론트에도 적용하는 것이 다음 자연스러운 단계.
+- 폼 제출(입력값 검증, 에러 표시, 성공 후 상태 변화)을 가진 컴포넌트
+  (`NewMemberForm` 등)는 아직 다루지 않았다 — `fireEvent.change`로
+  입력을 채우고 제출 후 `stubApiFetch`가 받은 요청 바디를 검증하는
+  것이 다음 자연스러운 단계.

@@ -9,6 +9,7 @@
 import type { ReactElement, ReactNode } from "react";
 import { render, type RenderOptions } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
+import { vi } from "vitest";
 import { AuthContext, type AuthContextValue } from "@/lib/auth/AuthContext";
 import type { Session } from "@/lib/auth/session";
 
@@ -70,4 +71,35 @@ export function renderWithProviders(ui: ReactElement, options: RenderWithProvide
   }
 
   return render(ui, { wrapper: Wrapper, ...renderOptions });
+}
+
+// 🔧 [2026-09-22 사용자 지시: "응 진행해"(프론트 테스트 도구 보강
+// 5차, fetch 의존 컴포넌트)] — apiFetch(client.ts)는 항상
+// `WORKER_BASE + path` 절대 URL로 전역 fetch를 호출한다. 백엔드
+// (frame-checker-worker)가 이미 채택한 `vi.stubGlobal("fetch", ...)`
+// 패턴을 그대로 프론트에도 쓰되, 여러 엔드포인트 경로를 한 곳에서
+// 라우팅하기 쉽도록 얇은 헬퍼로 감싼다 — path의 끝부분(예:
+// "/push/recent-notices")만 매칭하면 되므로 WORKER_BASE를 신경 쓸
+// 필요가 없다. 등록되지 않은 경로가 호출되면 곧바로 실패시켜, 테스트가
+// 어떤 API를 부르는지 놓치는 일이 없게 한다.
+export type FetchRouteHandler = (init?: RequestInit) => { status?: number; body: unknown };
+
+export function stubApiFetch(routes: Record<string, FetchRouteHandler | { status?: number; body: unknown }>) {
+  const calls: { url: string; init?: RequestInit }[] = [];
+  const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+    const urlStr = String(url);
+    calls.push({ url: urlStr, init });
+    const matchedKey = Object.keys(routes).find((path) => urlStr.endsWith(path));
+    if (!matchedKey) {
+      throw new Error(`stubApiFetch: 등록되지 않은 경로가 호출됨 — ${urlStr}`);
+    }
+    const handler = routes[matchedKey];
+    const { status = 200, body } = typeof handler === "function" ? handler(init) : handler;
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { "Content-Type": "application/json" },
+    });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return { fetchMock, calls };
 }
