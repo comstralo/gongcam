@@ -152,6 +152,16 @@ const KNOWN_CONSOLE_NOISE = [
   // 않음, MDN 문서에 명시된 정상 동작) 순수 브라우저 잡음이다.
   "ResizeObserver loop completed with undelivered notifications",
   "ResizeObserver loop limit exceeded",
+  // 🔧 [버그 수정, 2026-09-22 CI 실패로 발견] index.html의 viewport
+  // meta(interactive-widget=resizes-content, 이전 세션에서 iOS 키보드
+  // 처리를 브라우저에 위임하려고 추가)가 CI가 새로 설치한 WebKit
+  // 버전에서는 아직 이 속성을 인식하지 못해 경고를 낸다 — 로컬
+  // WebKit(같은 Playwright 버전이지만 설치 시점이 달라 마이너 빌드가
+  // 다를 수 있음)에서는 재현되지 않았다(실측 확인). 앱 동작에 영향이
+  // 없는 순수 브라우저 파싱 경고이고, 실제 최신 CSS Viewport Module
+  // 사양에 있는 값이라 앱 코드를 되돌릴 이유는 없다 — WebKit이
+  // 따라잡을 때까지 잡음으로 처리한다.
+  'Viewport argument key "interactive-widget" not recognized and ignored',
 ];
 
 function attachConsoleErrorCollector(page: Page): { errors: string[] } {
