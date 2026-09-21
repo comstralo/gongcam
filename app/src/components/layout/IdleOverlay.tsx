@@ -1,5 +1,6 @@
 import { Moon } from "lucide-react";
 import { useIsIdle } from "@/lib/idleTracker";
+import { ICON_STROKE } from "@/lib/utils";
 
 // 🔧 [사용자 지시] "가만히 보고만 있는데 갱신이 멈춰버리는 건 좀 아닌 것
 // 같은데" — 유휴 감지(idleTracker)로 자동 폴링을 조용히 멈추기만 하면,
@@ -26,7 +27,7 @@ export function IdleOverlay() {
         pointerEvents: idle ? "auto" : "none",
       }}
     >
-      <Moon className="size-8 text-muted-foreground" strokeWidth={1.5} />
+      <Moon className="size-8 text-muted-foreground" strokeWidth={ICON_STROKE.large} />
       <div className="flex flex-col gap-1 px-6">
         <p className="text-sm font-semibold sm:text-base">자동 새로고침을 잠시 멈췄어요</p>
         <p className="text-xs text-muted-foreground sm:text-sm">움직이거나 눌러보면 바로 다시 시작돼요</p>

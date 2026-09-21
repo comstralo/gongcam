@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, RotateCw } from "lucide-react";
 import { TintedPill, formatWeekOfDate, thisWeekRange } from "@/components/dashboard/shared";
 import { useApi } from "@/hooks/useApi";
-import { cn } from "@/lib/utils";
+import { cn, ICON_STROKE } from "@/lib/utils";
 import type { CycleGroup, CycleListResponse, CycleWeek } from "@/lib/api/types";
 
 // MY/ALL 상단에서 "현재 진행 중인 사이클(최대 3주) 중 어느 시점을 볼지"
@@ -242,7 +242,7 @@ export function CycleSwitcher({
           hasPendingToLeft && hasDataAt(browseIndex - 1) && "text-destructive animate-unpaid-glow"
         )}
       >
-        <ChevronLeft className="size-4 sm:size-5" strokeWidth={2.5} />
+        <ChevronLeft className="size-4 sm:size-5" strokeWidth={ICON_STROKE.emphasis} />
       </button>
 
       <div
@@ -295,7 +295,7 @@ export function CycleSwitcher({
           hasPendingToRight && hasDataAt(browseIndex + 1) && "text-destructive animate-unpaid-glow"
         )}
       >
-        <ChevronRight className="size-4 sm:size-5" strokeWidth={2.5} />
+        <ChevronRight className="size-4 sm:size-5" strokeWidth={ICON_STROKE.emphasis} />
       </button>
     </div>
   );

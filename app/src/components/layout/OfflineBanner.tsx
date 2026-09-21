@@ -1,5 +1,6 @@
 import { WifiOff } from "lucide-react";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { ICON_STROKE } from "@/lib/utils";
 
 // 🔧 [2026-09-21 사용자 지시: "다양한 환경 대응을 위한 도구를 체계적으로
 // 적용" — 추가 조사] 이 앱은 네트워크가 끊긴 상태를 전혀 안내하지 않아,
@@ -32,7 +33,7 @@ export function OfflineBanner() {
       className="fixed inset-x-0 top-0 z-[70] flex items-center justify-center gap-1.5 border-b border-destructive/20 bg-destructive/10 px-3 py-1.5 text-center text-xs font-semibold text-destructive dark:bg-destructive/20 sm:text-sm"
       style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.375rem)" }}
     >
-      <WifiOff className="size-3.5 shrink-0 sm:size-4" strokeWidth={2} />
+      <WifiOff className="size-3.5 shrink-0 sm:size-4" strokeWidth={ICON_STROKE.default} />
       인터넷 연결이 끊겼어요 — 연결을 확인해주세요
     </div>
   );

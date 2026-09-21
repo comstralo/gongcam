@@ -15,7 +15,7 @@ import { LeaveApplyButton } from "@/components/dashboard/LeaveApplyButton";
 import { ImageEditDialog } from "@/components/dashboard/ImageEditDialog";
 import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
-import { cn } from "@/lib/utils";
+import { cn, ICON_STROKE } from "@/lib/utils";
 import type {
   ReasonLeaveProofStatus,
   SetReasonLeaveProofResponse,
@@ -564,7 +564,7 @@ export function HalfDayLeaveDialog({
                       onClick={() => setEditingFile(selectedFile)}
                       aria-label="이미지 편집"
                     >
-                      <Pencil className="size-3.5 sm:size-4" />
+                      <Pencil className="size-3.5 sm:size-4" strokeWidth={ICON_STROKE.default} />
                     </Button>
                   )}
                 </div>
