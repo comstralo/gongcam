@@ -24,6 +24,7 @@ import { useRefreshOnVisible } from "@/hooks/useRefreshOnVisible";
 import { usePollingRefresh } from "@/hooks/usePollingRefresh";
 import { useAuth } from "@/lib/auth/useAuth";
 import { ICON_STROKE, cn } from "@/lib/utils";
+import { toKSTDateString } from "@/lib/date";
 import type {
   MyCaptureDeleteResponse,
   MyCaptureItem,
@@ -119,8 +120,10 @@ type MergedItem =
 // 항목 날짜와 어긋나 보이는 문제가 있었다(예: 9월 6일 접수 건인데 헤더가
 // "9월 13일"로 표시). 요일 이름 대신 KST 기준 실제 날짜(YYYY-MM-DD)로
 // 그룹핑해 이 문제를 근본적으로 없앤다.
+// 🔧 [중복 제거, 2026-09-21] ReportReviewList.tsx에 거의 동일하게
+// 복사돼 있던 이 함수를 lib/date.ts의 toKSTDateString으로 통합했다.
 function kstDateKey(ts: number): string {
-  return new Date(ts).toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" }); // sv-SE 로케일이 YYYY-MM-DD를 그대로 출력.
+  return toKSTDateString(ts);
 }
 
 function dateLabel(dateKey: string): string {

@@ -27,6 +27,7 @@ import { usePollingRefresh } from "@/hooks/usePollingRefresh";
 import { usePullRefreshListener } from "@/hooks/usePullToRefresh";
 import { useAuth } from "@/lib/auth/useAuth";
 import { ICON_STROKE, cn } from "@/lib/utils";
+import { toKSTDateString } from "@/lib/date";
 import type {
   CaptureReviewItem,
   CapturesListResponse,
@@ -130,8 +131,10 @@ function applyButtonLabel(occurrence: number | null): string {
 // 요일이 하나로 합쳐지고 헤더 날짜도 실제와 달라지는 문제가 있었다
 // (MyOutputPenSection.tsx에서 먼저 발견/수정한 것과 동일한 버그).
 // KST 기준 실제 날짜(YYYY-MM-DD)로 그룹핑해 근본적으로 없앤다.
+// 🔧 [중복 제거, 2026-09-21] 이 함수가 MyOutputPenSection.tsx에 거의
+// 동일하게 복사돼 있던 걸 lib/date.ts의 toKSTDateString으로 통합했다.
 function kstDateKey(ts: number): string {
-  return new Date(ts).toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" }); // sv-SE 로케일이 YYYY-MM-DD를 그대로 출력.
+  return toKSTDateString(ts);
 }
 
 function dateLabel(dateKey: string): string {

@@ -10,6 +10,7 @@ import { useApi } from "@/hooks/useApi";
 import { ApiError, WORKER_BASE } from "@/lib/api/client";
 import { useAuth } from "@/lib/auth/useAuth";
 import { ICON_STROKE } from "@/lib/utils";
+import { todayKSTDateString } from "@/lib/date";
 import type {
   AdminBlacklistResponse,
   AdminOpenSlotsResponse,
@@ -19,14 +20,6 @@ import type {
 
 const GOAL_HOURS = ["8", "9", "10"];
 const GOAL_KINDS = ["교시제", "달성제"];
-
-// KST 기준 "오늘"의 "YYYY-MM-DD" — en-CA 로케일은 이 형식을 직접 만들어준다.
-// 브라우저 로컬 타임존이 임의값일 수 있어 반드시 timeZone을 명시해야 한다
-// (백엔드의 todayKSTDateString()과 동일한 값을 내야 첫 참여일 범위 검증이
-// 서버 재검증과 어긋나지 않는다).
-function todayKSTStr(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
-}
 
 // "YYYY-MM-DD"에 일수를 더한다(음수 가능). 순수 날짜 연산이라 UTC 자정
 // 기준으로 계산해도 타임존 이슈가 없다.
@@ -69,7 +62,7 @@ export function NewMemberForm() {
   // 첫 참여일(시트 I2, "가입일")을 오늘로 고정하지 않고 오늘~일주일 뒤
   // 범위에서 고를 수 있게 한다 — D+N/"30일 미만 참여자" 판정이 실제 시작일
   // 기준으로 정확히 맞아떨어져야 하기 때문.
-  const [joinDate, setJoinDate] = useState(todayKSTStr());
+  const [joinDate, setJoinDate] = useState(todayKSTDateString());
 
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: "error" | "ok" } | null>(null);
@@ -119,7 +112,7 @@ export function NewMemberForm() {
     setGooroomeeAccount("");
     setParticipationType("8|교시제");
     setExamKind("");
-    setJoinDate(todayKSTStr());
+    setJoinDate(todayKSTDateString());
   }
 
   function openDriveAuthLink() {
@@ -356,8 +349,8 @@ export function NewMemberForm() {
             id="new-member-join-date"
             type="date"
             value={joinDate}
-            min={todayKSTStr()}
-            max={addDaysToDateStr(todayKSTStr(), 6)}
+            min={todayKSTDateString()}
+            max={addDaysToDateStr(todayKSTDateString(), 6)}
             onChange={(e) => setJoinDate(e.target.value)}
             className="sm:h-12 sm:text-base md:text-base"
           />
