@@ -7,6 +7,7 @@ import { PeriodAlarmToggleButton } from "./PeriodAlarmToggleButton";
 import { LinksHeaderButton } from "./LinksHeaderButton";
 import { useAuth } from "@/lib/auth/useAuth";
 import { useVisualViewportRect, useSafeAreaInsetBottom, useDocumentHeightFix } from "@/hooks/useKeyboardInset";
+import { useResizeObserver } from "@/hooks/useResizeObserver";
 import { cn, ICON_STROKE } from "@/lib/utils";
 
 type AppShellProps = {
@@ -147,6 +148,29 @@ export function AppShell({
     },
     [onBarHeightChange]
   );
+
+  // 🔧 [버그 수정, 2026-09-22 사용자 지시: "큰 화면에서 '제보' 탭은 넘치는
+  // 영역이 없는데 왜 스크롤이 되는거야?"] — 위 paddingBottom은 "콘텐츠가
+  // TabBar 뒤에 가려지지 않게" 하려는 여백인데, overflow-y-auto인 이
+  // wrapper 자체의 padding-bottom은 CSS 스펙상 항상 scrollHeight에
+  // 포함된다 — 콘텐츠 실제 높이가 뷰포트보다 짧아도 이 padding만으로
+  // scrollHeight가 clientHeight를 넘어 스크롤 가능 상태가 됐다(실측:
+  // 제보 탭 diff 78px ≈ padding 79px, 콘텐츠 자체는 안 넘침 — 대시보드는
+  // 실제 콘텐츠가 281px 넘쳐 정상적으로 스크롤됨). TabBar는 position:
+  // fixed라 문서 흐름과 무관하게 화면 최하단에 이미 떠 있으므로, 콘텐츠가
+  // 짧아 스크롤 자체가 없으면 애초에 가려질 마지막 줄이 없다 — padding
+  // 자체가 불필요하다. children의 실제 렌더링 높이(paddingWrapperRef)와
+  // 이 wrapper가 padding 없이 가질 수 있는 가용 높이(scrollWrapperHeight,
+  // flex-1이 배분한 content-box 높이)를 각각 ResizeObserver로 실측해,
+  // 콘텐츠가 그 가용 높이보다 짧을 때만 padding을 0으로 생략한다.
+  const [scrollWrapperHeight, setScrollWrapperHeight] = useState<number | null>(null);
+  const scrollWrapperRef = useResizeObserver<HTMLDivElement>((entry) => {
+    setScrollWrapperHeight(entry.contentBoxSize?.[0]?.blockSize ?? entry.contentRect.height);
+  });
+  const [contentHeight, setContentHeight] = useState<number | null>(null);
+  const contentRef = useResizeObserver<HTMLDivElement>((entry) => {
+    setContentHeight(entry.contentBoxSize?.[0]?.blockSize ?? entry.contentRect.height);
+  });
 
   // 🔧 [버그 수정, 2026-09-21 사용자 지시: "정석적인 방법으로,
   // 땜빵질하지 말고 확실한 해결책을 갖고와"] — Mac Safari의 iOS 기기
@@ -322,16 +346,28 @@ export function AppShell({
               {stickyHeader}
             </div>
           )}
-          <div
-            className="flex w-full min-h-0 flex-1 flex-col items-center gap-4.5 overflow-y-auto"
-            style={{
-              paddingBottom:
-                measuredTabBarHeight !== null
-                  ? `${measuredTabBarHeight + 8}px`
-                  : "calc(32px + 46px + env(safe-area-inset-bottom, 0px))",
-            }}
-          >
-            {children}
+          <div ref={scrollWrapperRef} className="flex w-full min-h-0 flex-1 flex-col overflow-y-auto">
+            <div
+              ref={contentRef}
+              className="flex w-full flex-col items-center gap-4.5"
+              style={{
+                paddingBottom:
+                  // 콘텐츠 실제 높이가 이 wrapper의 가용 높이(TabBar
+                  // padding 없이 flex-1이 배분한 순수 공간)보다 짧으면,
+                  // 이미 다 들어가고도 남아 가릴 마지막 줄 자체가 없다 —
+                  // padding을 생략해 padding만으로 스크롤 여지가 생기지
+                  // 않게 한다. 두 실측값이 아직 갖춰지기 전(첫 프레임)엔
+                  // 기존 매직넘버로 안전하게 폴백(항상 패딩을 준 채
+                  // 시작해 첫 프레임에 TabBar가 가리는 일이 없도록).
+                  contentHeight !== null && scrollWrapperHeight !== null && contentHeight <= scrollWrapperHeight
+                    ? 0
+                    : measuredTabBarHeight !== null
+                      ? `${measuredTabBarHeight + 8}px`
+                      : "calc(32px + 46px + env(safe-area-inset-bottom, 0px))",
+              }}
+            >
+              {children}
+            </div>
           </div>
         </>
       ) : (
