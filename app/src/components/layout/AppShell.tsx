@@ -176,13 +176,24 @@ export function AppShell({
       // 높이를 참고해서 조정해줘"] — TabBar의 pb를 22px→8px→4px로
       // 줄인 것과 정합성을 맞춰, 이 값들(TabBar 실제 높이에서 파생된
       // 여유값)도 동일하게 총 18px씩 줄인다.
+      // 🔧 [버그 수정, 2026-09-21 사용자 지시: "채팅 메뉴를 선택하면 PC에서
+      // 기본적으로 약간 아래로 스크롤된 상태가 된다"] — 이 paddingBottom은
+      // "children이 일반 문서 흐름 콘텐츠라 하단 fixed 탭바에 마지막 줄이
+      // 가려지는 것"을 막기 위한 여백인데, collapsibleTabBar를 쓰는 화면
+      // (현재 채팅 하나뿐)은 children(ChatPage)이 자기 자신을
+      // position:fixed로 구성해 viewportRect/tabBarHeight 기준으로 이미
+      // 탭바와 안 겹치게 스스로 계산하므로 이 패딩이 애초에 불필요하다.
+      // 실측: PC(950x864)에서 이 패딩(78px)이 그대로 더해져 문서
+      // scrollHeight(878px)가 뷰포트(864px)보다 커져, 페이지 진입 직후
+      // 14px만큼 스크롤 여지가 생기고 마우스 휠을 살짝만 굴려도(또는
+      // 브라우저가 포커스 위치를 맞추며) 그만큼 밀려 하단 탭바 자체가
+      // 화면 밖으로 나갔다. collapsibleTabBar가 있으면 이 패딩을 생략해
+      // 문서 높이가 정확히 뷰포트와 일치하게 한다.
       style={
         {
           paddingBottom:
-            session && !fitToScreen
-              ? collapsibleTabBar && tabBarCollapsed
-                ? "calc(32px + 22px + env(safe-area-inset-bottom, 0px))"
-                : "calc(32px + 46px + env(safe-area-inset-bottom, 0px))"
+            session && !fitToScreen && !collapsibleTabBar
+              ? "calc(32px + 46px + env(safe-area-inset-bottom, 0px))"
               : undefined,
           "--shell-pb-portrait": "calc(32px + 46px + env(safe-area-inset-bottom, 0px))",
         } as CSSProperties
