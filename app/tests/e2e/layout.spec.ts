@@ -137,14 +137,32 @@ test.describe("로그인 후 메인 화면 — DEV_LOGIN_SECRET 필요 시에만
     // 화면 크기에 의존해 깨지기 쉬우므로, 뷰포트를 인위적으로 작게
     // 줄여 반드시 넘치는 상황을 만든 뒤 검증한다 — 기기와 무관하게
     // 항상 같은 결론을 낸다.
+    // 🔧 [임시 진단, 2026-09-22] CI에서만 이 테스트가 재현성 있게
+    // 타임아웃나는 원인을 찾기 위해, /status 요청의 실제 타이밍을
+    // 콘솔에 기록한다 — 원인 확정 후 제거할 것.
+    page.on("requestfinished", (req) => {
+      if (req.url().includes("/status") && req.resourceType() !== "preflight") {
+        req
+          .response()
+          .then((res) => console.log(`[DIAG] /status finished: status=${res?.status()} timing=${JSON.stringify(req.timing())}`));
+      }
+    });
+    page.on("requestfailed", (req) => {
+      if (req.url().includes("/status")) {
+        console.log(`[DIAG] /status FAILED: ${req.failure()?.errorText}`);
+      }
+    });
+    const diagStart = Date.now();
     await page.setViewportSize({ width: 400, height: 400 });
     await page.goto("#/");
+    console.log(`[DIAG] goto 완료까지 ${Date.now() - diagStart}ms`);
     // header가 붙는 시점엔 아직 /status 응답이 안 와 카드가 비어 있어
     // (diff:0) 이 테스트가 "우연히 통과"할 위험이 있었다(실측: header
     // 붙은 직후 scrollHeight===clientHeight, 이후 실제 데이터
     // 렌더링되며 벌어짐). "목표시간" 라벨(실제 상태 카드, 데이터 로드
     // 후에만 렌더링)이 나타남을 기다려 데이터 로딩 완료를 확인한다.
     await page.getByText("목표시간").first().waitFor({ state: "attached" });
+    console.log(`[DIAG] 목표시간 attach까지 ${Date.now() - diagStart}ms`);
     const scrollable = page.locator(".overflow-y-auto").first();
     const { scrollHeight, clientHeight } = await scrollable.evaluate((el) => ({
       scrollHeight: el.scrollHeight,
