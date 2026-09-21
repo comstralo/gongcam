@@ -26,6 +26,13 @@ E2E가 브라우저를 실제로 띄워야만 간접적으로 exercise될 뿐, �
 버전(설치 시점 기준 vitest@5.0.1, @testing-library/react@16.3.3,
 @testing-library/jest-dom@7.0.1, jsdom@30.1.0)을 그대로 썼다.
 
+**`@testing-library/user-event`(6차 라운드에서 추가, 14.6.7)** —
+`@base-ui/react`의 `Select` 등 pointer 이벤트 시퀀스에 반응하는
+컴포넌트는 RTL의 `fireEvent.click`만으로 상호작용이 되지 않는다는
+것을 스파이크로 확인했다(아래 6차 라운드 참고) — `user-event`가
+실제 브라우저 이벤트 순서(pointerdown → pointerup → click 등)를
+더 정확히 재현한다.
+
 ```bash
 cd app
 npm test        # 전체 단위 테스트 실행 (vitest run)
@@ -263,11 +270,41 @@ microtask/promise까지 함께 진행시키는 비동기 버전)로 시간을 �
 timer와 폴링(setInterval)이 함께 있는 컴포넌트를 테스트할 때는
 `waitFor` 대신 이 패턴을 표준으로 삼는다.**
 
+## 여섯 번째 라운드 — 첫 폼 제출 컴포넌트 + user-event 도입 (2026-09-22)
+
+`NewMemberForm`(관리자가 신규 회원을 등록하는 폼)을 다뤘다 — 마운트 시
+두 API 병행 조회, 입력값 실시간 블랙리스트 대조, 제출 시 성공/재인증
+필요/네트워크 오류 세 갈래, 클라이언트 측 유효성 검사(쉼표 포함 금지)
+까지 이 세션에서 가장 복잡한 컴포넌트다. 1개 파일, 11개 케이스
+추가(17개 파일 121케이스 → 18개 파일 132케이스).
+
+- **`src/components/admin/NewMemberForm.test.tsx`**(11케이스) — 빈
+  자리 목록 로드(성공/빈 배열/실패), 블랙리스트 대소문자 무시 매칭,
+  필수 필드 미충족 시 제출 버튼 비활성화, 제출 성공 시 메시지+폼
+  초기화, `Select`로 다른 시트 번호를 선택하면 실제 제출 요청 바디에
+  반영되는지(`fetchMock.mock.calls`로 요청 바디 직접 파싱), Drive
+  재인증이 필요한 경우(`needsReauth`) 안내 문구+재시도 버튼+
+  `window.open` 호출(`vi.spyOn(window, "open")`)까지, 쉼표 포함 시
+  서버 요청 자체가 나가지 않는 클라이언트 유효성 검사.
+
+**🔧 함정 발견·해결**: `@base-ui/react`의 `Select`(드롭다운)는
+`fireEvent.click`만으로는 `onValueChange`가 전혀 호출되지 않음을
+스파이크로 확인했다(트리거를 눌러 옵션 목록은 열리지만 옵션 클릭이
+선택으로 이어지지 않음) — 내부적으로 `pointerdown`/`pointerup`
+이벤트 시퀀스에 반응하는 것으로 보인다. `pointerDown`/`pointerUp`을
+수동으로 조합해도 되지만(스파이크로 동작 확인), 대신
+**`@testing-library/user-event`를 새로 설치**해 표준적인 방식으로
+해결했다 — RTL 생태계의 공식 권장 도구이고 앞으로도 pointer 기반
+컴포넌트(Select/Dialog 등)를 계속 다룰 것이므로 재사용성이 높다.
+combobox에 접근 가능한 이름(`aria-label` 등)이 없어 `getAllByRole
+("combobox")`의 렌더링 순서(인덱스)로 구분해야 했다는 점도 기록해둔다
+— 앞으로 `Select`를 쓰는 컴포넌트에 `aria-label`을 붙이면 이런
+테스트가 더 명확해질 수 있다(디자인 개선 여지, 이번 범위 밖).
+
 ## 다음 단계 (미착수)
 
 - `src/lib/checker/drawGrid.ts`(Canvas API 의존), `src/lib/push/vapid.ts`,
   `src/lib/periodAlarm/*`는 아직 미착수.
-- 폼 제출(입력값 검증, 에러 표시, 성공 후 상태 변화)을 가진 컴포넌트
-  (`NewMemberForm` 등)는 아직 다루지 않았다 — `fireEvent.change`로
-  입력을 채우고 제출 후 `stubApiFetch`가 받은 요청 바디를 검증하는
-  것이 다음 자연스러운 단계.
+- 지금까지 다룬 컴포넌트는 전부 `SessionCard`/`NewMemberForm`처럼
+  개별 화면 요소다 — 페이지 단위 통합(여러 컴포넌트+라우팅이 얽힌
+  `*Page.tsx`)은 아직 다루지 않았다.
