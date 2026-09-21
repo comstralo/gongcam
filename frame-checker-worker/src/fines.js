@@ -20,10 +20,11 @@ import {
   STATUS_DAYS,
   STATUS_DAY_COLS,
   listExitedMemberEntries,
-  getMemberSettingsStub,
+  getExitResults,
   FINE_UNPAID_ADMIN_FORCED_REASON,
 } from "./index.js";
 import { _cachedCompute, invalidateMemberCache } from "./cache.js";
+import { isValidMemberNumber } from "./pure-utils.js";
 
 // 15개 개인 탭을 병렬로 훑어 "✅ 납부확인" 행에 "미납"이 찍힌 요일만 모은다.
 // listUnpaidFines/listPaidFines/listExemptFines가 이 공통 조회를 재사용해
@@ -146,7 +147,7 @@ export async function handleAdminFineStatus(req, env, origin) {
   const { number, day, status, cycle } = await req.json();
   const sheetNum = parseInt(number, 10);
   const dayIndex = STATUS_DAYS.indexOf(day);
-  if (!sheetNum || sheetNum < 1 || sheetNum > 15 || dayIndex === -1) {
+  if (!isValidMemberNumber(sheetNum) || dayIndex === -1) {
     return json({ error: "회원번호 또는 요일이 올바르지 않습니다." }, 400, origin);
   }
   if (!FINE_STATUS_VALUES.includes(status)) {
@@ -192,8 +193,7 @@ export async function handleAdminFinesAdminForcedCount(req, env, origin) {
     const fileId = env.GOOGLE_SHEET_FILE_ID;
     const exitedMembers = await listExitedMemberEntries(env, accessToken, fileId);
 
-    const resultsRes = await getMemberSettingsStub(env).fetch("https://do/exit/list");
-    const { items: allResults } = await resultsRes.json();
+    const allResults = await getExitResults(env);
 
     const counts = Object.fromEntries(STATUS_DAYS.map((d) => [d, 0]));
     for (const m of exitedMembers) {

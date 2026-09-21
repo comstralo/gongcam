@@ -1546,6 +1546,18 @@ export function getMemberSettingsStub(env) {
   return env.MEMBER_SETTINGS_DO.get(id);
 }
 
+// 🔧 [중복 제거, 2026-09-21] "MemberSettingsDO의 do/exit/list를 fetch해
+// { items } 구조분해"까지의 2줄이 exit-candidates.js(2곳)/fines.js 3곳에
+// 그대로 반복되고 있었다(전수조사에서 발견) — exit-request.js의
+// listExitRequests(같은 목적, LeaveQueue DO 버전)와 같은 패턴의 헬퍼가
+// 이쪽엔 없던 공백이다. 이후 로직(맵 순회, 필터링 등)은 호출부마다
+// 달라 여기서는 파싱까지만 캡슐화한다.
+export async function getExitResults(env) {
+  const res = await getMemberSettingsStub(env).fetch("https://do/exit/list");
+  const { items } = await res.json();
+  return items || {};
+}
+
 export function getBotAdminConfigStub(env) {
   const id = env.BOT_ADMIN_CONFIG_DO.idFromName("bot-admin-config");
   return env.BOT_ADMIN_CONFIG_DO.get(id);

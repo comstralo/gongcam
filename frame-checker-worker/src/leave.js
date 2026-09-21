@@ -32,6 +32,7 @@ import {
 } from "./index.js";
 import { getLeaveQueueStub } from "./durable-objects.js";
 import { currentWeekMondayKST, formatYYMMDD } from "./date-utils.js";
+import { isValidMemberNumber } from "./pure-utils.js";
 
 // --- 봇 오프라인 대기열(leaveq:*) 인덱스/처리 이력 — LeaveQueue DO 위임 ---
 // 🔧 [KV → DO 이전, 2026-09-12] §47 — LeaveQueue DO의 Map은 정의상
@@ -124,7 +125,7 @@ export async function handleGetLeaveApply(req, env, origin, url) {
   if (!config || col === null) return json({ error: "잘못된 요청입니다." }, 400, origin);
   if (numberParam) {
     const sheetNum = parseInt(numberParam, 10);
-    if (!sheetNum || sheetNum < 1 || sheetNum > 15) return json({ error: "잘못된 요청입니다." }, 400, origin);
+    if (!isValidMemberNumber(sheetNum)) return json({ error: "잘못된 요청입니다." }, 400, origin);
     // 🔧 [사용자 지시] "관리자 판정 비교 일관성" — session.email은 로그인
     // 시점부터 항상 소문자로 정규화되어 있어 지금은 위험이 없지만, 다른
     // 관리자 판정 지점(requireAdmin 등)과 동일하게 양쪽 다 소문자화해
@@ -254,9 +255,7 @@ export async function handleAdminLeaveApply(req, env, origin) {
   if (
     !config ||
     col === null ||
-    !sheetNum ||
-    sheetNum < 1 ||
-    sheetNum > 15 ||
+    !isValidMemberNumber(sheetNum) ||
     !Number.isInteger(count) ||
     count < 0 ||
     count > maxCount

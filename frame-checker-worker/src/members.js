@@ -41,7 +41,13 @@ import {
   getMemberSettingsStub,
   NOTIFY_CATEGORIES,
 } from "./index.js";
-import { parseGoogleEmail, parseGooroomeeAccount, guessDeviceLabel } from "./pure-utils.js";
+import {
+  parseGoogleEmail,
+  parseGooroomeeAccount,
+  guessDeviceLabel,
+  isValidMemberNumber,
+  findMemberByNumber,
+} from "./pure-utils.js";
 import { todayKSTDateString, kstDateOffsetString } from "./date-utils.js";
 import { _cachedCompute, invalidateMemberCache, invalidateMemberSlotCache } from "./cache.js";
 // 🔧 [구조 개선 21차] exit.js가 exit-candidates.js로 나뉘면서 import 경로만 갱신.
@@ -167,7 +173,7 @@ export async function handleAdminSetPartiStatus(req, env, origin) {
     const accessToken = await getServiceAccountAccessToken(env);
     const fileId = env.GOOGLE_SHEET_FILE_ID;
     const members = await listAllMembers(env, accessToken, fileId);
-    const member = members.find((m) => m.number === String(number));
+    const member = findMemberByNumber(members, number);
     if (!member) return json({ error: "존재하지 않는 회원번호입니다." }, 404, origin);
 
     const rows = await getSheetValues(env, accessToken, fileId, `${member.number}!L3`).catch(() => []);
@@ -398,7 +404,7 @@ export async function handleAdminCreateMember(req, env, origin) {
 
   const { number, name, email, gooroomeeAccount, goalHours, goalKind, examKind, joinDate } = await req.json();
   const sheetNum = parseInt(number, 10);
-  if (!sheetNum || sheetNum < 1 || sheetNum > 15) {
+  if (!isValidMemberNumber(sheetNum)) {
     return json({ error: "시트번호는 1~15 사이여야 합니다." }, 400, origin);
   }
   if (!name || !email || !goalHours || !goalKind) {

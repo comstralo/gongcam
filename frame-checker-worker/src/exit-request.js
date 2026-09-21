@@ -21,6 +21,12 @@ import {
   todayKSTDateString,
 } from "./index.js";
 import { invalidateMemberCache, invalidatePersonalStatusCache } from "./cache.js";
+// 🔧 [중복 제거, 2026-09-21] 아래 14일 범위 계산이 date-utils.js의
+// kstDateOffsetString(days)와 완전히 동일한 결과를 내는 걸 별도로
+// 재구현하고 있었다(전수조사에서 발견) — index.js는 이 함수를 import만
+// 하고 re-export하지는 않아(todayKSTDateString과 달리) date-utils.js에서
+// 직접 가져온다.
+import { kstDateOffsetString } from "./date-utils.js";
 
 export async function handleSetExitRequest(req, env, origin) {
   const authHeader = req.headers.get("Authorization") || "";
@@ -39,9 +45,7 @@ export async function handleSetExitRequest(req, env, origin) {
   // 다시 확인한다. KST 기준 오늘부터 14일 뒤까지만 허용.
   if (exitDate) {
     const today = todayKSTDateString();
-    const maxDate = new Date(`${today}T00:00:00Z`);
-    maxDate.setUTCDate(maxDate.getUTCDate() + 14);
-    const maxDateStr = maxDate.toISOString().slice(0, 10);
+    const maxDateStr = kstDateOffsetString(14);
     if (exitDate < today || exitDate > maxDateStr) {
       return json({ error: "마지막 참여일은 오늘부터 2주 이내로만 선택할 수 있습니다." }, 400, origin);
     }

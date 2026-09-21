@@ -22,6 +22,32 @@ export function parseGooroomeeAccount(rawCell) {
   return (parts[1] || "").trim();
 }
 
+// 🔧 [중복 제거, 2026-09-21] "회원번호는 1~15"라는 동일한 검증식이
+// fines.js/exit-confirm.js(2곳)/leave.js(2곳)/members.js 6곳에 각자
+// 하드코딩되어 있었다(전수조사에서 발견) — 정원이 바뀌면 하나를 빠뜨릴
+// 위험이 있어 상수+헬퍼로 통합한다. sheetNum이 parseInt(number, 10)의
+// 결과라 NaN일 수 있는데, 기존 호출부가 전부 `!sheetNum`으로 NaN/0을
+// 함께 걸러내던 의미를 그대로 보존한다(NaN은 <, > 비교 모두 false라
+// 범위 체크만으로는 안 걸러짐).
+export const MEMBER_NUMBER_MIN = 1;
+export const MEMBER_NUMBER_MAX = 15;
+export function isValidMemberNumber(sheetNum) {
+  return Boolean(sheetNum) && sheetNum >= MEMBER_NUMBER_MIN && sheetNum <= MEMBER_NUMBER_MAX;
+}
+
+// 🔧 [중복 제거, 2026-09-21] "listAllMembers로 받은 배열에서 번호로 찾고,
+// 없으면 404 JSON을 반환"하는 동일한 3줄이 exit-confirm.js(2곳)/
+// members.js/personal-status.js 4곳에 그대로 반복되고 있었다(전수조사에서
+// 발견) — findMemberNumberByEmail(index.js, 이메일 기반 조회)과 짝을
+// 이루는 "번호 기반 조회" 헬퍼가 없던 공백이다. 호출부마다 number를
+// 문자열(String(sheetNum)/memberNumber)로 넘기던 방식이 조금씩 달라
+// 여기서 String()으로 통일해 흡수한다 — members 배열의 number 필드
+// 자체가 항상 문자열이므로(listAllMembers) 안전하다.
+export function findMemberByNumber(members, number) {
+  const target = String(number);
+  return members.find((m) => m.number === target) || null;
+}
+
 export async function buildVapidJwk(privateKeyB64url, publicKeyB64url) {
   const pubBytes = base64urlToBytes(publicKeyB64url);
   const x = base64url(pubBytes.slice(1, 33));

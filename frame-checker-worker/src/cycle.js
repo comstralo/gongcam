@@ -39,6 +39,7 @@ import { getAllExitRelevantStatus, listExitCandidates } from "./exit-candidates.
 import { calcForcedOutDeposit } from "./deposit.js";
 import { getLeaveQueueStub } from "./durable-objects.js";
 import { weekOfForDate, kstDateKey, formatYYMMDD, currentWeekMondayKST, exitWeekResetPassed } from "./date-utils.js";
+import { findMemberByNumber } from "./pure-utils.js";
 
 // 사이클 하나는 최대 3주 — 안전장치(사이클값이 리셋되지 않는 이상 상황 대비)
 export const CYCLE_MAX_LEN = 3;
@@ -255,7 +256,7 @@ export async function resolveCaptureSourceFileId(env, accessToken, fileId, ts) {
 export async function hasUnpaidFineInCycle(env, accessToken, fileId, memberNumber) {
   if (memberNumber) {
     const members = await listAllMembers(env, accessToken, fileId);
-    const member = members.find((m) => m.number === memberNumber);
+    const member = findMemberByNumber(members, memberNumber);
     if (!member) return false;
     const [rows] = await getSharedMemberRows(env, accessToken, fileId, [member]);
     const paymentRow = (rows && rows[ROW_PAYMENT_CHECK]) || [];
@@ -274,7 +275,7 @@ export async function hasUnpaidFineInCycle(env, accessToken, fileId, memberNumbe
 export async function hasForcedCandidateInCycle(env, accessToken, fileId, memberNumber) {
   if (memberNumber) {
     const members = await listAllMembers(env, accessToken, fileId);
-    const member = members.find((m) => m.number === memberNumber);
+    const member = findMemberByNumber(members, memberNumber);
     if (!member) return false;
     const statuses = await getAllExitRelevantStatus(env, accessToken, fileId, members);
     const status = statuses.find((s) => s && s.member.number === memberNumber);

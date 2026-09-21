@@ -29,7 +29,13 @@ import {
   EXIT_DEPOSIT_VALUE,
   parseWon,
 } from "./index.js";
-import { parseGoogleEmail, parseGooroomeeAccount, guessDeviceLabel } from "./pure-utils.js";
+import {
+  parseGoogleEmail,
+  parseGooroomeeAccount,
+  guessDeviceLabel,
+  isValidMemberNumber,
+  findMemberByNumber,
+} from "./pure-utils.js";
 import { todayKSTDateString } from "./date-utils.js";
 import { invalidateMemberCache, invalidateMemberSlotCache } from "./cache.js";
 import { depositRefundBreakdown, forcedExitChecks, calcExitProcess } from "./deposit.js";
@@ -285,7 +291,7 @@ export async function handleAdminExitPreview(req, env, origin) {
 
   const { number, kind, forcedReason, cycle } = await req.json();
   const sheetNum = parseInt(number, 10);
-  if (!sheetNum || sheetNum < 1 || sheetNum > 15 || !EXIT_KIND_VALUES.includes(kind)) {
+  if (!isValidMemberNumber(sheetNum) || !EXIT_KIND_VALUES.includes(kind)) {
     return json({ error: "회원번호 또는 처리 유형이 올바르지 않습니다." }, 400, origin);
   }
 
@@ -293,7 +299,7 @@ export async function handleAdminExitPreview(req, env, origin) {
     const accessToken = await getServiceAccountAccessToken(env);
     const fileId = env.GOOGLE_SHEET_FILE_ID;
     const members = await listAllMembers(env, accessToken, fileId);
-    const member = members.find((m) => m.number === String(sheetNum));
+    const member = findMemberByNumber(members, sheetNum);
     if (!member) return json({ error: "존재하지 않는 회원번호입니다." }, 404, origin);
 
     // 🔧 [미리보기는 항상 계산만 보여줌] 정산 퇴실이 실제 신청 여부와
@@ -619,7 +625,7 @@ export async function handleAdminExitConfirm(req, env, origin) {
 
   const { number, kind, forcedReason, blacklist, cycle } = await req.json();
   const sheetNum = parseInt(number, 10);
-  if (!sheetNum || sheetNum < 1 || sheetNum > 15 || !EXIT_KIND_VALUES.includes(kind)) {
+  if (!isValidMemberNumber(sheetNum) || !EXIT_KIND_VALUES.includes(kind)) {
     return json({ error: "회원번호 또는 처리 유형이 올바르지 않습니다." }, 400, origin);
   }
   // 🔧 [블랙리스트 등록] 직권 P(admin_forced)에서만 의미 있는 값 — 다른
@@ -631,7 +637,7 @@ export async function handleAdminExitConfirm(req, env, origin) {
     const accessToken = await getServiceAccountAccessToken(env);
     const fileId = env.GOOGLE_SHEET_FILE_ID;
     const members = await listAllMembers(env, accessToken, fileId);
-    const member = members.find((m) => m.number === String(sheetNum));
+    const member = findMemberByNumber(members, sheetNum);
     if (!member) return json({ error: "존재하지 않는 회원번호입니다." }, 404, origin);
 
     // 🔧 [퇴실 신청 정보 선(先) 조회] 원래는 settle 검증에만 쓰였지만,

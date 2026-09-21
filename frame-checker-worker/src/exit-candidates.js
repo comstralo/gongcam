@@ -25,6 +25,7 @@ import {
   buildSlotHistory,
   listExitedMemberEntries,
   getMemberSettingsStub,
+  getExitResults,
   resolveTargetFileId,
 } from "./index.js";
 import { _cachedCompute } from "./cache.js";
@@ -121,8 +122,7 @@ export async function handleAdminExitedMembers(req, env, origin) {
     const fileId = env.GOOGLE_SHEET_FILE_ID;
     const exitedMembers = await listExitedMemberEntries(env, accessToken, fileId);
 
-    const resultsRes = await getMemberSettingsStub(env).fetch("https://do/exit/list");
-    const { items: allResults } = await resultsRes.json();
+    const allResults = await getExitResults(env);
     const members = exitedMembers.map((m) => ({
       number: m.number,
       name: m.name,
@@ -233,8 +233,7 @@ export async function handleAdminBlacklist(req, env, origin) {
     const fileId = env.GOOGLE_SHEET_FILE_ID;
     const exitedMembers = await listExitedMemberEntries(env, accessToken, fileId);
 
-    const resultsRes = await getMemberSettingsStub(env).fetch("https://do/exit/list");
-    const { items: allResults } = await resultsRes.json();
+    const allResults = await getExitResults(env);
     const results = exitedMembers.map((m) => (allResults[m.name] ? { name: m.name, ...allResults[m.name] } : null));
 
     const entries = results

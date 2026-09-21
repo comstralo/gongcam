@@ -85,6 +85,7 @@ import { _cachedCompute, invalidateMemberCache } from "./cache.js";
 import { formatISODate, currentWeekMondayKST, formatYYMMDD } from "./date-utils.js";
 import { listQueuedReasonLeaveDays } from "./leave.js";
 import { buildRosterStatus } from "./roster-status.js";
+import { findMemberByNumber } from "./pure-utils.js";
 
 function isConfirmed(recordTimestamp) {
   return (recordTimestamp || "").includes("23:3");
@@ -355,7 +356,7 @@ function explainDay(total, goal, morning, confirmed) {
 // 행을 걸러내지만 여기는 항상 실존하는 본인 조회라 그 필터링과 무관하다.
 async function getMeritRank(env, accessToken, fileId, memberNumber) {
   const { members } = await buildRosterStatus(env, accessToken, fileId);
-  const member = members.find((m) => m.number === String(memberNumber));
+  const member = findMemberByNumber(members, memberNumber);
   if (!member) return { merit: "0", rank: "-" };
   return { merit: member.merit || "0", rank: member.rank || "-" };
 }
@@ -1071,7 +1072,7 @@ export async function handleAdminMemberStatus(req, env, origin, memberNumber, ur
       ? await resolveTargetFileIdForAnyBackup(env, accessToken, cycleAnyFileId)
       : await resolveTargetFileId(env, accessToken, cycleFileId);
     const members = await listAllMembers(env, accessToken, targetFileId);
-    const member = members.find((m) => m.number === memberNumber);
+    const member = findMemberByNumber(members, memberNumber);
     if (!member) return json({ error: "존재하지 않는 회원번호입니다." }, 404, origin);
 
     const status = await buildPersonalStatus(env, accessToken, targetFileId, member.number, member.name, weekOf);
