@@ -1,0 +1,41 @@
+# 🔧 [의존성 자동 업데이트, 2026-09-21] 1인 개발 저장소라 의존성 노후화를
+# 수동으로 챙기기 쉽지 않다 — 특히 보안 취약점은 알림이 없으면 모르고
+# 지나칠 위험이 크다. 이미 CI 게이트(ci.yml, PR/push 시 app lint+typecheck,
+# worker npm test)가 있어 Dependabot이 올리는 자동 PR도 안전망 위에서
+# 검증된다.
+#
+# 두 npm 생태계(app/, frame-checker-worker/)는 서로 완전히 독립된
+# package.json/package-lock.json을 갖고 있어 각각 등록한다. 자동 PR
+# 노이즈를 줄이기 위해 주 1회(월요일)로 스케줄을 묶고, 메이저 버전
+# 업데이트는 회귀 위험이 커 리뷰 없이 자동 병합할 수준이 아니므로 그대로
+# PR만 올라오게 둔다(자동 병합 설정 없음 — 사람이 직접 확인 후 병합).
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/app"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+
+  - package-ecosystem: "npm"
+    directory: "/frame-checker-worker"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+
+  # GitHub Actions 워크플로우가 쓰는 actions/checkout, actions/setup-node 등의
+  # 버전도 노후화될 수 있다(예: 이미 CI 로그에서 "Node.js 20 is deprecated"
+  # 경고가 한 번 확인됨) — 같이 관리한다.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
