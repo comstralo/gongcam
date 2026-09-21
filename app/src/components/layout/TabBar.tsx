@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import { LayoutDashboard, Flag, ScanLine, Settings, ShieldCheck, MessageCircle, ChevronDown, type LucideIcon } from "lucide-react";
 import { cn, ICON_STROKE } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/useAuth";
+import { useResizeObserver } from "@/hooks/useResizeObserver";
 import type { ViewportRect } from "@/hooks/useKeyboardInset";
 
 type Tab = {
@@ -65,32 +66,27 @@ export function TabBar({
   onHeightChange?: (height: number) => void;
 }) {
   const { session, isAdmin, isCoReviewer } = useAuth();
-  const navRef = useRef<HTMLElement>(null);
   // 🔧 [버그 수정] navRef.current를 렌더링(JSX의 style 계산) 중에 직접
   // 읽으면 첫 렌더링 시점엔 아직 null이라 즉시 오류가 난다 — 실측값을
   // state로 보관해, ResizeObserver가 실제로 측정을 마친 뒤에야
   // top 계산에 반영되도록(그 전까지는 undefined로 기존 bottom:0
   // 동작 유지) 분리한다.
   const [navHeight, setNavHeight] = useState<number | null>(null);
-
-  useEffect(() => {
-    const nav = navRef.current;
-    if (!nav) return;
-    const report = () => {
-      const height = nav.getBoundingClientRect().height;
-      setNavHeight(height);
-      // 🔧 v버튼(collapseButton)이 -top-6(24px)만큼 nav 상단 경계 위로
-      // 튀어나오므로, nav 자신의 높이만으로는 "화면에서 실제로 이
-      // 탭바 영역 전체가 차지하는 높이"를 알 수 없다 — 버튼이 있으면
-      // 그만큼(24px) 더해 보고한다.
-      onHeightChange?.(height + (collapseButton ? 24 : 0));
-    };
-    report();
-    const observer = new ResizeObserver(report);
-    observer.observe(nav);
-    return () => observer.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [!!collapseButton, onHeightChange]);
+  // 🔧 [리팩터, 2026-09-21 사용자 지시: "다양한 환경 대응을 위한 도구를
+  // 체계적으로 적용"] — new ResizeObserver + observe/disconnect cleanup을
+  // 공용 훅(useResizeObserver)으로 교체했다. collapseButton 유무에 따라
+  // "nav 자신의 높이 + v버튼이 튀어나온 24px"를 더할지만 report() 안에서
+  // 갈리므로, 훅 재구독 자체는 필요 없다(콜백 안에서 최신 collapseButton
+  // 값을 그때그때 참조).
+  const navRef = useResizeObserver<HTMLElement>((_entry, nav) => {
+    const height = nav.getBoundingClientRect().height;
+    setNavHeight(height);
+    // 🔧 v버튼(collapseButton)이 -top-6(24px)만큼 nav 상단 경계 위로
+    // 튀어나오므로, nav 자신의 높이만으로는 "화면에서 실제로 이
+    // 탭바 영역 전체가 차지하는 높이"를 알 수 없다 — 버튼이 있으면
+    // 그만큼(24px) 더해 보고한다.
+    onHeightChange?.(height + (collapseButton ? 24 : 0));
+  });
 
   if (!session) return null;
 
