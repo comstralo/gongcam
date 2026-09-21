@@ -1694,6 +1694,60 @@ describe 블록 추가(신규 함수라 기존 테스트 파일에 편입).
 이하 섹션에 반복 등장하는 "448개 테스트 전부 통과"라는 숫자는 이제
 22차 이전 시점의 스냅샷으로 읽을 것.
 
+## 구조 개선 23차 — date-utils.js 잔여 5개 함수 직접 단위 테스트 (2026-09-22)
+
+사용자 질문 "프론트엔드, 백엔드 테스트 도구 정비는 끝난거야?"에
+답하기 위해 `src/*.js` 27개 파일을 `test/*.test.js`가 실제로 참조하는지
+전수조사했다. 대부분(`chat.js`/`durable-objects.js`/`worker-entry.js`
+등)은 파일명이 직접 안 잡혀도 `index.js` 재export나 핸들러 통합
+테스트를 통해 이미 실질적으로 커버되고 있음을 확인했고(예:
+`durable-objects.js`의 8개 DO 클래스는 `env.*_DO` 바인딩 이름으로
+재조사한 결과 전부 최소 1개 이상의 핸들러 통합 테스트가 실제
+workerd DO로 exercise함), 딱 하나의 진짜 빈틈이 남았다.
+
+**빈틈**: `date-utils.js`가 export하는 11개 함수 중 6개
+(`currentWeekMondayKST`/`formatYYMMDD`/`kstDateKey`/
+`exitDateMidnightUtcMs`/`weekOfForDate`/`exitWeekResetPassed`)는
+"구조 개선 1차"부터 index.js가 재export해 `cycle-pure.test.js`/
+`cycle-clock.test.js`가 검증해왔다. 나머지 5개
+(`formatISODate`/`nowKST`/`todayKSTDateString`/`todayUTCDateString`/
+`kstDateOffsetString`)는 재export 대상에서 빠져 있었다 — "3단계"
+섹션 기록을 보면 "테스트가 직접 import하는 6개만 재export한다"는
+문장 그대로, 이 5개는 의도적으로 제외됐다기보다 애초에 아무 테스트도
+이들을 직접 import하지 않아 재export가 필요 없었을 뿐이다.
+`todayKSTDateString`만 `isLateNotice`(deposit.js) 경유로
+`deposit-clock.test.js`에서 간접 검증되지만, 그 값 자체(예:
+UTC/KST 9시간 시차로 날짜가 갈리는 경계)를 직접 겨냥한 테스트는
+없었다. 이 5개는 3~7개 도메인 파일이 광범위하게 재사용하는 순수
+날짜 유틸이라 회귀 시 파급 범위가 넓은데도 직접 커버리지가 0이었다.
+
+**`test/date-utils-clock.test.js`(신설)**: `../src/date-utils.js`에서
+직접 import(재export 없이 — 이 5개는 index.js가 재노출하지 않으므로
+1~7차의 "재export 전용 순환" 패턴을 쓸 필요 자체가 없다). 12개 케이스:
+- `formatISODate` — Workers 로컬 타임존이 실제로 UTC라는, 파일 상단
+  주석이 전제하는 사실 자체를 이 workerd 버전(vitest 4.1 +
+  `@cloudflare/vitest-plugin`)에서 실증(2026-09-09 05:30 UTC를 넣어
+  로컬 getter로도 09-09가 그대로 나오는지 확인), 자정 경계, 패딩.
+- `nowKST`/`todayKSTDateString`/`todayUTCDateString` — KST와 UTC가
+  9시간 시차로 서로 다른 날짜를 가리키는 정확히 그 경계(UTC 15:00 =
+  KST 자정)에서 `vi.setSystemTime()`으로 각각 다른 값을 반환하는지
+  대조 검증 — 이 대조 자체가 두 함수가 애초에 분리된 이유(파일 상단
+  주석: Cloudflare 실측 게이지 UTC 자정 리셋과 시각을 맞추기 위함)를
+  회귀 테스트로 고정한다.
+- `kstDateOffsetString` — days=0/양수(미래, 신규 회원 첫 참여일 범위
+  검증에 실사용)/음수(과거)/월 경계를 넘는 케이스.
+
+`exit-timing.js`도 재조사했으나 `isSettlementVisibleToMembers`/
+`exitDateSettled` 둘 다 이미 `exit-timing-clock.test.js`(2026-09-13
+신설, 3차 문서에 기록 누락 — grep으로 실재 확인)가 경계값까지
+빠짐없이 검증하고 있어 추가 작업이 불필요했다.
+
+`npm test` 기준 37개 파일, 496개 테스트 전부 통과(기존 484개 + 신규
+12개). 배포 전이므로 curl/`wrangler tail` 스모크는 생략 — 이 5개
+함수는 fetch/DO/캐시를 전혀 건드리지 않는 완전 순수 함수라 로직
+자체를 바꾸지 않았고, 새 테스트 파일 추가만으로는 배포 대상
+변경사항이 없다(`src/` 무변경).
+
 ## 다음 단계
 
 사이클 판정, 예치금/강제퇴실/정산 판정, 회원 관리/알림·푸시의
