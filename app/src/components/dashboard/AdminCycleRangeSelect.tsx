@@ -1,38 +1,19 @@
 import { useEffect, useState } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { formatWeekOfDate, thisWeekRange } from "@/components/dashboard/shared";
 import { useApi } from "@/hooks/useApi";
 import type { CycleGroup, CycleGroupListResponse } from "@/lib/api/types";
-
-// weekOf/weekTo는 백업 파일명에서 온 "YYMMDD" 형식이다 — CycleSwitcher의
-// formatDate와 동일한 표시 규칙.
-function formatDate(raw: string) {
-  const m = raw.match(/^(\d{2})(\d{2})(\d{2})$/);
-  if (!m) return raw;
-  const [, , mm, dd] = m;
-  return `${mm}.${dd}`;
-}
-
-function thisWeekRange(): { start: string; end: string } {
-  const now = new Date();
-  const todayIndex = (now.getDay() + 6) % 7;
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - todayIndex);
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  const fmt = (d: Date) => `${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
-  return { start: fmt(monday), end: fmt(sunday) };
-}
 
 function groupLabel(group: CycleGroup): string {
   // 진행 중 사이클이 아직 1주차라 완결된 백업이 하나도 없으면
   // startWeekOf가 null로 온다 — 이번 주 자체가 사이클의 시작이므로
   // thisWeekRange().start를 그대로 시작일로 쓴다("?" 표시 방지).
   const start = group.startWeekOf
-    ? formatDate(group.startWeekOf)
+    ? formatWeekOfDate(group.startWeekOf)
     : group.isCurrent
       ? thisWeekRange().start
       : "?";
-  const end = group.isCurrent ? thisWeekRange().end : group.endWeekOf ? formatDate(group.endWeekOf) : "?";
+  const end = group.isCurrent ? thisWeekRange().end : group.endWeekOf ? formatWeekOfDate(group.endWeekOf) : "?";
   return `${start} ~ ${end}`;
 }
 

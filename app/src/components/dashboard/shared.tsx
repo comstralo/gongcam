@@ -44,6 +44,35 @@ export function thisWeekDateLabel(dayKr: string, weekOf?: string | null): string
   return `${target.getMonth() + 1}월 ${target.getDate()}일`;
 }
 
+// weekOf/weekTo는 백업 파일명에서 온 "YYMMDD" 형식이다 — "MM.DD"로 줄여
+// 표시한다. 🔧 [리팩토링, 2026-09-21] CycleSwitcher.tsx/
+// AdminCycleRangeSelect.tsx 두 파일에 formatDate라는 같은 이름으로
+// 글자 하나 다르지 않게 복붙되어 있던 순수 함수를 공용화한다(이름은
+// 범용적인 "formatDate"보다 용도를 명확히 하기 위해 바꿨다).
+export function formatWeekOfDate(raw: string): string {
+  const m = raw.match(/^(\d{2})(\d{2})(\d{2})$/);
+  if (!m) return raw;
+  const [, , mm, dd] = m;
+  return `${mm}.${dd}`;
+}
+
+// 🔧 [사용자 지시] "이번 주" 슬롯도 과거 주차처럼 날짜 구간을 보여준다 —
+// 서버가 "이번 주" 자체의 weekOf/weekTo를 내려주지 않는 화면(CycleSwitcher/
+// AdminCycleRangeSelect)이 다른 화면들과 동일한 관용구((getDay()+6)%7로
+// 일요일=0을 월요일=0으로 보정)로 클라이언트에서 오늘이 속한 주의 월~일을
+// 직접 계산할 때 쓴다. 🔧 [리팩토링, 2026-09-21] 위 formatWeekOfDate와
+// 동일한 사유로 두 파일에서 공용화.
+export function thisWeekRange(): { start: string; end: string } {
+  const now = new Date();
+  const todayIndex = (now.getDay() + 6) % 7;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - todayIndex);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const fmt = (d: Date) => `${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
+  return { start: fmt(monday), end: fmt(sunday) };
+}
+
 // 하루(요일)에 일반반휴+사유반휴를 합쳐 신청할 수 있는 최대 장수. 각 종류의
 // 요일별 시트 셀이 0/1만 가능해(종류당 1장) 두 종류를 합친 구조적 상한도
 // 자연히 이 값과 같다 — HalfDayLeaveDialog/LeaveApplyButton이 함께 쓴다.

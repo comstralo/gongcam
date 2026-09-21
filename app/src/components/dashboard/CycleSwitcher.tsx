@@ -1,33 +1,9 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, RotateCw } from "lucide-react";
-import { TintedPill } from "@/components/dashboard/shared";
+import { TintedPill, formatWeekOfDate, thisWeekRange } from "@/components/dashboard/shared";
 import { useApi } from "@/hooks/useApi";
 import { cn } from "@/lib/utils";
 import type { CycleGroup, CycleListResponse, CycleWeek } from "@/lib/api/types";
-
-// weekOf/weekTo는 백업 파일명에서 온 "YYMMDD" 형식이다.
-function formatDate(raw: string) {
-  const m = raw.match(/^(\d{2})(\d{2})(\d{2})$/);
-  if (!m) return raw;
-  const [, , mm, dd] = m;
-  return `${mm}.${dd}`;
-}
-
-// 🔧 [사용자 지시] "이번 주" 슬롯도 과거 주차처럼 날짜 구간을 보여준다 —
-// 이 컴포넌트는 /cycles 응답(과거 백업의 weekOf/weekTo)만 받고 "이번 주"
-// 자체의 날짜는 서버에서 내려주지 않으므로, 다른 화면들과 동일한 관용구
-// ((getDay()+6)%7로 일요일=0을 월요일=0으로 보정)로 클라이언트에서
-// 오늘이 속한 주의 월~일을 직접 계산한다.
-function thisWeekRange(): { start: string; end: string } {
-  const now = new Date();
-  const todayIndex = (now.getDay() + 6) % 7;
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - todayIndex);
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  const fmt = (d: Date) => `${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
-  return { start: fmt(monday), end: fmt(sunday) };
-}
 
 // MY/ALL 상단에서 "현재 진행 중인 사이클(최대 3주) 중 어느 시점을 볼지"
 // 고르는 전환 UI. "현재"(실시간, cycle 파라미터 없음)가 항상 맨 마지막
@@ -304,7 +280,7 @@ export function CycleSwitcher({
           {browsedIsCurrentWeek
             ? `${thisWeek.start} ~ ${thisWeek.end}`
             : browsedSlot
-              ? `${formatDate(browsedSlot.weekOf)} ~ ${formatDate(browsedSlot.weekTo)}`
+              ? `${formatWeekOfDate(browsedSlot.weekOf)} ~ ${formatWeekOfDate(browsedSlot.weekTo)}`
               : "데이터 없음"}
         </span>
       </div>

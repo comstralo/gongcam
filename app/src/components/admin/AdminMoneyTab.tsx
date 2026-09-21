@@ -3,7 +3,7 @@ import { ChevronDown, CircleDollarSign, CalendarDays, FlaskConical, Loader2, Use
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
-import { InfoCard, DayDetailCard, TintedPill, ItemTitle, DividedValue, STATUS_DAYS, thisWeekDateLabel } from "@/components/dashboard/shared";
+import { InfoCard, DayDetailCard, TintedPill, ItemTitle, DividedValue, STATUS_DAYS, thisWeekDateLabel, won } from "@/components/dashboard/shared";
 import { SectionHeader, FieldLabel, SectionCard, AdminListSkeleton, AdminEmptyState, DayGroupHeader } from "@/components/admin/shared";
 import { ExitProcessDialog } from "@/components/admin/ExitProcessDialog";
 import { ReportReviewList } from "@/components/admin/ReportReviewList";
@@ -39,10 +39,6 @@ type FineRecord = { number: string; name: string; day: string; baseStatus: FineS
 
 function fineKey(f: Pick<FineRecord, "number" | "day">) {
   return `${f.number}-${f.day}`;
-}
-
-function won(n: number) {
-  return "₩" + (n || 0).toLocaleString();
 }
 
 // weekOf("YYMMDD", 그 주 월요일)를 경고 배너용 짧은 라벨("8월 19일")로 바꾼다.

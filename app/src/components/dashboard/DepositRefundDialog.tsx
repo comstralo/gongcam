@@ -18,16 +18,13 @@ import {
   mergePenaltyLabel,
   RefundAmountCard,
   DepositCauseCard,
+  won,
 } from "@/components/dashboard/shared";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/lib/auth/useAuth";
 import { cn, ICON_STROKE } from "@/lib/utils";
 import type { ReactNode } from "react";
 import type { DepositRefundBreakdown } from "@/lib/api/types";
-
-function won(n: number) {
-  return `₩${(n || 0).toLocaleString()}`;
-}
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);

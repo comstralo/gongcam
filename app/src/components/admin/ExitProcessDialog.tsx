@@ -6,16 +6,12 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { InfoCard, SubRow } from "@/components/dashboard/shared";
+import { InfoCard, SubRow, won } from "@/components/dashboard/shared";
 import { FieldValue, ExitResultCards, formatDateTime24h } from "@/components/admin/shared";
 import { useApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 import type { ExitCandidate, ExitCheckItem, ExitKind, ExitPreviewResponse, ExitConfirmResponse } from "@/lib/api/types";
-
-function won(n: number) {
-  return `₩${(n || 0).toLocaleString()}`;
-}
 
 // MemberRosterList(전체 명단)와 PenaltyCandidateList(예치금 재납 대상자) 둘
 // 다 이 다이얼로그를 쓰지만, 서로 다른 타입(MemberRosterEntry/ExitCandidate)의
