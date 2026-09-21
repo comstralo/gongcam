@@ -73,6 +73,28 @@ export function AppShell({
   useDocumentHeightFix();
   const tabBarCollapsed = collapsibleTabBar?.collapsed ?? false;
   const collapseButtonObserverRef = useRef<ResizeObserver | null>(null);
+  // 🔧 [버그 수정, 2026-09-21 사용자 재보고: "제보/채팅 등 여러 화면이
+  // 기본적으로 살짝 스크롤된 상태로 로드된다"] — 이 최상위 div의
+  // paddingBottom(하단 고정 TabBar가 마지막 콘텐츠 줄을 가리지 않게
+  // 하려는 여백)이 지금까지 78px(32+46) 매직넘버였다. 실측(PC
+  // 950x864): 이 매직넘버가 TabBar의 실제 렌더링 높이보다 커서, 콘텐츠
+  // 길이 + 헤더 + 이 패딩을 합친 문서 전체 높이가 뷰포트보다 커져
+  // 로드 직후부터 스크롤 여지가 생겼다(마우스 휠을 살짝만 굴려도 그만큼
+  // 밀려 하단 TabBar 자체가 화면 밖으로 나감 — 채팅 페이지에서 먼저
+  // 발견됐지만 제보 등 다른 모든 페이지에도 동일하게 있던 문제였다).
+  // TabBar는 이미 ResizeObserver로 자기 실제 높이를 정확히 측정할 수
+  // 있으므로(collapsibleTabBar 화면의 onBarHeightChange가 이미 그렇게
+  // 쓰고 있음), 그 실측값을 모든 화면에서 항상 이 state로 받아 매직넘버
+  // 대신 쓴다 — 페이지가 onBarHeightChange를 넘기지 않아도 내부적으로
+  // 항상 정확한 값을 확보한다.
+  const [measuredTabBarHeight, setMeasuredTabBarHeight] = useState<number | null>(null);
+  const handleBarHeightChange = useCallback(
+    (height: number) => {
+      setMeasuredTabBarHeight(height);
+      onBarHeightChange?.(height);
+    },
+    [onBarHeightChange]
+  );
 
   // 🔧 [버그 수정, 2026-09-21 사용자 지시: "정석적인 방법으로,
   // 땜빵질하지 말고 확실한 해결책을 갖고와"] — Mac Safari의 iOS 기기
@@ -113,11 +135,11 @@ export function AppShell({
       collapseButtonObserverRef.current?.disconnect();
       collapseButtonObserverRef.current = null;
       collapseButtonResizeListenerRef.current = null;
-      if (!button || !onBarHeightChange) return;
+      if (!button) return;
       const report = () => {
         const height = button.getBoundingClientRect().height;
         setCollapseButtonHeight(height);
-        onBarHeightChange(height + safeAreaInsetBottomRef.current / 2);
+        handleBarHeightChange(height + safeAreaInsetBottomRef.current / 2);
       };
       report();
       const observer = new ResizeObserver(report);
@@ -125,7 +147,7 @@ export function AppShell({
       collapseButtonObserverRef.current = observer;
       collapseButtonResizeListenerRef.current = report;
     },
-    [onBarHeightChange]
+    [handleBarHeightChange]
   );
   // 🔧 [사용자 지시, 2026-09-20] "키보드 입력 상태에서 ^ 표시가 보이는것도
   // 이상하고" — 이 접기 버튼(펼치기 힌트)이 fixed bottom:0(레이아웃
@@ -189,11 +211,24 @@ export function AppShell({
       // 브라우저가 포커스 위치를 맞추며) 그만큼 밀려 하단 탭바 자체가
       // 화면 밖으로 나갔다. collapsibleTabBar가 있으면 이 패딩을 생략해
       // 문서 높이가 정확히 뷰포트와 일치하게 한다.
+      // 🔧 [버그 수정, 2026-09-21 사용자 지시: "제보 화면도 기본이 약간
+      // 스크롤된 상태로 로드된다"] — 채팅뿐 아니라 collapsibleTabBar가
+      // 없는 일반 페이지(제보 등)도 똑같이 겪던 문제였다. 이 패딩의
+      // "32px + 46px"는 예전에 실측 없이 손으로 맞춘 매직넘버였는데,
+      // TabBar 실제 렌더링 높이(핸들러 measuredTabBarHeight, 항상
+      // ResizeObserver로 실측)보다 커서 콘텐츠+헤더+이 패딩을 합친 문서
+      // 총 높이가 뷰포트를 넘어섰다 — 그 초과분(실측 14~25px)이 로드
+      // 직후부터 스크롤 여지를 만들었다. 매직넘버 대신 TabBar 실측
+      // 높이(measuredTabBarHeight, safe-area 포함해서 이미 정확함)에
+      // 순수 시각적 여백 8px만 더해 쓴다 — 값이 아직 측정 전(첫 프레임)
+      // 이면 기존 매직넘버로 안전하게 폴백한다.
       style={
         {
           paddingBottom:
             session && !fitToScreen && !collapsibleTabBar
-              ? "calc(32px + 46px + env(safe-area-inset-bottom, 0px))"
+              ? measuredTabBarHeight !== null
+                ? `${measuredTabBarHeight + 8}px`
+                : "calc(32px + 46px + env(safe-area-inset-bottom, 0px))"
               : undefined,
           "--shell-pb-portrait": "calc(32px + 46px + env(safe-area-inset-bottom, 0px))",
         } as CSSProperties
@@ -245,7 +280,7 @@ export function AppShell({
           // ChatPage의 채팅 컨테이너가 그대로 이어받음) 높이 0을
           // 보고한다 — useEffect 밖(렌더링 시점)에서 직접 호출하면
           // "렌더링 중 setState" 경고가 나므로 별도 effect로 분리.
-          return <ReportZeroHeight onBarHeightChange={onBarHeightChange} />;
+          return <ReportZeroHeight onBarHeightChange={handleBarHeightChange} />;
         }
         if (collapsibleTabBar && tabBarCollapsed) {
           // 🔧 [사용자 지시, 2026-09-20] "접힌 상태를 아이콘으로 표시하고
@@ -336,7 +371,7 @@ export function AppShell({
                 }
               }
               viewportRect={collapsibleTabBar ? viewportRect : undefined}
-              onHeightChange={onBarHeightChange}
+              onHeightChange={handleBarHeightChange}
             />
           </div>
         );
