@@ -30,6 +30,7 @@ import "stream-chat-react/dist/css/index.css";
 import "@/pages/chat-theme.css";
 import { MessageCircle, UserPlus, X, User, Reply, ImagePlus } from "lucide-react";
 import { InfoCard } from "@/components/dashboard/shared";
+import { AdminListSkeleton, AdminEmptyState } from "@/components/admin/shared";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useApi } from "@/hooks/useApi";
@@ -1085,11 +1086,24 @@ function AdminMemberList({
     }
   }
 
+  // 🔧 [UI 일관성, 2026-09-21] 다른 관리자 리스트 7곳(제보 검토/
+  // 스터디원·퇴실자 목록/정산·벌금/페널티 대상자/사유반휴 검토)은 이미
+  // AdminListSkeleton/AdminEmptyState로 통일되어 있는데, 성격이 같은
+  // "관리자용 리스트"인 이 회원 목록만 맨텍스트 한 줄(로딩→갑자기 목록
+  // 등장) 방식이 남아 있었다(전수조사에서 발견) — 통일.
   if (members === null) {
-    return <div className="p-3 text-center text-xs text-muted-foreground">회원 목록 불러오는 중...</div>;
+    return (
+      <div className="p-2.5">
+        <AdminListSkeleton rows={4} />
+      </div>
+    );
   }
   if (!members.length) {
-    return <div className="p-3 text-center text-xs text-muted-foreground">등록된 회원이 없습니다.</div>;
+    return (
+      <div className="p-2.5">
+        <AdminEmptyState>등록된 회원이 없습니다.</AdminEmptyState>
+      </div>
+    );
   }
 
   return (
