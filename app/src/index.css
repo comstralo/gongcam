@@ -50,15 +50,22 @@
    🔧 [버그 수정, 2026-09-21 사용자 지시: "타이틀 위 공백을 줄여봐"] —
    위 여유분이 14px 고정값이라 safe-area-inset-top이 0인 PC/Android
    에서도 똑같이 14px가 그대로 더해져, 노치/블러와 무관한 환경까지
-   불필요하게 여백이 늘어나 있었다. 고정값 대신 env() 자체의 배수로
-   여유를 주면, safe-area가 0인 환경에서는 이 항도 자동으로 0이 되고
-   (기존 순수 padding만 남음), 실제 노치가 있는 기기에서만 그 크기에
-   비례해 여유가 붙는다 — PC에서 확인한 실측 30px(16px+14px) 여백이
-   16px로, iOS 쪽은 기존과 동일하게 노치 크기의 배수만큼 유지된다. */
+   불필요하게 여백이 늘어나 있었다. 고정값 대신 env() 자체의 배수(1.5배)
+   로 바꿨었는데, 이러면 노치가 클수록(다이나믹 아일랜드처럼 이미 큰
+   기기일수록) 여유분도 비례해서 커진다 — 실측(iPhone, inset≈59px):
+   기존 14px 고정 방식은 총 83px이었는데, 1.5배 방식은 98.5px로
+   오히려 더 커져 사용자가 "여전히 공백이 너무 크다"고 재보고했다.
+   🔧 [버그 수정, 2026-09-21 재수정] min(env(safe-area-inset-top,0px),
+   14px) 트릭으로 되돌린다 — env가 0(PC/Android)이면 결과도 0이라
+   여전히 여유가 안 붙고, env가 0보다 크면(노치가 있는 모든 iOS
+   기기) 노치 크기와 무관하게 항상 14px로 클램프된다. PC의 불필요한
+   여백 제거(이전 수정의 목표)와 iOS의 일정한 블러 회피 여유(원래
+   의도) 둘 다 동시에 만족하는 방식 — 노치 크기에 비례하지 않는다는
+   점이 배수 방식과의 핵심 차이. */
 @utility page-pt-safe {
-  padding-top: calc(0.625rem + env(safe-area-inset-top, 0px) * 1.5); /* pt-2.5 */
+  padding-top: calc(0.625rem + min(env(safe-area-inset-top, 0px), 14px)); /* pt-2.5 */
   @variant sm {
-    padding-top: calc(1rem + env(safe-area-inset-top, 0px) * 1.5); /* sm:pt-4 */
+    padding-top: calc(1rem + min(env(safe-area-inset-top, 0px), 14px)); /* sm:pt-4 */
   }
 }
 
