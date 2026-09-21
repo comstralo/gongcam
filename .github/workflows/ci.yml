@@ -1,0 +1,49 @@
+name: CI
+
+# 🔧 [2026-09-21] deploy.yml은 push(main)에서만 돌아 "배포 게이트"
+# 역할만 했다 — PR 단계에서 lint/테스트가 하나도 자동 확인되지 않아,
+# 로컬에서 실행을 깜빡하고 올린 문제(예: exit-requests.test.js의 시한부
+# 고정 날짜 실패)가 병합/배포를 막지 못했다. 이 워크플로우는 배포와
+# 분리된 순수 검증 게이트로, PR과 main push 양쪽에서 돈다(배포 자체는
+# 여전히 deploy.yml이 전담).
+on:
+  pull_request:
+    paths: ["app/**", "frame-checker-worker/**", ".github/workflows/ci.yml"]
+  push:
+    branches: [main]
+    paths: ["app/**", "frame-checker-worker/**", ".github/workflows/ci.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc -b
+
+  worker:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frame-checker-worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frame-checker-worker/package-lock.json
+      - run: npm ci
+      - run: npm test
