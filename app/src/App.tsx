@@ -51,7 +51,16 @@ function MainViews() {
   // 직접 펼치면(다른 탭에 갔다 돌아와도 이 컴포넌트는 hidden div로
   // 계속 마운트 유지되는 구조라) 그 선택은 그대로 남는다 — 매번 다시
   // 접히면 "펼쳐 두고 싶다"는 선택 자체를 무시하는 셈이라 부자연스럽다.
-  const [chatTabBarCollapsed, setChatTabBarCollapsed] = useState(true);
+  // 🔧 [버그 수정, 2026-09-21 사용자 지시: "PC에서는 굳이 기본이 접힘
+  // 상태일 필요가 없을 것 같아. 펼침 상태로(선택 시 접기 가능으로)"] —
+  // 위 접힘 기본값은 모바일(세로 공간이 빠듯해 입력창까지 가리는 걸
+  // 막으려는 의도)에만 해당하는 이유였다. PC는 화면 세로 공간이
+  // 넉넉해 그 이유 자체가 없다 — ChatPage가 이미 "모바일/데스크톱"
+  // 구분에 쓰는 것과 동일한 Tailwind md 브레이크포인트(768px,
+  // ChatPage.tsx의 max-md:hidden 참고)를 그대로 재사용해, 그 이상
+  // 폭에서는 펼침을 기본값으로 시작한다. 여전히 언제든 수동으로 접을
+  // 수 있고(TabBar의 접기 버튼), 그 선택도 위와 동일하게 세션 중 유지된다.
+  const [chatTabBarCollapsed, setChatTabBarCollapsed] = useState(() => window.innerWidth < 768);
   // 🔧 [버그 수정, 2026-09-20 사용자 지시: "채팅에서는 여전히 네비바
   // 위치가 이상해"] — AppShell이 실측한 하단 바(TabBar 또는 접힘 버튼)
   // 의 실제 높이를 받아 ChatPage에 그대로 전달한다 — 매직넘버 계산
