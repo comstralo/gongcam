@@ -1,6 +1,8 @@
 import { useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { ShieldCheck } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AppShell } from "@/components/layout/AppShell";
 import { SectionCard } from "@/components/admin/shared";
 import { ReportReviewList } from "@/components/admin/ReportReviewList";
 import { AdminMemberPenaltyTab } from "@/components/admin/AdminMemberPenaltyTab";
@@ -47,69 +49,83 @@ export function AdminPage({ visible = true }: { visible?: boolean }) {
   // 직전에 둔다.
   if (!isAdmin && isCoReviewer) {
     return (
-      <div className="flex w-full page-content flex-col items-center gap-4">
-        <SectionCard>
-          <ReportReviewList visible={visible} />
-        </SectionCard>
-      </div>
+      <AppShell title="관리자" titleIcon={ShieldCheck}>
+        <div className="flex w-full page-content flex-col items-center gap-4">
+          <SectionCard>
+            <ReportReviewList visible={visible} />
+          </SectionCard>
+        </div>
+      </AppShell>
     );
   }
 
   return (
-    <div className="flex w-full page-content flex-col items-center gap-4">
-      {/* 🔧 [사용자 지시] "제보"와 탭 디자인이 다른 곳도 다 제보에 맞춰서
-          통일" — 제보 화면(ReportPage)의 알약형(rounded-full) 탭과 동일한
-          모양으로 맞춘다. */}
-      <Tabs value={view} onValueChange={changeView} className="w-full">
-        <TabsList className="h-auto w-full rounded-full bg-secondary p-1">
-          <TabsTrigger
-            value="account"
-            className="h-auto flex-1 rounded-full py-2.5 font-mono text-xs tracking-wide uppercase data-active:shadow-sm"
-          >
-            Account
-          </TabsTrigger>
-          <TabsTrigger
-            value="money"
-            className="h-auto flex-1 rounded-full py-2.5 font-mono text-xs tracking-wide uppercase data-active:shadow-sm"
-          >
-            PEN · Money
-          </TabsTrigger>
-          <TabsTrigger
-            value="botsheet"
-            className="h-auto flex-1 rounded-full py-2.5 font-mono text-xs tracking-wide uppercase data-active:shadow-sm"
-          >
-            Bot · Sheet
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
-
-      {/* 🔧 2026-09: 이 화면을 감싸던 바깥 Card/CardContent를 제거했다
-          (사용자 지시) — 안쪽 각 탭(AdminMemberPenaltyTab/AdminMoneyTab/
-          AdminBotSheetTab)이 이미 SectionCard 단위로 구성돼 있어, 바깥
-          Card는 이중 테두리·이중 배경만 만들 뿐이었다. RosterPage/
-          StatusPage/SettingsPage에서 같은 이유로 이미 제거한 것과 동일한
-          처리.
-
-          조건부 렌더링(view === "x" && ...) 대신 hidden으로 감춘다 — 한 번
-          마운트된 탭은 언마운트하지 않고 그대로 유지해, 관리자가 탭을
-          오갈 때마다 각 탭의 useEffect(load, [])가 매번 다시 실행되며
-          Sheets API를 재호출하는 문제를 없앤다(2026-08 실제로 탭 전환
-          몇 번만으로 429 RESOURCE_EXHAUSTED 재현됨). 아직 한 번도
-          열지 않은 탭은 그대로 마운트를 미뤄 불필요한 초기 로드를
-          피한다. */}
-      <div className="flex w-full flex-col gap-4">
-        {/* 🔧 [임시 테스트, 사용자 요청] App.tsx 메인 탭과 동일한 실험 —
-            hidden 토글은 그대로 두고 등장 애니메이션만 얹는다. */}
-        <div hidden={view !== "account"} className="animate-tab-enter">
-          {everOpened.current.account && <AdminMemberPenaltyTab visible={visible && view === "account"} />}
+    <AppShell
+      title="관리자"
+      titleIcon={ShieldCheck}
+      stickyHeader={
+        // 🔧 [버그 수정, 2026-09-21 사용자 지시: "타이틀 + 탭바까지는
+        // 고정으로 하는게 나은거 같아. 그 하위 요소만 스크롤 되도록"] —
+        // 이 탭 UI를 AppShell의 stickyHeader 슬롯으로 넘겨, 타이틀과
+        // 함께 화면 상단에 고정되고 그 아래 각 탭 본문만 스크롤되게 한다.
+        <div className="flex w-full page-content flex-col items-center">
+          {/* 🔧 [사용자 지시] "제보"와 탭 디자인이 다른 곳도 다 제보에
+              맞춰서 통일" — 제보 화면(ReportPage)의 알약형(rounded-full)
+              탭과 동일한 모양으로 맞춘다. */}
+          <Tabs value={view} onValueChange={changeView} className="w-full">
+            <TabsList className="h-auto w-full rounded-full bg-secondary p-1">
+              <TabsTrigger
+                value="account"
+                className="h-auto flex-1 rounded-full py-2.5 font-mono text-xs tracking-wide uppercase data-active:shadow-sm"
+              >
+                Account
+              </TabsTrigger>
+              <TabsTrigger
+                value="money"
+                className="h-auto flex-1 rounded-full py-2.5 font-mono text-xs tracking-wide uppercase data-active:shadow-sm"
+              >
+                PEN · Money
+              </TabsTrigger>
+              <TabsTrigger
+                value="botsheet"
+                className="h-auto flex-1 rounded-full py-2.5 font-mono text-xs tracking-wide uppercase data-active:shadow-sm"
+              >
+                Bot · Sheet
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
-        <div hidden={view !== "money"} className="animate-tab-enter">
-          {everOpened.current.money && <AdminMoneyTab visible={visible && view === "money"} />}
-        </div>
-        <div hidden={view !== "botsheet"} className="animate-tab-enter">
-          {everOpened.current.botsheet && <AdminBotSheetTab visible={visible && view === "botsheet"} />}
+      }
+    >
+      <div className="flex w-full page-content flex-col items-center gap-4">
+        {/* 🔧 2026-09: 이 화면을 감싸던 바깥 Card/CardContent를 제거했다
+            (사용자 지시) — 안쪽 각 탭(AdminMemberPenaltyTab/AdminMoneyTab/
+            AdminBotSheetTab)이 이미 SectionCard 단위로 구성돼 있어, 바깥
+            Card는 이중 테두리·이중 배경만 만들 뿐이었다. RosterPage/
+            StatusPage/SettingsPage에서 같은 이유로 이미 제거한 것과 동일한
+            처리.
+
+            조건부 렌더링(view === "x" && ...) 대신 hidden으로 감춘다 — 한 번
+            마운트된 탭은 언마운트하지 않고 그대로 유지해, 관리자가 탭을
+            오갈 때마다 각 탭의 useEffect(load, [])가 매번 다시 실행되며
+            Sheets API를 재호출하는 문제를 없앤다(2026-08 실제로 탭 전환
+            몇 번만으로 429 RESOURCE_EXHAUSTED 재현됨). 아직 한 번도
+            열지 않은 탭은 그대로 마운트를 미뤄 불필요한 초기 로드를
+            피한다. */}
+        <div className="flex w-full flex-col gap-4">
+          {/* 🔧 [임시 테스트, 사용자 요청] App.tsx 메인 탭과 동일한 실험 —
+              hidden 토글은 그대로 두고 등장 애니메이션만 얹는다. */}
+          <div hidden={view !== "account"} className="animate-tab-enter">
+            {everOpened.current.account && <AdminMemberPenaltyTab visible={visible && view === "account"} />}
+          </div>
+          <div hidden={view !== "money"} className="animate-tab-enter">
+            {everOpened.current.money && <AdminMoneyTab visible={visible && view === "money"} />}
+          </div>
+          <div hidden={view !== "botsheet"} className="animate-tab-enter">
+            {everOpened.current.botsheet && <AdminBotSheetTab visible={visible && view === "botsheet"} />}
+          </div>
         </div>
       </div>
-    </div>
+    </AppShell>
   );
 }

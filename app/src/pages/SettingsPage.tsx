@@ -1,6 +1,7 @@
 import { DoorOpen, Settings, UserCog } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
+import { AppShell } from "@/components/layout/AppShell";
 import { SectionHeader, SectionCard } from "@/components/admin/shared";
 import { SessionCard } from "@/components/session/SessionCard";
 import { DividedValue, InfoCard } from "@/components/dashboard/shared";
@@ -27,6 +28,7 @@ export function SettingsPage({ visible = true }: { visible?: boolean }) {
     // 테두리+배경)로 감싸여 있어, 바깥 Card는 이중 테두리·이중 배경만
     // 만들 뿐이었다. RosterPage/StatusPage에서 같은 이유로 이미 제거한
     // 것과 동일한 처리.
+    <AppShell title="설정" titleIcon={Settings}>
     <div className="flex w-full page-content flex-col gap-4">
       <SectionCard>
         <Collapsible defaultOpen className="flex flex-col">
@@ -98,5 +100,6 @@ export function SettingsPage({ visible = true }: { visible?: boolean }) {
         </Collapsible>
       </SectionCard>
     </div>
+    </AppShell>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { ScanLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -7,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsiblePanel } from "@/components/ui/collapsible";
+import { AppShell } from "@/components/layout/AppShell";
 import { SectionHeader, SectionCard } from "@/components/admin/shared";
 import { useRosterPolling } from "@/hooks/useRosterPolling";
 import { usePullRefreshListener } from "@/hooks/usePullToRefresh";
@@ -269,37 +271,48 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
   }
 
   return (
-    <div className="flex w-full page-content flex-col gap-4">
-      {/* 🔧 [사용자 지시] "디자인이 딱딱해 보인다"는 피드백으로, 각진
-          필박스 탭을 알약형(rounded-full)으로 바꿔 더 부드러운 인상을
-          준다 — 공용 Tabs 컴포넌트 기본값(rounded-lg)은 다른 화면에도
-          쓰이므로 여기서만 className으로 오버라이드한다. 🔧 [사용자
-          지시] 시안처럼 "뚱뚱하게" — TabsList 기본 높이(h-8=32px 고정,
-          TabsTrigger가 그 안을 꽉 채우는 구조)를 오버라이드해야 커지므로
-          h-auto로 풀고 트리거 쪽에 상하 패딩을 직접 준다. */}
-      <Tabs value={view} onValueChange={changeView} className="w-full">
-        <TabsList className="h-auto w-full rounded-full bg-secondary p-1">
-          <TabsTrigger
-            value="capture"
-            className="h-auto flex-1 rounded-full py-2.5 font-mono text-xs tracking-wide uppercase data-active:shadow-sm"
-          >
-            화각 불량 제보
-          </TabsTrigger>
-          <TabsTrigger
-            value="notice"
-            className="h-auto flex-1 rounded-full py-2.5 font-mono text-xs tracking-wide uppercase data-active:shadow-sm"
-          >
-            PUSH 알림 전송
-          </TabsTrigger>
-          <TabsTrigger
-            value="mycheck"
-            className="h-auto flex-1 rounded-full py-2.5 font-mono text-xs tracking-wide uppercase data-active:shadow-sm"
-          >
-            내 제보 확인
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
-
+    <AppShell
+      title="제보"
+      titleIcon={ScanLine}
+      stickyHeader={
+        // 🔧 [버그 수정, 2026-09-21 사용자 지시: "타이틀 + 탭바까지는
+        // 고정으로 하는게 나은거 같아. 그 하위 요소만 스크롤 되도록"] —
+        // 이 탭 UI를 AppShell의 stickyHeader 슬롯으로 넘겨, 타이틀과
+        // 함께 화면 상단에 고정되고 그 아래 각 탭 본문만 스크롤되게 한다.
+        <div className="flex w-full page-content flex-col items-center">
+          {/* 🔧 [사용자 지시] "디자인이 딱딱해 보인다"는 피드백으로, 각진
+              필박스 탭을 알약형(rounded-full)으로 바꿔 더 부드러운 인상을
+              준다 — 공용 Tabs 컴포넌트 기본값(rounded-lg)은 다른 화면에도
+              쓰이므로 여기서만 className으로 오버라이드한다. 🔧 [사용자
+              지시] 시안처럼 "뚱뚱하게" — TabsList 기본 높이(h-8=32px 고정,
+              TabsTrigger가 그 안을 꽉 채우는 구조)를 오버라이드해야
+              커지므로 h-auto로 풀고 트리거 쪽에 상하 패딩을 직접 준다. */}
+          <Tabs value={view} onValueChange={changeView} className="w-full">
+            <TabsList className="h-auto w-full rounded-full bg-secondary p-1">
+              <TabsTrigger
+                value="capture"
+                className="h-auto flex-1 rounded-full py-2.5 font-mono text-xs tracking-wide uppercase data-active:shadow-sm"
+              >
+                화각 불량 제보
+              </TabsTrigger>
+              <TabsTrigger
+                value="notice"
+                className="h-auto flex-1 rounded-full py-2.5 font-mono text-xs tracking-wide uppercase data-active:shadow-sm"
+              >
+                PUSH 알림 전송
+              </TabsTrigger>
+              <TabsTrigger
+                value="mycheck"
+                className="h-auto flex-1 rounded-full py-2.5 font-mono text-xs tracking-wide uppercase data-active:shadow-sm"
+              >
+                내 제보 확인
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+      }
+    >
+      <div className="flex w-full page-content flex-col gap-4">
       <div className="flex w-full flex-col gap-4" hidden={view !== "capture"}>
         {everOpened.current.capture && (
           <>
@@ -550,6 +563,7 @@ export function ReportPage({ visible = true }: { visible?: boolean }) {
           <MyOutputPenSection refreshSignal={myCapturesRefreshSignal} visible={visible && view === "mycheck"} />
         )}
       </div>
-    </div>
+      </div>
+    </AppShell>
   );
 }

@@ -48,7 +48,58 @@ type AppShellProps = {
    * 의미가 있다.
    */
   onBarHeightChange?: (height: number) => void;
+  /**
+   * 🔧 [버그 수정, 2026-09-21 사용자 지시: "타이틀 + 탭바까지는 고정으로
+   * 하는게 나은거 같아. 그 하위 요소만 스크롤 되도록"] — AppShell의
+   * 표준 헤더(title)만으로는 각 페이지가 자기 콘텐츠 맨 위에 그리는
+   * 탭 UI(제보의 "화각 불량 제보"/"PUSH 알림 전송"/... 알약형 탭,
+   * 대시보드의 "My"/"RANK" 탭 등)까지는 고정시킬 수 없었다 — children
+   * 전체가 AppShell 입장에서는 구분 없는 하나의 블록이기 때문이다.
+   * 페이지가 이 슬롯에 자기 탭 UI를 넘기면, AppShell이 title과 함께
+   * "고정 영역"으로 묶어 렌더링하고 children은 그 아래 스크롤 영역에만
+   * 놓는다 — collapsibleTabBar/fitToScreen 화면(채팅/체커)은 각자
+   * 자체 구조가 있어 이 슬롯을 쓰지 않는다.
+   */
+  stickyHeader?: ReactNode;
 };
+
+// 🔧 [리팩터, 2026-09-21] title 헤더 마크업이 collapsibleTabBar 있음/
+// 없음 두 분기에 그대로 중복되던 것을 뽑았다 — 스타일/구조가 완전히
+// 같으므로 하나로 관리한다.
+function AppShellTitleHeader({
+  title,
+  TitleIcon,
+  hideEyebrow,
+}: {
+  title: string;
+  TitleIcon?: LucideIcon;
+  hideEyebrow?: boolean;
+}) {
+  return (
+    <header className="flex w-full page-content flex-col gap-0.5 shrink-0">
+      <div className="flex items-end justify-between gap-2">
+        <div className="flex flex-col gap-0.5">
+          {!hideEyebrow && (
+            <span className="text-xs font-semibold tracking-tight text-primary sm:text-sm">공부합시당 캠스터디</span>
+          )}
+          <h1 className="flex items-center gap-2 text-xl font-semibold sm:text-2xl">
+            {TitleIcon && <TitleIcon className="size-5 text-primary sm:size-6" strokeWidth={ICON_STROKE.default} />}
+            {title}
+          </h1>
+        </div>
+        {/* 🔧 [사용자 지시] "설정의 다크모드는 메뉴를 없애고 앱의 우측
+            상단에 토글 아이콘 식으로" / "교시 종소리도 앱 우측 상단의
+            여백으로 만들어줘" — eyebrow 라벨 유무와 무관하게 버튼들이
+            항상 h1과 같은 줄 높이에 오도록 items-end로 맞춘다. */}
+        <div className="flex shrink-0 items-center gap-0.5">
+          <PeriodAlarmToggleButton />
+          <LinksHeaderButton />
+          <ThemeToggleButton />
+        </div>
+      </div>
+    </header>
+  );
+}
 
 // 🔧 렌더링(JSX 반환) 도중에 곧바로 onBarHeightChange(0)을 호출하면
 // "렌더링 중 다른 컴포넌트의 setState를 트리거"하는 경고가 난다 —
@@ -68,6 +119,7 @@ export function AppShell({
   fitToScreen,
   collapsibleTabBar,
   onBarHeightChange,
+  stickyHeader,
 }: AppShellProps) {
   const { session } = useAuth();
   useDocumentHeightFix();
@@ -236,34 +288,6 @@ export function AppShell({
         } as CSSProperties
       }
     >
-      {title && (
-        <header className="flex w-full page-content flex-col gap-0.5 shrink-0">
-          <div className="flex items-end justify-between gap-2">
-            <div className="flex flex-col gap-0.5">
-              {!hideEyebrow && (
-                <span className="text-xs font-semibold tracking-tight text-primary sm:text-sm">
-                  공부합시당 캠스터디
-                </span>
-              )}
-              <h1 className="flex items-center gap-2 text-xl font-semibold sm:text-2xl">
-                {TitleIcon && (
-                  <TitleIcon className="size-5 text-primary sm:size-6" strokeWidth={ICON_STROKE.default} />
-                )}
-                {title}
-              </h1>
-            </div>
-            {/* 🔧 [사용자 지시] "설정의 다크모드는 메뉴를 없애고 앱의 우측
-                상단에 토글 아이콘 식으로" / "교시 종소리도 앱 우측 상단의
-                여백으로 만들어줘" — eyebrow 라벨 유무와 무관하게 버튼들이
-                항상 h1과 같은 줄 높이에 오도록 items-end로 맞춘다. */}
-            <div className="flex shrink-0 items-center gap-0.5">
-              <PeriodAlarmToggleButton />
-              <LinksHeaderButton />
-              <ThemeToggleButton />
-            </div>
-          </div>
-        </header>
-      )}
       {/* 🔧 [버그 수정, 2026-09-21 사용자 지시: "flex 내부 스크롤 구조로
           전환"] — 예전 구조(min-h-dvh + paddingBottom)는 "문서(html/body)
           자체가 스크롤"되는 방식이라, 헤더+콘텐츠+하단 여백을 합친 총
@@ -275,26 +299,46 @@ export function AppShell({
           collapsibleTabBar/fitToScreen 화면(채팅/체커)은 이미 각자
           자체적인 스크롤/뷰포트 계산을 갖고 있어 이 구조 변경 대상에서
           제외한다(children을 그대로 flex 자식으로 둔다 — 기존 동작
-          그대로 유지). 그 외 일반 페이지만 이 wrapper(flex-1 min-h-0
-          overflow-y-auto)로 감싸, 문서 자체는 절대 뷰포트를 넘지 않고
-          콘텐츠가 길면 이 wrapper "안에서만" 스크롤되게 한다 — 탭바
-          높이만큼의 여백은 이 wrapper 안쪽 padding-bottom으로 주므로,
-          그 여백이 위 문서 총 높이 계산에 전혀 관여하지 않는다(콘텐츠가
-          아무리 짧아도 문서가 뷰포트를 넘어설 수 없는 구조). */}
+          그대로 유지). 그 외 일반 페이지는 헤더까지 포함해 이
+          wrapper(flex-1 min-h-0 overflow-y-auto)로 감싸, 문서 자체는
+          절대 뷰포트를 넘지 않고(스크롤은 이 wrapper 안에서만) 헤더도
+          기존처럼 콘텐츠와 함께 스크롤되게 한다(사용자 확인: "헤더도
+          함께 스크롤되어야 함" — 처음엔 헤더를 shrink-0으로 고정했다가
+          이 확인 후 되돌림). 탭바 높이만큼의 여백은 이 wrapper 안쪽
+          padding-bottom으로 주므로, 그 여백이 문서 총 높이 계산에 전혀
+          관여하지 않는다(콘텐츠가 아무리 짧아도 문서가 뷰포트를 넘어설
+          수 없는 구조). */}
       {!collapsibleTabBar && !fitToScreen ? (
-        <div
-          className="flex w-full min-h-0 flex-1 flex-col items-center gap-4.5 overflow-y-auto"
-          style={{
-            paddingBottom:
-              measuredTabBarHeight !== null
-                ? `${measuredTabBarHeight + 8}px`
-                : "calc(32px + 46px + env(safe-area-inset-bottom, 0px))",
-          }}
-        >
-          {children}
-        </div>
+        <>
+          {/* 🔧 [버그 수정, 2026-09-21 사용자 지시: "타이틀 + 탭바까지는
+              고정으로 하는게 나은거 같아. 그 하위 요소만 스크롤 되도록"]
+              — title(AppShell 표준 헤더)과 stickyHeader(각 페이지가
+              넘기는 자기 탭 UI)를 함께 고정 영역으로 묶는다. 이 영역은
+              shrink-0이라 아래 스크롤 wrapper와 무관하게 항상 화면
+              상단에 그대로 남는다. */}
+          {(title || stickyHeader) && (
+            <div className="flex w-full shrink-0 flex-col items-center gap-4.5">
+              {title && <AppShellTitleHeader title={title} TitleIcon={TitleIcon} hideEyebrow={hideEyebrow} />}
+              {stickyHeader}
+            </div>
+          )}
+          <div
+            className="flex w-full min-h-0 flex-1 flex-col items-center gap-4.5 overflow-y-auto"
+            style={{
+              paddingBottom:
+                measuredTabBarHeight !== null
+                  ? `${measuredTabBarHeight + 8}px`
+                  : "calc(32px + 46px + env(safe-area-inset-bottom, 0px))",
+            }}
+          >
+            {children}
+          </div>
+        </>
       ) : (
-        children
+        <>
+          {title && <AppShellTitleHeader title={title} TitleIcon={TitleIcon} hideEyebrow={hideEyebrow} />}
+          {children}
+        </>
       )}
       {(() => {
         // 🔧 [버그 수정, 2026-09-20 사용자 지시: "입력 상태에서는 다시

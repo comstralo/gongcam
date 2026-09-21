@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { HashRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
-import { LayoutDashboard, ScanLine, Settings, ShieldCheck, MessageCircle } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 import { AuthProvider } from "@/lib/auth/AuthContext";
 import { useAuth } from "@/lib/auth/useAuth";
 import { MyStatusProvider } from "@/lib/status/MyStatusContext";
@@ -85,21 +85,23 @@ function MainViews() {
     // 무관하게 그대로 유지된다 — MyStatusProvider 내부 참고. CheckerPage/
     // LoginPage는 useMyStatus를 쓰지 않아(확인 완료) Provider 밖에 있어도
     // 안전하다.
+    // 🔧 [버그 수정, 2026-09-21 사용자 지시: "타이틀 + 탭바까지는 고정으로
+    // 하는게 나은거 같아. 그 하위 요소만 스크롤 되도록"] — 각 페이지
+    // (Dashboard/Report/Settings/Admin)가 이제 자기 자신을 AppShell로
+    // 직접 감싸고(각 페이지 내부에 title/titleIcon, 탭이 있으면
+    // stickyHeader까지 채워 렌더링) 여기서는 페이지 컴포넌트를 그대로
+    // 반환한다 — AppShell이 여기(App.tsx)와 각 페이지 두 곳에 흩어져
+    // 있으면 stickyHeader처럼 페이지 내부 상태(탭 view 등)가 필요한
+    // prop을 넘길 수 없었다. ChatPage만 예외 — collapsibleTabBar 상태를
+    // AppShell과 ChatPage 형제 컴포넌트가 함께 공유해야 해서(둘 다
+    // App.tsx 자식) 그 상태의 공통 부모인 여기서 계속 감싼다.
     <MyStatusProvider visible={path === "/" || path === "/settings"}>
       <PullToRefreshIndicator />
       <div hidden={path !== "/"} className="animate-tab-enter">
-        {everVisited.current["/"] && (
-          <AppShell title="대시보드" titleIcon={LayoutDashboard}>
-            <DashboardPage visible={path === "/"} />
-          </AppShell>
-        )}
+        {everVisited.current["/"] && <DashboardPage visible={path === "/"} />}
       </div>
       <div hidden={path !== "/report"} className="animate-tab-enter">
-        {everVisited.current["/report"] && (
-          <AppShell title="제보" titleIcon={ScanLine}>
-            <ReportPage visible={path === "/report"} />
-          </AppShell>
-        )}
+        {everVisited.current["/report"] && <ReportPage visible={path === "/report"} />}
       </div>
       <div hidden={path !== "/chat"} className="animate-tab-enter">
         {everVisited.current["/chat"] && (
@@ -119,24 +121,14 @@ function MainViews() {
         )}
       </div>
       <div hidden={path !== "/settings"} className="animate-tab-enter">
-        {everVisited.current["/settings"] && (
-          <AppShell title="설정" titleIcon={Settings}>
-            <SettingsPage visible={path === "/settings"} />
-          </AppShell>
-        )}
+        {everVisited.current["/settings"] && <SettingsPage visible={path === "/settings"} />}
       </div>
       <div hidden={path !== "/admin"} className="animate-tab-enter">
         {everVisited.current["/admin"] &&
           // 🔧 2026-09: 부스터디장(공동 검토자)도 "관리자" 경로에 들어올 수
           // 있다 — AdminPage 내부가 isAdmin/isCoReviewer를 보고 전체 탭
           // 구조를 보여줄지, "송출 P 대상 처리"만 보여줄지 스스로 정한다.
-          (isAdmin || isCoReviewer ? (
-            <AppShell title="관리자" titleIcon={ShieldCheck}>
-              <AdminPage visible={path === "/admin"} />
-            </AppShell>
-          ) : (
-            <AdminDeniedCard />
-          ))}
+          (isAdmin || isCoReviewer ? <AdminPage visible={path === "/admin"} /> : <AdminDeniedCard />)}
       </div>
     </MyStatusProvider>
   );

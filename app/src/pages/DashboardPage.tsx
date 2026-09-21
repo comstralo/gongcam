@@ -1,6 +1,8 @@
 import { useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { LayoutDashboard } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AppShell } from "@/components/layout/AppShell";
 import { StatusPage } from "@/pages/StatusPage";
 import { RosterPage } from "@/pages/RosterPage";
 
@@ -57,49 +59,61 @@ export function DashboardPage({ visible = true }: { visible?: boolean }) {
   }
 
   return (
-    <div className="flex w-full page-content flex-col items-center gap-4">
-      {/* 🔧 [사용자 지시] "제보"와 탭 디자인이 다른 곳도 다 제보에 맞춰서
-          통일" — 제보 화면(ReportPage)의 알약형(rounded-full) 탭과 동일한
-          모양으로 맞춘다. */}
-      <Tabs value={view} onValueChange={changeView} className="w-full">
-        <TabsList className="h-auto w-full rounded-full bg-secondary p-1">
-          <TabsTrigger
-            value="me"
-            className="h-auto flex-1 rounded-full py-2.5 font-mono text-xs tracking-wide uppercase data-active:shadow-sm"
-          >
-            My
-          </TabsTrigger>
-          <TabsTrigger
-            value="all"
-            className="h-auto flex-1 rounded-full py-2.5 font-mono text-xs tracking-wide uppercase data-active:shadow-sm"
-          >
-            RANK
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
-
-      <div className="w-full" hidden={view !== "me"}>
-        {everOpened.current.me && (
-          <StatusPage
-            cycleFileId={cycleFileId}
-            onSelectCycle={selectCycle}
-            cycleAnyFileId={cycleAnyFileId}
-            onSelectCycleAny={selectCycleAny}
-            visible={visible && view === "me"}
-          />
-        )}
+    <AppShell
+      title="대시보드"
+      titleIcon={LayoutDashboard}
+      stickyHeader={
+        // 🔧 [버그 수정, 2026-09-21 사용자 지시: "타이틀 + 탭바까지는
+        // 고정으로 하는게 나은거 같아. 그 하위 요소만 스크롤 되도록"] —
+        // 이 탭 UI를 AppShell의 stickyHeader 슬롯으로 넘겨, 타이틀과
+        // 함께 화면 상단에 고정되고 그 아래 본문만 스크롤되게 한다.
+        <div className="flex w-full page-content flex-col items-center">
+          {/* 🔧 [사용자 지시] "제보"와 탭 디자인이 다른 곳도 다 제보에
+              맞춰서 통일" — 제보 화면(ReportPage)의 알약형(rounded-full)
+              탭과 동일한 모양으로 맞춘다. */}
+          <Tabs value={view} onValueChange={changeView} className="w-full">
+            <TabsList className="h-auto w-full rounded-full bg-secondary p-1">
+              <TabsTrigger
+                value="me"
+                className="h-auto flex-1 rounded-full py-2.5 font-mono text-xs tracking-wide uppercase data-active:shadow-sm"
+              >
+                My
+              </TabsTrigger>
+              <TabsTrigger
+                value="all"
+                className="h-auto flex-1 rounded-full py-2.5 font-mono text-xs tracking-wide uppercase data-active:shadow-sm"
+              >
+                RANK
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+      }
+    >
+      <div className="flex w-full page-content flex-col items-center gap-4">
+        <div className="w-full" hidden={view !== "me"}>
+          {everOpened.current.me && (
+            <StatusPage
+              cycleFileId={cycleFileId}
+              onSelectCycle={selectCycle}
+              cycleAnyFileId={cycleAnyFileId}
+              onSelectCycleAny={selectCycleAny}
+              visible={visible && view === "me"}
+            />
+          )}
+        </div>
+        <div className="w-full" hidden={view !== "all"}>
+          {everOpened.current.all && (
+            <RosterPage
+              cycleFileId={cycleFileId}
+              onSelectCycle={selectCycle}
+              cycleAnyFileId={cycleAnyFileId}
+              onSelectCycleAny={selectCycleAny}
+              visible={visible && view === "all"}
+            />
+          )}
+        </div>
       </div>
-      <div className="w-full" hidden={view !== "all"}>
-        {everOpened.current.all && (
-          <RosterPage
-            cycleFileId={cycleFileId}
-            onSelectCycle={selectCycle}
-            cycleAnyFileId={cycleAnyFileId}
-            onSelectCycleAny={selectCycleAny}
-            visible={visible && view === "all"}
-          />
-        )}
-      </div>
-    </div>
+    </AppShell>
   );
 }
