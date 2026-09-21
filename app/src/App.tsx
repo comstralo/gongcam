@@ -1,6 +1,6 @@
-import { useRef, useState } from "react";
+import { lazy, Suspense, useRef, useState } from "react";
 import { HashRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
-import { MessageCircle } from "lucide-react";
+import { MessageCircle, Loader2 } from "lucide-react";
 import { AuthProvider } from "@/lib/auth/AuthContext";
 import { useAuth } from "@/lib/auth/useAuth";
 import { MyStatusProvider } from "@/lib/status/MyStatusContext";
@@ -13,11 +13,29 @@ import { OfflineBanner } from "@/components/layout/OfflineBanner";
 import { LoginPage } from "@/pages/LoginPage";
 import { CheckerPage } from "@/pages/CheckerPage";
 import { ReportPage } from "@/pages/ReportPage";
-import { ChatPage } from "@/pages/ChatPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { SettingsPage } from "@/pages/SettingsPage";
-import { AdminPage } from "@/pages/AdminPage";
 import { useVersionCheck } from "@/hooks/useVersionCheck";
+
+// 🔧 [번들 최적화, 2026-09-21] vite build가 2.69MB 단일 청크 경고를 계속
+// 냈다 — stream-chat/stream-chat-react(채팅 SDK, 전 회원이 매번 로드)와
+// 관리자 전용 대량 컴포넌트(AdminPage, 부스터디장 이상만 진입)가 가장 큰
+// 기여 후보였다. 이 둘만 동적 import로 분리한다 — 아래 MainViews의
+// "한 번 방문한 페이지는 hidden으로만 감추고 계속 마운트 유지" 구조와
+// React.lazy는 실제로 상충하지 않는다: lazy는 컴포넌트가 처음
+// resolve된 뒤로는 계속 그 결과를 재사용하고, 언마운트가 애초에 안
+// 일어나는 구조라 재로드 이슈도 생기지 않는다. named export라 default로
+// 감싸야 한다.
+const ChatPage = lazy(() => import("@/pages/ChatPage").then((m) => ({ default: m.ChatPage })));
+const AdminPage = lazy(() => import("@/pages/AdminPage").then((m) => ({ default: m.AdminPage })));
+
+function PageLoadingFallback() {
+  return (
+    <div className="flex w-full flex-1 items-center justify-center py-16">
+      <Loader2 className="size-6 animate-spin text-muted-foreground" />
+    </div>
+  );
+}
 
 type MainView = "/" | "/report" | "/chat" | "/settings" | "/admin";
 const MAIN_VIEWS: MainView[] = ["/", "/report", "/chat", "/settings", "/admin"];
@@ -112,12 +130,14 @@ function MainViews() {
             collapsibleTabBar={{ collapsed: chatTabBarCollapsed, onCollapsedChange: setChatTabBarCollapsed }}
             onBarHeightChange={setChatBarHeight}
           >
-            <ChatPage
-              visible={path === "/chat"}
-              tabBarCollapsed={chatTabBarCollapsed}
-              onTabBarCollapsedChange={setChatTabBarCollapsed}
-              tabBarHeight={chatBarHeight}
-            />
+            <Suspense fallback={<PageLoadingFallback />}>
+              <ChatPage
+                visible={path === "/chat"}
+                tabBarCollapsed={chatTabBarCollapsed}
+                onTabBarCollapsedChange={setChatTabBarCollapsed}
+                tabBarHeight={chatBarHeight}
+              />
+            </Suspense>
           </AppShell>
         )}
       </div>
@@ -129,7 +149,13 @@ function MainViews() {
           // 🔧 2026-09: 부스터디장(공동 검토자)도 "관리자" 경로에 들어올 수
           // 있다 — AdminPage 내부가 isAdmin/isCoReviewer를 보고 전체 탭
           // 구조를 보여줄지, "송출 P 대상 처리"만 보여줄지 스스로 정한다.
-          (isAdmin || isCoReviewer ? <AdminPage visible={path === "/admin"} /> : <AdminDeniedCard />)}
+          (isAdmin || isCoReviewer ? (
+            <Suspense fallback={<PageLoadingFallback />}>
+              <AdminPage visible={path === "/admin"} />
+            </Suspense>
+          ) : (
+            <AdminDeniedCard />
+          ))}
       </div>
     </MyStatusProvider>
   );
