@@ -427,10 +427,22 @@
      재생된다 — 그 상위 요소인 html 자체에 규칙이 없으면 체이닝이 막혀도
      html이 스스로 바운스할 수 있다. body는 이미 contain(pull-to-refresh용,
      체이닝만 막고 시각적 바운스는 허용)이었지만 html에는 아무 규칙도
-     없었다. html에 overscroll-behavior-y: none을 추가해 최종 종착지
-     자체의 바운스를 완전히 끈다. */
+     없었다.
+     🔧 [버그 수정, 2026-09-21 사용자 재보고: "대시보드에서 아래로 끌었을
+     때 되던 새로고침이 실종된 것 같다"] — 위 수정이 html에 전역으로
+     overscroll-behavior-y: none을 걸어, 채팅 화면뿐 아니라 앱 전체의
+     오버스크롤 바운스(iOS에서 usePullToRefresh 제스처가 의존하는 바로
+     그 네이티브 동작)를 함께 죽였다. 이 규칙은 채팅 화면(맨 위/맨 아래를
+     넘는 스와이프가 실제로 문제였던 곳)에만 필요하므로, 기본값은 다시
+     body와 동일한 contain(체이닝만 막고 시각적 바운스는 허용 — 다른
+     화면의 pull-to-refresh를 정상 동작시킴)으로 두고, ChatPage가
+     마운트되어 있는 동안만(useChatBodyClass, ChatPage.tsx) html에
+     .chat-no-bounce 클래스를 얹어 그때만 완전히 none으로 강화한다. */
   html {
     @apply font-sans;
+    overscroll-behavior-y: contain;
+  }
+  html.chat-no-bounce {
     overscroll-behavior-y: none;
   }
 }

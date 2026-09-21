@@ -1323,6 +1323,24 @@ export function ChatPage({
   const { dark } = useTheme();
   const viewportRect = useVisualViewportRect();
   const safeAreaInsetTop = useSafeAreaInsetTop();
+  // 🔧 [버그 수정, 2026-09-21 사용자 재보고: "대시보드에서 아래로 끌었을
+  // 때 되던 새로고침이 실종된 것 같다"] — index.css 참고. html의
+  // overscroll-behavior-y: none(iOS 러버밴드 바운스 억제, 2026-09-20
+  // 채팅 스크롤 버그 수정)이 앱 전체에 걸려 있어, 그 바운스에 의존하는
+  // usePullToRefresh 제스처가 대시보드를 포함한 모든 화면에서 죽어
+  // 있었다 — 원래 이 규칙은 채팅 화면에만 필요했다. ChatPage가 실제로
+  // 화면에 보이는 동안만 html에 .chat-no-bounce를 얹어, 그때만 바운스를
+  // 완전히 끄고 다른 화면은 다시 기본값(body와 동일한 contain, 시각적
+  // 바운스는 허용)으로 pull-to-refresh가 정상 동작하게 한다. ChatPage는
+  // 한 번 방문하면 hidden으로만 감춰지고 계속 마운트 유지되므로(App.tsx)
+  // visible prop으로 판단해야 한다 — 언마운트 시점이 아니라.
+  useEffect(() => {
+    if (!visible) return;
+    document.documentElement.classList.add("chat-no-bounce");
+    return () => {
+      document.documentElement.classList.remove("chat-no-bounce");
+    };
+  }, [visible]);
   // 🔧 [버그 수정, 2026-09-20 사용자 지시: "네비바 올라온 상태에서 입력
   // 모드로 가면 이렇게 되는데, 자연히 접히도록 해줘"] — 사용자가 탭바를
   // 수동으로 펼쳐둔 채(tabBarCollapsed=false) 입력창을 탭하면, 펼쳐진
