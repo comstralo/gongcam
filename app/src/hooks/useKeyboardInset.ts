@@ -112,8 +112,29 @@ function useSafeAreaInset(side: "top" | "bottom"): number {
 // 육안 확인상 정상), 이 47px 문서 스크롤 여지는 시각적으로 크게 문제되지
 // 않는 부작용이었다 — 채팅 스크롤 자체를 막는 훨씬 더 심각한 회귀를
 // 만드느니 이 여지는 그냥 허용한다(overflow 규칙 제거).
+// 🔧 [버그 수정, 2026-09-21 사용자 지시: "PC 크롬에서 배경 쪽에 대고
+// 스크롤하면 헤더가 사라진다"] — 이 훅은 iOS PWA standalone 전용으로
+// 만들었는데, window.visualViewport는 데스크톱 Chrome에도 존재해 이
+// 훅이 PC에서도 그대로 실행됐다. window.screen.height는 모니터 전체의
+// 물리적 해상도(예: 1080, 또는 Retina라면 더 큰 값)를 반환하는데, 이는
+// 브라우저 창(뷰포트)의 실제 높이와 무관하다 — 그 결과 html/body의
+// height가 실제 창 높이보다 훨씬 큰 화면 해상도값으로 강제되어 문서
+// 전체가 스크롤 가능해졌고, 배경(빈 여백)에 마우스 휠을 굴리면 헤더가
+// 문서 스크롤을 타고 화면 밖으로 밀려 올라갔다. 이 버그(레이아웃
+// 뷰포트가 안전영역만큼 줄어든 채 원복 안 되는 문제) 자체가 iOS의
+// standalone 모드 특유의 현상이므로, PWA standalone이 아닌 환경
+// (일반 브라우저 탭, 데스크톱)에서는 이 훅이 아무 일도 하지 않게 한다.
+function isStandalonePwa(): boolean {
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    // iOS Safari 구버전은 display-mode 미디어 쿼리 대신 이 프로퍼티로 판별한다.
+    (navigator as Navigator & { standalone?: boolean }).standalone === true
+  );
+}
+
 export function useDocumentHeightFix(): void {
   useEffect(() => {
+    if (!isStandalonePwa()) return;
     const viewport = window.visualViewport;
     if (!viewport) return;
 
