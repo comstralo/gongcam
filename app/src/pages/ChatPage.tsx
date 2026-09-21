@@ -1158,7 +1158,16 @@ function AdminChatArea({
             hasActiveChannel && "max-md:hidden"
           )}
         >
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          {/* 🔧 [버그 수정, 2026-09-21 사용자 지시: "채팅 목록에서 마우스
+              스크롤을 하면 위에 타이틀 쪽이 올라가버려"] — 이 목록(채팅
+              목록/회원 목록 공용)이 스크롤 끝(맨 위/아래)에 도달한 뒤에도
+              계속 휠을 굴리면, 그 넘친 스크롤 제스처가 조상으로 전파돼
+              PC 트랙패드/일부 마우스에서 페이지 자체가 살짝 흔들리는
+              바운스가 재현됐다. overscroll-behavior: contain으로 이
+              컨테이너 안에서 스크롤이 끝나면 그 이상은 조상으로 전파되지
+              않게 막는다 — 이 목록에 pull-to-refresh 등 다른 오버스크롤
+              용도가 없으므로 무해하다. */}
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             {sidebarView === "channels" ? (
               // 🔧 [사용자 지시, 2026-09-20] "목록만 보이고, 눌렀을 때
               // 개별 채팅창이 스플릿 돼서 보이도록" — Stream의
