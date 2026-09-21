@@ -26,5 +26,13 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src"]
+  // 🔧 [버그 수정, 2026-09-22] vitest.setup.ts(vitest.config.ts의
+  // setupFiles)가 "@testing-library/jest-dom/vitest"를 import해 vitest의
+  // Assertion 인터페이스에 커스텀 matcher(toBeInTheDocument 등)를
+  // declare module로 확장하는데, 이 include에 그 파일이 없어 tsc -b가
+  // 이 타입 확장을 전혀 모른 채 컴포넌트 테스트 파일들에서 타입 에러를
+  // 냈다(npx vitest run은 정상 통과 — 런타임 설정과 타입체크 설정이
+  // 서로 달라 벌어진 괴리). src와 나란히 include해 이 확장 선언이
+  // src/**/*.test.tsx 전체에 함께 적용되게 한다.
+  "include": ["src", "vitest.setup.ts"]
 }

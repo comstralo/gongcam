@@ -50,6 +50,15 @@ npm run test:watch  # watch 모드
 - `app/tsconfig.node.json`의 `include`에 `vitest.config.ts`/
   `vitest.setup.ts`를 추가해, 이 설정 파일들도 `npx tsc -b`(CI가
   돌리는 것과 동일)의 타입체크 대상이 되게 했다.
+- `app/tsconfig.app.json`의 `include`에도 `vitest.setup.ts`를 추가
+  했다(🔧 [버그 수정, 3차 라운드에서 발견] — jest-dom의 vitest 확장은
+  `declare module "vitest"`로 `Assertion` 인터페이스에 커스텀
+  matcher를 얹는데, 컴포넌트 테스트 파일이 속한 `tsconfig.app.json`
+  프로젝트가 이 setup 파일을 몰라 `npx tsc -b`가
+  `toBeInTheDocument`/`toHaveAttribute`/`toHaveStyle` 전부를 "존재하지
+  않는 프로퍼티"로 잘못 판정했다 — `npx vitest run`은 자체적으로 이
+  setup 파일을 로드해 정상 통과했으므로, 순수 로직 테스트(matcher를
+  안 쓰는)만 있던 1~2차 라운드에서는 이 괴리가 드러나지 않았다).
 - 테스트 파일은 `src/` 안에 소스와 나란히 둔다(`src/lib/date.test.ts`,
   `src/hooks/useNetworkStatus.test.ts` 등) — 백엔드가 `test/` 별도
   디렉터리를 쓰는 것과 다른 관례이지만, RTL 생태계(Vite/CRA 템플릿)의
@@ -151,10 +160,51 @@ npm run test:watch  # watch 모드
   모듈 인스턴스를 받아 격리했다 — 그러지 않으면 이전 테스트의
   `lastActivityAt`이 다음 테스트로 새어나간다.
 
+## 세 번째 라운드 — 첫 컴포넌트 테스트(RTL render) (2026-09-22)
+
+사용자 지시 "계속 진행해"에 따라 처음으로 실제 컴포넌트를 RTL의
+`render`+`screen`으로 테스트했다. 이미 훅 단위로 검증된 로직
+(`useNetworkStatus`/`idleTracker`)을 실제로 소비하는 화면에서, 그
+훅의 상태 변화가 실제 DOM(조건부 렌더링, `aria-hidden`, 텍스트,
+스타일)에 올바르게 반영되는지 확인한다. 4개 파일, 20개 케이스
+추가(10개 파일 84케이스 → 14개 파일 104케이스).
+
+- **`src/hooks/useTheme.test.ts`**(8케이스, 컴포넌트 테스트 착수
+  전 선행 작업) — `index.html`의 인라인 스크립트가 마운트 전에 이미
+  `.dark` 클래스를 반영해두는 전제를 그대로 재현(초기값을
+  `documentElement.classList`에서 읽음), `theme-color` meta 태그
+  갱신, `localStorage` 저장, 그리고 `localStorage` 접근이 막힌
+  환경(시크릿 모드 등)에서도 예외 없이 동작하는지.
+- **`src/components/layout/ThemeToggleButton.test.tsx`**(4케이스) —
+  이 프로젝트의 첫 RTL 컴포넌트 테스트. 클릭 시 아이콘/`aria-label`이
+  라이트↔다크로 정확히 전환되는지.
+- **`src/components/layout/OfflineBanner.test.tsx`**(4케이스) —
+  `useNetworkStatus`를 소비하는 화면. `navigator.onLine`을
+  `vi.stubGlobal`로 조작하고 `online`/`offline` 이벤트를 `act()`로
+  감싸 디스패치해 배너의 표시/숨김을 검증했다(🔧 최초 작성 시 `act()`
+  없이 이벤트를 디스패치해 "state update not wrapped in act" 경고와
+  함께 2개 테스트가 실패 — `useNetworkStatus.test.ts`에서 이미 썼던
+  패턴을 빠뜨린 실수, 바로 수정).
+- **`src/components/layout/IdleOverlay.test.tsx`**(4케이스) —
+  `idleTracker.ts`의 모듈 최상위 사이드 이펙트 특성(2차 라운드 참고)
+  때문에 이 파일에서도 `vi.resetModules()` + 동적 `import()`로 매
+  테스트마다 격리된 인스턴스를 받는다. `IDLE_ENTER_EVENT`/
+  `IDLE_WAKE_EVENT`를 직접 디스패치하는 단위 테스트뿐 아니라, 실제
+  유휴 임계값(`IDLE_THRESHOLD_MS`)을 페이크 타이머로 넘겨 이벤트
+  발행부터 오버레이 렌더링까지 전체 경로가 실제로 이어지는지 보는
+  통합 테스트도 포함했다.
+
+**부수 발견**: `@testing-library/jest-dom`의 vitest 타입 확장이
+`tsconfig.app.json`(컴포넌트 테스트 파일이 속한 프로젝트)에 로드되지
+않아 `npx tsc -b`가 `toBeInTheDocument` 등 커스텀 matcher 전부를
+타입 에러로 판정하고 있었다(파일 구조 절 참고) — 1~2차 라운드는
+matcher를 전혀 안 써서 드러나지 않았던 문제. `vitest.setup.ts`를
+`tsconfig.app.json`의 `include`에 추가해 해결했다.
+
 ## 다음 단계 (미착수)
 
-- 컴포넌트 테스트(RTL의 `render`+`screen`) 자체는 아직 한 건도
-  없다 — 두 라운드 모두 hooks/순수 로직에 한정했다(사용자 확인 없이
-  범위를 임의로 넓히지 않음).
 - `src/lib/checker/drawGrid.ts`(Canvas API 의존), `src/lib/push/vapid.ts`,
-  `src/hooks/useTheme.ts`, `src/lib/periodAlarm/*`는 아직 미착수.
+  `src/lib/periodAlarm/*`는 아직 미착수.
+- 컴포넌트 테스트는 아직 상태 없는/단순 조건부 렌더링 컴포넌트
+  4개뿐이다 — API 호출이나 폼 상태를 가진 더 복잡한 컴포넌트
+  (`SessionCard`, 대시보드 카드류 등)는 아직 다루지 않았다.
