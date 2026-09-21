@@ -81,4 +81,113 @@ test.describe("로그인 후 메인 화면 — DEV_LOGIN_SECRET 필요 시에만
       expect(box.y + box.height).toBeLessThanOrEqual(innerHeight);
     }
   });
+
+  // 🔧 [버그 수정, 2026-09-22 사용자 지시: "큰 화면에서 '제보' 탭에서
+  // 스크롤을 하면 스크롤이 되는데, 넘치는 영역이 없는데 왜 굳이
+  // 스크롤이 되는거야?"] — AppShell의 overflow-y-auto wrapper가
+  // TabBar를 가리지 않기 위한 padding-bottom을 콘텐츠 실제 높이와
+  // 무관하게 항상 적용해, 콘텐츠 자체는 안 넘쳐도 그 padding만으로
+  // scrollHeight가 clientHeight를 넘어섰다(실측: 제보 탭 diff 78px ≈
+  // padding 79px). 콘텐츠가 짧은 화면(제보 등)에서 스크롤 여지가 아예
+  // 없어야 한다는 것과, 콘텐츠가 실제로 긴 화면(대시보드)에서는 여전히
+  // 정상적으로 스크롤되어야 한다는 것을 대조로 검증한다 — 이 회귀가
+  // 재발하면 "짧은 화면은 스크롤 없음" 쪽에서, "패딩을 아예 없애 TabBar가
+  // 콘텐츠를 가림" 같은 반대쪽 회귀는 "긴 화면은 스크롤 있음" 쪽에서 잡힌다.
+  test("제보: 콘텐츠가 짧으면 스크롤 여지가 없다", async ({ authedPage: page }) => {
+    await page.goto("#/report");
+    const scrollable = page.locator(".overflow-y-auto").first();
+    await scrollable.waitFor({ state: "attached" });
+    const { scrollHeight, clientHeight } = await scrollable.evaluate((el) => ({
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+    }));
+    expect(scrollHeight - clientHeight).toBeLessThanOrEqual(1);
+  });
+
+  test("대시보드: 콘텐츠가 뷰포트보다 길면 정상적으로 스크롤된다", async ({ authedPage: page }) => {
+    // 🔧 [디버그 확인, 2026-09-22] 처음엔 "대시보드는 항상 콘텐츠가
+    // 뷰포트보다 길다"고 가정했는데, 실측 결과 iPad(810×1080, 세로로
+    // 긴 화면)에서는 대시보드 콘텐츠(910px)가 그 뷰포트에 정확히 다
+    // 들어가 diff:0이 정상이었다 — 이는 버그가 아니라 이번에 고친
+        // 수정이 의도대로 작동한다는 증거였다(콘텐츠가 안 넘치면 스크롤
+    // 여지도 없어야 함). "대시보드는 항상 넘친다"는 가정 자체가 기기
+    // 화면 크기에 의존해 깨지기 쉬우므로, 뷰포트를 인위적으로 작게
+    // 줄여 반드시 넘치는 상황을 만든 뒤 검증한다 — 기기와 무관하게
+    // 항상 같은 결론을 낸다.
+    await page.setViewportSize({ width: 400, height: 400 });
+    await page.goto("#/");
+    // header가 붙는 시점엔 아직 /status 응답이 안 와 카드가 비어 있어
+    // (diff:0) 이 테스트가 "우연히 통과"할 위험이 있었다(실측: header
+    // 붙은 직후 scrollHeight===clientHeight, 이후 실제 데이터
+    // 렌더링되며 벌어짐). "목표시간" 라벨(실제 상태 카드, 데이터 로드
+    // 후에만 렌더링)이 나타남을 기다려 데이터 로딩 완료를 확인한다.
+    await page.getByText("목표시간").first().waitFor({ state: "attached" });
+    const scrollable = page.locator(".overflow-y-auto").first();
+    const { scrollHeight, clientHeight } = await scrollable.evaluate((el) => ({
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+    }));
+    // 뷰포트를 400×400으로 좁혀 반드시 넘치게 만든 상태 — 이 값이
+    // 0에 가까우면 "패딩을 없애다가 콘텐츠 자체 오버플로 감지 로직까지
+    // 함께 망가뜨렸다"는 신호다.
+    expect(scrollHeight - clientHeight).toBeGreaterThan(50);
+  });
+});
+
+// 🔧 [2026-09-22] useKeyboardInset.ts의 isStandalonePwa() 가드가 지키는
+// 두 방향 불변식을 각각 검증한다: (1) PC/일반 브라우저 탭은 이 JS
+// 좌표계를 절대 타면 안 된다(순수 CSS 폴백만 써야 함) — 이게 지켜지지
+// 않으면 이번 세션에서 반복된 "PC까지 iOS 우회 코드가 오염시키는" 버그가
+// 재발한다. (2) PWA standalone에서는 이 보정이 실제로 동작해야 한다.
+//
+// 검증 대상은 TabBar가 펼쳐진 상태의 접기 버튼(TabBar.tsx, top/bottom
+// 삼항 로직 없음)이 아니라, 탭바가 접힌 뒤 나타나는 "펼치기" 버튼
+// (AppShell.tsx, viewportRect 기준 삼항 로직을 가진 바로 그 버튼)이다
+// — 데스크톱은 채팅 탭바 기본값이 펼침이라(App.tsx의 chatTabBarCollapsed
+// 초기값, PC 판정 시 false) 먼저 접기 버튼을 눌러 상태를 만들어야 한다.
+async function collapseTabBar(page: import("@playwright/test").Page) {
+  const expandBtn = page.locator('button[aria-label="하단 탭 메뉴 펼치기"]');
+  const collapseTrigger = page.locator('button[aria-label="하단 탭 메뉴 접기"]');
+  // 🔧 [디버그 확인, 2026-09-22] ChatPage는 React.lazy라 goto 직후 바로
+  // collapseTrigger.count()를 재면 아직 청크 로딩 전이라 0이 나와
+  // 클릭을 건너뛰고, 이후 "펼치기" 버튼을 영원히 기다리게 되는 경합이
+  // 있었다(실측 재현) — 두 버튼 중 하나가 나타날 때까지 먼저 기다린다.
+  await expandBtn.or(collapseTrigger).first().waitFor({ state: "attached" });
+  if ((await collapseTrigger.count()) > 0) {
+    await collapseTrigger.first().click();
+    await expandBtn.waitFor({ state: "attached" });
+  }
+  return expandBtn;
+}
+
+test.describe("PWA standalone 분기 — isStandalonePwa() 가드", () => {
+  test("일반 브라우저 탭(PWA 아님)에서는 v버튼이 항상 순수 CSS bottom로 고정된다", async ({
+    authedPage: page,
+  }) => {
+    await page.goto("#/chat");
+    const btn = await collapseTabBar(page);
+    const style = await btn.evaluate((el) => (el as HTMLElement).style.cssText);
+    // viewportRect 기반 JS 계산 경로를 탔다면 인라인 style에 "top:"이
+    // 들어간다 — PWA가 아니므로 반드시 "bottom:" 폴백만 써야 한다.
+    expect(style).toContain("bottom");
+    expect(style).not.toContain("top:");
+  });
+
+  test("PWA standalone에서는 v버튼이 화면 안에 정확히 위치한다(키보드 없을 때도)", async ({
+    authedPwaPage: page,
+  }) => {
+    await page.goto("#/chat");
+    const btn = await collapseTabBar(page);
+    const innerHeight = await page.evaluate(() => window.innerHeight);
+    const box = await btn.boundingBox();
+    expect(box, "PWA 모드에서 v버튼을 찾을 수 없음").not.toBeNull();
+    if (box) {
+      // 🔧 [버그 수정, 2026-09-21] 키보드가 없을 때(대부분의 경우)는
+      // viewportRect.top===0이라 이제 PWA에서도 순수 CSS bottom 폴백을
+      // 쓴다(f7ca6bb 커밋 이후 JS 좌표계였다가, iPad/iPhone 오차 문제로
+      // 되돌림) — 그래도 화면 안에 있어야 한다는 결과 자체는 동일.
+      expect(box.y).toBeGreaterThan(0);
+      expect(box.y + box.height).toBeLessThanOrEqual(innerHeight);
+    }
+  });
 });

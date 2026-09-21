@@ -42,13 +42,72 @@ async function injectSession(page: Page, session: { token: string; email: string
   }, session);
 }
 
-export const test = base.extend<{ authedPage: Page }>({
+// 🔧 [2026-09-22 사용자 지시: "좀 더 철저하고 구체적인 검증 환경을
+// 구성했으면 좋겠어"] — useKeyboardInset.ts의 isStandalonePwa()가 갈리는
+// 지점(iOS 홈 화면에 추가한 PWA인지 여부)에 따라 v버튼 위치 계산, 뷰포트
+// 높이 보정 등 이 세션에서 반복적으로 문제가 됐던 로직 전체가 켜지거나
+// 꺼진다 — 이 분기 자체를 테스트가 전혀 흉내 내지 못하면, "PC/일반
+// Safari 탭에서는 절대 이 JS 좌표계를 타면 안 된다"는 핵심 불변식이나
+// "PWA standalone에서는 이 보정이 정확히 동작해야 한다"는 반대쪽 불변식
+// 둘 다 기계적으로 검증할 방법이 없다.
+//
+// isStandalonePwa()는 두 조건의 OR라 하나만 흉내 내면 충분하다:
+// matchMedia("(display-mode: standalone)")는 window.matchMedia 자체를
+// 오버라이드해서, navigator.standalone(iOS 전용 비표준 프로퍼티, 표준
+// Navigator 타입에 없어 Object.defineProperty로 직접 주입해야 함)은
+// addInitScript로 값을 정의해서 각각 재현 가능함을 별도 스파이크
+// 테스트로 확인했다. 두 조건을 모두 흉내 내 실제 iOS PWA와 최대한
+// 가깝게 만든다.
+async function injectPwaStandalone(page: Page) {
+  await page.addInitScript(() => {
+    Object.defineProperty(window.navigator, "standalone", { value: true, configurable: true });
+    const originalMatchMedia = window.matchMedia?.bind(window);
+    window.matchMedia = (query: string) => {
+      if (query.includes("display-mode: standalone")) {
+        return {
+          matches: true,
+          media: query,
+          addListener: () => {},
+          removeListener: () => {},
+          addEventListener: () => {},
+          removeEventListener: () => {},
+          dispatchEvent: () => true,
+          onchange: null,
+        } as MediaQueryList;
+      }
+      return originalMatchMedia ? originalMatchMedia(query) : ({ matches: false, media: query } as MediaQueryList);
+    };
+  });
+}
+
+export const test = base.extend<{ authedPage: Page; pwaPage: Page; authedPwaPage: Page }>({
   authedPage: async ({ page, request }, use, testInfo) => {
     if (!DEV_LOGIN_SECRET || !TEST_EMAIL) {
       testInfo.skip(true, "E2E_DEV_LOGIN_SECRET/E2E_TEST_EMAIL이 .env.test에 없어 로그인 필요 테스트를 건너뜁니다 (tests/e2e/README.md 참고)");
       return;
     }
     const session = await fetchDevSessionToken(request);
+    await injectSession(page, session);
+    await use(page);
+  },
+
+  // 로그인은 필요 없고 isStandalonePwa()만 true로 만들고 싶을 때(로그인
+  // 페이지의 PWA 렌더링 등).
+  pwaPage: async ({ page }, use) => {
+    await injectPwaStandalone(page);
+    await use(page);
+  },
+
+  // 로그인 + PWA standalone을 모두 흉내 낸다 — 이 세션에서 문제가 된
+  // 로직(v버튼 위치, 뷰포트 높이 보정 등) 대부분이 "로그인 후 메인
+  // 화면 + PWA" 조합에서만 실제로 켜지므로, 이 조합을 검증할 때 쓴다.
+  authedPwaPage: async ({ page, request }, use, testInfo) => {
+    if (!DEV_LOGIN_SECRET || !TEST_EMAIL) {
+      testInfo.skip(true, "E2E_DEV_LOGIN_SECRET/E2E_TEST_EMAIL이 .env.test에 없어 로그인 필요 테스트를 건너뜁니다 (tests/e2e/README.md 참고)");
+      return;
+    }
+    const session = await fetchDevSessionToken(request);
+    await injectPwaStandalone(page);
     await injectSession(page, session);
     await use(page);
   },
