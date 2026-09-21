@@ -95,7 +95,18 @@ jobs:
       # 설치해야 한다. --with-deps로 CI 러너에 필요한 시스템 라이브러리도
       # 함께 설치한다.
       - run: npx playwright install --with-deps chromium webkit
-      - run: npx playwright test tests/e2e/layout.spec.ts
+      # 🔧 [버그 수정, 2026-09-22 배포 후 실측] 기본 병렬(GitHub Actions
+      # 러너 2코어 → 2워커)로 7개 프로젝트를 돌리면, 로그인 필요 테스트
+      # 다수가 거의 동시에 /dev/login + /status를 프로덕션 백엔드에
+      # 몰아쳐 Google Sheets API가 순간적으로 쓰로틀링되는 것으로
+      # 보이는 증상(응답 자체를 못 받음, status:-1)을 trace 분석으로
+      # 확인했다 — retries를 2로 늘려 흡수를 시도했으나 오히려 실행
+      # 시간만 늘고(4~5분→11분 36초) 실패 프로젝트 수가 더 넓어졌다
+      # (동시 재시도가 부하를 더 키운 것으로 추정). --workers=1로
+      # 완전히 순차 실행해 동시 요청 자체를 없앤다 — 실행 시간은 늘지만
+      # (프로덕션 API 호출 부하가 배포 파이프라인의 유일한 게이트이므로
+      # 안전 쪽을 택함, 사용자 확인) 산발적 실패의 근본 원인을 제거한다.
+      - run: npx playwright test tests/e2e/layout.spec.ts --workers=1
         env:
           E2E_DEV_LOGIN_SECRET: ${{ secrets.E2E_DEV_LOGIN_SECRET }}
           E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
