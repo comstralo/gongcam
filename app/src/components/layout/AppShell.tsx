@@ -176,7 +176,15 @@ export function AppShell({
         "flex w-full flex-col items-center gap-4.5 px-2.5 sm:px-4 page-pt-safe",
         fitToScreen
           ? "mobile-landscape:h-dvh mobile-landscape:overflow-hidden mobile-landscape:gap-2 mobile-landscape:px-2 mobile-landscape:pt-2 mobile-landscape:pb-2"
-          : "min-h-dvh",
+          : collapsibleTabBar
+            ? "min-h-dvh"
+            : // 🔧 [버그 수정, 2026-09-21] 일반 페이지(collapsibleTabBar/
+              // fitToScreen 둘 다 아님)는 이제 children을 내부 스크롤
+              // wrapper로 감싸므로(아래), 이 최상위 자체는 정확히
+              // 100dvh로 고정해 문서(html/body) 자체가 절대 뷰포트를
+              // 넘지 않게 한다 — 스크롤은 오직 그 wrapper 안에서만
+              // 일어난다.
+              "h-dvh overflow-hidden",
         session && fitToScreen && "mobile-portrait:pb-(--shell-pb-portrait)"
       )}
       // 🔧 [버그 수정] 원래 pb를 Tailwind 임의값 calc()(3항 이상이라
@@ -224,18 +232,12 @@ export function AppShell({
       // 이면 기존 매직넘버로 안전하게 폴백한다.
       style={
         {
-          paddingBottom:
-            session && !fitToScreen && !collapsibleTabBar
-              ? measuredTabBarHeight !== null
-                ? `${measuredTabBarHeight + 8}px`
-                : "calc(32px + 46px + env(safe-area-inset-bottom, 0px))"
-              : undefined,
           "--shell-pb-portrait": "calc(32px + 46px + env(safe-area-inset-bottom, 0px))",
         } as CSSProperties
       }
     >
       {title && (
-        <header className="flex w-full page-content flex-col gap-0.5">
+        <header className="flex w-full page-content flex-col gap-0.5 shrink-0">
           <div className="flex items-end justify-between gap-2">
             <div className="flex flex-col gap-0.5">
               {!hideEyebrow && (
@@ -262,7 +264,38 @@ export function AppShell({
           </div>
         </header>
       )}
-      {children}
+      {/* 🔧 [버그 수정, 2026-09-21 사용자 지시: "flex 내부 스크롤 구조로
+          전환"] — 예전 구조(min-h-dvh + paddingBottom)는 "문서(html/body)
+          자체가 스크롤"되는 방식이라, 헤더+콘텐츠+하단 여백을 합친 총
+          높이가 뷰포트를 살짝만 넘어도(실측 없이 손으로 맞춘 매직넘버
+          여백이 실제 TabBar 높이와 어긋나면 특히) 문서 전체에 스크롤
+          여지가 생겼다 — 콘텐츠가 짧은 페이지(제보 등)도 로드 직후부터
+          살짝 스크롤된 상태로 보이는 원인이었다(사용자 실측: 헤더 상단
+          테두리가 잘려 보임).
+          collapsibleTabBar/fitToScreen 화면(채팅/체커)은 이미 각자
+          자체적인 스크롤/뷰포트 계산을 갖고 있어 이 구조 변경 대상에서
+          제외한다(children을 그대로 flex 자식으로 둔다 — 기존 동작
+          그대로 유지). 그 외 일반 페이지만 이 wrapper(flex-1 min-h-0
+          overflow-y-auto)로 감싸, 문서 자체는 절대 뷰포트를 넘지 않고
+          콘텐츠가 길면 이 wrapper "안에서만" 스크롤되게 한다 — 탭바
+          높이만큼의 여백은 이 wrapper 안쪽 padding-bottom으로 주므로,
+          그 여백이 위 문서 총 높이 계산에 전혀 관여하지 않는다(콘텐츠가
+          아무리 짧아도 문서가 뷰포트를 넘어설 수 없는 구조). */}
+      {!collapsibleTabBar && !fitToScreen ? (
+        <div
+          className="flex w-full min-h-0 flex-1 flex-col items-center gap-4.5"
+          style={{
+            paddingBottom:
+              measuredTabBarHeight !== null
+                ? `${measuredTabBarHeight + 8}px`
+                : "calc(32px + 46px + env(safe-area-inset-bottom, 0px))",
+          }}
+        >
+          {children}
+        </div>
+      ) : (
+        children
+      )}
       {(() => {
         // 🔧 [버그 수정, 2026-09-20 사용자 지시: "입력 상태에서는 다시
         // 네비바를 끌어 올릴 이유가 없잖아? ^ 표시가 보이지 않길
