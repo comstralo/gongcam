@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { DividedValue, SubRow, TintedPill, STATUS_DAYS, statusPillTone } from "@/components/dashboard/shared";
 import { CycleSwitcher } from "@/components/dashboard/CycleSwitcher";
 import {
@@ -659,6 +660,13 @@ export function ReportReviewList({
   const loadingRef = useRef(false);
   const [decidingId, setDecidingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // 🔧 [UI 일관성, 2026-09-21] "기록 삭제" 확인을 브라우저 기본
+  // window.confirm() 대신 앱 다이얼로그로 받는다 — 강제퇴실류가 이미
+  // ExitProcessDialog로 확인받는 것과 같은 수준의 파괴적 액션인데 이
+  // 화면만 네이티브 confirm(폰트/다크모드 미대응)이 튀어나와 이질감이
+  // 있었다(전수조사에서 발견). 삭제 대상 하나만 담아두고, 다이얼로그의
+  // "삭제" 버튼이 눌리면 실제 삭제(deleteCapture)를 실행한다.
+  const [pendingDeleteItem, setPendingDeleteItem] = useState<CaptureReviewItem | null>(null);
   const [votingId, setVotingId] = useState<string | null>(null);
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -1096,7 +1104,6 @@ export function ReportReviewList({
   // "페널티 적용 (불가)"로 처리된 항목이면 시트에 반영된 페널티·제보상점을
   // 함께 취소되도록 정보를 같이 보낸다.
   function deleteCapture(item: CaptureReviewItem) {
-    if (!window.confirm("이 제보 기록을 완전히 삭제할까요? 되돌릴 수 없습니다.")) return;
     // 🧪 목업 중엔 실제 삭제 API를 호출하지 않고 목록에서만 로컬로 제거한다.
     if (showingDummy) {
       setItems((prev) => (prev ? prev.filter((i) => i.id !== item.id) : prev));
@@ -1197,6 +1204,33 @@ export function ReportReviewList({
         }
       />
       <CollapsiblePanel className="flex flex-col gap-4">
+        <Dialog open={pendingDeleteItem !== null} onOpenChange={(open) => !open && setPendingDeleteItem(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>기록 삭제</DialogTitle>
+              <DialogDescription>이 제보 기록을 완전히 삭제할까요? 되돌릴 수 없습니다.</DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col gap-2">
+              <Button
+                variant="destructive"
+                className="w-full sm:h-12 sm:text-base"
+                onClick={() => {
+                  if (pendingDeleteItem) deleteCapture(pendingDeleteItem);
+                  setPendingDeleteItem(null);
+                }}
+              >
+                삭제
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full sm:h-12 sm:text-base"
+                onClick={() => setPendingDeleteItem(null)}
+              >
+                취소
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
         {cycleFileIdProp === undefined && (
           <>
             <CycleSwitcher selectedFileId={cycleFileId} onSelect={setCycleFileId} includeUnpaid />
@@ -1880,7 +1914,7 @@ export function ReportReviewList({
                                       size="icon"
                                       className="sm:h-12 sm:w-12 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
                                       disabled={deletingId === item.id}
-                                      onClick={() => deleteCapture(item)}
+                                      onClick={() => setPendingDeleteItem(item)}
                                       aria-label="기록 삭제"
                                     >
                                       <Trash2 className="size-4" strokeWidth={ICON_STROKE.default} />
