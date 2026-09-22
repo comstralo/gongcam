@@ -68,14 +68,14 @@ jobs:
       # 설치해야 한다. --with-deps로 CI 러너에 필요한 시스템 라이브러리도
       # 함께 설치한다.
       - run: npx playwright install --with-deps chromium webkit
-      # 🔧 [원인 추적 진행 중, 2026-09-22] --workers=1(완전 순차 실행)은
-      # "동시 부하가 원인"이라는 가설(반증됨 — 순차로도 동일하게 실패)
-      # 검증을 위해 넣었다. 그 가설 자체는 틀렸지만, 그 상태에서
-      # playwright.config.ts의 list 리포터 + layout.spec.ts의 [DIAG]
-      # 로그로 원인을 계속 좁히는 중이라 지금은 그대로 유지한다(사용자
-      # 확인: "진단 코드는 남겨두고 계속 원인 추적") — 원인 확정 후
-      # 이 옵션과 진단 코드를 한 번에 정리할 예정.
-      - run: npx playwright test tests/e2e/layout.spec.ts --workers=1
+      # 🔧 [2026-09-22 사용자 지시: "그래서 E2E 문제는 언제 해결되는거야..
+      # 맨날 확인만 한다 하고 실제 개선이 안되고 있잖아" 후속] 간헐적
+      # 실패의 실제 원인은 "동시 부하"가 아니라(그 가설은 --workers=1
+      # 순차 실행에서도 동일하게 실패해 반증됐다) 문제 테스트들이 실제
+      # 프로덕션 /status 응답 타이밍에 의존하던 것이었다 —
+      # layout.spec.ts를 mockStatusRoute로 전환해 근본 원인을 없앴으므로,
+      # 더 이상 근거 없는 순차 실행으로 CI 시간을 늘릴 이유가 없다.
+      - run: npx playwright test tests/e2e/layout.spec.ts
         env:
           E2E_DEV_LOGIN_SECRET: ${{ secrets.E2E_DEV_LOGIN_SECRET }}
           E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}

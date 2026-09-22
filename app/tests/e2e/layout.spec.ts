@@ -1,4 +1,4 @@
-import { test, expect, delayApiRoute, failApiRoute } from "./fixtures";
+import { test, expect, delayApiRoute, failApiRoute, mockStatusRoute } from "./fixtures";
 
 // 🔧 [2026-09-21 사용자 지시: "다양한 환경 대응을 위한 도구를 체계적으로
 // 적용"] 이번 세션에서 반복된 레이아웃 버그(문서가 뷰포트보다 커져 로드
@@ -137,39 +137,22 @@ test.describe("로그인 후 메인 화면 — DEV_LOGIN_SECRET 필요 시에만
     // 화면 크기에 의존해 깨지기 쉬우므로, 뷰포트를 인위적으로 작게
     // 줄여 반드시 넘치는 상황을 만든 뒤 검증한다 — 기기와 무관하게
     // 항상 같은 결론을 낸다.
-    // 🔧 [임시 진단, 2026-09-22] CI에서만 이 테스트가 재현성 있게
-    // 타임아웃나는 원인을 찾기 위해, /status 요청의 실제 타이밍을
-    // 콘솔에 기록한다 — 원인 확정 후 제거할 것.
-    const diagStart = Date.now();
-    console.log(`[DIAG] 테스트 시작 @${new Date().toISOString()}`);
-    page.on("requestfinished", (req) => {
-      if (req.url().includes("/status") && req.resourceType() !== "preflight") {
-        req
-          .response()
-          .then((res) => console.log(`[DIAG] /status finished: status=${res?.status()} timing=${JSON.stringify(req.timing())}`));
-      }
-    });
-    page.on("requestfailed", (req) => {
-      if (req.url().includes("/status")) {
-        console.log(`[DIAG] /status FAILED: ${req.failure()?.errorText}`);
-      }
-    });
-    page.on("request", (req) => {
-      if (req.url().includes("/status")) {
-        console.log(`[DIAG] /status 요청 시작 @${new Date().toISOString()}`);
-      }
-    });
+    // 🔧 [2026-09-22 사용자 지시: "그래서 E2E 문제는 언제 해결되는거야..
+    // 맨날 확인만 한다 하고 실제 개선이 안되고 있잖아"] — 이 테스트가
+    // CI에서 간헐적으로 타임아웃나던 원인은 실제 프로덕션 /status
+    // 응답의 지연이었다(여러 차례 trace 분석으로 확인). 이 테스트의
+    // 관심사는 "데이터가 로드된 뒤 스크롤이 정상 동작하는가"이지 "/status
+    // API 자체가 빠른가"가 아니므로, mockStatusRoute로 즉시 응답하게
+    // 만들어 서버 타이밍 의존을 완전히 없앤다.
+    await mockStatusRoute(page);
     await page.setViewportSize({ width: 400, height: 400 });
-    console.log(`[DIAG] setViewportSize 완료 ${Date.now() - diagStart}ms`);
     await page.goto("#/", { timeout: 15000 });
-    console.log(`[DIAG] goto 완료까지 ${Date.now() - diagStart}ms`);
     // header가 붙는 시점엔 아직 /status 응답이 안 와 카드가 비어 있어
     // (diff:0) 이 테스트가 "우연히 통과"할 위험이 있었다(실측: header
     // 붙은 직후 scrollHeight===clientHeight, 이후 실제 데이터
     // 렌더링되며 벌어짐). "목표시간" 라벨(실제 상태 카드, 데이터 로드
     // 후에만 렌더링)이 나타남을 기다려 데이터 로딩 완료를 확인한다.
     await page.getByText("목표시간").first().waitFor({ state: "attached" });
-    console.log(`[DIAG] 목표시간 attach까지 ${Date.now() - diagStart}ms`);
     const scrollable = page.locator(".overflow-y-auto").first();
     const { scrollHeight, clientHeight } = await scrollable.evaluate((el) => ({
       scrollHeight: el.scrollHeight,
@@ -372,6 +355,13 @@ test.describe("콘솔 에러 감지", () => {
 // 깨보고, 그래도 레이아웃 불변식이 유지되는지 확인한다.
 test.describe("네트워크 지연/실패 시 레이아웃", () => {
   test("/me/role이 3초 지연되어도 로딩 중 화면이 뷰포트를 넘지 않는다", async ({ authedPage: page }) => {
+    // 🔧 [2026-09-22 사용자 지시: "그래서 E2E 문제는 언제 해결되는거야..
+    // 맨날 확인만 한다 하고 실제 개선이 안되고 있잖아"] — 이 테스트의
+    // 관심사는 "/me/role 지연에 레이아웃이 버티는가"이지 "/status가
+    // 빠른가"가 아닌데, 아래 "목표시간" 대기가 실제 프로덕션 /status에
+    // 의존해 CI에서 간헐적으로 타임아웃났다 — mock으로 서버 타이밍
+    // 의존을 없앤다.
+    await mockStatusRoute(page);
     await delayApiRoute(page, "/me/role", 3000);
     await page.goto("#/");
     // sessionVerified가 아직 false인 로딩 구간 — App.tsx가 이 동안
@@ -394,6 +384,9 @@ test.describe("네트워크 지연/실패 시 레이아웃", () => {
   test("/me/role이 500을 반환해도(401이 아님) 로그아웃되지 않고 레이아웃이 유지된다", async ({
     authedPage: page,
   }) => {
+    // 🔧 [2026-09-22, 위 테스트와 같은 이유] "목표시간" 대기가 실제
+    // /status에 의존하지 않도록 mock한다.
+    await mockStatusRoute(page);
     await failApiRoute(page, "/me/role", 500);
     await page.goto("#/");
     // AuthContext는 401만 로그아웃으로 처리하므로, 500은 sessionVerified만
