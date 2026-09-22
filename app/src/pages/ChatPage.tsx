@@ -127,6 +127,50 @@ function ChatDateSeparator({ date, floating }: { date: Date; floating?: boolean 
 // 리플로우 → 재추가"하는 imperative 방식으로 흔들림을 재생한다 —
 // React state 동일성 판단이 전혀 개입하지 않아 몇 번을 연속으로
 // 클릭해도, 대상이 이미 화면에 보이든 멀리 있든 항상 동작한다.
+// 🔧 [버그 수정, 2026-09-22 사용자 지시: "'나에게 답장' 처럼 답장 메시지
+// 포함된 버블은 답장 영역만이 아니라 버블 전체를 누르면 이동 이벤트가
+// 발생하게 해줘"] — 원래 jumpToMessage + 흔들림 재생 로직이
+// ChatQuotedMessage(인용 카드 자신)의 onClick 안에만 있어, 같은 버블
+// 안이라도 카드 아래 본문 텍스트를 누르면 아무 반응이 없었다. 이 로직을
+// 공용 함수로 뽑아 아래 SwipeableMessage의 버블 wrapper 클릭에서도 함께
+// 쓴다.
+function jumpToQuotedMessage(jumpToMessage: (id: string) => void, targetId: string) {
+  jumpToMessage(targetId);
+
+  // 최근에 시작된 폴링만 유효하도록, 이 클릭 시점의 토큰을 클로저에
+  // 담아 이후 폴링 루프 안에서 계속 자기 자신을 확인한다(별도 정리
+  // 로직 없이도, 새 클릭이 들어오면 이전 루프는 새 토큰과 다음 프레임
+  // 비교에서 자연히 낡은 스크롤 상태를 관찰하게 되지만, 최종적으로
+  // el.classList 토글 자체는 멱등이라 무해하다).
+  let lastTop: number | null = null;
+  let stableCount = 0;
+  const checkSettled = () => {
+    const el = document.querySelector<HTMLElement>(`[data-shake-target="${CSS.escape(targetId)}"]`);
+    if (!el) {
+      requestAnimationFrame(checkSettled);
+      return;
+    }
+    const top = el.getBoundingClientRect().top;
+    if (lastTop !== null && Math.abs(top - lastTop) < 1) {
+      stableCount++;
+    } else {
+      stableCount = 0;
+    }
+    lastTop = top;
+    if (stableCount >= 2) {
+      // 같은 요소를 연속으로 흔들 때 CSS 애니메이션이 "이미 실행 중"이라
+      // 재시작이 안 되는 것을 막기 위해, 클래스를 먼저 지우고 강제로
+      // 리플로우(offsetWidth 읽기)시킨 뒤 다시 추가한다.
+      el.classList.remove("chat-shake");
+      void el.offsetWidth;
+      el.classList.add("chat-shake");
+      return;
+    }
+    requestAnimationFrame(checkSettled);
+  };
+  requestAnimationFrame(checkSettled);
+}
+
 function ChatQuotedMessage() {
   const { message } = useMessageContext();
   const { jumpToMessage } = useChannelActionContext();
@@ -136,41 +180,7 @@ function ChatQuotedMessage() {
   function handleClick(e: React.MouseEvent<HTMLDivElement>) {
     e.stopPropagation();
     e.preventDefault();
-    const targetId = quoted_message!.id;
-    jumpToMessage(targetId);
-
-    // 최근에 시작된 폴링만 유효하도록, 이 클릭 시점의 토큰을 클로저에
-    // 담아 이후 폴링 루프 안에서 계속 자기 자신을 확인한다(별도 정리
-    // 로직 없이도, 새 클릭이 들어오면 이전 루프는 새 토큰과 다음 프레임
-    // 비교에서 자연히 낡은 스크롤 상태를 관찰하게 되지만, 최종적으로
-    // el.classList 토글 자체는 멱등이라 무해하다).
-    let lastTop: number | null = null;
-    let stableCount = 0;
-    const checkSettled = () => {
-      const el = document.querySelector<HTMLElement>(`[data-shake-target="${CSS.escape(targetId)}"]`);
-      if (!el) {
-        requestAnimationFrame(checkSettled);
-        return;
-      }
-      const top = el.getBoundingClientRect().top;
-      if (lastTop !== null && Math.abs(top - lastTop) < 1) {
-        stableCount++;
-      } else {
-        stableCount = 0;
-      }
-      lastTop = top;
-      if (stableCount >= 2) {
-        // 같은 요소를 연속으로 흔들 때 CSS 애니메이션이 "이미 실행
-        // 중"이라 재시작이 안 되는 것을 막기 위해, 클래스를 먼저 지우고
-        // 강제로 리플로우(offsetWidth 읽기)시킨 뒤 다시 추가한다.
-        el.classList.remove("chat-shake");
-        void el.offsetWidth;
-        el.classList.add("chat-shake");
-        return;
-      }
-      requestAnimationFrame(checkSettled);
-    };
-    requestAnimationFrame(checkSettled);
+    jumpToQuotedMessage(jumpToMessage, quoted_message!.id);
   }
 
   return (
@@ -425,6 +435,7 @@ function useSenderNameToShow(): string | null {
 function SwipeableMessage() {
   const { message, isMyMessage } = useMessageContext();
   const messageComposer = useMessageComposerController();
+  const { jumpToMessage } = useChannelActionContext();
   const { processedMessages } = useMessageListContext();
   const showUnreadOne = useUnreadOneBadge();
   const senderName = useSenderNameToShow();
@@ -567,16 +578,24 @@ function SwipeableMessage() {
       );
       return;
     }
-    // SVG 아이콘(예: 답장 화살표) 위를 눌렀을 때 e.target이 SVGElement일 수
-    // 있는데, 일부 환경에서 SVGElement에는 HTMLElement.click()이 없어
-    // "targetToClick.click is not a function"으로 클릭 합성이 실패했다
-    // (실측: 콘솔에 TypeError 발생). click()을 가진 가장 가까운 조상까지
-    // 올라가 안전하게 잡는다.
+    // 🔧 [버그 수정, 2026-09-22 사용자 지시: "'나에게 답장' 처럼 답장
+    // 메시지 포함된 버블은 답장 영역만이 아니라 버블 전체를 누르면 이동
+    // 이벤트가 발생하게 해줘 ... ㅇㅇ 쪽을 터치하면 이동이 안되는 것
+    // 같거든"] — 원래 "click" in target 검사는 모든 Element(텍스트의
+    // <p>조차)가 참이라(HTMLElement는 전부 click 메서드를 가짐), 실제로는
+    // 아무 onClick도 없는 순수 텍스트를 눌러도 이 텍스트 자신에게
+    // click()을 합성해버렸다 — 실측 확인: "ㅇㅇ" 텍스트를 클릭하면
+    // pointerDownTargetRef.current가 그 <p> 요소 자체가 되어, 아래
+    // "이 메시지가 답장이면 원본으로 이동" 분기(도달 불가)보다 먼저
+    // "클릭 가능 요소를 눌렀다" 분기가 걸려 그 <p>에 무의미한 click()만
+    // 합성되고 끝났다(원본 elseif가 && pointerDownTargetRef.current로
+    // 분기하므로). 이 로직의 실제 의도(SVG 아이콘 위를 눌러도 Stream이
+    // onClick을 건 실제 버튼/링크까지 안전하게 찾기)에 맞게, 버튼/링크/
+    // role=button 요소이거나 그 자손일 때만 잡는다 — 순수 텍스트/이미지
+    // 등은 이제 null로 남아 아래 "버블 전체 클릭 시 답장 원본으로 이동"
+    // 분기가 정상적으로 실행된다.
     const target = e.target as Element;
-    pointerDownTargetRef.current =
-      "click" in target && typeof (target as HTMLElement).click === "function"
-        ? (target as HTMLElement)
-        : target.closest<HTMLElement>("button, a, [role='button']");
+    pointerDownTargetRef.current = target.closest<HTMLElement>("button, a, [role='button']");
     pointerDownPosRef.current = { x: e.clientX, y: e.clientY };
     activePointerIdRef.current = e.pointerId;
     // 🔧 [버그 수정, PC 브라우저] 왼쪽으로 당기면 버블 자체가 translateX로
@@ -899,6 +918,18 @@ function SwipeableMessage() {
           targetToClick.click();
         }
       }, 0);
+    } else if (totalMoveDistance < MOVE_DEAD_ZONE && message.quoted_message) {
+      // 🔧 [버그 수정, 2026-09-22 사용자 지시: "'나에게 답장' 처럼 답장
+      // 메시지 포함된 버블은 답장 영역만이 아니라 버블 전체를 누르면
+      // 이동 이벤트가 발생하게 해줘 ... ㅇㅇ 쪽을 터치하면 이동이 안되는
+      // 것 같거든"] — 위 분기(pointerDownTargetRef.current 존재)는
+      // 클릭 가능한 요소(인용 카드, 이미지 등) 위를 직접 눌렀을 때만
+      // 잡힌다. 인용 카드 아래 본문 텍스트("ㅇㅇ")처럼 클릭 핸들러가
+      // 없는 순수 텍스트 위를 클릭하면 pointerDownTargetRef.current가
+      // null이라 이 클릭이 통째로 무시됐다 — 이 메시지가 답장(quoted)
+      // 메시지라면, 클릭 가능한 요소가 아닌 버블 영역을 눌렀을 때도
+      // 원본 메시지로 이동시킨다(카카오톡처럼 버블 전체가 이동 트리거).
+      jumpToQuotedMessage(jumpToMessage, message.quoted_message.id);
     }
     pointerDownTargetRef.current = null;
     pointerDownPosRef.current = null;
