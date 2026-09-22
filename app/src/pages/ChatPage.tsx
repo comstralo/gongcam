@@ -1602,61 +1602,124 @@ export function ChatPage({
   // scrollTop - clientHeight)"를 리사이즈 전후로 동일하게 맞춰야 한다.
   const distanceFromBottomRef = useRef(0);
   useEffect(() => {
-    // 🔧 [버그 수정, 2026-09-21 사용자 지시: "네가 보고 있는 것만 계속
-    // 반복해서 짚지 말고 연관 코드도 전수 조사해서 뭐가 문제인지
-    // 철저하게 밝혀"] — 이 effect가 계속 효과가 없던 진짜 원인을
-    // Stream 소스(MessageList.mjs)에서 찾았다: onScroll/ref=setListElement
-    // (실제 스크롤 컨테이너, Stream 내부에서 "listElement"라 부르는
-    // 그 요소)가 걸리는 클래스는 messageListClass(기본값
-    // "str-chat__message-list")이고, ".str-chat__message-list-scroll"은
-    // 그 "자식"(InfiniteScroll 컴포넌트)일 뿐이다 — 실측(computed
-    // overflow-y: visible, scrollTop 대입 즉시 0으로 원복, scroll 이벤트
-    // 자체가 전혀 발생 안 함)도 이와 정확히 일치한다: overflow가 실제로
-    // 걸린 스크롤 컨테이너가 아니라 그 안의 콘텐츠 래퍼를 건드리고
-    // 있었으니 당연히 아무 효과가 없었다. 지금까지의 모든 스크롤 보정
-    // 시도(53ad3aa, 55ab7fa 등)가 잘못된 셀렉터를 썼던 것 — 실제
-    // 스크롤 컨테이너인 .str-chat__message-list로 바로잡는다.
-    const scrollEl = containerRef.current?.querySelector<HTMLElement>(".str-chat__message-list");
-    if (!scrollEl) return;
-    // 대화창을 처음 여는 시점(마운트 직후, wasNearBottomRef 초기값 true)엔
-    // 사용자가 아직 아무 데도 스크롤하지 않았으니 맨 아래가 맞다. 이후
-    // 키보드로 인한 리사이즈에서는, "리사이즈 직전 스크롤이 바닥 근처였을
-    // 때만" 다시 맨 아래로 따라간다(과거 메시지를 읽던 도중이면 그 위치를
-    // 그대로 둔다) — 바닥 근처의 판정 여유(48px)는 메시지 1줄 높이 정도의
-    // 오차를 흡수한다.
+    const containerEl = containerRef.current;
+    if (!containerEl) return;
     const BOTTOM_THRESHOLD_PX = 48;
-    if (wasNearBottomRef.current) {
-      scrollEl.scrollTop = scrollEl.scrollHeight;
-    } else {
-      // 바닥 근처가 아니었다면(과거 메시지를 보던 중), 리사이즈로 줄거나
-      // 늘어난 clientHeight를 감안해 "바닥까지 남은 거리"가 리사이즈 전과
-      // 똑같아지도록 scrollTop을 다시 계산한다 — 그래야 화면에 보이던
-      // 콘텐츠의 끝 지점이 리사이즈 후에도 그대로 유지된다.
-      scrollEl.scrollTop = scrollEl.scrollHeight - scrollEl.clientHeight - distanceFromBottomRef.current;
-    }
-    const observer = new ResizeObserver(() => {
-      if (wasNearBottomRef.current) {
-        scrollEl.scrollTop = scrollEl.scrollHeight;
-      } else {
-        scrollEl.scrollTop = scrollEl.scrollHeight - scrollEl.clientHeight - distanceFromBottomRef.current;
+    // 이 스코프 밖(setupForScrollEl)에서 매번 새로 만들어지는 리스너들을
+    // 해제하기 위한 핸들 — .str-chat__message-list가 없어지면(채널 전환
+    // 등으로 언마운트) 정리하고, 다시 나타나면 새로 설치한다.
+    let cleanupCurrent: (() => void) | null = null;
+
+    // 🔧 [버그 수정, 2026-09-23 사용자 지시: "이전 메시지 쪽으로 스크롤
+    // 한 상태에서 키보드 입력을 눌렀다가 키보드를 다시 내리면 스크롤이
+    // 가장 최근 쪽으로 내려가버린다" → (재보고) "키보드를 띄우면 메시지가
+    // 잘려버려" → (재재보고) "아예 수정 전처럼 가장 최근 메시지 쪽으로
+    // 스크롤 되어버리는데"] — 이 세 번째 재보고의 진짜 원인은 앞선 두
+    // 수정의 로직 자체가 아니라, 이 effect 전체가 애초에 실행되지 않고
+    // 있었던 것이었다: containerRef가 걸린 요소는 AdminChatArea가 아니라
+    // 최상위 ChatPage 컴포넌트에 있는데, 이 effect의 deps
+    // ([viewportRect?.top, viewportRect?.height, tabBarHeight])는 채널을
+    // 처음 선택하거나 전환해도 전혀 바뀌지 않는다 — 그 결과 페이지가 막
+    // 열려 아직 채널을 선택하지 않은 최초 마운트 시점(.str-chat__
+    // message-list가 DOM에 없음)에 effect가 실행되면 scrollEl을 못 찾아
+    // 그대로 return해버렸고, 이후 채널을 선택해 MessageList가 실제로
+    // DOM에 나타나도 effect가 다시 실행되지 않아 ResizeObserver도
+    // focusin 리스너도 결국 한 번도 설치되지 않은 채로 남았다(로컬에서
+    // console.log를 심어 직접 확인). deps에 의존하는 대신,
+    // MutationObserver로 containerEl 하위에 .str-chat__message-list가
+    // 나타나거나 사라지는 것 자체를 직접 감시해, 나타날 때마다 아래 로직을
+    // (재)설치한다 — 채널 전환마다 이 DOM이 통째로 새로 마운트되므로
+    // 이 방식이 "지금 어떤 채널이 열려 있든" 항상 정확하다.
+    const setupForScrollEl = (scrollEl: HTMLElement) => {
+      // 대화창을 처음 여는 시점(마운트 직후, wasNearBottomRef 초기값
+      // true)엔 사용자가 아직 아무 데도 스크롤하지 않았으니 맨 아래가
+      // 맞다. 이후 키보드로 인한 리사이즈에서는, "리사이즈 직전 스크롤이
+      // 바닥 근처였을 때만" 다시 맨 아래로 따라간다(과거 메시지를 읽던
+      // 도중이면 그 위치를 그대로 둔다) — 바닥 근처의 판정 여유(48px)는
+      // 메시지 1줄 높이 정도의 오차를 흡수한다.
+      //
+      // scroll 이벤트로 distanceFromBottomRef를 계속 갱신하는 것만으로는
+      // 부족했다 — iOS Safari가 <textarea> 포커스 시 그 입력창을 보이게
+      // 하려고 스스로 스크롤을 조정하는 네이티브 동작이 우리
+      // ResizeObserver보다 먼저 handleScroll을 건드려, "사용자가 실제로
+      // 보던 위치"가 아니라 "브라우저가 입력창을 보이려고 이미 당겨놓은
+      // 위치"를 잘못 기록할 수 있다. "포커스가 입력창으로 이동하는 바로 그
+      // 순간"(리사이즈가 시작되기도 전, 캡처 단계라 브라우저 자동 스크롤
+      // 보다 먼저 실행됨을 노림)에 그 시점 값을 별도로 동결해두고, 리사이즈
+      // 중에는 이 동결된 값을 우선 쓴다.
+      const frozenDistanceRef = { current: null as number | null };
+      const freezeCurrentScroll = () => {
+        const distanceFromBottom = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight;
+        frozenDistanceRef.current = distanceFromBottom;
+        wasNearBottomRef.current = distanceFromBottom <= BOTTOM_THRESHOLD_PX;
+      };
+      const applyScrollForResize = () => {
+        if (wasNearBottomRef.current) {
+          scrollEl.scrollTop = scrollEl.scrollHeight;
+          return;
+        }
+        // 바닥으로부터의 거리(scrollHeight - scrollTop - clientHeight)를
+        // 리사이즈 전후로 동일하게 맞춘다 — scrollTop(절대 픽셀값)만
+        // 고정하면 clientHeight가 줄어든 만큼 화면에 보이는 콘텐츠 끝
+        // 지점이 아래로 밀려나 잘려 보인다.
+        const target = frozenDistanceRef.current ?? distanceFromBottomRef.current;
+        scrollEl.scrollTop = scrollEl.scrollHeight - scrollEl.clientHeight - target;
+      };
+      applyScrollForResize();
+      const observer = new ResizeObserver(applyScrollForResize);
+      observer.observe(scrollEl);
+      const handleScroll = () => {
+        const distanceFromBottom = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight;
+        wasNearBottomRef.current = distanceFromBottom <= BOTTOM_THRESHOLD_PX;
+        distanceFromBottomRef.current = distanceFromBottom;
+      };
+      scrollEl.addEventListener("scroll", handleScroll, { passive: true });
+      const handleFocusIn = (e: FocusEvent) => {
+        if ((e.target as HTMLElement)?.tagName === "TEXTAREA") freezeCurrentScroll();
+      };
+      const handleFocusOut = (e: FocusEvent) => {
+        if ((e.target as HTMLElement)?.tagName === "TEXTAREA") frozenDistanceRef.current = null;
+      };
+      // textarea는 메시지 목록(scrollEl) 바깥, 입력창 영역에 있으므로
+      // containerEl(둘을 모두 포함하는 채팅 화면 전체 wrapper)에 건다.
+      containerEl.addEventListener("focusin", handleFocusIn, true);
+      containerEl.addEventListener("focusout", handleFocusOut, true);
+      return () => {
+        observer.disconnect();
+        scrollEl.removeEventListener("scroll", handleScroll);
+        containerEl.removeEventListener("focusin", handleFocusIn, true);
+        containerEl.removeEventListener("focusout", handleFocusOut, true);
+      };
+    };
+
+    const trySetup = () => {
+      const scrollEl = containerEl.querySelector<HTMLElement>(".str-chat__message-list");
+      if (scrollEl && !cleanupCurrent) {
+        cleanupCurrent = setupForScrollEl(scrollEl);
+      } else if (!scrollEl && cleanupCurrent) {
+        cleanupCurrent();
+        cleanupCurrent = null;
       }
-    });
-    observer.observe(scrollEl);
-    // 리사이즈가 일어나기 전, 매 스크롤마다 "지금이 바닥 근처인지"와
-    // "바닥까지 남은 거리"를 갱신해둔다 — 다음 리사이즈(키보드 토글 등)가
-    // 언제 일어나든 그 직전의 실제 사용자 스크롤 위치를 기준으로 판단하기
-    // 위함.
-    const handleScroll = () => {
-      const distanceFromBottom = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight;
-      wasNearBottomRef.current = distanceFromBottom <= BOTTOM_THRESHOLD_PX;
-      distanceFromBottomRef.current = distanceFromBottom;
     };
-    scrollEl.addEventListener("scroll", handleScroll, { passive: true });
+    trySetup();
+    const mutationObserver = new MutationObserver(trySetup);
+    mutationObserver.observe(containerEl, { childList: true, subtree: true });
+
     return () => {
-      observer.disconnect();
-      scrollEl.removeEventListener("scroll", handleScroll);
+      mutationObserver.disconnect();
+      cleanupCurrent?.();
     };
-  }, [viewportRect?.top, viewportRect?.height, tabBarHeight]);
+    // 🔧 [버그 수정, 2026-09-23] 진짜 원인은 deps가 아니라 실행 타이밍
+    // 자체였다: containerRef가 붙은 <div>는 아래 "if (loading || !client)"
+    // early return보다 뒤에 있어, 페이지가 처음 열려 아직 로딩 중인 첫
+    // 렌더에서는 그 div 자체가 렌더링되지 않는다(LoadingIndicator만
+    // 보여줌) — 이 effect가 deps: []로 그 첫 렌더 직후 실행되면
+    // containerRef.current는 항상 null이고(콘솔 로그로 직접 확인), 로딩이
+    // 끝나 실제 DOM이 마운트돼도 deps가 안 바뀌니 다시 실행되지 않아
+    // 영원히 무효 상태로 남았다. loading을 deps에 넣어, 로딩이 끝나 실제
+    // UI가 처음 마운트되는 바로 그 렌더 직후 이 effect가 (다시) 실행되게
+    // 한다.
+  }, [loading]);
 
   if (error) {
     return (
