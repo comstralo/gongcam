@@ -24,6 +24,7 @@ import {
   useContextMenuContext,
   QuotedMessagePreviewUI,
   ComponentProvider,
+  Streami18n,
   type ContextMenuProps,
 } from "stream-chat-react";
 import "stream-chat-react/dist/css/index.css";
@@ -781,8 +782,39 @@ function SwipeableMessage() {
     // 위치를 직접 읽어, 입력창 상단을 넘으면 그만큼 위로 강제 보정한다.
     requestAnimationFrame(() => {
       const box = document.querySelector<HTMLElement>(".str-chat__message-actions-box--open");
+      if (!box) return;
+      // 🔧 [버그 수정, 2026-09-23 사용자 지시: "꾹 눌렀을 때 뜨는 메뉴에서
+      // '스레드 답장'은 제거해줘"] — 위에서 이미 quickActionsToHide로
+      // thread-action을 숨겼지만, 그건 메시지 옆 빠른 아이콘 줄
+      // (.str-chat__message-options)에 있는 것뿐이었다. 우클릭/롱프레스로
+      // 열리는 이 전체 드롭다운 메뉴(.str-chat__message-actions-box) 안의
+      // "스레드 답장" 항목은 완전히 다른 DOM 위치(box 내부
+      // .str-chat__context-menu__body의 자식)라 전혀 숨겨지지 않고 있었다
+      // (실측: 우클릭 메뉴에 "스레드 답장"이 그대로 보임). 이 앱은 스레드
+      // 기능 자체를 쓰지 않기로 한 결정(빠른 아이콘 줄 숨김 코드의 기존
+      // 의도)이므로, 드롭다운 쪽도 같은 testid로 찾아 완전히 제거한다 —
+      // display:none이 아니라 DOM에서 아예 remove()하는 이유는, 남겨두면
+      // 메뉴 항목 사이에 그 자리만큼 빈 여백이 생기기 때문이다(다른
+      // display:none 항목들은 위치 계산용으로 남겨둬야 했던 toggleBtn과
+      // 달리, 이건 목록 항목이라 완전히 제거해도 레이아웃에 문제가 없다).
+      box.querySelector('[data-testid="thread-action"]')?.remove();
+      // 🔧 [버그 수정, 2026-09-23 사용자 지시: "이미지 메시지에 대해서
+      // '첨부 파일 다운로드'나 '메시지 수정'은 빼줘. 다운로드는 못하게
+      // 하고 싶고, 메시지 수정은 의미가 없지 않아?"] — 실측 확인: 이미지
+      // 메시지에 "메시지 수정"을 누르면 입력창에 그 이미지가 첨부파일로
+      // 다시 로드될 뿐, 텍스트 캡션처럼 실제로 고칠 대상이 없어 사실상
+      // 무의미한 재업로드 기능이었다(사용자 판단이 맞음). "첨부 파일
+      // 다운로드"는 aria-label로 텍스트 메시지엔 아예 나타나지 않아
+      // 항상 제거해도 안전하지만, "메시지 수정"은 텍스트 메시지에서는
+      // 여전히 정상 기능이므로 이 메시지가 이미지 첨부를 포함할 때만
+      // 제거한다.
+      const isImageMessage = !!wrapperEl.querySelector(".str-chat__message-attachment--image");
+      box.querySelector('button[aria-label="첨부 파일 다운로드"]')?.remove();
+      if (isImageMessage) {
+        box.querySelector('button[aria-label="메시지 수정"]')?.remove();
+      }
       const composer = document.querySelector<HTMLElement>(".str-chat__message-composer");
-      if (!box || !composer) return;
+      if (!composer) return;
       const boxRect = box.getBoundingClientRect();
       const composerTop = composer.getBoundingClientRect().top;
       const overflow = boxRect.bottom - composerTop;
@@ -1351,6 +1383,24 @@ function AdminChatArea({
 // 인스턴스를 그대로 반환하는 싱글턴 팩토리라 실제로는 안전망에 가깝다).
 let chatClient: StreamChat | null = null;
 
+// 🔧 [사용자 지시, 2026-09-23] "'인용 답장' → '답장', '메시지 수정' →
+// '수정', '메시지 삭제' → '삭제'로 수정해줘" — 이 문구들은 Stream이
+// 자체 한국어 번역(ko.mjs)에서 내려주는 것이라 우리 JSX 어디에도 직접
+// 쓰여 있지 않다. Streami18n을 새로 만들어 기본 한국어 번역 위에 이
+// 세 키만 짧은 문구로 덮어쓴다 — translationsForLanguage는 지정한 키만
+// 오버라이드하고 나머지는 기본 한국어 번역을 그대로 쓴다(Streami18n
+// 소스 확인: 기존 번역과 merge). 모듈 스코프에 한 번만 만들어 재사용한다
+// (chatClient와 동일한 이유 — 컴포넌트가 리렌더링될 때마다 새로
+// 만들 필요가 없다).
+const chatI18n = new Streami18n({
+  language: "ko",
+  translationsForLanguage: {
+    "Quote Reply": "답장",
+    "Edit Message": "수정",
+    "Delete message": "삭제",
+  },
+});
+
 export function ChatPage({
   visible,
   tabBarCollapsed,
@@ -1901,7 +1951,7 @@ export function ChatPage({
       <div className="w-full page-content min-h-0 flex-1 flex-col gap-2 flex mx-auto">
         {isAdmin && <ChatListHeader view={sidebarView} onViewChange={setSidebarView} />}
         <div className="flex w-full min-h-0 flex-1 flex-col overflow-hidden rounded-lg border">
-      <Chat client={client} theme={dark ? "str-chat__theme-dark" : "str-chat__theme-light"}>
+      <Chat client={client} i18nInstance={chatI18n} theme={dark ? "str-chat__theme-dark" : "str-chat__theme-light"}>
         {/* 🔧 [사용자 지시] "상대방 아이콘을 사람 모양을 한 그림 형태로" —
             ChannelList(채널 목록)와 Channel(대화창) 둘 다 이 컴포넌트
             컨텍스트를 구독하므로, 이 둘을 함께 감싸는 최상위에
