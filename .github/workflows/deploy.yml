@@ -43,7 +43,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
   # 🔧 [2026-09-22 사용자 지시: "배포와 E2E 검증을 분리하는 방향으로
   # 진행해줘"] — e2e job이 여기 있으면 실행 시간(간헐적 원인 불명 문제로
   # --workers=1까지 적용해 4~12분)이 그대로 "배포가 끝났는지" 확인하는
