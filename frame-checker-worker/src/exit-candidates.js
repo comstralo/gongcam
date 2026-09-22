@@ -28,7 +28,7 @@ import {
   getExitResults,
   resolveTargetFileId,
 } from "./index.js";
-import { _cachedCompute } from "./cache.js";
+import { _cachedCompute, fetchSheetsApiWithRetry } from "./cache.js";
 import {
   countCurrentCyclePen,
   depositRefundBreakdown,
@@ -39,11 +39,11 @@ import { listExitRequests } from "./exit-request.js";
 
 async function getPenaltySlotNotesGrid(env, accessToken, fileId) {
   _bumpUsageCounter("sheets_read");
-  const res = await fetch(
+  const res = await fetchSheetsApiWithRetry(
     `https://sheets.googleapis.com/v4/spreadsheets/${fileId}?` +
       `ranges=${encodeURIComponent(`'${OUTPUT_PEN_SHEET_NAME}'!F4:M18`)}` +
       `&fields=sheets.data.rowData.values.note`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
+    accessToken
   );
   const data = await res.json();
   const rowData = data.sheets && data.sheets[0] && data.sheets[0].data && data.sheets[0].data[0] && data.sheets[0].data[0].rowData;

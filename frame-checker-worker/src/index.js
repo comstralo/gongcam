@@ -57,6 +57,7 @@ import {
   invalidatePersonalStatusCache,
   KV_CACHE_PREFIX,
   MEMBER_CACHE_GROUPS,
+  fetchSheetsApiWithRetry,
 } from "./cache.js";
 
 // 🔧 [구조 개선, 2026-09-13] 순수 날짜/시간 유틸은 src/date-utils.js로
@@ -783,9 +784,9 @@ export function _menuNameForPath(path) {
 // 같은 조회 로직을 공유해야 하기 때문.
 export async function getSheetValues(env, accessToken, fileId, range) {
   _bumpUsageCounter("sheets_read");
-  const res = await fetch(
+  const res = await fetchSheetsApiWithRetry(
     `https://sheets.googleapis.com/v4/spreadsheets/${fileId}/values/${encodeURIComponent(range)}`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
+    accessToken
   );
   const data = await res.json();
   if (!data.values) throw new Error("시트 값 조회 실패: " + JSON.stringify(data));
@@ -825,9 +826,9 @@ export async function batchGetSheetValues(env, accessToken, fileId, ranges) {
   if (ranges.length === 0) return [];
   _bumpUsageCounter("sheets_read");
   const query = ranges.map((r) => `ranges=${encodeURIComponent(r)}`).join("&");
-  const res = await fetch(
+  const res = await fetchSheetsApiWithRetry(
     `https://sheets.googleapis.com/v4/spreadsheets/${fileId}/values:batchGet?${query}`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
+    accessToken
   );
   const data = await res.json();
   if (!data.valueRanges) throw new Error("시트 값 일괄 조회 실패: " + JSON.stringify(data));
@@ -838,11 +839,11 @@ export async function batchGetSheetValues(env, accessToken, fileId, ranges) {
 // 렌더링으로는 텍스트로 온다. UNFORMATTED_VALUE로 조회해 실제 숫자(1/2/3)를 얻는다.
 export async function getSheetUnformattedValue(env, accessToken, fileId, range) {
   _bumpUsageCounter("sheets_read");
-  const res = await fetch(
+  const res = await fetchSheetsApiWithRetry(
     `https://sheets.googleapis.com/v4/spreadsheets/${fileId}/values/${encodeURIComponent(
       range
     )}?valueRenderOption=UNFORMATTED_VALUE`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
+    accessToken
   );
   const data = await res.json();
   if (!data.values) throw new Error("시트 값 조회 실패: " + JSON.stringify(data));

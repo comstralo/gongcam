@@ -37,7 +37,7 @@ import {
   findMemberByNumber,
 } from "./pure-utils.js";
 import { todayKSTDateString } from "./date-utils.js";
-import { invalidateMemberCache, invalidateMemberSlotCache } from "./cache.js";
+import { invalidateMemberCache, invalidateMemberSlotCache, fetchSheetsApiWithRetry } from "./cache.js";
 import { depositRefundBreakdown, forcedExitChecks, calcExitProcess } from "./deposit.js";
 
 // Y2:AC3(제목)과 Y4:AC18(본문) 셀을 병합하고 결과 메시지를 채운다.
@@ -133,11 +133,11 @@ async function revokeSheetAccess(env, fileId, email) {
 // "데이터"에서 "데이터 (감사)" 참조로 치환할 때 원본 수식 문자열이 필요하다.
 async function getSheetFormulas(env, accessToken, fileId, range) {
   _bumpUsageCounter("sheets_read");
-  const res = await fetch(
+  const res = await fetchSheetsApiWithRetry(
     `https://sheets.googleapis.com/v4/spreadsheets/${fileId}/values/${encodeURIComponent(
       range
     )}?valueRenderOption=FORMULA`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
+    accessToken
   );
   const data = await res.json();
   if (!data.values) throw new Error("시트 수식 조회 실패: " + JSON.stringify(data));

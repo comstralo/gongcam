@@ -8,6 +8,39 @@
 // 그대로 남겨뒀다.
 
 
+// 🔧 [버그 수정, 2026-09-22 — E2E CI 간헐적 500 원인 규명] 아래 2계층
+// 캐시는 "같은 요청이 반복되는" 부하는 잘 흡수하지만, 캐시가 비어있는
+// 순간(콜드 스타트 직후, TTL 만료 직후)에 서로 다른 사용자/회원의 요청이
+// 동시에 여러 건 몰리면 여전히 Google Sheets API를 그 건수만큼 직접
+// 호출한다 — 15명이 정상적으로 동시 접속하는 것보다 훨씬 빈번하게, E2E
+// CI가 7개 브라우저 프로젝트로 거의 같은 순간에 로그인+대시보드 조회를
+// 몰아치면 "분당 60회" 쿼터를 순식간에 넘긴다. 실제로 CI 실패 trace의
+// 응답 바디를 직접 열어 확인했다: "code":429,"status":"RESOURCE_EXHAUSTED"
+// — 서버 로직 버그가 아니라 이 쿼터 초과가 그대로 사용자에게 500으로
+// 노출되고 있었다. 쿼터 초과는 보통 수백ms~1초 안에 창이 지나가는
+// 일시적 상태이므로, sheets.googleapis.com을 호출하는 모든 지점
+// (index.js/exit-candidates.js/exit-confirm.js)이 이 헬퍼를 거치게 해
+// 429를 감지하면 짧게 기다렸다가 재시도한다 — 실제로 쿼터가 완전히
+// 고갈된 게 아니라 순간적으로 몰린 경우, 사용자에게는 약간의 지연만
+// 있을 뿐 에러가 노출되지 않는다.
+export async function fetchSheetsApiWithRetry(url, accessToken) {
+  const MAX_ATTEMPTS = 4;
+  const BASE_DELAY_MS = 400;
+  let lastRes;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    lastRes = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (lastRes.status !== 429) return lastRes;
+    if (attempt === MAX_ATTEMPTS - 1) break;
+    // 지수 백오프(400ms, 800ms, 1600ms) + 지터 — 동시에 재시도하는 여러
+    // 요청이 정확히 같은 타이밍에 다시 몰려 쿼터를 또 넘기지 않도록 약간
+    // 흔든다. Cloudflare Workers는 요청 처리 중 setTimeout 기반 대기를
+    // 지원한다(CPU 시간이 아니라 벽시계 시간으로 과금되는 I/O 대기).
+    const delay = BASE_DELAY_MS * 2 ** attempt + Math.random() * 200;
+    await new Promise((resolve) => setTimeout(resolve, delay));
+  }
+  return lastRes;
+}
+
 // 🔧 [429 방지 — 2계층 캐시] Sheets API 읽기 쿼터(분당 60회/사용자)를 아낀다.
 // 인메모리(모듈 스코프 Map)만으로는 불충분하다는 걸 실측으로 확인했다
 // (2026-08): Cloudflare Workers는 요청을 여러 독립된 isolate로 분산하고,
