@@ -76,7 +76,12 @@ export default defineConfig({
   // 낮춰(아래 use.workers 아님, 커맨드라인 인자로 별도 제어 — CI
   // 워크플로우 참고) 동시 요청 수 자체를 줄인다(사용자 확인).
   retries: 1,
-  reporter: [["html", { open: "never" }]],
+  // 🔧 [임시 진단, 2026-09-22] html 리포터는 실행 중 진행 상황을 콘솔에
+  // 거의 안 찍고 끝난 뒤 한꺼번에 요약을 내보내, CI 로그의 타임스탬프가
+  // "실제로 언제 멈췄는지"를 오도할 수 있었다(37초 공백처럼 보였던 게
+  // 실은 로그 flush 지연일 가능성) — CI에서는 list 리포터를 추가해
+  // 각 테스트 시작/종료를 실시간으로 콘솔에 남긴다. 원인 확정 후 제거할 것.
+  reporter: process.env.CI ? [["html", { open: "never" }], ["list"]] : [["html", { open: "never" }]],
   use: {
     // 🔧 [버그 수정, 2026-09-21] baseURL 끝에 슬래시가 없으면
     // page.goto("/#/report")처럼 선행 슬래시가 있는 상대경로가 WHATWG

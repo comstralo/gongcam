@@ -140,6 +140,8 @@ test.describe("로그인 후 메인 화면 — DEV_LOGIN_SECRET 필요 시에만
     // 🔧 [임시 진단, 2026-09-22] CI에서만 이 테스트가 재현성 있게
     // 타임아웃나는 원인을 찾기 위해, /status 요청의 실제 타이밍을
     // 콘솔에 기록한다 — 원인 확정 후 제거할 것.
+    const diagStart = Date.now();
+    console.log(`[DIAG] 테스트 시작 @${new Date().toISOString()}`);
     page.on("requestfinished", (req) => {
       if (req.url().includes("/status") && req.resourceType() !== "preflight") {
         req
@@ -152,9 +154,14 @@ test.describe("로그인 후 메인 화면 — DEV_LOGIN_SECRET 필요 시에만
         console.log(`[DIAG] /status FAILED: ${req.failure()?.errorText}`);
       }
     });
-    const diagStart = Date.now();
+    page.on("request", (req) => {
+      if (req.url().includes("/status")) {
+        console.log(`[DIAG] /status 요청 시작 @${new Date().toISOString()}`);
+      }
+    });
     await page.setViewportSize({ width: 400, height: 400 });
-    await page.goto("#/");
+    console.log(`[DIAG] setViewportSize 완료 ${Date.now() - diagStart}ms`);
+    await page.goto("#/", { timeout: 15000 });
     console.log(`[DIAG] goto 완료까지 ${Date.now() - diagStart}ms`);
     // header가 붙는 시점엔 아직 /status 응답이 안 와 카드가 비어 있어
     // (diff:0) 이 테스트가 "우연히 통과"할 위험이 있었다(실측: header
