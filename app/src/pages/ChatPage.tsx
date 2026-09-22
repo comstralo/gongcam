@@ -1589,6 +1589,18 @@ export function ChatPage({
   // 뜨면 컨테이너가 줄어들며 브라우저가 scrollTop을 강제로 당겨놓는 경우가
   // 있었다).
   const wasNearBottomRef = useRef(true);
+  // 🔧 [버그 수정, 2026-09-23 사용자 재보고: "스크롤 위치 유지가 되긴
+  // 하는데 키보드를 띄우면 메시지가 잘려버려 ... 1번 사진의 메시지 끝
+  // 지점이 키보드가 올라와도 끝 지점이 되길 바라는건데 지금은 그렇지가
+  // 않아"] — 바로 위 수정은 scrollTop(픽셀 절대값) 자체를 그대로
+  // 두는 것이었는데, 키보드가 뜨면 컨테이너의 clientHeight 자체가
+  // 줄어들어(뷰포트가 좁아짐) 같은 scrollTop이라도 "바닥까지 남은
+  // 거리"가 달라진다 — 그 결과 리사이즈 전엔 화면 하단 바로 위에
+  // 보이던 메시지 끝부분이, 줄어든 뷰포트 아래로 밀려나 잘려 보였다.
+  // 사용자가 원한 건 "화면에 보이던 콘텐츠의 끝 지점"이 유지되는
+  // 것이므로, scrollTop이 아니라 "바닥으로부터의 거리(scrollHeight -
+  // scrollTop - clientHeight)"를 리사이즈 전후로 동일하게 맞춰야 한다.
+  const distanceFromBottomRef = useRef(0);
   useEffect(() => {
     // 🔧 [버그 수정, 2026-09-21 사용자 지시: "네가 보고 있는 것만 계속
     // 반복해서 짚지 말고 연관 코드도 전수 조사해서 뭐가 문제인지
@@ -1615,19 +1627,29 @@ export function ChatPage({
     const BOTTOM_THRESHOLD_PX = 48;
     if (wasNearBottomRef.current) {
       scrollEl.scrollTop = scrollEl.scrollHeight;
+    } else {
+      // 바닥 근처가 아니었다면(과거 메시지를 보던 중), 리사이즈로 줄거나
+      // 늘어난 clientHeight를 감안해 "바닥까지 남은 거리"가 리사이즈 전과
+      // 똑같아지도록 scrollTop을 다시 계산한다 — 그래야 화면에 보이던
+      // 콘텐츠의 끝 지점이 리사이즈 후에도 그대로 유지된다.
+      scrollEl.scrollTop = scrollEl.scrollHeight - scrollEl.clientHeight - distanceFromBottomRef.current;
     }
     const observer = new ResizeObserver(() => {
       if (wasNearBottomRef.current) {
         scrollEl.scrollTop = scrollEl.scrollHeight;
+      } else {
+        scrollEl.scrollTop = scrollEl.scrollHeight - scrollEl.clientHeight - distanceFromBottomRef.current;
       }
     });
     observer.observe(scrollEl);
-    // 리사이즈가 일어나기 전, 매 스크롤마다 "지금이 바닥 근처인지"를
-    // 갱신해둔다 — 다음 리사이즈(키보드 토글 등)가 언제 일어나든 그
-    // 직전의 실제 사용자 스크롤 위치를 기준으로 판단하기 위함.
+    // 리사이즈가 일어나기 전, 매 스크롤마다 "지금이 바닥 근처인지"와
+    // "바닥까지 남은 거리"를 갱신해둔다 — 다음 리사이즈(키보드 토글 등)가
+    // 언제 일어나든 그 직전의 실제 사용자 스크롤 위치를 기준으로 판단하기
+    // 위함.
     const handleScroll = () => {
       const distanceFromBottom = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight;
       wasNearBottomRef.current = distanceFromBottom <= BOTTOM_THRESHOLD_PX;
+      distanceFromBottomRef.current = distanceFromBottom;
     };
     scrollEl.addEventListener("scroll", handleScroll, { passive: true });
     return () => {
