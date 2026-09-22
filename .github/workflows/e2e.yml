@@ -1,0 +1,87 @@
+name: E2E Layout Tests
+
+# 🔧 [2026-09-22 사용자 지시: "배포와 E2E 검증을 분리하는 방향으로
+# 진행해줘"] — deploy.yml에서 e2e job을 떼어 별도 워크플로우로
+# 분리했다. deploy.yml의 "Deploy to GitHub Pages" 워크플로우가
+# 완료(성공)된 직후 자동으로 이어서 돈다 — workflow_run 트리거는
+# 소스 워크플로우와 독립된 별개 실행이라, 여기서 얼마나 걸리든
+# (또는 실패하든) deploy.yml 쪽 실행 시간이나 성공/실패 표시에는
+# 전혀 영향을 주지 않는다. 즉 "배포가 끝났다"는 신호(deploy.yml의
+# ✓ 표시)와 "레이아웃이 실제로 안 깨졌다"는 신호(이 워크플로우의
+# ✓ 표시)가 이제 서로 다른 곳에 독립적으로 뜬다.
+on:
+  workflow_run:
+    workflows: ["Deploy to GitHub Pages"]
+    types: [completed]
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    # workflow_dispatch(수동 실행)로 돌릴 때는 이 조건이 없어 항상
+    # 실행되고, workflow_run으로 돌 때는 deploy.yml 자체가 성공한
+    # 경우에만 돈다(배포가 실패했으면 옛 사이트 그대로라 검증할
+    # 새 버전이 없음).
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # workflow_run 트리거는 기본적으로 main의 최신 커밋을
+          # checkout하는데, 그 사이 main에 새 커밋이 더 쌓였다면
+          # 실제로 배포된 커밋과 달라진다 — 배포를 트리거했던 정확히
+          # 그 커밋(head_sha)을 checkout해야 아래 version.json 비교가
+          # 의미가 있다. workflow_dispatch로 돈 경우 head_sha가 없어
+          # 기본값(현재 브랜치)을 그대로 쓴다.
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      # 🔧 index.html은 GitHub Pages에서 10분간 캐싱된다(useVersionCheck.ts
+      # 참고, "이미 열려있던 탭"이 옛 번들을 계속 쓰는 문제 때문에 만든
+      # 로직) — deploy가 끝났다고 바로 goto해도 CDN/브라우저가 옛
+      # index.html을 줄 수 있다. version.json은 no-store라 즉시 최신값을
+      # 반영하고, 그 값 자체가 정확히 짧은 커밋 해시(vite.config.ts의
+      # currentGitVersion())라 "이번 커밋이 실제로 배포됐는지"를 정확히
+      # 확인할 수 있다 — 일치할 때까지 최대 2분(5초 간격) 폴링한다.
+      - name: Wait for this commit's version.json to be live
+        run: |
+          EXPECTED="$(git rev-parse --short HEAD)"
+          for i in $(seq 1 24); do
+            ACTUAL=$(curl -s "https://comstralo.github.io/gongcam/version.json?t=$(date +%s)" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{console.log(JSON.parse(d).version)}catch{console.log('')}})")
+            echo "시도 $i: 기대값=$EXPECTED 실제값=$ACTUAL"
+            if [ "$ACTUAL" = "$EXPECTED" ]; then
+              echo "배포 확인됨"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::warning::2분 내에 이번 커밋($EXPECTED)의 배포를 확인하지 못했습니다 — 이전 버전을 대상으로 테스트가 진행될 수 있습니다"
+      # mobile-iphone/tablet-ipad 프로젝트가 WebKit 엔진을 실제로 쓰므로
+      # (playwright.config.ts의 devices["iPhone 14"]/devices["iPad (gen 7)"]
+      # 가 defaultBrowserType: "webkit"을 지정) chromium과 webkit 둘 다
+      # 설치해야 한다. --with-deps로 CI 러너에 필요한 시스템 라이브러리도
+      # 함께 설치한다.
+      - run: npx playwright install --with-deps chromium webkit
+      # 🔧 [원인 추적 진행 중, 2026-09-22] --workers=1(완전 순차 실행)은
+      # "동시 부하가 원인"이라는 가설(반증됨 — 순차로도 동일하게 실패)
+      # 검증을 위해 넣었다. 그 가설 자체는 틀렸지만, 그 상태에서
+      # playwright.config.ts의 list 리포터 + layout.spec.ts의 [DIAG]
+      # 로그로 원인을 계속 좁히는 중이라 지금은 그대로 유지한다(사용자
+      # 확인: "진단 코드는 남겨두고 계속 원인 추적") — 원인 확정 후
+      # 이 옵션과 진단 코드를 한 번에 정리할 예정.
+      - run: npx playwright test tests/e2e/layout.spec.ts --workers=1
+        env:
+          E2E_DEV_LOGIN_SECRET: ${{ secrets.E2E_DEV_LOGIN_SECRET }}
+          E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: app/playwright-report/
+          retention-days: 14

@@ -44,75 +44,15 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
-
-  # 🔧 [2026-09-22 사용자 지시: "좀 더 철저하고 구체적인 검증 환경을
-  # 구성했으면 좋겠어"] — 배포가 실제로 성공해 GitHub Pages에 반영된
-  # 직후, 그 방금 배포된 진짜 사이트를 대상으로 레이아웃 회귀 테스트
-  # 전체(로그인 필요 테스트 포함)를 자동 실행한다. 로그인 필요 테스트는
-  # tests/e2e/fixtures.ts가 /dev/login(frame-checker-worker의
-  # DEV_LOGIN_SECRET 게이트)으로 세션을 발급받아 우회하므로, 그 시크릿과
-  # 테스트 계정 이메일을 GitHub Secrets(E2E_DEV_LOGIN_SECRET/
-  # E2E_TEST_EMAIL)로 등록해뒀다(사용자 확인 후 진행) — 이 값이 없으면
-  # 로그인 필요 테스트는 자동으로 스킵되고 로그인 페이지 테스트만 돈다
-  # (fixtures.ts의 testInfo.skip 참고).
-  e2e:
-    needs: deploy
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: app
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: app/package-lock.json
-      - run: npm ci
-      # 🔧 index.html은 GitHub Pages에서 10분간 캐싱된다(useVersionCheck.ts
-      # 참고, "이미 열려있던 탭"이 옛 번들을 계속 쓰는 문제 때문에 만든
-      # 로직) — deploy job이 끝났다고 바로 goto해도 CDN/브라우저가 옛
-      # index.html을 줄 수 있다. version.json은 no-store라 즉시 최신값을
-      # 반영하고, 그 값 자체가 정확히 짧은 커밋 해시(vite.config.ts의
-      # currentGitVersion())라 "이번 커밋이 실제로 배포됐는지"를 정확히
-      # 확인할 수 있다 — 일치할 때까지 최대 2분(5초 간격) 폴링한다.
-      - name: Wait for this commit's version.json to be live
-        run: |
-          EXPECTED="${GITHUB_SHA:0:7}"
-          for i in $(seq 1 24); do
-            ACTUAL=$(curl -s "https://comstralo.github.io/gongcam/version.json?t=$(date +%s)" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{console.log(JSON.parse(d).version)}catch{console.log('')}})")
-            echo "시도 $i: 기대값=$EXPECTED 실제값=$ACTUAL"
-            if [ "$ACTUAL" = "$EXPECTED" ]; then
-              echo "배포 확인됨"
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "::warning::2분 내에 이번 커밋($EXPECTED)의 배포를 확인하지 못했습니다 — 이전 버전을 대상으로 테스트가 진행될 수 있습니다"
-      # mobile-iphone/tablet-ipad 프로젝트가 WebKit 엔진을 실제로 쓰므로
-      # (playwright.config.ts의 devices["iPhone 14"]/devices["iPad (gen 7)"]
-      # 가 defaultBrowserType: "webkit"을 지정) chromium과 webkit 둘 다
-      # 설치해야 한다. --with-deps로 CI 러너에 필요한 시스템 라이브러리도
-      # 함께 설치한다.
-      - run: npx playwright install --with-deps chromium webkit
-      # 🔧 [버그 수정, 2026-09-22 배포 후 실측] 기본 병렬(GitHub Actions
-      # 러너 2코어 → 2워커)로 7개 프로젝트를 돌리면, 로그인 필요 테스트
-      # 다수가 거의 동시에 /dev/login + /status를 프로덕션 백엔드에
-      # 몰아쳐 Google Sheets API가 순간적으로 쓰로틀링되는 것으로
-      # 보이는 증상(응답 자체를 못 받음, status:-1)을 trace 분석으로
-      # 확인했다 — retries를 2로 늘려 흡수를 시도했으나 오히려 실행
-      # 시간만 늘고(4~5분→11분 36초) 실패 프로젝트 수가 더 넓어졌다
-      # (동시 재시도가 부하를 더 키운 것으로 추정). --workers=1로
-      # 완전히 순차 실행해 동시 요청 자체를 없앤다 — 실행 시간은 늘지만
-      # (프로덕션 API 호출 부하가 배포 파이프라인의 유일한 게이트이므로
-      # 안전 쪽을 택함, 사용자 확인) 산발적 실패의 근본 원인을 제거한다.
-      - run: npx playwright test tests/e2e/layout.spec.ts --workers=1
-        env:
-          E2E_DEV_LOGIN_SECRET: ${{ secrets.E2E_DEV_LOGIN_SECRET }}
-          E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: playwright-report
-          path: app/playwright-report/
-          retention-days: 14
+  # 🔧 [2026-09-22 사용자 지시: "배포와 E2E 검증을 분리하는 방향으로
+  # 진행해줘"] — e2e job이 여기 있으면 실행 시간(간헐적 원인 불명 문제로
+  # --workers=1까지 적용해 4~12분)이 그대로 "배포가 끝났는지" 확인하는
+  # 데 걸리는 시간이 되어버린다. 배포 자체(build+deploy)는 항상
+  # 1~2분이면 끝나고 사이트는 이미 새 버전으로 바뀌어 있는데, 그 뒤에
+  # 물린 e2e가 느리거나(순차 실행) 간헐적으로 실패하면 이 워크플로우
+  # 전체가 "실패"로 표시돼 실제로는 이미 끝난 배포를 기다리는 것처럼
+  # 보였다. e2e를 별도 워크플로우(e2e.yml)로 완전히 분리해, 이
+  # 워크플로우는 배포 성공 여부만 정직하게 반영하고 e2e 결과와는
+  # 무관해지도록 한다 — e2e.yml이 workflow_run으로 이 워크플로우의
+  # 완료를 감지해 이어서 돈다(별도 job이라 여기 실행 시간에 전혀 영향
+  # 없음).
