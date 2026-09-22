@@ -16,6 +16,7 @@ import {
   useMessageComposerController,
   useMessageListContext,
   useChannelActionContext,
+  useChannelStateContext,
   useAttachmentSelectorContext,
   useComponentContextIcons,
   AttachmentSelector,
@@ -29,7 +30,7 @@ import {
 } from "stream-chat-react";
 import "stream-chat-react/dist/css/index.css";
 import "@/pages/chat-theme.css";
-import { MessageCircle, UserPlus, X, User, Reply, ImagePlus } from "lucide-react";
+import { MessageCircle, UserPlus, X, User, Reply, ImagePlus, Pin } from "lucide-react";
 import { InfoCard } from "@/components/dashboard/shared";
 import { AdminListSkeleton, AdminEmptyState } from "@/components/admin/shared";
 import { Button } from "@/components/ui/button";
@@ -170,6 +171,85 @@ function jumpToQuotedMessage(jumpToMessage: (id: string) => void, targetId: stri
     requestAnimationFrame(checkSettled);
   };
   requestAnimationFrame(checkSettled);
+}
+
+// 🔧 [사용자 지시, 2026-09-23] "핀(메시지 고정)도 실제로 구현하는게
+// 맞을 것 같아" — 메시지 액션 메뉴의 "핀"은 이미 동작했지만(Stream
+// 기본 기능), 고정된 메시지를 한눈에 볼 수 있는 화면이 이 앱에
+// 전혀 없어 고정해도 효과를 체감할 수 없었다. 카카오톡의 "공지"처럼
+// 채널 헤더 바로 아래에 가장 최근에 고정된 메시지 1개를 요약해서
+// 보여주는 배너를 추가한다 — 누르면 그 메시지로 스크롤 이동, "고정
+// 해제" 버튼으로 바로 해제할 수 있다. useChannelStateContext().
+// pinnedMessages는 Channel이 message.new/message.updated 등 실시간
+// 이벤트를 받을 때마다 자동으로 갱신되므로(Stream 소스 확인), 별도
+// 폴링 없이 항상 최신 상태를 반영한다.
+function PinnedMessageBanner() {
+  const { pinnedMessages } = useChannelStateContext();
+  const { jumpToMessage } = useChannelActionContext();
+  const { client } = useChatContext();
+
+  if (!pinnedMessages || pinnedMessages.length === 0) return null;
+
+  // 가장 최근에 고정된 메시지를 보여준다(여러 개면 배지로 개수만 함께 표시).
+  const latest = [...pinnedMessages].sort((a, b) => {
+    const aTime = a.pinned_at ? new Date(a.pinned_at).getTime() : 0;
+    const bTime = b.pinned_at ? new Date(b.pinned_at).getTime() : 0;
+    return bTime - aTime;
+  })[0];
+
+  const previewText = latest.text?.trim()
+    ? latest.text
+    : latest.attachments && latest.attachments.length > 0
+      ? "사진"
+      : "";
+
+  function handleClick() {
+    jumpToQuotedMessage(jumpToMessage, latest.id);
+  }
+
+  async function handleUnpin(e: React.MouseEvent) {
+    e.stopPropagation();
+    // 🔧 [버그 수정, 2026-09-23 실측] channel.unpinMessage는 존재하지
+    // 않는 메서드였다(실행 시 "channel.unpinMessage is not a function"
+    // pageerror로 확인) — stream-chat SDK 소스(client.ts) 확인 결과
+    // pinMessage/unpinMessage는 channel이 아니라 StreamChat 클라이언트
+    // 인스턴스에 있다. Stream React가 제공하는 usePinHandler는
+    // MessageContext(메시지 컴포넌트 내부)에 종속되어 이 배너(메시지
+    // 목록 바깥) 위치에서는 쓸 수 없으므로, useChatContext의 client로
+    // 직접 해제한다.
+    await client.unpinMessage(latest);
+  }
+
+  return (
+    // 🔧 [lint 수정] 배너 본체 클릭(이동)과 "고정 해제" 클릭(해제)이
+    // 서로 다른 동작이라 처음엔 <button> 안에 <span role="button">을
+    // 중첩했는데, HTML 표준상 button은 button을 포함할 수 없어(interactive
+    // content 중첩 금지) jsx-a11y가 정당하게 지적했다. 바깥을 button이
+    // 아닌 div로 바꾸고, 배너 본체 클릭과 "고정 해제"를 각각 독립된
+    // <button> 두 개로 나눠 형제로 둔다.
+    <div className="flex w-full items-center gap-2 border-b bg-secondary/60 px-3 py-2 text-xs">
+      <button
+        type="button"
+        onClick={handleClick}
+        className="flex min-w-0 flex-1 items-center gap-2 text-left transition-colors hover:text-foreground"
+      >
+        <Pin className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={ICON_STROKE.default} />
+        <span className="min-w-0 flex-1 truncate text-muted-foreground">
+          {previewText}
+          {pinnedMessages.length > 1 && (
+            <span className="ml-1 text-muted-foreground/70">+{pinnedMessages.length - 1}</span>
+          )}
+        </span>
+      </button>
+      <button
+        type="button"
+        onClick={handleUnpin}
+        className="shrink-0 rounded px-1.5 py-0.5 text-muted-foreground/70 hover:bg-background hover:text-foreground"
+      >
+        고정 해제
+      </button>
+    </div>
+  );
 }
 
 function ChatQuotedMessage() {
@@ -1352,6 +1432,7 @@ function AdminChatArea({
                     <ChannelHeader Avatar={() => null} />
                   </div>
                 </div>
+                <PinnedMessageBanner />
                 {/* 🔧 [버그 수정, 2026-09-20 사용자 지시: "메시지 확인이
                     된 상태인데, 이전 메시지의 1 표시가 안사라지는
                     버그가 있어"] — Stream의 useLastReadData(내부 훅,
@@ -1993,6 +2074,7 @@ export function ChatPage({
             <Channel channel={memberChannel ?? undefined}>
               <Window>
                 <ChannelHeader title="관리자에게 문의하기" Avatar={PersonAvatar} />
+                <PinnedMessageBanner />
                 {/* 🔧 [버그 수정, 2026-09-20] 위 관리자용 MessageList와
                     동일한 이유로 returnAllReadData를 켠다 — 자세한 경위는
                     그쪽 주석 참고. */}
