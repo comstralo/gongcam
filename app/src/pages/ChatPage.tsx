@@ -612,7 +612,22 @@ function SwipeableMessage() {
     // "안"이라 인정되어 재발했다(사용자 재보고: "삭제된 메시지 아래
     // 메시지에 대고 한거야" — 인용 카드와 사진 사이 여백). 실제 콘텐츠
     // 요소(텍스트, 첨부 이미지/파일, 인용 카드) 위일 때만 인정한다.
-    if (!target.closest(".str-chat__message-text, .str-chat__attachment, .str-chat__quoted-message-preview"))
+    // 🔧 [버그 수정, 2026-09-22 사용자 지시: "이미지 메시지 버블에 대고
+    // 마우스 우클릭 하면 팝업 메뉴가 뜨질 않아"] — 이 셀렉터가 처음부터
+    // 잘못된 클래스명을 쓰고 있었다. stream-chat-react의
+    // AttachmentContainer.mjs 소스와 실제 DOM 실측(Playwright로 이미지
+    // 조상 체인 직접 추적) 둘 다로 확인: 모든 첨부(이미지/파일/카드
+    // 등)에 항상 붙는 공용 클래스는 "str-chat__message-attachment"이고,
+    // ".str-chat__attachment"(끝에 "message-" 없음)는 카드/Giphy에
+    // 액션 버튼이 있을 때만 붙는 완전히 다른 내부 wrapper라 이미지
+    // 메시지에는 애초에 존재하지 않는다 — 이 조건이 이미지를 절대
+    // 매칭할 수 없어 롱프레스도, 우클릭(아래 handleContextMenu의 동일
+    // 조건)도 이미지 메시지에서는 처음부터 한 번도 동작한 적이 없었다.
+    if (
+      !target.closest(
+        ".str-chat__message-text, .str-chat__message-attachment, .str-chat__quoted-message-preview"
+      )
+    )
       return;
     longPressTimerRef.current = setTimeout(() => {
       longPressFiredRef.current = true;
@@ -763,9 +778,15 @@ function SwipeableMessage() {
     // 🔧 [버그 수정, 2026-09-20] 롱프레스와 동일하게, 실제 콘텐츠(텍스트/
     // 첨부/인용 카드) 바깥에서의 우클릭은 브라우저 기본 메뉴를 그대로
     // 둔다 — 자세한 경위는 handlePointerDown의 동일 가드 주석 참고.
+    // 🔧 [버그 수정, 2026-09-22 사용자 지시: "이미지 메시지 버블에 대고
+    // 마우스 우클릭 하면 팝업 메뉴가 뜨질 않아"] — 잘못된 클래스명
+    // (".str-chat__attachment")을 쓰고 있었다 — 근거는
+    // handlePointerDown의 동일 셀렉터 수정 부분 주석 참고. 이미지
+    // 메시지는 이 클래스가 애초에 존재하지 않아 우클릭이 처음부터
+    // 한 번도 동작하지 않았다.
     if (
       !(e.target as Element).closest(
-        ".str-chat__message-text, .str-chat__attachment, .str-chat__quoted-message-preview"
+        ".str-chat__message-text, .str-chat__message-attachment, .str-chat__quoted-message-preview"
       )
     )
       return;
