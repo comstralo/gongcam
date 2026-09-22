@@ -1574,6 +1574,21 @@ export function ChatPage({
   // 🔧 [버그 수정, 2026-09-21 재진단] 디버그 배지 재비교 결과, 키보드를
   // 닫은 뒤 vpH가 정상(844)이 아니라 797(=844-47, 상단 안전영역만큼
   const containerRef = useRef<HTMLDivElement>(null);
+  // 🔧 [버그 수정, 2026-09-23 사용자 지시: "이전 메시지 쪽으로 스크롤 한
+  // 상태에서 키보드 입력을 눌렀다가 키보드를 다시 내리면 스크롤이 가장
+  // 최근 쪽으로 내려가버린다. 스크롤 값이 유지되었으면 좋겠어"] — 아래
+  // effect는 주석상 "바닥 근처였을 때만 다시 맨 아래로 스크롤"하려는
+  // 의도였지만(1569행 옛 주석 참고), 실제 구현은 ResizeObserver 콜백이
+  // 조건 없이 scrollToBottom()을 호출하고 있었다 — 그 결과 키보드가
+  // 뜨거나(리사이즈) 닫힐 때(또 리사이즈)마다 사용자가 과거 메시지를
+  // 보려고 올려둔 스크롤 위치를 매번 무시하고 맨 아래로 끌고 갔다.
+  // 리사이즈가 "일어나기 직전"의 스크롤이 바닥 근처였는지를 ref에
+  // 기록해두고, 그 값을 기준으로만 판단한다 — 리사이즈 도중/직후에
+  // scrollTop을 다시 재는 방식은 이미 브라우저가 리사이즈에 맞춰
+  // scrollTop을 임의로 보정한 뒤일 수 있어 신뢰할 수 없다(실측: 키보드가
+  // 뜨면 컨테이너가 줄어들며 브라우저가 scrollTop을 강제로 당겨놓는 경우가
+  // 있었다).
+  const wasNearBottomRef = useRef(true);
   useEffect(() => {
     // 🔧 [버그 수정, 2026-09-21 사용자 지시: "네가 보고 있는 것만 계속
     // 반복해서 짚지 말고 연관 코드도 전수 조사해서 뭐가 문제인지
@@ -1591,18 +1606,34 @@ export function ChatPage({
     // 스크롤 컨테이너인 .str-chat__message-list로 바로잡는다.
     const scrollEl = containerRef.current?.querySelector<HTMLElement>(".str-chat__message-list");
     if (!scrollEl) return;
-    // 대화창을 여는 이 시점엔 사용자가 이미 맨 아래(최신 메시지)를
-    // 보고 있었을 것이 거의 확실하므로, 조건 없이 무조건 맨 아래로
-    // 스크롤한다. ResizeObserver로 컨테이너 자신의 크기 변화를 직접
-    // 감시해, viewportRect 값 변경과 실제 DOM 크기 변경 사이의 시차
-    // 없이 정확히 반응한다.
-    const scrollToBottom = () => {
+    // 대화창을 처음 여는 시점(마운트 직후, wasNearBottomRef 초기값 true)엔
+    // 사용자가 아직 아무 데도 스크롤하지 않았으니 맨 아래가 맞다. 이후
+    // 키보드로 인한 리사이즈에서는, "리사이즈 직전 스크롤이 바닥 근처였을
+    // 때만" 다시 맨 아래로 따라간다(과거 메시지를 읽던 도중이면 그 위치를
+    // 그대로 둔다) — 바닥 근처의 판정 여유(48px)는 메시지 1줄 높이 정도의
+    // 오차를 흡수한다.
+    const BOTTOM_THRESHOLD_PX = 48;
+    if (wasNearBottomRef.current) {
       scrollEl.scrollTop = scrollEl.scrollHeight;
-    };
-    scrollToBottom();
-    const observer = new ResizeObserver(scrollToBottom);
+    }
+    const observer = new ResizeObserver(() => {
+      if (wasNearBottomRef.current) {
+        scrollEl.scrollTop = scrollEl.scrollHeight;
+      }
+    });
     observer.observe(scrollEl);
-    return () => observer.disconnect();
+    // 리사이즈가 일어나기 전, 매 스크롤마다 "지금이 바닥 근처인지"를
+    // 갱신해둔다 — 다음 리사이즈(키보드 토글 등)가 언제 일어나든 그
+    // 직전의 실제 사용자 스크롤 위치를 기준으로 판단하기 위함.
+    const handleScroll = () => {
+      const distanceFromBottom = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight;
+      wasNearBottomRef.current = distanceFromBottom <= BOTTOM_THRESHOLD_PX;
+    };
+    scrollEl.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      observer.disconnect();
+      scrollEl.removeEventListener("scroll", handleScroll);
+    };
   }, [viewportRect?.top, viewportRect?.height, tabBarHeight]);
 
   if (error) {
