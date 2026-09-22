@@ -27,7 +27,7 @@ jobs:
       run:
         working-directory: app
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # workflow_run 트리거는 기본적으로 main의 최신 커밋을
           # checkout하는데, 그 사이 main에 새 커밋이 더 쌓였다면
