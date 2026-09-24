@@ -1153,7 +1153,7 @@ function SwipeableMessage() {
     <div
       ref={messageWrapperRef}
       data-shake-target={message.id}
-      className="group relative touch-pan-y"
+      className="group relative touch-pan-y hover:z-10"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={endDrag}
@@ -1231,16 +1231,23 @@ function SwipeableMessage() {
                 aria-expanded={showReactionPicker}
                 onClick={() => setShowReactionPicker((v) => !v)}
               >
-                <Smile className="size-3" strokeWidth={ICON_STROKE.default} />
+                <Smile className="size-2.5" strokeWidth={ICON_STROKE.default} />
               </button>
+              {/* 🔧 [버그 수정, 2026-09-24 사용자 지시: "가려지는 경우가
+                  있어"] — 팝오버를 버튼 위쪽(bottom-full)으로 띄우면,
+                  이 메시지가 스크롤 리스트 상단 근처에 있을 때 뷰포트
+                  위쪽 경계를 넘어가 overflow: hidden auto인
+                  .str-chat__message-list에 잘렸다(실측 스크린샷으로
+                  확인). 버튼 아래쪽(top-full)으로 방향을 바꿔 이 잘림을
+                  없앤다. */}
               {showReactionPicker && (
-                <div className="absolute right-0 bottom-full mb-1 flex items-center gap-0.5 rounded-full border bg-background p-0.5 whitespace-nowrap shadow-md">
+                <div className="absolute right-0 top-full z-10 mt-1 flex items-center gap-0.5 rounded-full border bg-background p-0.5 whitespace-nowrap shadow-md">
                   {QUICK_REACTIONS.map(({ type, emoji, label }) => (
                     <button
                       key={type}
                       type="button"
                       aria-label={`반응 선택: ${label}`}
-                      className="flex size-6 items-center justify-center rounded-full text-sm hover:bg-accent"
+                      className="flex size-5 items-center justify-center rounded-full text-xs hover:bg-accent"
                       onClick={(e) => {
                         handleReaction(type, e);
                         setShowReactionPicker(false);
@@ -1292,6 +1299,17 @@ function SwipeableMessage() {
           )}
           <MessageUI />
         </div>
+        {!isMyMessage() && showTimestamp && thisCreatedAt && (
+          <div className="mb-1 ms-[-4px] flex shrink-0 flex-col items-start text-[11px] leading-tight text-muted-foreground">
+            <span>{formatMessageDate(thisCreatedAt)}</span>
+          </div>
+        )}
+        {/* 🔧 [버그 수정, 2026-09-24 사용자 지시: "상대의 메시지의 경우
+            시간 우측에 제대로 표시되지 않아"] — 이전엔 [버블, 버튼들,
+            시간] 순서라 버튼이 시간보다 버블에 가까운(안쪽) 위치였다.
+            카카오톡처럼 버튼을 행의 가장 바깥쪽 끝(시간보다 더 바깥)에
+            두려면 시간 다음(오른쪽)에 와야 한다 — 내 메시지 쪽([버튼들,
+            시간, 버블])과 대칭이 되도록 이 블록을 시간 표시 뒤로 옮겼다. */}
         {!isMyMessage() && (
           <div className="mb-1 flex shrink-0 items-center gap-0.5">
             <button
@@ -1313,16 +1331,25 @@ function SwipeableMessage() {
                 aria-expanded={showReactionPicker}
                 onClick={() => setShowReactionPicker((v) => !v)}
               >
-                <Smile className="size-3" strokeWidth={ICON_STROKE.default} />
+                <Smile className="size-2.5" strokeWidth={ICON_STROKE.default} />
               </button>
+              {/* 🔧 [버그 수정, 2026-09-24 사용자 지시: "가려지는 경우가
+                  있어"] — 팝오버를 버튼 위쪽(bottom-full)으로 띄우면,
+                  이 메시지가 스크롤 리스트 상단 근처에 있을 때 뷰포트
+                  위쪽 경계를 넘어가 overflow: hidden auto인
+                  .str-chat__message-list에 잘렸다(실측 스크린샷으로
+                  확인). 버튼 아래쪽(top-full)으로 방향을 바꿔 이 잘림을
+                  없앤다 — 입력창과 겹칠 수 있는 마지막 메시지 근처에서도
+                  팝오버 자체는 입력창 위에 그려져(z-index 없이도 DOM
+                  순서상 자연스럽게) 가려지지 않는다(실측 확인). */}
               {showReactionPicker && (
-                <div className="absolute left-0 bottom-full mb-1 flex items-center gap-0.5 rounded-full border bg-background p-0.5 whitespace-nowrap shadow-md">
+                <div className="absolute left-0 top-full z-10 mt-1 flex items-center gap-0.5 rounded-full border bg-background p-0.5 whitespace-nowrap shadow-md">
                   {QUICK_REACTIONS.map(({ type, emoji, label }) => (
                     <button
                       key={type}
                       type="button"
                       aria-label={`반응 선택: ${label}`}
-                      className="flex size-6 items-center justify-center rounded-full text-sm hover:bg-accent"
+                      className="flex size-5 items-center justify-center rounded-full text-xs hover:bg-accent"
                       onClick={(e) => {
                         handleReaction(type, e);
                         setShowReactionPicker(false);
@@ -1334,11 +1361,6 @@ function SwipeableMessage() {
                 </div>
               )}
             </div>
-          </div>
-        )}
-        {!isMyMessage() && showTimestamp && thisCreatedAt && (
-          <div className="mb-1 ms-[-4px] flex shrink-0 flex-col items-start text-[11px] leading-tight text-muted-foreground">
-            <span>{formatMessageDate(thisCreatedAt)}</span>
           </div>
         )}
       </div>
