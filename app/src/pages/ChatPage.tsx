@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { StreamChat, type Channel as StreamChannel } from "stream-chat";
+import { StreamChat } from "stream-chat";
 import {
   Chat,
   Channel,
@@ -1215,20 +1215,34 @@ function ChatListHeader({
 function AdminMemberList({
   call,
   onOpened,
+  isAdmin,
 }: {
   call: ReturnType<typeof useApi>["call"];
   onOpened: () => void;
+  isAdmin: boolean;
 }) {
   const { client, setActiveChannel } = useChatContext();
   const [members, setMembers] = useState<{ number: string; name: string }[] | null>(null);
   const [openingNumber, setOpeningNumber] = useState<string | null>(null);
 
   useEffect(() => {
+    // 🔧 [사용자 지시, 2026-09-24] "채팅 목록/회원 목록 탭을 관리자·
+    // 일반회원 구분 없이 똑같이 보여주되, '관리자에게만 문의' 구조(임의
+    // 회원과 새 채팅을 여는 건 관리자만)는 유지" — /admin/members는
+    // 서버(requireAdmin)가 이미 회원 계정을 403으로 막고 있어(members.js
+    // 확인), 이 탭 자체는 보여주더라도 회원 계정으로 굳이 그 API를
+    // 호출할 필요가 없다. 애초에 부르지 않고 바로 안내 문구로 대체해
+    // 불필요한 실패 요청과 "등록된 회원이 없습니다"라는 오해의 소지가
+    //있는 문구(실제로는 권한이 없는 것이지 회원이 없는 게 아님)를 피한다.
+    if (!isAdmin) {
+      setMembers([]);
+      return;
+    }
     call<AdminMembersResponse>("/admin/members")
       .then((data) => setMembers(data.members.map((m) => ({ number: m.number, name: m.name }))))
       .catch(() => setMembers([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isAdmin]);
 
   async function openChannelWith(memberNumber: string, memberName: string) {
     const userId = `member-${memberNumber}`;
@@ -1265,7 +1279,9 @@ function AdminMemberList({
   if (!members.length) {
     return (
       <div className="p-2.5">
-        <AdminEmptyState>등록된 회원이 없습니다.</AdminEmptyState>
+        <AdminEmptyState>
+          {isAdmin ? "등록된 회원이 없습니다." : "관리자만 새 대화 상대를 선택할 수 있습니다."}
+        </AdminEmptyState>
       </div>
     );
   }
@@ -1301,10 +1317,12 @@ function AdminChatArea({
   call,
   sidebarView,
   onSidebarViewChange,
+  isAdmin,
 }: {
   call: ReturnType<typeof useApi>["call"];
   sidebarView: "channels" | "members";
   onSidebarViewChange: (view: "channels" | "members") => void;
+  isAdmin: boolean;
 }) {
   const { channel, setActiveChannel } = useChatContext();
   const hasActiveChannel = !!channel;
@@ -1361,7 +1379,7 @@ function AdminChatArea({
                 setActiveChannelOnMount={false}
               />
             ) : (
-              <AdminMemberList call={call} onOpened={() => onSidebarViewChange("channels")} />
+              <AdminMemberList call={call} onOpened={() => onSidebarViewChange("channels")} isAdmin={isAdmin} />
             )}
           </div>
         </div>
@@ -1571,7 +1589,6 @@ export function ChatPage({
   // 에 overscroll-behavior: none을 걸어 그 컨테이너의 바운스가 body로
   // 전파되는 것 자체를 막는, 훨씬 국소적인 방식으로 대체한다.
   const [client, setClient] = useState<StreamChat | null>(null);
-  const [memberChannel, setMemberChannel] = useState<StreamChannel | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   // 🔧 [사용자 지시, 2026-09-19] "채팅 목록"(대화 중인 채널들)과 "회원
@@ -1670,13 +1687,20 @@ export function ChatPage({
         setClient(c);
 
         if (!isAdmin) {
-          // 회원 본인 화면 — 본인-관리자 채널을 멱등 생성/조회하고 바로
-          // 그 채널을 연다(사용자 지시: 회원은 목록 없이 바로 대화창).
+          // 🔧 [사용자 지시, 2026-09-24] 예전엔 이 채널을 열어 별도
+          // memberChannel state에 저장하고 회원 전용 단일 채널 뷰에
+          // 바로 렌더링했다 — 이제 회원도 "채팅 목록"(AdminChatArea의
+          // ChannelList)에서 자기 채널을 보고 클릭해 들어가므로 그 state
+          // 자체는 더 이상 쓰지 않는다. 다만 watch() 호출은 그대로
+          // 남긴다 — 이게 "회원-관리자" 채널을 멱등 생성/등록하는
+          // 역할이라, 한 번도 대화를 시작한 적 없는 신규 회원이라도
+          // 로그인 즉시 이 채널이 Stream에 존재하게 되어 "채팅 목록"에
+          // 바로 나타난다(watch 없이는 채널 자체가 생성되지 않아 목록이
+          // 비어 보였을 것).
           const channel = c.channel("messaging", inquiryChannelId(data.userId), {
             members: [data.userId, "admin"],
           });
           await channel.watch();
-          setMemberChannel(channel);
         }
       })
       .catch((err) => {
@@ -2030,7 +2054,18 @@ export function ChatPage({
           max-width) 그 자동 중앙 정렬 메커니즘이 함께 끊어졌다 —
           안쪽 요소에 mx-auto를 명시해 같은 효과를 되살린다. */}
       <div className="w-full page-content min-h-0 flex-1 flex-col gap-2 flex mx-auto">
-        {isAdmin && <ChatListHeader view={sidebarView} onViewChange={setSidebarView} />}
+        {/* 🔧 [사용자 지시, 2026-09-24] "일반 회원 계정에서는 '채팅
+            목록'과 '회원 목록'이 뜨질 않아 ... 우선은 구현 단계에서는
+            보여주는 방향으로" — 원래 이 탭 자체가 isAdmin일 때만
+            렌더링됐다(의도된 설계였음). 이제 관리자/회원 구분 없이 항상
+            보여준다 — "채팅 목록"은 Stream이 로그인한 사용자 기준으로
+            자동 필터링해 안전하고(회원 계정으로 조회해도 본인이 속한
+            채널만 나옴), "회원 목록"의 실제 기능(임의 회원과 새 채팅
+            시작)은 서버(requireAdmin)가 여전히 관리자만 허용하므로
+            AdminMemberList가 isAdmin=false일 때 API 호출 자체를 건너뛰고
+            안내 문구만 보여준다(위 AdminMemberList 참고) — "관리자에게만
+            문의" 구조 자체는 그대로 유지된다(사용자 확인). */}
+        <ChatListHeader view={sidebarView} onViewChange={setSidebarView} />
         <div className="flex w-full min-h-0 flex-1 flex-col overflow-hidden rounded-lg border">
       <Chat client={client} i18nInstance={chatI18n} theme={dark ? "str-chat__theme-dark" : "str-chat__theme-light"}>
         {/* 🔧 [사용자 지시] "상대방 아이콘을 사람 모양을 한 그림 형태로" —
@@ -2054,36 +2089,29 @@ export function ChatPage({
             DateSeparator: ChatDateSeparator,
             QuotedMessage: ChatQuotedMessage,
             ContextMenu: ChatActionsContextMenu,
+            // Stream 기본 PinIndicator는 원문 메시지 위에 노란 "내가 고정함"
+            // 표시를 추가한다. 이 앱은 ChannelHeader 아래의
+            // PinnedMessageBanner가 고정 메시지의 안내·이동·해제를 전담하므로,
+            // 중복 표시와 그 레이아웃을 아예 렌더링하지 않는다.
+            PinIndicator: () => null,
           }}
         >
-        {isAdmin ? (
-          // 관리자 — 지금까지 문의가 들어온 모든 회원과의 채널 목록.
-          // 🔧 [사용자 지시, 2026-09-20] "'채팅 목록'/'회원 목록' 토글을
-          // 다른 메뉴들처럼 상단에 올려줘" — 예전엔 좌측 사이드바 안에
-          // 있어(ChatListHeader) 사이드바를 접으면 토글 자체도 함께
-          // 사라졌다. ReportPage(화각 불량 제보/PUSH 알림 전송/내 제보
-          // 확인)처럼 페이지 최상단에 항상 보이는 위치로 옮긴다 — 이제
-          // 사이드바 접힘 여부와 무관하게 뷰 전환이 가능하다. 실제
-          // 2단 레이아웃(목록/대화창 스플릿, 활성 채널 여부에 따른
-          // 자동 전환)은 AdminChatArea(<Chat> 자식, useChatContext로
-          // 활성 채널을 구독해야 해서 별도 컴포넌트로 분리)가 담당한다.
-          <AdminChatArea call={call} sidebarView={sidebarView} onSidebarViewChange={setSidebarView} />
-        ) : (
-          // 회원 — 목록 없이 본인-관리자 채널로 바로 진입.
-          <div className="chat-message-area h-full">
-            <Channel channel={memberChannel ?? undefined}>
-              <Window>
-                <ChannelHeader title="관리자에게 문의하기" Avatar={PersonAvatar} />
-                <PinnedMessageBanner />
-                {/* 🔧 [버그 수정, 2026-09-20] 위 관리자용 MessageList와
-                    동일한 이유로 returnAllReadData를 켠다 — 자세한 경위는
-                    그쪽 주석 참고. */}
-                <MessageList returnAllReadData />
-                <MessageComposer />
-              </Window>
-            </Channel>
-          </div>
-        )}
+        {/* 🔧 [2026-09-20] "'채팅 목록'/'회원 목록' 토글을 다른 메뉴들처럼
+            상단에 올려줘" — 예전엔 좌측 사이드바 안에 있어(ChatListHeader)
+            사이드바를 접으면 토글 자체도 함께 사라졌다. ReportPage(화각
+            불량 제보/PUSH 알림 전송/내 제보 확인)처럼 페이지 최상단에
+            항상 보이는 위치로 옮긴다 — 이제 사이드바 접힘 여부와 무관하게
+            뷰 전환이 가능하다. 실제 2단 레이아웃(목록/대화창 스플릿,
+            활성 채널 여부에 따른 자동 전환)은 AdminChatArea(<Chat> 자식,
+            useChatContext로 활성 채널을 구독해야 해서 별도 컴포넌트로
+            분리)가 담당한다.
+            🔧 [사용자 지시, 2026-09-24] 원래 여기서 isAdmin 여부로
+            AdminChatArea(목록+대화창)와 회원 전용 단일 채널 뷰를 분기했다
+            — 이제 관리자/회원 구분 없이 항상 AdminChatArea를 쓴다("채팅
+            목록"에 회원 본인의 관리자 문의 채널이 그대로 나타난다).
+            "회원 목록"의 새 채팅 시작 기능은 AdminMemberList 내부에서
+            isAdmin에 따라 여전히 관리자로 제한된다. */}
+        <AdminChatArea call={call} sidebarView={sidebarView} onSidebarViewChange={setSidebarView} isAdmin={isAdmin} />
         </ComponentProvider>
       </Chat>
         </div>
