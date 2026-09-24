@@ -1169,26 +1169,18 @@ function SwipeableMessage() {
       >
         <Reply className="size-4" strokeWidth={ICON_STROKE.default} />
       </div>
-      {/* 🔧 [사용자 지시, 2026-09-19] "시간 표시를 말풍선 좌측 하단에,
-          카카오톡처럼 말풍선과 같은 줄에 나란히" — Stream 기본 metadata
-          (시간+읽음상태)는 chat-theme.css에서 전부 display:none으로
-          숨겼다(grid 레이아웃 재정의가 Stream 내부 규칙과 계속 충돌해
-          실측대로 안 붙었음). 대신 여기서 버블(MessageUI)과 시간을 같은
-          flex row에 직접 배치한다 — 내 메시지는 [시간, 버블] 순서로
-          시간이 왼쪽에, 상대 메시지는 [아바타, {이름, 버블}, 시간]
-          순서로 시간이 오른쪽에 오도록 해 항상 버블의 바깥쪽에
-          자연스럽게 붙는다. items-end로 버블 하단에 시간을 맞춘다
-          (사용자 요청: "좌측 하단"). */}
-      {/* 🔧 [버그 수정, 2026-09-20 사용자 지시: "아이콘, 이름, 메시지
-          요소가 다 따로 노는 것 같아"] — Stream이 그리는 아바타(MessageUI
-          내부 grid, align-self:end)는 이름의 존재를 몰라 이름과 절대
-          나란해질 수 없는 구조였다(자세한 경위는 useSenderNameToShow
-          위 주석 참고). Stream 아바타는 완전히 숨기고(chat-theme.css의
-          .str-chat__avatar { display: none }), 이 row에서 우리가
-          [아바타, {이름 위/버블 아래를 세로로 쌓은 flex-col}]을 직접
-          그린다 — 아바타(PersonAvatar, size="md"로 Stream과 동일한
-          32px)와 이름 모두 이 같은 row/컬럼의 자연스러운 정렬을
-          따르므로 항상 정확히 나란하다. */}
+      {/* 🔧 [사용자 지시, 2026-09-24] "버블 모양의 끝점과 시계 텍스트의
+          끝점이 일치해야 하는데 그렇지 않다 — 카카오톡 구현 방식을 다시
+          확인" — 이전엔 버블과 시간을 같은 flex row의 형제 아이템으로
+          나란히 뒀는데, 그러면 시간 블록이 "버블의 실제 렌더 폭"과
+          무관하게 자기 텍스트 폭만큼만 차지해 버블 끝과 시간 끝이
+          맞을 이유가 없었다(우연히만 맞음). 카카오톡은 버블-시간-hover
+          줄을 하나의 세로 컬럼으로 쌓고, 그 컬럼 자체를 items-end(내
+          메시지)/items-start(상대 메시지)로 정렬한다 — 컬럼 폭은 가장
+          넓은 자식(보통 버블)에 맞춰지므로, 그보다 좁은 시간/hover
+          줄이 그 폭 안에서 끝(또는 시작)에 자동으로 맞춰진다. 아바타/
+          이름을 포함한 바깥 row는 그대로 두고, 그 안의 "버블 쪽"만
+          이 세로 컬럼으로 교체한다. */}
       <div
         className={cn("flex items-end gap-0", isMyMessage() ? "justify-end" : "justify-start")}
         style={{
@@ -1196,25 +1188,6 @@ function SwipeableMessage() {
           transition: dragging ? "none" : "transform 150ms ease-out",
         }}
       >
-        {/* 🔧 [사용자 지시, 2026-09-19] "시간/배지를 버블과 좀 더
-            가깝게" — 버블 자체의 padding-inline-start를 줄이는 방식은
-            버블 안쪽 텍스트 여백까지 함께 좁혀 텍스트가 벽에 붙어
-            보이는 부작용이 있었다. 대신 시간 쪽에 음수 margin을 줘서
-            버블의 텍스트 패딩은 그대로 두고 시간 블록만 버블 쪽으로
-            당긴다(버블 padding-inline이 약 8px이므로 그 절반 정도만
-            당겨 완전히 겹치지 않게 한다). */}
-        {/* 🔧 [사용자 지시, 2026-09-24] "카카오톡의 모양에 맞게 배치해줘"
-            — 카카오톡 참고 스크린샷 확인 결과, 시간 표시는 버블과 같은
-            줄에 있고 hover 액션(답장/반응 추가)은 그 아래 별도 줄에
-            리액션 배지와 나란히 있다. 이 줄(시간)에는 시간만 남기고,
-            hover 버튼은 버블+리액션 배지 아래의 새 줄로 옮긴다(아래
-            "카카오톡처럼 hover 액션을 별도 줄로" 블록 참고). */}
-        {isMyMessage() && showTimestamp && thisCreatedAt && (
-          <div className="mb-1 me-[-4px] flex shrink-0 flex-col items-end text-[11px] leading-tight text-muted-foreground">
-            {showUnreadOne && <span className="font-medium">1</span>}
-            <span>{formatMessageDate(thisCreatedAt)}</span>
-          </div>
-        )}
         {/* 🔧 [버그 수정, 2026-09-20 사용자 지시: "아바타가 너무 여백
             없이 좌측에 딱 붙었잖아"] — 이 아바타는 이제 .str-chat__message
             (Stream이 좌우 padding-inline을 주던 그 요소, chat-theme.css:
@@ -1241,78 +1214,80 @@ function SwipeableMessage() {
             // 폭 32px + gap 6px).
             <div className="ms-2 me-1.5 w-8 shrink-0" />
           ))}
-        <div className="min-w-0">
+        {/* 🔧 버블(MessageUI) + 시간 + hover 액션 줄을 하나의 세로
+            컬럼으로 묶는다. 이 div는 자식 중 가장 넓은 것(버블)의
+            내재 폭만큼만 차지하고(inline-flex와 동일 효과의
+            flex-col + items-*), 그 안의 얕은 줄들이 자동으로 그
+            폭의 끝/시작에 맞춰진다 — 이게 카카오톡에서 "버블 끝과
+            시간 끝이 항상 일치"하는 이유다. */}
+        <div className={cn("flex min-w-0 flex-col", isMyMessage() ? "items-end" : "items-start")}>
           {senderName && (
-            <div className="mb-1 ms-1 text-[12px] font-medium text-muted-foreground">{senderName}</div>
+            <div className="mb-1 ms-1 self-start text-[12px] font-medium text-muted-foreground">{senderName}</div>
           )}
           <MessageUI />
-        </div>
-        {!isMyMessage() && showTimestamp && thisCreatedAt && (
-          <div className="mb-1 ms-[-4px] flex shrink-0 flex-col items-start text-[11px] leading-tight text-muted-foreground">
-            <span>{formatMessageDate(thisCreatedAt)}</span>
-          </div>
-        )}
-      </div>
-      {/* 🔧 [사용자 지시, 2026-09-24] "카카오톡의 모양에 맞게 배치해줘"
-          — 카카오톡은 hover 액션(답장/반응 추가)이 시간과 같은 줄이
-          아니라 그 아래, 메시지(+리액션 배지)와 같은 정렬 방향의 새
-          줄에 있다. 위 row(버블+시간)가 끝난 뒤 이 컴포넌트 레벨에서
-          별도 줄로 렌더링하고, 내 메시지는 오른쪽 정렬(justify-end),
-          상대 메시지는 아바타 폭(32px+gap 6px)만큼 들여쓴 왼쪽 정렬로
-          버블 시작 위치와 맞춘다. */}
-      <div className={cn("flex", isMyMessage() ? "justify-end" : "justify-start ps-9.5")}>
-        <div className="flex items-center gap-0.5">
-          <button
-            type="button"
-            className="hidden size-4 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground [@media(hover:hover)]:group-hover:opacity-100 sm:[@media(hover:hover)]:flex"
-            aria-label="답장"
-            onClick={(e) => triggerMessageAction(e.currentTarget.closest("[data-shake-target]") as HTMLElement, 'button[aria-label="메시지 인용"]')}
-          >
-            <Reply className="size-2.5" strokeWidth={ICON_STROKE.default} />
-          </button>
-          <div className="relative">
+          {showTimestamp && thisCreatedAt && (
+            <div className="mt-0.5 flex shrink-0 items-center gap-1 text-[11px] leading-tight text-muted-foreground">
+              {isMyMessage() && showUnreadOne && <span className="font-medium">1</span>}
+              <span>{formatMessageDate(thisCreatedAt)}</span>
+            </div>
+          )}
+          {/* 🔧 [사용자 지시, 2026-09-24] "카카오톡의 모양에 맞게
+              배치해줘" — hover 액션(답장/반응 추가)은 시간 아래 새
+              줄에, 리액션 배지와 같은 정렬 방향(버블 폭 기준 끝/시작)
+              으로 둔다. */}
+          <div className="mt-0.5 flex items-center gap-0.5">
             <button
               type="button"
-              className={cn(
-                "flex size-4 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground [@media(hover:hover)]:group-hover:opacity-100 sm:[@media(hover:hover)]:flex",
-                showReactionPicker ? "flex opacity-100" : "hidden"
-              )}
-              aria-label="반응 추가"
-              aria-expanded={showReactionPicker}
-              onClick={() => setShowReactionPicker((v) => !v)}
+              className="hidden size-4 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground [@media(hover:hover)]:group-hover:opacity-100 sm:[@media(hover:hover)]:flex"
+              aria-label="답장"
+              onClick={(e) => triggerMessageAction(e.currentTarget.closest("[data-shake-target]") as HTMLElement, 'button[aria-label="메시지 인용"]')}
             >
-              <Smile className="size-2.5" strokeWidth={ICON_STROKE.default} />
+              <Reply className="size-2.5" strokeWidth={ICON_STROKE.default} />
             </button>
-            {/* 🔧 [버그 수정, 2026-09-24 사용자 지시: "가려지는 경우가
-                있어"] — 팝오버를 버튼 위쪽(bottom-full)으로 띄우면,
-                이 메시지가 스크롤 리스트 상단 근처에 있을 때 뷰포트
-                위쪽 경계를 넘어가 overflow: hidden auto인
-                .str-chat__message-list에 잘렸다(실측 스크린샷으로
-                확인). 버튼 아래쪽(top-full)으로 방향을 바꿔 이 잘림을
-                없앤다. */}
-            {showReactionPicker && (
-              <div
+            <div className="relative">
+              <button
+                type="button"
                 className={cn(
-                  "absolute top-full z-10 mt-1 flex items-center gap-0.5 rounded-full border bg-background p-0.5 whitespace-nowrap shadow-md",
-                  isMyMessage() ? "right-0" : "left-0"
+                  "flex size-4 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground [@media(hover:hover)]:group-hover:opacity-100 sm:[@media(hover:hover)]:flex",
+                  showReactionPicker ? "flex opacity-100" : "hidden"
                 )}
+                aria-label="반응 추가"
+                aria-expanded={showReactionPicker}
+                onClick={() => setShowReactionPicker((v) => !v)}
               >
-                {QUICK_REACTIONS.map(({ type, emoji, label }) => (
-                  <button
-                    key={type}
-                    type="button"
-                    aria-label={`반응 선택: ${label}`}
-                    className="flex size-4 items-center justify-center rounded-full text-[10px] hover:bg-accent"
-                    onClick={(e) => {
-                      handleReaction(type, e);
-                      setShowReactionPicker(false);
-                    }}
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-            )}
+                <Smile className="size-2.5" strokeWidth={ICON_STROKE.default} />
+              </button>
+              {/* 🔧 [버그 수정, 2026-09-24 사용자 지시: "가려지는 경우가
+                  있어"] — 팝오버를 버튼 위쪽(bottom-full)으로 띄우면,
+                  이 메시지가 스크롤 리스트 상단 근처에 있을 때 뷰포트
+                  위쪽 경계를 넘어가 overflow: hidden auto인
+                  .str-chat__message-list에 잘렸다(실측 스크린샷으로
+                  확인). 버튼 아래쪽(top-full)으로 방향을 바꿔 이 잘림을
+                  없앤다. */}
+              {showReactionPicker && (
+                <div
+                  className={cn(
+                    "absolute top-full z-10 mt-1 flex items-center gap-0.5 rounded-full border bg-background p-0.5 whitespace-nowrap shadow-md",
+                    isMyMessage() ? "right-0" : "left-0"
+                  )}
+                >
+                  {QUICK_REACTIONS.map(({ type, emoji, label }) => (
+                    <button
+                      key={type}
+                      type="button"
+                      aria-label={`반응 선택: ${label}`}
+                      className="flex size-4 items-center justify-center rounded-full text-[10px] hover:bg-accent"
+                      onClick={(e) => {
+                        handleReaction(type, e);
+                        setShowReactionPicker(false);
+                      }}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

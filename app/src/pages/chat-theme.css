@@ -545,23 +545,33 @@
   overscroll-behavior: none;
 }
 
-/* 🔧 [사용자 지시, 2026-09-24 누차 반복: "이모지가 너무 커. 확 줄여줘"]
-   — 메시지에 붙는 리액션 배지(예: "🔥 1")의 이모지가 Stream 기본값
-   (--str-chat__font-size-size-17, 17px)이라 시간 표시(11px)에 비해
-   눈에 띄게 컸다. 배지 전체(아이콘+숫자+패딩)를 비례해서 확실히
-   줄인다. */
+/* 🔧 [사용자 지시, 2026-09-24 누차 반복: "이모지가 너무 커. 확 줄여줘"
+   → "카카오톡과는 너무 다른데?"] — font-size만 줄였을 때도 배지가
+   여전히 커 보였던 건, Stream 기본 line-height
+   (--str-chat__typography-line-height-normal, 20px)가 그대로 남아
+   실제 렌더 높이(20px)가 font-size(11px)와 무관하게 컸기 때문이다
+   (실측: getBoundingClientRect로 아이콘 자체가 14×20px, 배지 버튼이
+   24px 높이임을 확인). line-height까지 폰트 크기에 맞춰 줄이고,
+   전체 크기를 시간 표시(11px 텍스트)와 비슷한 시각적 무게가 되도록
+   한 단계 더 줄인다. */
 .str-chat__message-reactions__list-item-icon {
-  font-size: 11px !important;
+  font-size: 10px !important;
+  line-height: 1 !important;
 }
 .str-chat__message-reactions__list-button,
 .str-chat__message-reactions__list-item-button {
-  padding-inline: 4px !important;
+  padding-inline: 3px !important;
   padding-block: 1px !important;
+  gap: 2px !important;
 }
 .str-chat__message-reactions__total-count,
 .str-chat__message-reactions__overflow-count,
 .str-chat__message-reactions__list-item-count {
-  font-size: 10px !important;
+  font-size: 9px !important;
+  line-height: 1 !important;
+}
+.str-chat__message-reactions__list {
+  gap: 2px !important;
 }
 
 /* 🔧 [버그 수정, 2026-09-24 사용자 지시: "메뉴가 앞으로 오도록"] —
