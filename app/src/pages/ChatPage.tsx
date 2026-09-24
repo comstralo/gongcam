@@ -30,7 +30,7 @@ import {
 } from "stream-chat-react";
 import "stream-chat-react/dist/css/index.css";
 import "@/pages/chat-theme.css";
-import { MessageCircle, X, User, Reply, ImagePlus, Pin } from "lucide-react";
+import { MessageCircle, X, User, Reply, ImagePlus, Pin, Smile } from "lucide-react";
 import { InfoCard } from "@/components/dashboard/shared";
 import { AdminListSkeleton, AdminEmptyState, AdminSearchInput } from "@/components/admin/shared";
 import { Button } from "@/components/ui/button";
@@ -514,7 +514,7 @@ function useSenderNameToShow(): string | null {
 }
 
 function SwipeableMessage() {
-  const { message, isMyMessage } = useMessageContext();
+  const { message, isMyMessage, handleReaction } = useMessageContext();
   const messageComposer = useMessageComposerController();
   const { jumpToMessage } = useChannelActionContext();
   const { processedMessages } = useMessageListContext();
@@ -525,6 +525,37 @@ function SwipeableMessage() {
   const startXRef = useRef<number | null>(null);
   const SWIPE_THRESHOLD = 40;
   const MAX_DRAG = 64;
+  // 🔧 [사용자 지시, 2026-09-24] "PC 화면에서는 메시지에 마우스 오버를
+  // 하면 표정을 남기는 버튼을 띄워줘" — hover의 "반응 추가" 버튼을
+  // 눌렀을 때 Stream 드롭다운 메뉴 안의 이모지 선택기(dropdown-react-
+  // action → ReactionSelector, floating-ui 다이얼로그)를 자동 클릭으로
+  // 대신 열어보려 했으나, 그 다이얼로그가 실제 마우스 클릭에만 반응하고
+  // 프로그래매틱 클릭(el.click(), 완전한 pointerdown~click 이벤트
+  // 시퀀스를 직접 디스패치해도 isTrusted:false)에는 반응하지 않음을
+  // 실측으로 확인했다(반면 "답장"은 평범한 onClick이라 문제없이 동작).
+  // 그 다이얼로그를 억지로 열려 하는 대신, 이 컴포넌트가 직접 작은
+  // 이모지 팝오버를 그려 Stream이 이미 제공하는 handleReaction(message
+  // context)을 호출한다 — 우리 버튼의 onClick 자체가 진짜 트러스티드
+  // 클릭이라 이 경로는 문제가 생기지 않는다.
+  const [showReactionPicker, setShowReactionPicker] = useState(false);
+  const messageWrapperRef = useRef<HTMLDivElement | null>(null);
+  const QUICK_REACTIONS: { type: string; emoji: string; label: string }[] = [
+    { type: "haha", emoji: "😂", label: "Joy" },
+    { type: "like", emoji: "👍", label: "Thumbs up" },
+    { type: "love", emoji: "❤️", label: "Heart" },
+    { type: "sad", emoji: "😔", label: "Sad" },
+    { type: "wow", emoji: "😮", label: "Astonished" },
+    { type: "fire", emoji: "🔥", label: "Fire" },
+  ];
+
+  useEffect(() => {
+    if (!showReactionPicker) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (!messageWrapperRef.current?.contains(e.target as Node)) setShowReactionPicker(false);
+    };
+    document.addEventListener("click", handleOutsideClick, true);
+    return () => document.removeEventListener("click", handleOutsideClick, true);
+  }, [showReactionPicker]);
 
   // 🔧 [버그 수정, 2026-09-19 사용자 지시: "가까운 메시지는 1번 이동으론
   // 발동이 안 되고 2번부터는 잘 됨. 먼 메시지는 여러 번 눌러도 확인이
@@ -771,6 +802,60 @@ function SwipeableMessage() {
   // 메뉴가 뜨도록" — 롱프레스(모바일)와 우클릭(PC) 둘 다 같은 액션
   // 메뉴를 열어야 하므로, 토글 버튼을 찾아 클릭하는 로직을 공용
   // 함수로 뽑아 재사용한다.
+  // 🔧 [사용자 지시, 2026-09-24] "PC 화면에서는 메시지에 마우스 오버를
+  // 하면 표정을 남기는 버튼, 답장을 하는 버튼을 띄워줘" — 새로 만든
+  // hover 오버레이(아래 SwipeableMessage 렌더 부분)의 두 버튼이 각각
+  // "반응 추가"/"답장" 항목을 자동으로 클릭해 곧장 그 액션까지
+  // 실행되게 한다. 이 두 액션 모두 이미 검증된 openMessageActionsMenu
+  // 인프라(위치 계산, 레이아웃 흔들림 방지) 위에서 열리는 드롭다운
+  // 메뉴 안에 존재하므로, 새 메뉴 UI를 따로 만들 필요 없이 메뉴를 열고
+  // 해당 항목을 프로그래밍적으로 클릭하는 것만으로 충분하다.
+  function triggerMessageAction(wrapperEl: HTMLElement, actionSelector: string) {
+    openMessageActionsMenu(wrapperEl);
+    // 🔧 [버그 수정] openMessageActionsMenu 내부에서도 toggleBtn.click()
+    // 직후 requestAnimationFrame으로 항목 정리(thread-action 제거 등)를
+    // 하는데, 그 항목 정리가 실행되기도 전에(같은 프레임의 RAF 콜백은
+    // 등록 순서대로 실행되지만, Stream의 ContextMenu 다이얼로그 자체가
+    // --open 클래스를 실제로 붙이는 시점은 React 렌더 커밋 이후라 1개의
+    // RAF로는 아직 늦을 수 있음 — 실측: 자동 클릭이 씹혀 메뉴만 열린
+    // 채로 남았다) 이 자동 클릭 시도가 실행되면 실패한다. MutationObserver로
+    // 박스가 실제로 열리는 시점을 직접 기다린 뒤 클릭한다.
+    // 🔧 [버그 수정] target.click()(순수 DOM 메서드, click 이벤트 1개만
+    // 발생)으로는 이 버튼이 반응하지 않았다(실측: 실제 마우스 클릭은
+    // 정상 동작하는데 .click()만 메뉴가 그대로 남아있었음) — Stream의
+    // 반응 선택기 다이얼로그(floating-ui 기반)가 pointerdown 등 실제
+    // 클릭 제스처의 앞선 이벤트에 반응하는 것으로 보인다. 실제 클릭이
+    // 발생시키는 이벤트 시퀀스(pointerdown → mousedown → pointerup →
+    // mouseup → click)를 그대로 재현한다.
+    const dispatchRealClick = (el: HTMLElement) => {
+      const rect = el.getBoundingClientRect();
+      const point = { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 };
+      const opts = { bubbles: true, cancelable: true, view: window, ...point };
+      el.dispatchEvent(new PointerEvent("pointerdown", { ...opts, pointerId: 1, isPrimary: true }));
+      el.dispatchEvent(new MouseEvent("mousedown", opts));
+      el.dispatchEvent(new PointerEvent("pointerup", { ...opts, pointerId: 1, isPrimary: true }));
+      el.dispatchEvent(new MouseEvent("mouseup", opts));
+      el.dispatchEvent(new MouseEvent("click", opts));
+    };
+    const tryClick = () => {
+      const box = document.querySelector<HTMLElement>(".str-chat__message-actions-box--open");
+      const target = box?.querySelector<HTMLButtonElement>(actionSelector);
+      if (target) {
+        dispatchRealClick(target);
+        return true;
+      }
+      return false;
+    };
+    if (tryClick()) return;
+    const observer = new MutationObserver(() => {
+      if (tryClick()) observer.disconnect();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    // 메뉴가 끝내 안 열리는 예외 상황(다른 메뉴가 이미 열려 있는 등)에
+    // 옵저버가 무한정 남지 않도록 안전장치로 짧게 후 정리한다.
+    setTimeout(() => observer.disconnect(), 2000);
+  }
+
   function openMessageActionsMenu(wrapperEl: HTMLElement) {
     const toggleBtn = wrapperEl.querySelector<HTMLButtonElement>('[data-testid="message-actions-toggle-button"]');
     const optionsEl = wrapperEl.querySelector<HTMLElement>(".str-chat__message-options");
@@ -1053,8 +1138,9 @@ function SwipeableMessage() {
 
   return (
     <div
+      ref={messageWrapperRef}
       data-shake-target={message.id}
-      className="relative touch-pan-y"
+      className="group relative touch-pan-y"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={endDrag}
@@ -1069,6 +1155,91 @@ function SwipeableMessage() {
         style={{ opacity: Math.min(1, Math.abs(dragX) / SWIPE_THRESHOLD) }}
       >
         <Reply className="size-4" strokeWidth={ICON_STROKE.default} />
+      </div>
+      {/* 🔧 [사용자 지시, 2026-09-24] "PC 화면에서는 메시지에 마우스
+          오버를 하면 표정을 남기는 버튼, 답장을 하는 버튼을 띄워줘"
+          (카카오톡 참고 스크린샷) — Stream 기본 호버 옵션 줄
+          (.str-chat__message-options)은 문서 흐름 안의 flex 아이템이라
+          호버할 때마다 width:fit-content인 버블 폭 계산에 끼어들어
+          버블이 커졌다 작아졌다 하는 버그가 있어(2026-09-19 결정)
+          완전히 꺼뒀다 — 그 결정을 뒤집지 않고, 이 오버레이는 처음부터
+          absolute로 문서 흐름 밖에 띄워 버블 레이아웃과 완전히 분리한다.
+          🔧 [버그 수정] 처음엔 버블 옆(좌/우 바깥)에 뒀으나, 부모인
+          .str-chat__message-list가 overflow: hidden auto(가로만 hidden)
+          라 버블 폭을 벗어난 만큼 가로로 잘려 전혀 보이지 않았다(실측).
+          그 다음 버블 "위쪽"(bottom-full)으로 옮겼으나, 채널 목록 맨 위
+          메시지(스크롤 리스트 첫 항목)에서는 그 위쪽이 채널 헤더 영역과
+          겹쳐 헤더가 항상 위에 그려졌다(elementFromPoint로 실측 확인 —
+          z-index를 여러 층에 다르게 시도해도 이 두 요소는 서로 다른
+          컴포넌트 트리 형제라 스태킹 순서를 이 앱 CSS만으로 안전하게
+          역전시킬 수 없었다). 헤더와 절대 겹칠 수 없는 버블 "아래쪽"
+          (top-full)으로 방향을 바꿔 이 충돌 자체를 근본적으로 없앤다.
+          좌우는 버블이 있는 쪽 끝에 맞춰, 버블 자체가 이미 확보한 가로
+          폭 안에서만 움직이게 한다. "답장" 버튼은 새 UI를 만들지 않고,
+          이미 검증된 드롭다운 메뉴 인프라(triggerMessageAction →
+          openMessageActionsMenu)를 열고 해당 항목을 대신 클릭하는
+          방식이라 동작 자체는 메뉴에서 직접 누르는 것과 동일하다.
+          데스크톱 전용(hover가 실제로 가능한 입력장치)이라 sm 이상 +
+          hover 가능 환경에서만 노출한다. */}
+      <div
+        className={cn(
+          "pointer-events-none absolute top-full z-10 mt-1 hidden items-center gap-1 opacity-0 transition-opacity [@media(hover:hover)]:group-hover:opacity-100 sm:[@media(hover:hover)]:flex",
+          // 이모지 팝오버가 열려 있는 동안은 마우스가 버블 바깥(팝오버
+          // 위)으로 나가도 group-hover가 풀려 오버레이 전체가 사라지지
+          // 않도록 강제로 보이게 유지한다.
+          showReactionPicker && "opacity-100",
+          isMyMessage() ? "right-0" : "left-0"
+        )}
+      >
+        <div className="pointer-events-auto relative">
+          <button
+            type="button"
+            className="flex size-7 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:bg-accent hover:text-foreground"
+            aria-label="반응 추가"
+            aria-expanded={showReactionPicker}
+            onClick={() => setShowReactionPicker((v) => !v)}
+          >
+            <Smile className="size-3.5" strokeWidth={ICON_STROKE.default} />
+          </button>
+          {/* 🔧 [버그 수정] Stream의 드롭다운 메뉴 안 이모지 선택기
+              (dropdown-react-action → ReactionSelector, floating-ui
+              다이얼로그)를 자동으로 열어보려 했으나, 실제 마우스 클릭
+              에만 반응하고 프로그래매틱 클릭(완전한 pointerdown~click
+              이벤트 시퀀스를 직접 디스패치해도 isTrusted:false)에는
+              반응하지 않음을 실측으로 확인했다 — "답장"(평범한 onClick)
+              과 달리 이 컴포넌트가 직접 그리는 팝오버로 대체하고,
+              Stream이 이미 메시지 컨텍스트로 제공하는 handleReaction을
+              그대로 호출한다(반응 저장/카운트 로직은 100% Stream 것). */}
+          {showReactionPicker && (
+            <div
+              className="absolute top-full mt-1 flex items-center gap-0.5 rounded-full border bg-background p-1 whitespace-nowrap shadow-md"
+              style={isMyMessage() ? { right: 0 } : { left: 0 }}
+            >
+              {QUICK_REACTIONS.map(({ type, emoji, label }) => (
+                <button
+                  key={type}
+                  type="button"
+                  aria-label={`반응 선택: ${label}`}
+                  className="flex size-7 items-center justify-center rounded-full text-base hover:bg-accent"
+                  onClick={(e) => {
+                    handleReaction(type, e);
+                    setShowReactionPicker(false);
+                  }}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          className="pointer-events-auto flex size-7 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:bg-accent hover:text-foreground"
+          aria-label="답장"
+          onClick={(e) => triggerMessageAction(e.currentTarget.closest("[data-shake-target]") as HTMLElement, 'button[aria-label="메시지 인용"]')}
+        >
+          <Reply className="size-3.5" strokeWidth={ICON_STROKE.default} />
+        </button>
       </div>
       {/* 🔧 [사용자 지시, 2026-09-19] "시간 표시를 말풍선 좌측 하단에,
           카카오톡처럼 말풍선과 같은 줄에 나란히" — Stream 기본 metadata
