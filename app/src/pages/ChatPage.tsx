@@ -26,6 +26,7 @@ import {
   QuotedMessagePreviewUI,
   ComponentProvider,
   Streami18n,
+  MessageReactions,
   type ContextMenuProps,
 } from "stream-chat-react";
 import "stream-chat-react/dist/css/index.css";
@@ -324,6 +325,18 @@ function PersonAvatar({ size, className }: { size?: string | null; className?: s
       <User className="size-[60%]" strokeWidth={ICON_STROKE.default} />
     </div>
   );
+}
+
+// 🔧 [사용자 지시, 2026-09-24] "이모지가 부착되는 모양새를 카카오톡에
+// 맞춰줘 — 지금은 버블 위쪽에 있잖아" — Stream 기본 MessageReactions는
+// verticalPosition="top"이 기본값이라 리액션 배지가 버블 위쪽에 떠
+// 있었다(MessageReactions.mjs 소스 확인: top/bottom 둘 다 지원하는
+// prop). 카카오톡은 배지를 버블 하단 모서리에 겹쳐 붙이므로
+// verticalPosition="bottom"만 강제 지정한 얇은 wrapper를
+// ComponentContext.MessageReactions 슬롯에 꽂는다 — 배지 자체의 동작
+// (카운트, 클릭 시 상세 목록 등)은 100% Stream 컴포넌트 그대로다.
+function BottomMessageReactions(props: React.ComponentProps<typeof MessageReactions>) {
+  return <MessageReactions {...props} verticalPosition="bottom" />;
 }
 
 // 🔧 [사용자 지시, 2026-09-19] "'+' 버튼을 누르면 파일/명령어가 나오는데
@@ -2420,6 +2433,7 @@ export function ChatPage({
             // PinnedMessageBanner가 고정 메시지의 안내·이동·해제를 전담하므로,
             // 중복 표시와 그 레이아웃을 아예 렌더링하지 않는다.
             PinIndicator: () => null,
+            MessageReactions: BottomMessageReactions,
           }}
         >
         {/* 🔧 [2026-09-20] "'채팅 목록'/'회원 목록' 토글을 다른 메뉴들처럼
