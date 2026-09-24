@@ -384,6 +384,24 @@
 .str-chat__message.str-chat__message--highlighted {
   background-color: transparent !important;
 }
+
+/* 고정 메시지의 원문 위에 Stream이 기본으로 붙이는 "내가 고정함" 표시는
+   ChatPage의 ComponentProvider에서 렌더링하지 않는다. 이미 마운트된 메시지나
+   Stream 내부 렌더 경로가 이 컴포넌트를 다시 주입하는 경우에도 빈 노란 영역이
+   남지 않도록 CSS에서도 숨긴다. 고정 상태 자체와 헤더의 PinnedMessageBanner는
+   이 규칙의 대상이 아니다. */
+.str-chat .str-chat__message-pin-indicator {
+  display: none;
+}
+
+/* Stream은 pinned 메시지가 든 목록 행의 ::before에 노란 하이라이트를
+   별도로 그린다. PinIndicator와는 독립된 요소라 위 규칙만으로는 사라지지
+   않는다. 가상 요소만 없애고 .str-chat__message--pinned 클래스는 남겨
+   핀 상태, 상단 PinnedMessageBanner, 고정 해제 동작은 그대로 보존한다. */
+.str-chat__li:has(.str-chat__message--pinned)::before {
+  content: none;
+}
+
 /* 🔧 chat-shake는 .str-chat__message(Stream 요소) 자체가 아니라
    ChatPage.tsx의 SwipeableMessage가 렌더링하는 바깥 wrapper div
    (.relative.touch-pan-y)에 붙는다 — 스크롤 완료 여부를 그 wrapper의
