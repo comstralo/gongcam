@@ -545,3 +545,22 @@
   overscroll-behavior: none;
 }
 
+/* 🔧 [사용자 지시, 2026-09-24 누차 반복: "이모지가 너무 커. 확 줄여줘"]
+   — 메시지에 붙는 리액션 배지(예: "🔥 1")의 이모지가 Stream 기본값
+   (--str-chat__font-size-size-17, 17px)이라 시간 표시(11px)에 비해
+   눈에 띄게 컸다. 배지 전체(아이콘+숫자+패딩)를 비례해서 확실히
+   줄인다. */
+.str-chat__message-reactions__list-item-icon {
+  font-size: 11px !important;
+}
+.str-chat__message-reactions__list-button,
+.str-chat__message-reactions__list-item-button {
+  padding-inline: 4px !important;
+  padding-block: 1px !important;
+}
+.str-chat__message-reactions__total-count,
+.str-chat__message-reactions__overflow-count,
+.str-chat__message-reactions__list-item-count {
+  font-size: 10px !important;
+}
+

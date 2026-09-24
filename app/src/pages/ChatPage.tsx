@@ -1210,21 +1210,28 @@ function SwipeableMessage() {
             같은 높이, 작게"를 만족시킨다. hover가 아닐 때는 이 자리를
             차지하지 않도록(w-0) 접어둬 시간 위치 자체는 안 밀리게 한다 —
             group-hover일 때만 폭을 펼친다. */}
+        {/* 🔧 [버그 수정, 2026-09-24 사용자 지시: "세로 기준으로 버튼과
+            시계 출력이 중앙이 됐으면 좋겠어"] — 버튼 그룹과 시간 표시가
+            서로 다른 div(items-center vs items-end/flex-col)였는데,
+            부모 row가 items-end(바닥 정렬)라 두 블록의 실제 높이가
+            달라 세로로 어긋나 보였다(버튼이 시간보다 위로 치우침). 이
+            둘을 하나의 items-center row로 묶어 항상 서로의 세로 중앙에
+            맞춰지게 한다. */}
         {isMyMessage() && (
           <div className="mb-1 flex shrink-0 items-center gap-0.5">
             <button
               type="button"
-              className="hidden size-5 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground [@media(hover:hover)]:group-hover:opacity-100 sm:[@media(hover:hover)]:flex"
+              className="hidden size-4 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground [@media(hover:hover)]:group-hover:opacity-100 sm:[@media(hover:hover)]:flex"
               aria-label="답장"
               onClick={(e) => triggerMessageAction(e.currentTarget.closest("[data-shake-target]") as HTMLElement, 'button[aria-label="메시지 인용"]')}
             >
-              <Reply className="size-3" strokeWidth={ICON_STROKE.default} />
+              <Reply className="size-2.5" strokeWidth={ICON_STROKE.default} />
             </button>
             <div className="relative">
               <button
                 type="button"
                 className={cn(
-                  "flex size-5 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground [@media(hover:hover)]:group-hover:opacity-100 sm:[@media(hover:hover)]:flex",
+                  "flex size-4 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground [@media(hover:hover)]:group-hover:opacity-100 sm:[@media(hover:hover)]:flex",
                   showReactionPicker ? "flex opacity-100" : "hidden"
                 )}
                 aria-label="반응 추가"
@@ -1247,7 +1254,7 @@ function SwipeableMessage() {
                       key={type}
                       type="button"
                       aria-label={`반응 선택: ${label}`}
-                      className="flex size-5 items-center justify-center rounded-full text-xs hover:bg-accent"
+                      className="flex size-4 items-center justify-center rounded-full text-[10px] hover:bg-accent"
                       onClick={(e) => {
                         handleReaction(type, e);
                         setShowReactionPicker(false);
@@ -1259,12 +1266,12 @@ function SwipeableMessage() {
                 </div>
               )}
             </div>
-          </div>
-        )}
-        {isMyMessage() && showTimestamp && thisCreatedAt && (
-          <div className="mb-1 me-[-4px] flex shrink-0 flex-col items-end text-[11px] leading-tight text-muted-foreground">
-            {showUnreadOne && <span className="font-medium">1</span>}
-            <span>{formatMessageDate(thisCreatedAt)}</span>
+            {showTimestamp && thisCreatedAt && (
+              <div className="me-[-4px] flex shrink-0 items-center gap-1 text-[11px] leading-none text-muted-foreground">
+                {showUnreadOne && <span className="font-medium">1</span>}
+                <span>{formatMessageDate(thisCreatedAt)}</span>
+              </div>
+            )}
           </div>
         )}
         {/* 🔧 [버그 수정, 2026-09-20 사용자 지시: "아바타가 너무 여백
@@ -1299,32 +1306,34 @@ function SwipeableMessage() {
           )}
           <MessageUI />
         </div>
-        {!isMyMessage() && showTimestamp && thisCreatedAt && (
-          <div className="mb-1 ms-[-4px] flex shrink-0 flex-col items-start text-[11px] leading-tight text-muted-foreground">
-            <span>{formatMessageDate(thisCreatedAt)}</span>
-          </div>
-        )}
         {/* 🔧 [버그 수정, 2026-09-24 사용자 지시: "상대의 메시지의 경우
-            시간 우측에 제대로 표시되지 않아"] — 이전엔 [버블, 버튼들,
-            시간] 순서라 버튼이 시간보다 버블에 가까운(안쪽) 위치였다.
-            카카오톡처럼 버튼을 행의 가장 바깥쪽 끝(시간보다 더 바깥)에
-            두려면 시간 다음(오른쪽)에 와야 한다 — 내 메시지 쪽([버튼들,
-            시간, 버블])과 대칭이 되도록 이 블록을 시간 표시 뒤로 옮겼다. */}
+            시간 우측에 제대로 표시되지 않아" + "세로 기준으로 버튼과
+            시계 출력이 중앙이 됐으면 좋겠어"] — 버튼을 시간보다 더
+            바깥쪽(오른쪽)에 두기 위해 시간 표시 뒤에 배치하고, 세로
+            정렬 어긋남을 없애기 위해 시간 표시와 버튼 그룹을 하나의
+            items-center row로 합쳤다(따로 있던 flex-col 블록과
+            items-center 블록이 서로 다른 높이로 계산돼 부모의
+            items-end 기준 정렬이 어긋나 보였다). */}
         {!isMyMessage() && (
           <div className="mb-1 flex shrink-0 items-center gap-0.5">
+            {showTimestamp && thisCreatedAt && (
+              <div className="ms-[-4px] flex shrink-0 items-center text-[11px] leading-none text-muted-foreground">
+                <span>{formatMessageDate(thisCreatedAt)}</span>
+              </div>
+            )}
             <button
               type="button"
-              className="hidden size-5 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground [@media(hover:hover)]:group-hover:opacity-100 sm:[@media(hover:hover)]:flex"
+              className="hidden size-4 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground [@media(hover:hover)]:group-hover:opacity-100 sm:[@media(hover:hover)]:flex"
               aria-label="답장"
               onClick={(e) => triggerMessageAction(e.currentTarget.closest("[data-shake-target]") as HTMLElement, 'button[aria-label="메시지 인용"]')}
             >
-              <Reply className="size-3" strokeWidth={ICON_STROKE.default} />
+              <Reply className="size-2.5" strokeWidth={ICON_STROKE.default} />
             </button>
             <div className="relative">
               <button
                 type="button"
                 className={cn(
-                  "flex size-5 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground [@media(hover:hover)]:group-hover:opacity-100 sm:[@media(hover:hover)]:flex",
+                  "flex size-4 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground [@media(hover:hover)]:group-hover:opacity-100 sm:[@media(hover:hover)]:flex",
                   showReactionPicker ? "flex opacity-100" : "hidden"
                 )}
                 aria-label="반응 추가"
@@ -1349,7 +1358,7 @@ function SwipeableMessage() {
                       key={type}
                       type="button"
                       aria-label={`반응 선택: ${label}`}
-                      className="flex size-5 items-center justify-center rounded-full text-xs hover:bg-accent"
+                      className="flex size-4 items-center justify-center rounded-full text-[10px] hover:bg-accent"
                       onClick={(e) => {
                         handleReaction(type, e);
                         setShowReactionPicker(false);
