@@ -387,10 +387,12 @@ export function AdminSearchInput({
   value,
   onChange,
   placeholder,
+  className,
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
+  className?: string;
 }) {
   return (
     <div className="relative">
@@ -402,7 +404,7 @@ export function AdminSearchInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="pl-9 sm:h-11 sm:pl-10 sm:text-base"
+        className={cn("pl-9 sm:h-11 sm:pl-10 sm:text-base", className)}
       />
     </div>
   );

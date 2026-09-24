@@ -30,9 +30,9 @@ import {
 } from "stream-chat-react";
 import "stream-chat-react/dist/css/index.css";
 import "@/pages/chat-theme.css";
-import { MessageCircle, UserPlus, X, User, Reply, ImagePlus, Pin } from "lucide-react";
+import { MessageCircle, X, User, Reply, ImagePlus, Pin } from "lucide-react";
 import { InfoCard } from "@/components/dashboard/shared";
-import { AdminListSkeleton, AdminEmptyState } from "@/components/admin/shared";
+import { AdminListSkeleton, AdminEmptyState, AdminSearchInput } from "@/components/admin/shared";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useApi } from "@/hooks/useApi";
@@ -1152,6 +1152,77 @@ function SwipeableMessage() {
   );
 }
 
+// 🔧 [사용자 지시, 2026-09-24] "채팅 목록에서 '더 불러오기' 버튼이 아닌
+// 무한 스크롤로 구현" — Stream의 ChannelList는 기본 Paginator로
+// LoadMorePaginator(클릭형 버튼)를 쓴다. 이 목록은 이미 바깥
+// div(overflow-y-auto)가 스크롤 컨테이너이므로, InfiniteScrollPaginator
+// (자체 스크롤 컨테이너를 새로 만듦)를 그대로 쓰면 스크롤 컨테이너가
+// 이중으로 겹친다. 대신 이 컴포넌트는 바깥 스크롤 컨테이너를
+// closest("[data-scroll-container]")로 찾아 그 스크롤 이벤트를 직접
+// 구독하고, 바닥 근처(threshold)에 도달하면 hasNextPage일 때만
+// loadNextPage를 호출한다 — 목록 끝에서 계속 스크롤하면 다음 페이지가
+// 이어서 로드된다.
+function ScrollLoadPaginator({
+  hasNextPage,
+  isLoading,
+  loadNextPage,
+  children,
+}: {
+  hasNextPage?: boolean;
+  isLoading?: boolean;
+  loadNextPage: () => void;
+  children?: React.ReactNode;
+}) {
+  // 🔧 [버그 수정] Stream의 ChannelList는 이 컴포넌트에게 채널 목록
+  // 자체(children)를 넘겨주고, Paginator 구현체가 그걸 렌더링할 책임을
+  // 진다(기본 LoadMorePaginator 소스 확인: `!reverse && children` 뒤에
+  // 버튼을 붙이는 구조) — children을 빼먹으면 페이지네이션 UI뿐 아니라
+  // 채널 목록 자체가 통째로 사라진다(실측: 관리자 계정에 있던 회원과의
+  // 대화 채널이 목록에서 완전히 안 보임).
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  // isLoading prop이 React 렌더를 거쳐 갱신되기 전 짧은 창에 스크롤
+  // 이벤트가 연속으로 여러 번 발생하면 loadNextPage가 중복 호출될 수
+  // 있다 — 렌더와 무관하게 즉시 갱신되는 ref로 요청 하나가 끝날 때까지
+  // (isLoading이 실제로 true가 될 때까지) 추가 호출을 막는다.
+  const requestInFlightRef = useRef(false);
+
+  useEffect(() => {
+    if (!isLoading) requestInFlightRef.current = false;
+  }, [isLoading]);
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const scrollContainer = sentinel.closest<HTMLElement>("[data-scroll-container]");
+    if (!scrollContainer) return;
+
+    const SCROLL_THRESHOLD_PX = 250;
+
+    const maybeLoadNext = () => {
+      if (requestInFlightRef.current || isLoading || !hasNextPage) return;
+      const distanceFromBottom =
+        scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight;
+      if (distanceFromBottom < SCROLL_THRESHOLD_PX) {
+        requestInFlightRef.current = true;
+        loadNextPage();
+      }
+    };
+
+    maybeLoadNext();
+    scrollContainer.addEventListener("scroll", maybeLoadNext, { passive: true });
+    return () => {
+      scrollContainer.removeEventListener("scroll", maybeLoadNext);
+    };
+  }, [hasNextPage, isLoading, loadNextPage]);
+
+  return (
+    <>
+      {children}
+      {hasNextPage && <div ref={sentinelRef} />}
+    </>
+  );
+}
+
 // 🔧 [사용자 지시, 2026-09-19] "좌측 단의 '채팅' 텍스트를 지우고 '채팅
 // 목록'/'회원 목록' 전환 버튼" — 기존 "채팅"은 Stream 기본 ChannelListHeader
 // (t("Chats"))가 렌더링하던 고정 텍스트였다. 이 자리를 두 뷰(채널 목록 vs
@@ -1288,16 +1359,25 @@ function AdminMemberList({
 
   return (
     <div className="flex flex-col">
+      {/* 🔧 [사용자 지시, 2026-09-24] "회원 목록 디자인도 채팅 목록
+          디자인과 일치시켜줘" — 채팅 목록(Stream ChannelPreview)은
+          원형 아바타(PersonAvatar) + 굵은 이름 + 작은 회색 서브텍스트
+          레이아웃(패딩 p-2.5, 아바타-텍스트 간격 gap-2)을 쓴다. 이
+          목록은 대화 미리보기가 없어 서브텍스트 자리에 "새 대화 시작"을
+          대신 넣어 같은 뼈대를 유지한다. */}
       {members.map((m) => (
         <button
           key={m.number}
           type="button"
           disabled={openingNumber !== null}
           onClick={() => openChannelWith(m.number, m.name)}
-          className="flex items-center gap-2 border-b p-2.5 text-left text-sm hover:bg-accent disabled:opacity-60"
+          className="flex items-center gap-2 border-b p-2.5 text-left hover:bg-accent disabled:opacity-60"
         >
-          <UserPlus className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={ICON_STROKE.default} />
-          <span className="min-w-0 flex-1 truncate">{m.name}</span>
+          <PersonAvatar size="md" className="shrink-0" />
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-semibold">{m.name}</div>
+            <div className="truncate text-xs text-muted-foreground">새 대화 시작</div>
+          </div>
           {openingNumber === m.number && <LoadingIndicator />}
         </button>
       ))}
@@ -1326,6 +1406,15 @@ function AdminChatArea({
 }) {
   const { channel, setActiveChannel } = useChatContext();
   const hasActiveChannel = !!channel;
+  // 🔧 [사용자 지시, 2026-09-24] "목록 최상단에 검색창 — '재희' 입력하면
+  // 해당 회원의 채팅 목록만 보이도록" — Stream 채널 쿼리 필터는
+  // 'member.user.name': { $autocomplete } 연산자로 멤버 이름 부분일치
+  // 검색을 서버에서 직접 지원한다(클라이언트에서 로드된 페이지만 거르는
+  // channelRenderFilterFn과 달리, 검색어에 맞는 채널이 아직 로드 전
+  // 페이지에 있어도 정확히 찾아낸다). 빈 문자열이면 필터를 아예 추가하지
+  // 않아 기존 전체 목록 동작을 그대로 유지한다.
+  const [channelSearch, setChannelSearch] = useState("");
+  const trimmedSearch = channelSearch.trim();
 
   return (
     <div className="flex h-full flex-col">
@@ -1363,7 +1452,23 @@ function AdminChatArea({
               컨테이너 안에서 스크롤이 끝나면 그 이상은 조상으로 전파되지
               않게 막는다 — 이 목록에 pull-to-refresh 등 다른 오버스크롤
               용도가 없으므로 무해하다. */}
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          {sidebarView === "channels" && (
+            // 🔧 [사용자 지시, 2026-09-24] 검색창은 채팅 목록 전용 —
+            // 회원 목록(AdminMemberList)은 이미 전체 명단을 한 화면에
+            // 보여주는 별도 뷰라 검색 대상이 아니다. 디자인은 새로
+            // 만들지 않고, "퇴실 스터디원 목록"/"전체 회원 명단" 등에서
+            // 이미 쓰고 있는 공용 검색창(AdminSearchInput, admin/shared.tsx)
+            // 을 그대로 재사용해 서비스 전역의 검색 필드와 일관되게 한다.
+            <div className="shrink-0 border-b p-2">
+              <AdminSearchInput
+                value={channelSearch}
+                onChange={setChannelSearch}
+                placeholder="이름으로 검색"
+                className="bg-white dark:bg-white dark:text-foreground"
+              />
+            </div>
+          )}
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" data-scroll-container>
             {sidebarView === "channels" ? (
               // 🔧 [사용자 지시, 2026-09-20] "목록만 보이고, 눌렀을 때
               // 개별 채팅창이 스플릿 돼서 보이도록" — Stream의
@@ -1374,9 +1479,18 @@ function AdminChatArea({
               // 명시적으로 꺼서, 사용자가 실제로 채널을 클릭해야만
               // hasActiveChannel이 true가 되게 한다.
               <ChannelList
-                filters={{ type: "messaging", members: { $in: ["admin"] } }}
+                filters={
+                  trimmedSearch
+                    ? {
+                        type: "messaging",
+                        members: { $in: ["admin"] },
+                        "member.user.name": { $autocomplete: trimmedSearch },
+                      }
+                    : { type: "messaging", members: { $in: ["admin"] } }
+                }
                 sort={{ last_message_at: -1 }}
                 setActiveChannelOnMount={false}
+                Paginator={ScrollLoadPaginator}
               />
             ) : (
               <AdminMemberList call={call} onOpened={() => onSidebarViewChange("channels")} isAdmin={isAdmin} />
