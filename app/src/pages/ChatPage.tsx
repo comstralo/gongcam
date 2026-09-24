@@ -1287,10 +1287,12 @@ function AdminMemberList({
   call,
   onOpened,
   isAdmin,
+  search,
 }: {
   call: ReturnType<typeof useApi>["call"];
   onOpened: () => void;
   isAdmin: boolean;
+  search: string;
 }) {
   const { client, setActiveChannel } = useChatContext();
   const [members, setMembers] = useState<{ number: string; name: string }[] | null>(null);
@@ -1357,6 +1359,22 @@ function AdminMemberList({
     );
   }
 
+  // 🔧 [사용자 지시, 2026-09-24] 회원 목록 검색 — 채팅 목록처럼 서버
+  // 쿼리로 필터링할 대상(채널)이 없어, 이미 받아온 전체 명단을
+  // 클라이언트에서 이름 포함 검색으로 거른다.
+  const trimmedSearch = search.trim();
+  const filteredMembers = trimmedSearch
+    ? members.filter((m) => m.name.includes(trimmedSearch))
+    : members;
+
+  if (!filteredMembers.length) {
+    return (
+      <div className="p-2.5">
+        <AdminEmptyState>검색 결과가 없습니다.</AdminEmptyState>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col">
       {/* 🔧 [사용자 지시, 2026-09-24] "회원 목록 디자인도 채팅 목록
@@ -1365,7 +1383,7 @@ function AdminMemberList({
           레이아웃(패딩 p-2.5, 아바타-텍스트 간격 gap-2)을 쓴다. 이
           목록은 대화 미리보기가 없어 서브텍스트 자리에 "새 대화 시작"을
           대신 넣어 같은 뼈대를 유지한다. */}
-      {members.map((m) => (
+      {filteredMembers.map((m) => (
         <button
           key={m.number}
           type="button"
@@ -1415,6 +1433,10 @@ function AdminChatArea({
   // 않아 기존 전체 목록 동작을 그대로 유지한다.
   const [channelSearch, setChannelSearch] = useState("");
   const trimmedSearch = channelSearch.trim();
+  // 회원 목록 전용 검색어 — 채팅 목록과 달리 서버 쿼리가 아니라
+  // AdminMemberList가 이미 들고 있는 전체 명단을 클라이언트에서
+  // 필터링한다(회원 수가 적어 별도 페이지네이션이 없는 목록이라 충분).
+  const [memberSearch, setMemberSearch] = useState("");
 
   return (
     <div className="flex h-full flex-col">
@@ -1452,22 +1474,36 @@ function AdminChatArea({
               컨테이너 안에서 스크롤이 끝나면 그 이상은 조상으로 전파되지
               않게 막는다 — 이 목록에 pull-to-refresh 등 다른 오버스크롤
               용도가 없으므로 무해하다. */}
-          {sidebarView === "channels" && (
-            // 🔧 [사용자 지시, 2026-09-24] 검색창은 채팅 목록 전용 —
-            // 회원 목록(AdminMemberList)은 이미 전체 명단을 한 화면에
-            // 보여주는 별도 뷰라 검색 대상이 아니다. 디자인은 새로
-            // 만들지 않고, "퇴실 스터디원 목록"/"전체 회원 명단" 등에서
-            // 이미 쓰고 있는 공용 검색창(AdminSearchInput, admin/shared.tsx)
-            // 을 그대로 재사용해 서비스 전역의 검색 필드와 일관되게 한다.
-            <div className="shrink-0 border-b p-2">
+          {/* 🔧 [사용자 지시, 2026-09-24] "회원 목록 디자인도 채팅 목록
+              디자인과 일치시켜줘 — 배경색, 검색창 이런것까지" — 검색창을
+              채팅 목록 전용으로 두지 않고 두 뷰 공통 자리(목록 스크롤
+              영역 바로 위)에 항상 보여준다. 뷰마다 필터 대상이 달라
+              검색어 상태 자체는 분리하지만(channelSearch/memberSearch),
+              마크업·클래스·배치는 완전히 동일하게 유지한다. */}
+          {/* 🔧 [사용자 지시, 2026-09-24] "검색란이랑 채팅의 이름, 오프라인
+              출력부랑 높이를 맞춰줘(검색란을 줄여서)" — 오른쪽 대화창
+              헤더는 h-12(48px) 고정인데, AdminSearchInput 안의 Input이
+              sm 이상에서 sm:h-11(44px)로 커져 바깥 p-2(상하 16px)까지
+              더하면 61px로 헤더보다 커 보였다(실측). wrapper를 헤더와
+              똑같이 h-12로 고정하고, 인풋 자체 높이를 h-8(32px)로
+              오버라이드해 sm:h-11을 눌러 정확히 48px 안에 들어오게 한다. */}
+          <div className="flex h-12 shrink-0 items-center border-b px-2">
+            {sidebarView === "channels" ? (
               <AdminSearchInput
                 value={channelSearch}
                 onChange={setChannelSearch}
                 placeholder="이름으로 검색"
-                className="bg-white dark:bg-white dark:text-foreground"
+                className="h-8 bg-white sm:h-8 sm:text-sm dark:bg-white dark:text-foreground"
               />
-            </div>
-          )}
+            ) : (
+              <AdminSearchInput
+                value={memberSearch}
+                onChange={setMemberSearch}
+                placeholder="이름으로 검색"
+                className="h-8 bg-white sm:h-8 sm:text-sm dark:bg-white dark:text-foreground"
+              />
+            )}
+          </div>
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" data-scroll-container>
             {sidebarView === "channels" ? (
               // 🔧 [사용자 지시, 2026-09-20] "목록만 보이고, 눌렀을 때
@@ -1493,7 +1529,12 @@ function AdminChatArea({
                 Paginator={ScrollLoadPaginator}
               />
             ) : (
-              <AdminMemberList call={call} onOpened={() => onSidebarViewChange("channels")} isAdmin={isAdmin} />
+              <AdminMemberList
+                call={call}
+                onOpened={() => onSidebarViewChange("channels")}
+                isAdmin={isAdmin}
+                search={memberSearch}
+              />
             )}
           </div>
         </div>

@@ -206,6 +206,14 @@
   display: none;
 }
 
+/* 🔧 [사용자 지시, 2026-09-24] "테스트 메시지 좌측 v 표시는 왜 있는거지?"
+   → 제거 — 채널 목록 미리보기에 붙는 전송 상태 아이콘(체크/시계,
+   SummarizedMessagePreview.mjs)도 발신자 라벨과 같은 이유로 순수
+   텍스트 미리보기만 남기기 위해 숨긴다. */
+.str-chat .str-chat__summarized-message-preview__delivery-status {
+  display: none;
+}
+
 /* 🔧 [사용자 지시, 2026-09-19] 같은 이유로, 스와이프 답장 시 버블 위에
    뜨는 인용(quoted) 메시지 카드도 본인 메시지를 인용할 때 발신자
    라벨로 "당신"을 쓴다 — Stream이 --own modifier 클래스로 "본인 메시지
@@ -335,6 +343,20 @@
    대체했고 옵션 메뉴 UI를 쓰지 않으므로 아예 렌더링을 막는다. */
 .str-chat__message-options {
   display: none !important;
+}
+
+/* 🔧 [버그 수정, 2026-09-24 사용자 지시: "메시지에 표정 남기는 기능은
+   왜 사라진거지?"] — 위에서 빠른 액션 줄(.str-chat__message-options)을
+   통째로 숨겨서, "반응 추가"(이모지 리액션)의 유일한 진입점은 우클릭/
+   롱프레스 드롭다운 메뉴뿐이다. 그런데 Stream 기본 CSS
+   (str-chat__message-actions-list-item-button--react)는 767px 초과
+   폭(데스크톱)에서 이 드롭다운 항목 자체를 display:none으로 숨기고
+   대신 빠른 액션 줄 쪽에 리액션 버튼을 두는 걸 전제로 설계돼 있다(실측
+   확인: index.css). 이 앱은 빠른 액션 줄을 쓰지 않으므로, 화면 폭과
+   무관하게 드롭다운 쪽 리액션 항목을 항상 보이게 만들어 리액션 기능
+   자체가 완전히 막히는 것을 막는다. */
+.str-chat .str-chat__message-actions-list-item-button.str-chat__message-actions-list-item-button--react {
+  display: flex !important;
 }
 
 /* 🔧 [사용자 지시, 2026-09-19] "답장 메시지를 누르면 해당 답장 대상
