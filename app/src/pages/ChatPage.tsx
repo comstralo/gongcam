@@ -1169,17 +1169,16 @@ function SwipeableMessage() {
       >
         <Reply className="size-4" strokeWidth={ICON_STROKE.default} />
       </div>
-      {/* 🔧 [버그 수정, 2026-09-24 사용자 재지적: "시간 출력은 버블
-          모양의 끝 쪽에 나란히 정렬되어 있어야 하는데 가장 밑으로 가
-          있잖아"] — 직전 시도에서 "끝점 정렬"에 집중하다 시간까지
-          버블 아래 세로 컬럼으로 내려버린 게 잘못이었다. 카카오톡은
-          시간을 버블과 "같은 줄"에 나란히 두고(원래 방식), 그 아래에만
-          별도로 리액션+hover 줄을 둔다. 바깥 row는 [아바타, {버블+
-          리액션/hover 세로 컬럼}, 시간] 순서로 되돌리고, 시간만 이
-          row의 형제로 복원한다 — 세로 컬럼은 리액션/hover만 담당하므로
-          "그 폭이 시간 폭과 무관하다"는 문제 자체가 生기지 않는다
-          (리액션/hover는 버블 컬럼 안에서 끝 정렬되고, 시간은 원래대로
-          버블 옆에 나란히 붙는다). */}
+      {/* 🔧 [버그 수정, 2026-09-24 사용자 재지적: "오후 4:42 파트가
+          버블 좌측 하단에 딱 붙도록"] — 시간을 바깥 row(아바타/버블
+          컬럼과 나란한 형제)에 두면, items-end 정렬 기준이 "버블+
+          hover줄을 합친 컬럼 전체의 높이"가 되어 시간이 hover줄
+          바닥까지 밀려 내려갔다(실측 스크린샷으로 확인: 시간이
+          리액션 배지와 겹치는 위치까지 내려감). 시간은 반드시
+          "버블(MessageUI)과 정확히 같은 가로 줄"에 있어야 버블의
+          진짜 바닥에 붙는다 — 아래에서 버블+시간을 감싸는 내부 row를
+          별도로 만들고, hover 줄은 그 아래 형제로 둔다(세로 컬럼
+          [내부row[버블, 시간], hover줄] 구조). */}
       <div
         className={cn("flex items-end gap-0", isMyMessage() ? "justify-end" : "justify-start")}
         style={{
@@ -1187,19 +1186,6 @@ function SwipeableMessage() {
           transition: dragging ? "none" : "transform 150ms ease-out",
         }}
       >
-        {/* 🔧 [사용자 지시, 2026-09-19] "시간/배지를 버블과 좀 더
-            가깝게" — 버블 자체의 padding-inline-start를 줄이는 방식은
-            버블 안쪽 텍스트 여백까지 함께 좁혀 텍스트가 벽에 붙어
-            보이는 부작용이 있었다. 대신 시간 쪽에 음수 margin을 줘서
-            버블의 텍스트 패딩은 그대로 두고 시간 블록만 버블 쪽으로
-            당긴다(버블 padding-inline이 약 8px이므로 그 절반 정도만
-            당겨 완전히 겹치지 않게 한다). */}
-        {isMyMessage() && showTimestamp && thisCreatedAt && (
-          <div className="mb-1 me-[-4px] flex shrink-0 flex-col items-end text-[11px] leading-tight text-muted-foreground">
-            {showUnreadOne && <span className="font-medium">1</span>}
-            <span>{formatMessageDate(thisCreatedAt)}</span>
-          </div>
-        )}
         {/* 🔧 [버그 수정, 2026-09-20 사용자 지시: "아바타가 너무 여백
             없이 좌측에 딱 붙었잖아"] — 이 아바타는 이제 .str-chat__message
             (Stream이 좌우 padding-inline을 주던 그 요소, chat-theme.css:
@@ -1226,15 +1212,32 @@ function SwipeableMessage() {
             // 폭 32px + gap 6px).
             <div className="ms-2 me-1.5 w-8 shrink-0" />
           ))}
-        {/* 🔧 버블(MessageUI) + hover 액션 줄만 세로 컬럼으로 묶는다
-            (시간은 위에서 이미 형제로 배치했으므로 여기 포함하지
-            않는다). 컬럼 폭은 버블의 내재 폭에 맞춰지므로, 그보다
-            좁은 hover 줄이 자동으로 버블 끝/시작에 정렬된다. */}
+        {/* 🔧 버블(MessageUI+시간 row) + hover 액션 줄을 세로 컬럼으로
+            묶는다. 컬럼 폭은 그 안의 가장 넓은 자식(보통 버블+시간
+            row)에 맞춰지므로, 그보다 좁은 hover 줄이 자동으로 버블
+            끝/시작에 정렬된다. */}
         <div className={cn("flex min-w-0 flex-col", isMyMessage() ? "items-end" : "items-start")}>
           {senderName && (
             <div className="mb-1 ms-1 self-start text-[12px] font-medium text-muted-foreground">{senderName}</div>
           )}
-          <MessageUI />
+          {/* 🔧 [버그 수정, 2026-09-24] 시간을 버블과 정확히 같은
+              가로 줄(items-end)에 둬야 버블의 실제 바닥에 붙는다 —
+              "1"(안읽음 표시)까지 포함해 항상 버블 쪽(내 메시지는
+              왼쪽, 상대 메시지는 오른쪽)에 나란히 놓는다. */}
+          <div className={cn("flex items-end gap-0", isMyMessage() ? "flex-row-reverse" : "flex-row")}>
+            <MessageUI />
+            {showTimestamp && thisCreatedAt && (
+              <div
+                className={cn(
+                  "mb-1 flex shrink-0 items-center gap-1 text-[11px] leading-tight text-muted-foreground",
+                  isMyMessage() ? "me-[-4px]" : "ms-[-4px]"
+                )}
+              >
+                {isMyMessage() && showUnreadOne && <span className="font-medium">1</span>}
+                <span>{formatMessageDate(thisCreatedAt)}</span>
+              </div>
+            )}
+          </div>
           {/* 🔧 [사용자 지시, 2026-09-24] "카카오톡의 모양에 맞게
               배치해줘" — hover 액션(답장/반응 추가)은 버블 바로 아래
               새 줄에, 버블 폭 기준 끝/시작에 정렬한다. 리액션 배지는
@@ -1295,11 +1298,6 @@ function SwipeableMessage() {
             </div>
           </div>
         </div>
-        {!isMyMessage() && showTimestamp && thisCreatedAt && (
-          <div className="mb-1 ms-[-4px] flex shrink-0 flex-col items-start text-[11px] leading-tight text-muted-foreground">
-            <span>{formatMessageDate(thisCreatedAt)}</span>
-          </div>
-        )}
       </div>
     </div>
   );
