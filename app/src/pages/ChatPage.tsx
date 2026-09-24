@@ -1169,91 +1169,6 @@ function SwipeableMessage() {
       >
         <Reply className="size-4" strokeWidth={ICON_STROKE.default} />
       </div>
-      {/* 🔧 [사용자 지시, 2026-09-24] "PC 화면에서는 메시지에 마우스
-          오버를 하면 표정을 남기는 버튼, 답장을 하는 버튼을 띄워줘"
-          (카카오톡 참고 스크린샷) — Stream 기본 호버 옵션 줄
-          (.str-chat__message-options)은 문서 흐름 안의 flex 아이템이라
-          호버할 때마다 width:fit-content인 버블 폭 계산에 끼어들어
-          버블이 커졌다 작아졌다 하는 버그가 있어(2026-09-19 결정)
-          완전히 꺼뒀다 — 그 결정을 뒤집지 않고, 이 오버레이는 처음부터
-          absolute로 문서 흐름 밖에 띄워 버블 레이아웃과 완전히 분리한다.
-          🔧 [버그 수정] 처음엔 버블 옆(좌/우 바깥)에 뒀으나, 부모인
-          .str-chat__message-list가 overflow: hidden auto(가로만 hidden)
-          라 버블 폭을 벗어난 만큼 가로로 잘려 전혀 보이지 않았다(실측).
-          그 다음 버블 "위쪽"(bottom-full)으로 옮겼으나, 채널 목록 맨 위
-          메시지(스크롤 리스트 첫 항목)에서는 그 위쪽이 채널 헤더 영역과
-          겹쳐 헤더가 항상 위에 그려졌다(elementFromPoint로 실측 확인 —
-          z-index를 여러 층에 다르게 시도해도 이 두 요소는 서로 다른
-          컴포넌트 트리 형제라 스태킹 순서를 이 앱 CSS만으로 안전하게
-          역전시킬 수 없었다). 헤더와 절대 겹칠 수 없는 버블 "아래쪽"
-          (top-full)으로 방향을 바꿔 이 충돌 자체를 근본적으로 없앤다.
-          좌우는 버블이 있는 쪽 끝에 맞춰, 버블 자체가 이미 확보한 가로
-          폭 안에서만 움직이게 한다. "답장" 버튼은 새 UI를 만들지 않고,
-          이미 검증된 드롭다운 메뉴 인프라(triggerMessageAction →
-          openMessageActionsMenu)를 열고 해당 항목을 대신 클릭하는
-          방식이라 동작 자체는 메뉴에서 직접 누르는 것과 동일하다.
-          데스크톱 전용(hover가 실제로 가능한 입력장치)이라 sm 이상 +
-          hover 가능 환경에서만 노출한다. */}
-      <div
-        className={cn(
-          "pointer-events-none absolute top-full z-10 mt-1 hidden items-center gap-1 opacity-0 transition-opacity [@media(hover:hover)]:group-hover:opacity-100 sm:[@media(hover:hover)]:flex",
-          // 이모지 팝오버가 열려 있는 동안은 마우스가 버블 바깥(팝오버
-          // 위)으로 나가도 group-hover가 풀려 오버레이 전체가 사라지지
-          // 않도록 강제로 보이게 유지한다.
-          showReactionPicker && "opacity-100",
-          isMyMessage() ? "right-0" : "left-0"
-        )}
-      >
-        <div className="pointer-events-auto relative">
-          <button
-            type="button"
-            className="flex size-7 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:bg-accent hover:text-foreground"
-            aria-label="반응 추가"
-            aria-expanded={showReactionPicker}
-            onClick={() => setShowReactionPicker((v) => !v)}
-          >
-            <Smile className="size-3.5" strokeWidth={ICON_STROKE.default} />
-          </button>
-          {/* 🔧 [버그 수정] Stream의 드롭다운 메뉴 안 이모지 선택기
-              (dropdown-react-action → ReactionSelector, floating-ui
-              다이얼로그)를 자동으로 열어보려 했으나, 실제 마우스 클릭
-              에만 반응하고 프로그래매틱 클릭(완전한 pointerdown~click
-              이벤트 시퀀스를 직접 디스패치해도 isTrusted:false)에는
-              반응하지 않음을 실측으로 확인했다 — "답장"(평범한 onClick)
-              과 달리 이 컴포넌트가 직접 그리는 팝오버로 대체하고,
-              Stream이 이미 메시지 컨텍스트로 제공하는 handleReaction을
-              그대로 호출한다(반응 저장/카운트 로직은 100% Stream 것). */}
-          {showReactionPicker && (
-            <div
-              className="absolute top-full mt-1 flex items-center gap-0.5 rounded-full border bg-background p-1 whitespace-nowrap shadow-md"
-              style={isMyMessage() ? { right: 0 } : { left: 0 }}
-            >
-              {QUICK_REACTIONS.map(({ type, emoji, label }) => (
-                <button
-                  key={type}
-                  type="button"
-                  aria-label={`반응 선택: ${label}`}
-                  className="flex size-7 items-center justify-center rounded-full text-base hover:bg-accent"
-                  onClick={(e) => {
-                    handleReaction(type, e);
-                    setShowReactionPicker(false);
-                  }}
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        <button
-          type="button"
-          className="pointer-events-auto flex size-7 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:bg-accent hover:text-foreground"
-          aria-label="답장"
-          onClick={(e) => triggerMessageAction(e.currentTarget.closest("[data-shake-target]") as HTMLElement, 'button[aria-label="메시지 인용"]')}
-        >
-          <Reply className="size-3.5" strokeWidth={ICON_STROKE.default} />
-        </button>
-      </div>
       {/* 🔧 [사용자 지시, 2026-09-19] "시간 표시를 말풍선 좌측 하단에,
           카카오톡처럼 말풍선과 같은 줄에 나란히" — Stream 기본 metadata
           (시간+읽음상태)는 chat-theme.css에서 전부 display:none으로
@@ -1288,6 +1203,57 @@ function SwipeableMessage() {
             버블의 텍스트 패딩은 그대로 두고 시간 블록만 버블 쪽으로
             당긴다(버블 padding-inline이 약 8px이므로 그 절반 정도만
             당겨 완전히 겹치지 않게 한다). */}
+        {/* 🔧 [사용자 지시, 2026-09-24] "버튼 오버레이도 시간 표시
+            좌측에 작게 뜨도록 — 지금은 너무 커. 이모지도 좀 더 줄여서"
+            — 기존엔 버블 아래에 별도로 떠 있는 absolute 오버레이였다.
+            시간 표시와 같은 flex row의 실제 아이템으로 넣어 "시간 좌측,
+            같은 높이, 작게"를 만족시킨다. hover가 아닐 때는 이 자리를
+            차지하지 않도록(w-0) 접어둬 시간 위치 자체는 안 밀리게 한다 —
+            group-hover일 때만 폭을 펼친다. */}
+        {isMyMessage() && (
+          <div className="mb-1 flex shrink-0 items-center gap-0.5">
+            <button
+              type="button"
+              className="hidden size-5 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground [@media(hover:hover)]:group-hover:opacity-100 sm:[@media(hover:hover)]:flex"
+              aria-label="답장"
+              onClick={(e) => triggerMessageAction(e.currentTarget.closest("[data-shake-target]") as HTMLElement, 'button[aria-label="메시지 인용"]')}
+            >
+              <Reply className="size-3" strokeWidth={ICON_STROKE.default} />
+            </button>
+            <div className="relative">
+              <button
+                type="button"
+                className={cn(
+                  "flex size-5 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground [@media(hover:hover)]:group-hover:opacity-100 sm:[@media(hover:hover)]:flex",
+                  showReactionPicker ? "flex opacity-100" : "hidden"
+                )}
+                aria-label="반응 추가"
+                aria-expanded={showReactionPicker}
+                onClick={() => setShowReactionPicker((v) => !v)}
+              >
+                <Smile className="size-3" strokeWidth={ICON_STROKE.default} />
+              </button>
+              {showReactionPicker && (
+                <div className="absolute right-0 bottom-full mb-1 flex items-center gap-0.5 rounded-full border bg-background p-0.5 whitespace-nowrap shadow-md">
+                  {QUICK_REACTIONS.map(({ type, emoji, label }) => (
+                    <button
+                      key={type}
+                      type="button"
+                      aria-label={`반응 선택: ${label}`}
+                      className="flex size-6 items-center justify-center rounded-full text-sm hover:bg-accent"
+                      onClick={(e) => {
+                        handleReaction(type, e);
+                        setShowReactionPicker(false);
+                      }}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         {isMyMessage() && showTimestamp && thisCreatedAt && (
           <div className="mb-1 me-[-4px] flex shrink-0 flex-col items-end text-[11px] leading-tight text-muted-foreground">
             {showUnreadOne && <span className="font-medium">1</span>}
@@ -1326,6 +1292,50 @@ function SwipeableMessage() {
           )}
           <MessageUI />
         </div>
+        {!isMyMessage() && (
+          <div className="mb-1 flex shrink-0 items-center gap-0.5">
+            <button
+              type="button"
+              className="hidden size-5 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground [@media(hover:hover)]:group-hover:opacity-100 sm:[@media(hover:hover)]:flex"
+              aria-label="답장"
+              onClick={(e) => triggerMessageAction(e.currentTarget.closest("[data-shake-target]") as HTMLElement, 'button[aria-label="메시지 인용"]')}
+            >
+              <Reply className="size-3" strokeWidth={ICON_STROKE.default} />
+            </button>
+            <div className="relative">
+              <button
+                type="button"
+                className={cn(
+                  "flex size-5 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground [@media(hover:hover)]:group-hover:opacity-100 sm:[@media(hover:hover)]:flex",
+                  showReactionPicker ? "flex opacity-100" : "hidden"
+                )}
+                aria-label="반응 추가"
+                aria-expanded={showReactionPicker}
+                onClick={() => setShowReactionPicker((v) => !v)}
+              >
+                <Smile className="size-3" strokeWidth={ICON_STROKE.default} />
+              </button>
+              {showReactionPicker && (
+                <div className="absolute left-0 bottom-full mb-1 flex items-center gap-0.5 rounded-full border bg-background p-0.5 whitespace-nowrap shadow-md">
+                  {QUICK_REACTIONS.map(({ type, emoji, label }) => (
+                    <button
+                      key={type}
+                      type="button"
+                      aria-label={`반응 선택: ${label}`}
+                      className="flex size-6 items-center justify-center rounded-full text-sm hover:bg-accent"
+                      onClick={(e) => {
+                        handleReaction(type, e);
+                        setShowReactionPicker(false);
+                      }}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         {!isMyMessage() && showTimestamp && thisCreatedAt && (
           <div className="mb-1 ms-[-4px] flex shrink-0 flex-col items-start text-[11px] leading-tight text-muted-foreground">
             <span>{formatMessageDate(thisCreatedAt)}</span>
