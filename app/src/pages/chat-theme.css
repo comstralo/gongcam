@@ -564,3 +564,16 @@
   font-size: 10px !important;
 }
 
+/* 🔧 [버그 수정, 2026-09-24 사용자 지시: "메뉴가 앞으로 오도록"] —
+   우클릭/롱프레스로 여는 메시지 액션 드롭다운(반응 추가/답장/핀/
+   메시지 복사/수정/삭제)이 hover 버튼(답장/반응 추가 아이콘)과 시간
+   표시 뒤에 깔려 보였다(실측 스크린샷 확인) — 이 메뉴는
+   position:fixed로 body 레벨(.str-chat__dialog-overlay)에 렌더링
+   되는데 z-index가 auto라, 같은 메시지 안 items-center row에서
+   z-10을 준 hover 버튼(SwipeableMessage, ChatPage.tsx)이 페인트
+   순서상 위로 올라왔다. 이 메뉴 전체를 hover 버튼보다 확실히 높은
+   z-index로 고정한다. */
+.str-chat__dialog-overlay {
+  z-index: 50 !important;
+}
+
