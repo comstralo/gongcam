@@ -193,21 +193,17 @@
   display: none !important;
 }
 
-/* 🔧 [사용자 지시, 2026-09-19] "내 채팅에 스스로 할 때는 '당신' →
-   '나에게 답장'으로" — Stream은 채널 목록 미리보기에서 마지막 메시지가
-   본인이 보낸 것일 때 발신자 라벨로 t("You")(한국어 "당신")를 붙인다
-   (SummarizedMessagePreview.mjs). 이 앱은 1:1 문의방(2인 DM)만 쓰고
-   participantCount>2일 때만 상대방 이름이 이 슬롯에 나타나므로
-   (useLatestMessagePreview.mjs 확인), 이 클래스가 나타나는 경우는
-   실질적으로 "본인이 마지막으로 보낸 메시지"뿐이다 — 전역 "You" 번역
-   자체(poll 등 다른 문구에도 쓰임)를 바꾸는 대신, 이 슬롯 텍스트만 CSS로
-   안전하게 치환한다. */
+/* 🔧 [사용자 지시, 2026-09-24] "목록에 뜰 때는 메시지 내용만 보여주고
+   '나에게 답장' 같은 표시는 출력하지 마" — 기존엔 "당신" → "나에게
+   답장:"으로 바꿔치기(아래 히스토리 참고)했는데, 채널 목록 미리보기에는
+   발신자 라벨 자체를 아예 없애고 메시지 텍스트만 보이도록 완전히
+   숨긴다. (이전 히스토리, 2026-09-19: Stream은 채널 목록 미리보기에서
+   마지막 메시지가 본인이 보낸 것일 때 발신자 라벨로 t("You")(한국어
+   "당신")를 붙인다(SummarizedMessagePreview.mjs) — 이 앱은 1:1
+   문의방(2인 DM)만 써서 이 슬롯이 나타나는 경우는 실질적으로 "본인이
+   마지막으로 보낸 메시지"뿐이었다.) */
 .str-chat .str-chat__summarized-message-preview__sender {
-  font-size: 0;
-}
-.str-chat .str-chat__summarized-message-preview__sender::before {
-  content: "나에게 답장:";
-  font-size: 0.8125rem;
+  display: none;
 }
 
 /* 🔧 [사용자 지시, 2026-09-19] 같은 이유로, 스와이프 답장 시 버블 위에
